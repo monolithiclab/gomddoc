@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is `gomddoc`, a production-ready HTTP server that serves Markdown files as HTML.
-It's a **restructured Go application** with clean architecture that:
+It's a **Go application** with clean architecture that:
 
 - Serves Markdown files from a directory as rendered HTML
 - Uses the gomarkdown library for Markdown to HTML conversion
@@ -14,7 +14,7 @@ It's a **restructured Go application** with clean architecture that:
 - **Security**: Built-in path traversal protection via `os.OpenRoot()` (Go 1.24+)
 - **Security Headers**: X-Content-Type-Options and X-Frame-Options middleware
 - **HTTP Compliance**: Proper status codes (404 vs 500), Content-Type headers
-- **Tested**: 57.5% test coverage with comprehensive test suite
+- **Tested**: high test coverage with comprehensive test suite
 - **Production Ready**: Proper error handling and caching headers
 - **Interface-Driven**: Clean interfaces for extensibility and testing
 
@@ -48,7 +48,7 @@ make clean                  # Remove build artifacts and coverage files
 
 ## Architecture
 
-### **Current Structure (Phase 2 - Renderer System)**
+### **Current Structure**
 
 ```
 gomddoc/
@@ -98,7 +98,7 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 ### ✅ **PHASE 2 COMPLETED: Content Rendering System**
 
 - **Universal Content Serving**: Markdown, HTML, CSS, JS, images, and all file types
-- **MIME-Type Based Routing**: Renderer registry with wildcard matching (exact → type/* → */*)
+- **MIME-Type Based Routing**: Renderer registry with wildcard matching (exact → type/_ → _/\*)
 - **Content Negotiation**: HTTP Accept header parsing with q-values and stable sort
 - **Directory Listing**: Optional generation with README.md fallback (DirIndex configurable)
 - **Custom Renderer Support**: Extensible architecture for adding content transformations
@@ -140,8 +140,9 @@ The renderer architecture enables Phase 3+ features:
 - **Live Preview**: WebSocket-based hot reload for development
 
 The application is production-ready with:
+
 - Clean, extensible architecture
-- Comprehensive testing (78.9% coverage)
+- Comprehensive testing
 - Complete documentation (README, architecture, custom renderers)
 - Real-world deployment readiness
 

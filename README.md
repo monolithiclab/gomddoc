@@ -41,7 +41,7 @@ make run
 ./build/gomddoc -p :9000
 
 # Enable directory listing (disabled by default for security)
-DIR_INDEX=true ./build/gomddoc
+GOMDDOC_SERVER_DIR_INDEX=true ./build/gomddoc
 
 # Combine options
 ./build/gomddoc -d ./docs -p :3000
@@ -66,41 +66,57 @@ curl http://localhost:8080/api/data.json       # JSON passthrough
 
 Gomddoc serves all content types with intelligent rendering:
 
-| Content Type | Handling | Template Wrapping |
-|-------------|----------|-------------------|
-| `.md`, `.markdown` | Markdown → HTML | ✅ Yes |
-| `.html`, `.htm` | HTML passthrough | ✅ Yes |
-| `.css` | CSS passthrough | ❌ No |
-| `.js` | JavaScript passthrough | ❌ No |
-| `.json` | JSON passthrough | ❌ No |
-| `.png`, `.jpg`, `.gif`, `.svg` | Image passthrough | ❌ No |
-| `.pdf` | PDF passthrough | ❌ No |
-| All others | Binary passthrough | ❌ No |
+| Content Type                   | Handling               | Template Wrapping |
+| ------------------------------ | ---------------------- | ----------------- |
+| `.md`, `.markdown`             | Markdown → HTML        | ✅ Yes            |
+| `.html`, `.htm`                | HTML passthrough       | ✅ Yes            |
+| `.css`                         | CSS passthrough        | ❌ No             |
+| `.js`                          | JavaScript passthrough | ❌ No             |
+| `.json`                        | JSON passthrough       | ❌ No             |
+| `.png`, `.jpg`, `.gif`, `.svg` | Image passthrough      | ❌ No             |
+| `.pdf`                         | PDF passthrough        | ❌ No             |
+| All others                     | Binary passthrough     | ❌ No             |
 
 **Directory Handling:**
+
 - First tries to serve `README.md` from the directory
-- If `README.md` not found and `DIR_INDEX=false` (default): Returns 403 Forbidden
-- If `README.md` not found and `DIR_INDEX=true`: Generates markdown directory listing
+- If `README.md` not found and `GOMDDOC_SERVER_DIR_INDEX=false` (default): Returns 403 Forbidden
+- If `README.md` not found and `GOMDDOC_SERVER_DIR_INDEX=true`: Generates markdown directory listing
 
 ## Configuration
 
 ### Command Line Flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-d` | `.` | Directory to serve files from |
+| Flag | Default | Description                         |
+| ---- | ------- | ----------------------------------- |
+| `-d` | `.`     | Directory to serve files from       |
 | `-p` | `:8080` | Port to listen on (format: `:8080`) |
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DIR` | `.` | Directory to serve (same as `-d`) |
-| `PORT` | `:8080` | Port to listen on (same as `-p`) |
-| `DEFAULT_INDEX` | `README.md` | Default file to serve for directories |
-| `DIR_INDEX` | `false` | Enable directory listing generation |
-| `DEV_MODE` | `false` | Disable template caching for development |
-| `SHUTDOWN_TIMEOUT` | `1s` | Graceful shutdown timeout |
+| Variable                       | Default     | Description                              |
+| ------------------------------ | ----------- | ---------------------------------------- |
+| `GOMDDOC_DIR`                  | `.`         | Directory to serve (same as `-d`)        |
+| `GOMDDOC_PORT`                 | `:8080`     | Port to listen on (same as `-p`)         |
+| `GOMDDOC_SERVER_DEFAULT_INDEX` | `README.md` | Default file to serve for directories    |
+| `GOMDDOC_SERVER_DIR_INDEX`     | `false`     | Enable directory listing generation      |
+| `GOMDDOC_DEV_MODE`             | `false`     | Disable template caching for development |
+| `GOMDDOC_SHUTDOWN_TIMEOUT`     | `1s`        | Graceful shutdown timeout                |
+
+**Site Configuration** (overrides `.gomddoc/config.yml`):
+
+| Variable                   | Default        | Description                    |
+| -------------------------- | -------------- | ------------------------------ |
+| `GOMDDOC_META_TITLE`       | Directory name | Site title                     |
+| `GOMDDOC_META_DESCRIPTION` | `""`           | Site description               |
+| `GOMDDOC_META_DOMAIN`      | `""`           | Site domain (without protocol) |
+| `GOMDDOC_THEME_NAME`       | `default`      | Theme name                     |
+
+**Note**: All environment variables are prefixed with `GOMDDOC_`. Nested configuration fields use hierarchical prefixes:
+
+- `ServerConfig` fields: `GOMDDOC_SERVER_*`
+- `SiteConfig.Meta` fields: `GOMDDOC_META_*`
+- `SiteConfig.Theme` fields: `GOMDDOC_THEME_*`
 
 ### Configuration File
 
@@ -116,8 +132,8 @@ site:
     keywords: "documentation, api, guide"
 
 server:
-  defaultindex: "README.md"  # Optional
-  dirindex: false            # Optional (secure by default)
+  defaultindex: "README.md" # Optional
+  dirindex: false # Optional (secure by default)
 ```
 
 **Priority:** CLI flags > Environment variables > Config file > Defaults
@@ -155,12 +171,14 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 ### Built-in Renderers
 
 **MarkdownRenderer** (`text/markdown` → `text/html`)
+
 - Uses [gomarkdown](https://github.com/gomarkdown/markdown) library
 - CommonExtensions: Tables, fenced code, strikethrough
 - AutoHeadingIDs: Automatic anchor links
 - NoEmptyLineBeforeBlock: Cleaner output
 
 **PassthroughRenderer** (`*/*` → same type)
+
 - Wildcard catch-all for unregistered MIME types
 - Returns content unchanged
 - Preserves original MIME type
@@ -170,7 +188,7 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 - **Path Traversal Protection**: Uses `os.DirFS()` to jail file access within specified directory
 - **Hidden File Blocking**: Middleware blocks all paths starting with `.` (except `.well-known/`)
 - **Security Headers**: Automatically adds `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`
-- **Directory Listing Disabled by Default**: Prevents information disclosure (`DIR_INDEX=false`)
+- **Directory Listing Disabled by Default**: Prevents information disclosure (`GOMDDOC_SERVER_DIR_INDEX=false`)
 - **Proper Error Codes**: 403 Forbidden for disabled features, 404 for missing files
 - **Context Cancellation**: Protects against slow-loris attacks with request timeout handling
 
@@ -217,6 +235,7 @@ gomddoc/
 See [docs/architecture.md](docs/architecture.md) for detailed architecture documentation.
 
 **Key Design Principles:**
+
 - **Interface-Driven**: Clean contracts for providers, renderers, and templates
 - **MIME-Type Based**: Universal content handling via standard MIME types
 - **Self-Declaring Renderers**: No hardcoded MIME→renderer mappings
@@ -267,19 +286,21 @@ See [docs/custom-renderers.md](docs/custom-renderers.md) for more examples.
 
 All files are served through a unified content handler with automatic MIME detection:
 
-| Path | Description |
-|------|-------------|
-| `/` | Serves default index file (README.md by default) |
-| `/{filename}` | Serves file with automatic rendering |
-| `/{path}/{filename}` | Serves files from subdirectories |
-| `/{directory}/` | Serves README.md or directory listing (if enabled) |
+| Path                 | Description                                        |
+| -------------------- | -------------------------------------------------- |
+| `/`                  | Serves default index file (README.md by default)   |
+| `/{filename}`        | Serves file with automatic rendering               |
+| `/{path}/{filename}` | Serves files from subdirectories                   |
+| `/{directory}/`      | Serves README.md or directory listing (if enabled) |
 
 ### HTTP Headers
 
 **Request Headers:**
+
 - `Accept`: Content negotiation (e.g., `text/html`, `application/json`, `*/*`)
 
 **Response Headers:**
+
 - `Content-Type`: Detected MIME type with charset
 - `Content-Length`: Byte length of response
 - `Cache-Control: public, max-age=300` (5-minute cache for non-HTML)
@@ -287,6 +308,7 @@ All files are served through a unified content handler with automatic MIME detec
 - `X-Frame-Options: DENY` (security)
 
 **Status Codes:**
+
 - `200 OK`: Successfully served content
 - `403 Forbidden`: Directory listing disabled or permission denied
 - `404 Not Found`: File doesn't exist
@@ -321,6 +343,7 @@ go tool cover -html=coverage.out
 ```
 
 **Current Coverage:** 78.9% overall
+
 - `internal/server`: 87.0%
 - `internal/renderer`: 97.8%
 - `internal/provider`: 89.5%
@@ -334,7 +357,7 @@ go tool cover -html=coverage.out
 Directory listing is disabled by default for security. Enable it:
 
 ```bash
-DIR_INDEX=true ./build/gomddoc
+GOMDDOC_SERVER_DIR_INDEX=true ./build/gomddoc
 ```
 
 ### Image/CSS/JS files not loading
@@ -343,6 +366,7 @@ Ensure your HTML/Markdown uses relative paths:
 
 ```markdown
 ![Logo](./images/logo.png)
+
 <link rel="stylesheet" href="./assets/style.css">
 ```
 
@@ -361,17 +385,20 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 ### Common Issues
 
 **Port already in use:**
+
 ```bash
 ./build/gomddoc -p :8081
 ```
 
 **Permission denied:**
+
 ```bash
 chmod 644 *.md
 chmod 755 $(find . -type d)
 ```
 
 **Template errors in dev mode:**
+
 ```bash
 DEV_MODE=true ./build/gomddoc  # Disables template caching
 ```

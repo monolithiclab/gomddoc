@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -114,13 +115,19 @@ func (sc *SiteConfig) Validate() error {
 		slog.Warn("Empty theme name, using default")
 	}
 
-	// Validate domain format (no protocol, no path)
+	// Validate domain format
 	if sc.Meta.Domain != "" {
+		// Check for protocol separator
 		if strings.Contains(sc.Meta.Domain, "://") {
 			return fmt.Errorf("domain should not include protocol: %s", sc.Meta.Domain)
 		}
+		// Check for path separator
 		if strings.Contains(sc.Meta.Domain, "/") {
 			return fmt.Errorf("domain should not include path: %s", sc.Meta.Domain)
+		}
+		// Validate it's a parseable domain
+		if _, err := url.Parse("//" + sc.Meta.Domain); err != nil {
+			return fmt.Errorf("invalid domain: %w", err)
 		}
 	}
 
@@ -165,16 +172,40 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 		// Build full env var name
 		envVarName := prefix + "_" + envTag
 
+		slog.Debug("Processing config field",
+			slog.String("field", fieldType.Name),
+			slog.String("env_var", envVarName),
+			slog.String("kind", field.Kind().String()))
+
 		// Handle based on field kind
 		switch field.Kind() {
 		case reflect.Struct:
 			// Recurse into nested struct (builds hierarchical env var names)
+			slog.Debug("Recursing into struct field",
+				slog.String("field", fieldType.Name),
+				slog.String("prefix", envVarName))
 			walkStruct(field, field.Type(), envVarName)
 
 		case reflect.Ptr:
-			// Skip pointer fields (e.g., Config.Site which is *SiteConfig)
-			// These are configured separately
-			continue
+			// Handle pointer fields by dereferencing and recursing
+			// Skip only the "Site" field since it's configured separately via SiteConfig.ApplyEnvOverrides()
+			// But process other pointer fields like "Server" (*ServerConfig)
+			if fieldType.Name == "Site" {
+				slog.Debug("Skipping Site field (configured separately)",
+					slog.String("field", fieldType.Name))
+				continue
+			}
+
+			// Dereference pointer and recurse if not nil
+			if !field.IsNil() {
+				slog.Debug("Dereferencing pointer field",
+					slog.String("field", fieldType.Name),
+					slog.String("prefix", envVarName))
+				walkStruct(field.Elem(), field.Elem().Type(), envVarName)
+			} else {
+				slog.Debug("Skipping nil pointer field",
+					slog.String("field", fieldType.Name))
+			}
 
 		case reflect.String:
 			// Leaf node: check env var and set if present

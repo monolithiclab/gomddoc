@@ -2,6 +2,8 @@ package config
 
 import (
 	"flag"
+	"fmt"
+	"net"
 	"time"
 )
 
@@ -22,7 +24,7 @@ type Config struct {
 	DevMode         bool          `env:"DEV_MODE"`
 
 	// Server configuration
-	Server *ServerConfig
+	Server *ServerConfig `env:"SERVER"`
 
 	// Reference to site configuration (this IS exposed to templates)
 	Site *SiteConfig
@@ -62,6 +64,8 @@ func (c *Config) ParseFlags() {
 // Validate validates the configuration values
 func (c *Config) Validate() error {
 	// Validate application config
-	// Site config validation happens separately in SiteConfig.Validate()
+	if _, _, err := net.SplitHostPort(c.Port); err != nil {
+		return fmt.Errorf("invalid port flag: %w", err)
+	}
 	return nil
 }
