@@ -50,6 +50,12 @@ func ParseHTPasswd(r io.Reader) (*CredentialStore, error) {
 	return &CredentialStore{creds: creds}, nil
 }
 
+// dummyHash is a valid 60-char bcrypt hash used for timing-safe comparison
+// when the username is unknown. It must be structurally valid so that
+// bcrypt.CompareHashAndPassword performs a full comparison rather than
+// rejecting it immediately (which would leak username existence via timing).
+var dummyHash = []byte("$2y$10$X4hMFNEgYwXEME.eDOcRMeOPYJEKnVQlKNPMpuALMJyczIqn4JDo2")
+
 // Validate checks if the given username and password match stored credentials.
 // Returns false for unknown users or wrong passwords.
 // Uses bcrypt.CompareHashAndPassword which is constant-time by design.
@@ -58,7 +64,7 @@ func (s *CredentialStore) Validate(username, password string) bool {
 	if !ok {
 		// Perform a dummy bcrypt comparison to prevent timing leaks
 		// that reveal whether a username exists.
-		_ = bcrypt.CompareHashAndPassword([]byte("$2y$10$000000000000000000000u"), []byte(password))
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return false
 	}
 	return bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
