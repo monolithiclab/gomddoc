@@ -3,13 +3,13 @@ package renderer
 import (
 	"bytes"
 	"context"
-	"log/slog"
 	"mime"
 
-	"github.com/gomarkdown/markdown"
-	"github.com/gomarkdown/markdown/html"
-	"github.com/gomarkdown/markdown/parser"
-	"gopkg.in/yaml.v3"
+	"github.com/yuin/goldmark"
+	meta "github.com/yuin/goldmark-meta"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 func init() {
@@ -24,34 +24,37 @@ func init() {
 }
 
 // MarkdownRenderer transforms markdown content to HTML.
-// It uses the gomarkdown library with CommonExtensions and AutoHeadingIDs.
+// It uses the goldmark library with GitHub Flavored Markdown (GFM) and Front Matter support.
 //
-// The renderer is stateless and thread-safe. Each Render() call creates
-// fresh parser and HTML renderer instances to avoid shared state.
+// The renderer is stateless and thread-safe. The underlying goldmark instance
+// is shared across renders.
 type MarkdownRenderer struct {
-	extensions parser.Extensions
-	htmlFlags  html.Flags
-	htmlOpts   html.RendererOptions
+	md goldmark.Markdown
 }
 
 // NewMarkdownRenderer creates a new markdown renderer with standard settings.
 //
-// Parser configuration:
-//   - CommonExtensions: Tables, fenced code blocks, autolinks, strikethrough
-//   - AutoHeadingIDs: Automatic ID generation for headings
-//   - NoEmptyLineBeforeBlock: Allows lists/blocks without blank lines
-//
-// HTML renderer configuration:
-//   - CommonFlags: Standard HTML output flags
+// Configuration:
+//   - extension.GFM: Tables, strikethrough, linkify, task lists
+//   - meta.Meta: YAML front matter support
+//   - parser.WithAutoHeadingID: Automatic ID generation for headings
+//   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
 func NewMarkdownRenderer() *MarkdownRenderer {
-	extensions := parser.CommonExtensions | parser.AutoHeadingIDs | parser.NoEmptyLineBeforeBlock
-	htmlFlags := html.CommonFlags
-	opts := html.RendererOptions{Flags: htmlFlags}
+	md := goldmark.New(
+		goldmark.WithExtensions(
+			extension.GFM,
+			meta.Meta,
+		),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(),
+		),
+		goldmark.WithRendererOptions(
+			html.WithUnsafe(), // Allow raw HTML to match common expectations for doc sites
+		),
+	)
 
 	return &MarkdownRenderer{
-		extensions: extensions,
-		htmlFlags:  htmlFlags,
-		htmlOpts:   opts,
+		md: md,
 	}
 }
 
@@ -61,94 +64,31 @@ func (m *MarkdownRenderer) SupportedMimeTypes() []string {
 }
 
 // Render converts markdown content to HTML.
-//
-// Context handling:
-//   - Checks ctx.Err() before parsing (expensive operation)
-//   - Checks ctx.Err() after parsing, before rendering
-//   - Returns context.Canceled or context.DeadlineExceeded if cancelled
-//
-// Thread safety: Creates fresh parser and HTML renderer for each call.
-// Both components maintain internal state and must not be shared across
-// concurrent renders. This design ensures the MarkdownRenderer itself
-// is stateless and thread-safe.
 func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderResult, error) {
 	// Check context before expensive operations
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Parse front matter
-	mdContent, metadata, err := m.parseFrontMatter(content)
-	if err != nil {
-		// Log warning but continue rendering content
-		slog.Warn("Failed to parse front matter", slog.Any("error", err))
-		mdContent = content // Fallback to full content
-		metadata = nil
+	var buf bytes.Buffer
+	pCtx := parser.NewContext()
+
+	// Convert markdown to HTML
+	if err := m.md.Convert(content, &buf, parser.WithContext(pCtx)); err != nil {
+		return nil, err
 	}
 
-	// Create new parser for each render (library constraint - DO NOT pool)
-	p := parser.NewWithExtensions(m.extensions)
-	doc := p.Parse(mdContent)
+	// Extract metadata
+	metadata := meta.Get(pCtx)
 
-	// Check context after parsing, before rendering
+	// Check context after rendering
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Create new HTML renderer for each render (thread safety - has internal state)
-	htmlRenderer := html.NewRenderer(m.htmlOpts)
-	htmlOutput := markdown.Render(doc, htmlRenderer)
-
 	return &RenderResult{
-		Content:  htmlOutput,
+		Content:  buf.Bytes(),
 		MimeType: "text/html; charset=utf-8",
 		Metadata: metadata,
 	}, nil
-}
-
-// parseFrontMatter extracts and parses YAML front matter from the content.
-// It returns the remaining markdown content and the parsed metadata.
-func (m *MarkdownRenderer) parseFrontMatter(content []byte) ([]byte, map[string]interface{}, error) {
-	// Normalize line endings to \n to simplify parsing
-	content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
-
-	// Check for front matter delimiter
-	if !bytes.HasPrefix(content, []byte("---\n")) {
-		return content, nil, nil
-	}
-
-	// Find the closing delimiter
-	// We start searching from index 3 to skip the opening "---"
-	end := bytes.Index(content[3:], []byte("\n---"))
-	if end == -1 {
-		return content, nil, nil
-	}
-
-	// Adjust end index to be relative to content start
-	// end returned by Index is relative to slice [3:], so add 3
-	end += 3
-
-	// Extract YAML block (skip first 4 bytes "---\n")
-	yamlStart := 4
-	yamlBlock := content[yamlStart:end]
-
-	// Skip the closing delimiter (\n---) and potential newline after it
-	// We need to find where the markdown actually starts.
-	// `end` points to the `\n` before `---`.
-	closeDelimLen := 4 // \n---
-	mdStart := end + closeDelimLen
-
-	// Consume one optional newline after the closing delimiter
-	if mdStart < len(content) && content[mdStart] == '\n' {
-		mdStart++
-	}
-
-	mdContent := content[mdStart:]
-
-	var metadata map[string]interface{}
-	if err := yaml.Unmarshal(yamlBlock, &metadata); err != nil {
-		return content, nil, err
-	}
-
-	return mdContent, metadata, nil
 }

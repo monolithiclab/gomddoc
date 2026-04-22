@@ -8,7 +8,7 @@ This is `gomddoc`, a production-ready HTTP server that serves Markdown files as 
 It's a **Go application** with clean architecture that:
 
 - Serves Markdown files from a directory as rendered HTML
-- Uses the gomarkdown library for Markdown to HTML conversion
+- Uses the goldmark library for Markdown to HTML conversion
 - Includes graceful shutdown handling with signal trapping
 - Defaults to serving README.md as the index file
 - **Security**: Built-in path traversal protection via `os.OpenRoot()` (Go 1.24+)
@@ -77,7 +77,7 @@ gomddoc/
 
 ## Key Dependencies
 
-- `github.com/gomarkdown/markdown`: Markdown parsing and HTML rendering
+- `github.com/yuin/goldmark`: Markdown parsing and HTML rendering
 - `golang.org/x/sync/errgroup`: Graceful shutdown coordination
 
 ## Linting

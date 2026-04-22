@@ -847,7 +847,7 @@ EOF
 
 ## Resources
 
-- [gomarkdown library](https://github.com/gomarkdown/markdown)
+- [goldmark library](https://github.com/yuin/goldmark)
 - [Chroma syntax highlighter](https://github.com/alecthomas/chroma)
 - [Canvas SVG library](https://github.com/tdewolff/canvas)
 - [MIME types reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)

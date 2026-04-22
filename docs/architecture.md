@@ -95,7 +95,7 @@ type ContentRenderer interface {
 **MarkdownRenderer**
 - Input: `text/markdown`
 - Output: `text/html; charset=utf-8`
-- Uses gomarkdown with CommonExtensions + AutoHeadingIDs
+- Uses goldmark with GFM + AutoHeadingIDs + Meta extensions
 - Context-aware (checks cancellation before/after parsing)
 - Thread-safe (stateless, creates fresh parser per render)
 

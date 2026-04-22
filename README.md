@@ -172,7 +172,7 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 
 **MarkdownRenderer** (`text/markdown` → `text/html`)
 
-- Uses [gomarkdown](https://github.com/gomarkdown/markdown) library
+- Uses [goldmark](https://github.com/yuin/goldmark) library
 - CommonExtensions: Tables, fenced code, strikethrough
 - AutoHeadingIDs: Automatic anchor links
 - NoEmptyLineBeforeBlock: Cleaner output
