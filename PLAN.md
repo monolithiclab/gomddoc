@@ -156,7 +156,7 @@ themes/
 
 - MIME type detection with appropriate headers
 - Gzip/Brotli compression for text assets
-- ETags and Last-Modified headers
+- ~~ETags and Last-Modified headers~~ [x] ETag/304 Not Modified caching (Phase 4.2)
 - Range request support
 - Security headers: CSP, CORS configuration
 
@@ -712,10 +712,11 @@ processors:
 ### Phase 4: API and Integration
 
 1. REST and GraphQL APIs
-2. Authentication and authorization
-3. Webhook system
-4. Third-party service integrations
-5. Plugin architecture
+2. ~~HTTP Caching~~ [x] ETag/304 Not Modified support
+3. Authentication and authorization
+4. Webhook system
+5. Third-party service integrations
+6. Plugin architecture
 
 ### Phase 5: Advanced Features
 

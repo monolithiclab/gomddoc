@@ -119,6 +119,28 @@ Selects the visual theme to apply. gomddoc looks for a folder with this name in 
 
 ---
 
+## HTTP Caching Behavior
+
+gomddoc includes built-in HTTP caching support to reduce bandwidth and improve performance for repeat visitors.
+
+### Cache-Control
+
+All successful responses include a `Cache-Control: public, max-age=300` header, allowing browsers and intermediate caches to store responses for 5 minutes before revalidating.
+
+### ETag / 304 Not Modified
+
+Every response includes an `ETag` header, a content-based fingerprint computed using the FNV-64a hash algorithm. The ETag is a weak validator (prefixed with `W/`) since the same content may be served with different transfer encodings (e.g., gzip).
+
+When a browser makes a subsequent request, it sends the cached ETag in the `If-None-Match` header. If the content has not changed, gomddoc responds with `304 Not Modified` and an empty body, saving bandwidth and processing time.
+
+This applies to all content types:
+- **Markdown pages**: The ETag is computed from the fully rendered HTML (after template wrapping), so any change to content, metadata, or templates produces a new ETag.
+- **Static assets** (CSS, JS, images): The ETag is computed from the raw file content.
+
+No configuration is required. ETag caching is always enabled.
+
+---
+
 ## Priority Order
 
 When a setting is defined in multiple places, gomddoc follows this strict priority order:
