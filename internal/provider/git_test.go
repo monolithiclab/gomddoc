@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"mime"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
 
@@ -602,34 +604,59 @@ func TestClassifyCloneError(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		errMsg  string
-		wantErr error
+		name     string
+		inputErr error
+		wantErr  error
 	}{
 		{
-			name:    "authentication error",
-			errMsg:  "authentication required",
-			wantErr: ErrGitAuthFailed,
+			name:     "authentication required sentinel",
+			inputErr: transport.ErrAuthenticationRequired,
+			wantErr:  ErrGitAuthFailed,
 		},
 		{
-			name:    "username prompt",
-			errMsg:  "could not read Username",
-			wantErr: ErrGitAuthFailed,
+			name:     "authentication required wrapped",
+			inputErr: fmt.Errorf("clone failed: %w", transport.ErrAuthenticationRequired),
+			wantErr:  ErrGitAuthFailed,
 		},
 		{
-			name:    "connection refused",
-			errMsg:  "connection refused",
-			wantErr: ErrGitConnectFailed,
+			name:     "authorization failed sentinel",
+			inputErr: transport.ErrAuthorizationFailed,
+			wantErr:  ErrGitAuthFailed,
 		},
 		{
-			name:    "repository not found",
-			errMsg:  "repository not found",
-			wantErr: ErrNotFound,
+			name:     "username prompt string fallback",
+			inputErr: errors.New("could not read Username"),
+			wantErr:  ErrGitAuthFailed,
 		},
 		{
-			name:    "reference not found",
-			errMsg:  "reference not found",
-			wantErr: ErrGitRefNotFound,
+			name:     "connection refused string fallback",
+			inputErr: errors.New("connection refused"),
+			wantErr:  ErrGitConnectFailed,
+		},
+		{
+			name:     "repository not found sentinel",
+			inputErr: transport.ErrRepositoryNotFound,
+			wantErr:  ErrNotFound,
+		},
+		{
+			name:     "repository not found wrapped",
+			inputErr: fmt.Errorf("fetch: %w", transport.ErrRepositoryNotFound),
+			wantErr:  ErrNotFound,
+		},
+		{
+			name:     "reference not found sentinel",
+			inputErr: plumbing.ErrReferenceNotFound,
+			wantErr:  ErrGitRefNotFound,
+		},
+		{
+			name:     "reference not found wrapped",
+			inputErr: fmt.Errorf("resolve: %w", plumbing.ErrReferenceNotFound),
+			wantErr:  ErrGitRefNotFound,
+		},
+		{
+			name:     "unknown error passes through",
+			inputErr: errors.New("some other error"),
+			wantErr:  nil, // check original error is preserved
 		},
 	}
 
@@ -637,11 +664,17 @@ func TestClassifyCloneError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			inputErr := errors.New(tt.errMsg)
-			resultErr := p.classifyCloneError(inputErr)
+			resultErr := p.classifyCloneError(tt.inputErr)
 
-			if !errors.Is(resultErr, tt.wantErr) {
-				t.Errorf("classifyCloneError() = %v, want %v", resultErr, tt.wantErr)
+			if tt.wantErr != nil {
+				if !errors.Is(resultErr, tt.wantErr) {
+					t.Errorf("classifyCloneError() = %v, want %v", resultErr, tt.wantErr)
+				}
+			} else {
+				// For unknown errors, the original error should be preserved
+				if !errors.Is(resultErr, tt.inputErr) {
+					t.Errorf("classifyCloneError() should preserve original error, got %v", resultErr)
+				}
 			}
 		})
 	}

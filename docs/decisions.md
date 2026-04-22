@@ -77,6 +77,7 @@ Extracted from completed spec files before deletion.
 
 **Key security decisions**:
 - **SSH**: Fail-closed via known_hosts — no TOFU (Trust On First Use) fallback. SSH agent not supported (explicit key file only)
+- **Error classification**: Uses `errors.Is()` with go-git typed sentinel errors (`transport.ErrAuthenticationRequired`, `transport.ErrRepositoryNotFound`, `plumbing.ErrReferenceNotFound`) instead of string matching. String fallbacks retained only for errors without typed sentinels.
 - **Clone timeout**: Enforced via `context.WithTimeout` (default 60s)
 - **File size limits**: 50MB max per file (configurable)
 - **LFS**: Pointer files detected and rejected with 501 Not Implemented

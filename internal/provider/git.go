@@ -332,21 +332,32 @@ func (g *GitProvider) cacheTreeLocked() error {
 }
 
 // classifyCloneError maps clone errors to appropriate sentinel errors.
+// Uses errors.Is() against go-git's typed errors where available,
+// with string fallbacks only for errors go-git does not export.
 func (g *GitProvider) classifyCloneError(err error) error {
-	errStr := err.Error()
+	endpoint := g.parsedURL.Endpoint.String()
+
 	switch {
-	case strings.Contains(errStr, "authentication"):
-		return &PathError{Op: "clone", Path: g.parsedURL.Endpoint.String(), Err: ErrGitAuthFailed}
-	case strings.Contains(errStr, "could not read Username"):
-		return &PathError{Op: "clone", Path: g.parsedURL.Endpoint.String(), Err: ErrGitAuthFailed}
-	case strings.Contains(errStr, "connection refused"):
-		return &PathError{Op: "clone", Path: g.parsedURL.Endpoint.String(), Err: ErrGitConnectFailed}
-	case strings.Contains(errStr, "repository not found"):
-		return &PathError{Op: "clone", Path: g.parsedURL.Endpoint.String(), Err: ErrNotFound}
-	case strings.Contains(errStr, "reference not found"):
-		return &PathError{Op: "clone", Path: g.parsedURL.Endpoint.String(), Err: ErrGitRefNotFound}
+	case errors.Is(err, transport.ErrAuthenticationRequired),
+		errors.Is(err, transport.ErrAuthorizationFailed):
+		return &PathError{Op: "clone", Path: endpoint, Err: ErrGitAuthFailed}
+
+	// go-git does not export a sentinel for "could not read Username"
+	case strings.Contains(err.Error(), "could not read Username"):
+		return &PathError{Op: "clone", Path: endpoint, Err: ErrGitAuthFailed}
+
+	case errors.Is(err, transport.ErrRepositoryNotFound):
+		return &PathError{Op: "clone", Path: endpoint, Err: ErrNotFound}
+
+	case errors.Is(err, plumbing.ErrReferenceNotFound):
+		return &PathError{Op: "clone", Path: endpoint, Err: ErrGitRefNotFound}
+
+	// go-git does not export a sentinel for connection errors
+	case strings.Contains(err.Error(), "connection refused"):
+		return &PathError{Op: "clone", Path: endpoint, Err: ErrGitConnectFailed}
+
 	default:
-		return &PathError{Op: "clone", Path: g.parsedURL.Endpoint.String(), Err: err}
+		return &PathError{Op: "clone", Path: endpoint, Err: err}
 	}
 }
 
