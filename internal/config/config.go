@@ -72,6 +72,7 @@ type SiteConfig struct {
 	DefaultIndex string          `env:"DEFAULT_INDEX" yaml:"default_index"`
 	DirIndex     bool            `env:"DIR_INDEX" yaml:"dir_index"`
 	EditURL      string          `env:"EDIT_URL" yaml:"edit_url"`
+	ColorChips   bool            `env:"COLOR_CHIPS" yaml:"color_chips"`
 	Meta         MetaConfig      `env:"META" yaml:"meta"`
 	Theme        ThemeConfig     `env:"THEME" yaml:"theme"`
 	Highlighting HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
@@ -158,6 +159,7 @@ func NewSiteConfig(dir string) SiteConfig {
 	return SiteConfig{
 		DefaultIndex: DefaultIndex,
 		DirIndex:     false,
+		ColorChips:   true,
 		Meta: MetaConfig{
 			Title: title,
 		},

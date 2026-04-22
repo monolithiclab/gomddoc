@@ -27,19 +27,28 @@ func init() {
 	_ = mime.AddExtensionType(".markdown", "text/markdown; charset=utf-8")
 }
 
+// MarkdownOptions configures the MarkdownRenderer.
+type MarkdownOptions struct {
+	// HighlightTheme controls the Chroma syntax highlighting style for fenced
+	// code blocks. Defaults to "github" when empty.
+	HighlightTheme string
+
+	// ColorChips enables inline color chip rendering for backtick-wrapped hex
+	// codes (e.g. `#E91E63`). Can be overridden per page via frontmatter.
+	ColorChips bool
+}
+
 // MarkdownRenderer transforms markdown content to HTML.
 // It uses the goldmark library with GitHub Flavored Markdown (GFM) and Front Matter support.
 //
 // The renderer is stateless and thread-safe. The underlying goldmark instance
 // is shared across renders.
 type MarkdownRenderer struct {
-	md goldmark.Markdown
+	md         goldmark.Markdown
+	colorChips bool
 }
 
-// NewMarkdownRenderer creates a new markdown renderer with standard settings.
-//
-// The highlightTheme parameter controls the Chroma syntax highlighting style
-// applied to fenced code blocks. If empty, it defaults to "github".
+// NewMarkdownRenderer creates a new markdown renderer with the given options.
 //
 // Configuration:
 //   - extension.GFM: Tables, strikethrough, linkify, task lists
@@ -47,7 +56,8 @@ type MarkdownRenderer struct {
 //   - highlighting: Syntax highlighting via Chroma with the specified theme
 //   - parser.WithAutoHeadingID: Automatic ID generation for headings
 //   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
-func NewMarkdownRenderer(highlightTheme string) *MarkdownRenderer {
+func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
+	highlightTheme := opts.HighlightTheme
 	if highlightTheme == "" {
 		highlightTheme = "github"
 	}
@@ -69,7 +79,8 @@ func NewMarkdownRenderer(highlightTheme string) *MarkdownRenderer {
 	)
 
 	return &MarkdownRenderer{
-		md: md,
+		md:         md,
+		colorChips: opts.ColorChips,
 	}
 }
 
@@ -106,9 +117,13 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 		return nil, err
 	}
 
-	// Post-process: add anchor links to headings, then transform admonitions
+	// Post-process: add anchor links to headings, transform admonitions, then color chips
 	rendered := addHeadingAnchors(buf.Bytes())
 	rendered = TransformAdmonitions(rendered)
+
+	if colorChipsEnabled(m.colorChips, metadata) {
+		rendered = transformColorChips(rendered)
+	}
 
 	// Convert TOC
 	var tocNode *TOCNode
@@ -122,6 +137,19 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 		Metadata: metadata,
 		TOC:      tocNode,
 	}, nil
+}
+
+// colorChipsEnabled returns whether color chips should be applied.
+// Per-page frontmatter (color_chips: true/false) overrides the global default.
+func colorChipsEnabled(globalDefault bool, metadata map[string]any) bool {
+	if metadata != nil {
+		if v, ok := metadata["color_chips"]; ok {
+			if b, ok := v.(bool); ok {
+				return b
+			}
+		}
+	}
+	return globalDefault
 }
 
 // convertTOC converts goldmark-toc Items to our internal TOCNode structure.

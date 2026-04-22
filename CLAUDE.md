@@ -107,6 +107,7 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 - **Directory Listing**: Optional generation with README.md fallback (DirIndex configurable)
 - **Custom Renderer Support**: Extensible architecture for adding content transformations
 - **Built-in Renderers**: MarkdownRenderer (md→html) and PassthroughRenderer (*/*→same)
+- **Post-Processing**: Heading anchors, GitHub-style admonitions, hex color chips
 - **MIME Normalization**: Charset stripping for routing, preservation for HTTP headers
 - **Error Classification**: Sentinel errors with proper HTTP status codes (403/404/406/499/504)
 - **Context Cancellation**: All renderers support request timeout and cancellation

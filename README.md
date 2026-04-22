@@ -127,6 +127,7 @@ All environment variables can be listed with `gomddoc serve --help`.
 | `GOMDDOC_SITE_DEFAULT_INDEX`    | string | `README.md`  | Default file for directories   |
 | `GOMDDOC_SITE_DIR_INDEX`        | bool   | `false`      | Enable directory listing       |
 | `GOMDDOC_SITE_EDIT_URL`         | string |              | Edit URL template              |
+| `GOMDDOC_SITE_COLOR_CHIPS`      | bool   | `true`       | Enable hex color chip rendering |
 | `GOMDDOC_SITE_META_TITLE`       | string | Dir name     | Site title                     |
 | `GOMDDOC_SITE_META_DESCRIPTION` | string |              | Site description               |
 | `GOMDDOC_SITE_META_DOMAIN`      | string |              | Site domain (without protocol) |
@@ -151,6 +152,7 @@ site:
 server:
   defaultindex: "README.md" # Optional
   dirindex: false # Optional (secure by default)
+  color_chips: true # Optional (enabled by default)
 ```
 
 **Priority:** CLI flags > Environment variables > Config file > Defaults
@@ -191,8 +193,11 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 
 - Uses [goldmark](https://github.com/yuin/goldmark) library
 - CommonExtensions: Tables, fenced code, strikethrough
-- AutoHeadingIDs: Automatic anchor links
-- NoEmptyLineBeforeBlock: Cleaner output
+- AutoHeadingIDs: Automatic anchor links with hover anchors
+- GitHub-style admonitions (`[!NOTE]`, `[!WARNING]`, etc.)
+- Color chips: backtick-wrapped hex codes (e.g. `` `#E91E63` ``) render as an inline swatch + code label
+  - Enabled globally via `GOMDDOC_SITE_COLOR_CHIPS` (default: `true`) or `color_chips` in config
+  - Override per page with YAML frontmatter: `color_chips: false` to disable, `color_chips: true` to re-enable
 
 **PassthroughRenderer** (`*/*` → same type)
 

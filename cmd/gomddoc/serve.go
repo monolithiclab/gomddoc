@@ -52,7 +52,10 @@ func (s *ServeCmd) Run() error {
 	}()
 
 	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownRenderer(cfg.Site.Highlighting.Theme))
+	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
+		HighlightTheme: cfg.Site.Highlighting.Theme,
+		ColorChips:     cfg.Site.ColorChips,
+	}))
 	registry.Register(renderer.NewPassthroughRenderer())
 
 	breadcrumbGen := breadcrumb.NewGenerator(&infoProviderAdapter{p: prov})

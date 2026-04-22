@@ -27,6 +27,29 @@
         .admonition-important { border-color: #7c4dff; background: rgba(124,77,255,0.1); }
         .admonition-warning { border-color: #ff9100; background: rgba(255,145,0,0.1); }
         .admonition-caution { border-color: #ff5252; background: rgba(255,82,82,0.1); }
+        /* Inline color chips */
+        .color-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25em;
+            padding: 0.1em 0.4em;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 4px;
+            font-family: var(--pico-font-family-monospace);
+            font-size: 0.9em;
+            vertical-align: baseline;
+        }
+        .color-chip-swatch {
+            display: inline-block;
+            width: 0.9em;
+            height: 0.9em;
+            border-radius: 2px;
+            border: 1px solid rgba(0,0,0,0.15);
+            flex-shrink: 0;
+        }
+        .color-chip-code {
+            font-weight: 600;
+        }
         /* Heading anchor links */
         .heading-anchor {
             text-decoration: none;

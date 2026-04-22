@@ -622,7 +622,7 @@ func TestJSONRenderer_Integration(t *testing.T) {
 
     // Register custom renderer
     registry := renderer.NewDefaultRegistry()
-    registry.Register(renderer.NewMarkdownRenderer())
+    registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
     registry.Register(NewJSONRenderer())  // Custom renderer
     registry.Register(renderer.NewPassthroughRenderer())
 
@@ -665,7 +665,7 @@ func main() {
     registry := renderer.NewDefaultRegistry()
 
     // Register built-in renderers
-    registry.Register(renderer.NewMarkdownRenderer())
+    registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
     registry.Register(renderer.NewPassthroughRenderer())
 
     // Register custom renderers
