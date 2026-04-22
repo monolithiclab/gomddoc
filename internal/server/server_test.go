@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"net"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -86,4 +88,94 @@ func TestNewHTTPServer(t *testing.T) {
 	if server.server.MaxHeaderBytes != expectedMaxHeaderBytes {
 		t.Errorf("Expected max header bytes %v, got %v", expectedMaxHeaderBytes, server.server.MaxHeaderBytes)
 	}
+}
+
+func TestHTTPServer_StartAndShutdown(t *testing.T) {
+	// Find an available port
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("Failed to find available port: %v", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+
+	// Create test config with the available port
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.DefaultIndex = "README.md"
+	siteConfig.DirIndex = false
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Port:    ":" + string(rune(port)),
+			DevMode: false,
+			Dir:     ".",
+			HTTP: config.HTTPConfig{
+				ShutdownTimeout:   1 * time.Second,
+				ReadHeaderTimeout: 1 * time.Second,
+				WriteTimeout:      1 * time.Second,
+				IdleTimeout:       1 * time.Second,
+				MaxHeaderMB:       1,
+			},
+		},
+		Site: siteConfig,
+	}
+	// Use port string properly
+	cfg.Server.Port = ":" + netPortToString(port)
+
+	// Create dependencies
+	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	defer prov.Close()
+
+	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownRenderer())
+	registry.Register(renderer.NewPassthroughRenderer())
+
+	templateContent := `<!DOCTYPE html><html><body>{{.Page.Content}}</body></html>`
+	testFS := fstest.MapFS{
+		"assets/themes/default/layout.html.tmpl": {Data: []byte(templateContent)},
+	}
+	rend := template.NewHTMLRenderer(&siteConfig, testFS)
+
+	server := NewHTTPServer(cfg, prov, registry, rend)
+
+	// Start server in goroutine
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- server.Start(context.Background())
+	}()
+
+	// Give server time to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Test shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	shutdownErr := server.Shutdown(ctx)
+	if shutdownErr != nil {
+		t.Errorf("Shutdown failed: %v", shutdownErr)
+	}
+
+	// Check that Start returned (with nil error after graceful shutdown)
+	select {
+	case err := <-startErr:
+		if err != nil {
+			t.Errorf("Start returned unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("Start did not return after shutdown")
+	}
+}
+
+func netPortToString(port int) string {
+	return string([]byte{
+		byte('0' + port/10000%10),
+		byte('0' + port/1000%10),
+		byte('0' + port/100%10),
+		byte('0' + port/10%10),
+		byte('0' + port%10),
+	})
 }

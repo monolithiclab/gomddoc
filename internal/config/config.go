@@ -15,6 +15,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/text"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -380,7 +381,7 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 			continue
 		}
 
-		if kind == reflect.Ptr {
+		if kind == reflect.Pointer {
 			if !field.IsNil() {
 				newPrefix := prefix
 				if envTag != "" {
@@ -410,17 +411,17 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 			field.SetString(envValue)
 
 		case reflect.Int, reflect.Int64:
-			if field.Type() == reflect.TypeOf(time.Duration(0)) {
+			if field.Type() == reflect.TypeFor[time.Duration]() {
 				if duration, err := time.ParseDuration(envValue); err == nil {
 					field.SetInt(int64(duration))
 				} else {
-					slog.Warn("Invalid duration format", slog.String("var", envVarName), slog.String("value", envValue))
+					slog.Warn("Invalid duration format", slog.String("var", envVarName), text.Safe("value", envValue)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
 				}
 			} else {
 				if intValue, err := strconv.ParseInt(envValue, 10, 64); err == nil {
 					field.SetInt(intValue)
 				} else {
-					slog.Warn("Invalid int format", slog.String("var", envVarName), slog.String("value", envValue))
+					slog.Warn("Invalid int format", slog.String("var", envVarName), text.Safe("value", envValue)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
 				}
 			}
 
@@ -428,7 +429,7 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 			if boolValue, err := strconv.ParseBool(envValue); err == nil {
 				field.SetBool(boolValue)
 			} else {
-				slog.Warn("Invalid bool format", slog.String("var", envVarName), slog.String("value", envValue))
+				slog.Warn("Invalid bool format", slog.String("var", envVarName), text.Safe("value", envValue)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
 			}
 		}
 	}

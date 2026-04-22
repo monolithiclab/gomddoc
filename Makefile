@@ -11,6 +11,9 @@ bench:  ## Run tests and benchmarks
 	go test -bench=.
 
 
+ci:  codefix format lint test  ## Run codefix, format, lint and tests
+
+
 deploy:  ## Deploy the project
 	echo "not implemented" && false
 

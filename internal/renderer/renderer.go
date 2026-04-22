@@ -13,7 +13,7 @@ type RenderResult struct {
 
 	// Metadata is key-value pairs extracted from the content (e.g., front matter).
 	// This can be used by templates for title, description, tags, etc.
-	Metadata map[string]interface{}
+	Metadata map[string]any
 
 	// TOC is the table of contents extracted from the content.
 	TOC *TOCNode

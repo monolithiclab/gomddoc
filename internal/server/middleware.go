@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // SecurityHeaders adds security headers to HTTP responses for defense-in-depth
@@ -57,16 +59,16 @@ func BlockHiddenPaths(next http.Handler) http.Handler {
 
 			// Block if segment starts with a dot
 			if strings.HasPrefix(segment, ".") {
-				slog.Debug("Blocked hidden path access",
-					slog.String("path", r.URL.Path),
-					slog.String("segment", segment),
+				slog.Debug("Blocked hidden path access", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
+					text.Safe("path", r.URL.Path),
+					text.Safe("segment", segment),
 					slog.String("remote", r.RemoteAddr))
 
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 				w.WriteHeader(http.StatusNotFound)
 				if _, err := w.Write([]byte("File not found")); err != nil {
-					slog.Debug("Failed to write response",
-						slog.String("path", r.URL.Path),
+					slog.Debug("Failed to write response", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
+						text.Safe("path", r.URL.Path),
 						slog.Any("error", err))
 				}
 				return

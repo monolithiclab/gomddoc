@@ -55,6 +55,12 @@ lint-gocritic:  # (no-help)
 lint: lint-format lint-vet lint-staticcheck lint-golangci-lint lint-gosec lint-gocritic  ## Lint source code (use -j to parallelize, use FORCE_UPDATE=1 to reinstall linters)
 
 
+.SILENT: codefix
+.PHONY: codefix
+codefix:  ## Update to latest Golang best practices and patterns
+	go fix ./...
+
+
 .SILENT: format
 .PHONY: format
 format:  ## Format source code

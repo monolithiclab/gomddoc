@@ -168,64 +168,57 @@
         </main>
 
         <script>
-            // Mobile TOC Toggle
-            const tocToggle = document.getElementById('toc-toggle');
-            const tocSidebar = document.getElementById('toc-sidebar');
-            const tocOverlay = document.getElementById('toc-overlay');
-            
-            if (tocToggle && tocSidebar) {
-                function toggleToc() {
-                    const isShown = tocSidebar.classList.contains('show');
-                    if (isShown) {
-                        tocSidebar.classList.remove('show');
-                        if (tocOverlay) tocOverlay.classList.remove('show');
-                    } else {
-                        tocSidebar.classList.add('show');
-                        if (tocOverlay) tocOverlay.classList.add('show');
-                    }
-                }
+            // TOC functionality - wrapped in IIFE for encapsulation
+            (function() {
+                'use strict';
 
-                tocToggle.addEventListener('click', toggleToc);
-                if (tocOverlay) tocOverlay.addEventListener('click', toggleToc);
-                
-                // Close on link click
-                tocSidebar.querySelectorAll('a').forEach(link => {
-                    link.addEventListener('click', () => {
-                        if (window.innerWidth <= 992) {
+                // Mobile TOC Toggle
+                const tocToggle = document.getElementById('toc-toggle');
+                const tocSidebar = document.getElementById('toc-sidebar');
+                const tocOverlay = document.getElementById('toc-overlay');
+
+                if (tocToggle && tocSidebar) {
+                    const toggleToc = () => {
+                        const isShown = tocSidebar.classList.contains('show');
+                        tocSidebar.classList.toggle('show', !isShown);
+                        if (tocOverlay) tocOverlay.classList.toggle('show', !isShown);
+                    };
+
+                    tocToggle.addEventListener('click', toggleToc);
+                    if (tocOverlay) tocOverlay.addEventListener('click', toggleToc);
+
+                    // Close on link click (mobile only)
+                    tocSidebar.addEventListener('click', (e) => {
+                        if (e.target.tagName === 'A' && window.innerWidth <= 992) {
                             toggleToc();
                         }
                     });
-                });
-            }
+                }
 
-            // Scroll Highlighting
-            const observerOptions = {
-                root: null,
-                rootMargin: '-100px 0px -66%',
-                threshold: 0
-            };
-
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const id = entry.target.getAttribute('id');
-                        if (id) {
-                            document.querySelectorAll('#toc-sidebar a').forEach(link => {
-                                link.classList.remove('active');
-                                if (link.getAttribute('href') === '#' + id) {
-                                    link.classList.add('active');
-                                    // Scroll TOC to keep active item in view
-                                    link.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                // Scroll Highlighting with IntersectionObserver
+                if (tocSidebar) {
+                    const observer = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const id = entry.target.getAttribute('id');
+                                if (id) {
+                                    tocSidebar.querySelectorAll('a').forEach(link => {
+                                        const isActive = link.getAttribute('href') === '#' + id;
+                                        link.classList.toggle('active', isActive);
+                                        if (isActive) {
+                                            link.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                                        }
+                                    });
                                 }
-                            });
-                        }
-                    }
-                });
-            }, observerOptions);
+                            }
+                        });
+                    }, { rootMargin: '-100px 0px -66%', threshold: 0 });
 
-            document.querySelectorAll('article h1[id], article h2[id], article h3[id]').forEach((section) => {
-                observer.observe(section);
-            });
+                    document.querySelectorAll('article h1[id], article h2[id], article h3[id]').forEach((section) => {
+                        observer.observe(section);
+                    });
+                }
+            })();
         </script>
     </body>
 </html>

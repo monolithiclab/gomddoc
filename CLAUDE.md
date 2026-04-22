@@ -121,11 +121,12 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 
 1. Make code changes in appropriate `internal/` packages
 2. Update tests in corresponding `*_test.go` files
-3. Run `make format` to verify code quality
-4. Run `make lint` to verify code quality
-5. Run `make test` to ensure all tests pass (target: 78.9%+)
-6. Run `make build` to create production binary
-7. Commit changes with descriptive messages
+3. Run `make codefix` to upgrade to latest golang best practices and patterns
+4. Run `make format` to verify code quality
+5. Run `make lint` to verify code quality
+6. Run `make test` to ensure all tests pass (target: 78.9%+)
+7. Run `make build` to create production binary
+8. Commit changes with descriptive messages
 
 ### **NEXT PHASES READY**
 

@@ -15,6 +15,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // Handler holds dependencies for HTTP request handling
@@ -90,10 +91,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !accepted {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusNotAcceptable)
-		message := "Not Acceptable: server can only provide " + finalNormalized
-		_, _ = w.Write([]byte(message))
+		http.Error(w, "Not Acceptable: server can only provide "+finalNormalized, http.StatusNotAcceptable)
 		return
 	}
 
@@ -106,10 +104,10 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveHTML wraps HTML content in the site template and serves it.
-func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, metadata map[string]interface{}, toc *renderer.TOCNode) {
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, metadata map[string]any, toc *renderer.TOCNode) {
 	// Initialize metadata if nil
 	if metadata == nil {
-		metadata = make(map[string]interface{})
+		metadata = make(map[string]any)
 	}
 
 	// Default title logic
@@ -169,7 +167,7 @@ func (h *Handler) serveRaw(w http.ResponseWriter, content []byte, mimeType strin
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.WriteHeader(http.StatusOK)
-	_, writeErr := w.Write(content)
+	_, writeErr := w.Write(content) // #nosec G705 -- static file content served with correct Content-Type and nosniff header
 	if writeErr != nil {
 		slog.Error("Cannot write response", slog.Any("error", writeErr))
 	}
@@ -182,20 +180,20 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 	// Log based on severity
 	switch statusCode {
 	case http.StatusNotFound:
-		slog.Info("File not found",
+		slog.Info("File not found", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
-			slog.String("path", path),
+			text.Safe("path", path),
 		)
 	case http.StatusForbidden:
-		slog.Info("Access forbidden",
+		slog.Info("Access forbidden", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
-			slog.String("path", path),
+			text.Safe("path", path),
 			slog.String("error", err.Error()),
 		)
 	default:
-		slog.Error("Request failed",
+		slog.Error("Request failed", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
-			slog.String("path", path),
+			text.Safe("path", path),
 			slog.String("error", err.Error()),
 		)
 	}

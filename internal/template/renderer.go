@@ -33,9 +33,9 @@ type TemplateContext struct {
 
 type PageContext struct {
 	Content template.HTML
-	Path    string                 // Current request path
-	Meta    map[string]interface{} // Extracted metadata (e.g., front matter)
-	TOC     *renderer.TOCNode      // Table of Contents
+	Path    string            // Current request path
+	Meta    map[string]any    // Extracted metadata (e.g., front matter)
+	TOC     *renderer.TOCNode // Table of Contents
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects
@@ -242,18 +242,9 @@ func (h *HTMLRenderer) renderTOCNode(buf *bytes.Buffer, node *renderer.TOCNode, 
 	for _, child := range node.Children {
 		if child.Level >= minLevel && child.Level <= maxLevel {
 			buf.WriteString("<li><a href=\"#")
-			buf.WriteString(child.ID)
+			buf.WriteString(template.HTMLEscapeString(child.ID))
 			buf.WriteString("\">")
-			buf.WriteString(child.Text) // Text should be escaped? It comes from Markdown parser, usually safe or needs HTML escaping. Goldmark returns bytes.
-			// child.Text is string. It might contain HTML entities.
-			// We should assume it's safe or escape it. Template.HTML function trusts the output.
-			// Let's escape it to be safe, but `template.HTMLEscapeString`?
-			// Wait, headers can contain formatting. `goldmark-toc` titles are bytes.
-			// We converted to string.
-			// If headers have `*bold*`, Goldmark renders them?
-			// `goldmark-toc` title is raw text usually? Or rendered HTML?
-			// `goldmark-toc` computes title from the AST node text. It might be plain text.
-			// Let's assume plain text for the link label for now.
+			buf.WriteString(template.HTMLEscapeString(child.Text))
 			buf.WriteString("</a>")
 			h.renderTOCNode(buf, child, minLevel, maxLevel)
 			buf.WriteString("</li>")

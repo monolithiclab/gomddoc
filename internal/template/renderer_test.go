@@ -356,3 +356,234 @@ func TestRenderWithContextCancellation(t *testing.T) {
 		t.Errorf("Render() with cancelled context: got error %v, want context.Canceled", err)
 	}
 }
+
+func TestValidateDefaultTheme(t *testing.T) {
+	t.Run("valid default theme", func(t *testing.T) {
+		testFS := fstest.MapFS{
+			"assets/themes/default/layout.html.tmpl": {
+				Data: []byte("<html></html>"),
+			},
+		}
+		siteConfig := config.NewSiteConfig(".")
+		renderer := NewHTMLRenderer(&siteConfig, testFS)
+
+		err := renderer.ValidateDefaultTheme()
+		if err != nil {
+			t.Errorf("ValidateDefaultTheme() should succeed, got error: %v", err)
+		}
+	})
+
+	t.Run("missing default theme", func(t *testing.T) {
+		testFS := fstest.MapFS{
+			"assets/themes/other/layout.html.tmpl": {
+				Data: []byte("<html></html>"),
+			},
+		}
+		siteConfig := config.NewSiteConfig(".")
+		renderer := NewHTMLRenderer(&siteConfig, testFS)
+
+		err := renderer.ValidateDefaultTheme()
+		if err == nil {
+			t.Error("ValidateDefaultTheme() should fail when default theme is missing")
+		}
+	})
+}
+
+func TestClearCache(t *testing.T) {
+	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
+	testFS := fstest.MapFS{
+		"assets/themes/default/test.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	cache := &CachedTemplateStore{}
+	renderer := NewHTMLRenderer(&siteConfig, testFS, WithCache(cache))
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/"},
+	}
+
+	// First render - populates cache
+	_, err := renderer.Render(context.Background(), "test.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// Verify cache has entry
+	templatePath := "assets/themes/default/test.html.tmpl"
+	if cache.Get(templatePath) == nil {
+		t.Error("Cache should have entry after render")
+	}
+
+	// Clear cache
+	renderer.ClearCache()
+
+	// Verify cache is empty
+	if cache.Get(templatePath) != nil {
+		t.Error("Cache should be empty after ClearCache()")
+	}
+}
+
+func TestParseTemplateFallback(t *testing.T) {
+	// Only default theme has the template
+	testFS := fstest.MapFS{
+		"assets/themes/default/layout.html.tmpl": {
+			Data: []byte("<html>default</html>"),
+		},
+	}
+
+	// Configure to use a custom theme that doesn't exist
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Theme.Name = "nonexistent"
+
+	renderer := NewHTMLRenderer(&siteConfig, testFS)
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/"},
+	}
+
+	// Should fallback to default theme
+	result, err := renderer.Render(context.Background(), "layout.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render should succeed with fallback, got error: %v", err)
+	}
+
+	if !strings.Contains(string(result), "default") {
+		t.Error("Should have used default theme template")
+	}
+}
+
+func TestTOCFunction_EmptyTOC(t *testing.T) {
+	templateContent := `{{ toc .Page.TOC }}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/toc_empty.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
+
+	// Test with nil TOC
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			TOC: nil,
+		},
+	}
+
+	result, err := rendererObj.Render(context.Background(), "toc_empty.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if string(result) != "" {
+		t.Errorf("Empty TOC should produce empty output, got %q", string(result))
+	}
+
+	// Test with empty children
+	ctx.Page.TOC = &renderer.TOCNode{Level: 0, Children: nil}
+	result, err = rendererObj.Render(context.Background(), "toc_empty.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if string(result) != "" {
+		t.Errorf("TOC with no children should produce empty output, got %q", string(result))
+	}
+}
+
+func TestHasVisibleDescendants(t *testing.T) {
+	// Template filtering levels 2-2 (only H2)
+	templateContent := `{{ toc .Page.TOC 2 2 }}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/toc_deep.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
+
+	// Create a deep structure where H2 is nested under H1
+	// This tests the hasVisibleDescendants recursive path
+	tocRoot := &renderer.TOCNode{
+		Level: 0,
+		Children: []*renderer.TOCNode{
+			{
+				Level: 1, Text: "H1", ID: "h1",
+				Children: []*renderer.TOCNode{
+					{
+						Level: 2, Text: "H2", ID: "h2",
+						Children: []*renderer.TOCNode{
+							{Level: 3, Text: "H3", ID: "h3"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			TOC: tocRoot,
+		},
+	}
+
+	result, err := rendererObj.Render(context.Background(), "toc_deep.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	res := string(result)
+
+	// H1 should be skipped (level 1, but we want 2-2)
+	if strings.Contains(res, ">H1<") {
+		t.Error("H1 should be skipped")
+	}
+
+	// H2 should be present
+	if !strings.Contains(res, ">H2<") {
+		t.Error("H2 should be present")
+	}
+
+	// H3 should be skipped (level 3, but we want 2-2)
+	if strings.Contains(res, ">H3<") {
+		t.Error("H3 should be skipped")
+	}
+}
+
+func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
+	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/bc.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	// Don't provide a breadcrumb generator
+	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			Path: "/foo/bar",
+		},
+	}
+
+	result, err := rendererObj.Render(context.Background(), "bc.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	// Should return empty slice (length 0)
+	if string(result) != "0" {
+		t.Errorf("Expected 0 breadcrumbs without generator, got %q", string(result))
+	}
+}
