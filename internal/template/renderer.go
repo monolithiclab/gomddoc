@@ -241,6 +241,9 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"editURL":      h.generateEditURL,
 		"navigation":   h.generateNavigation,
 		"themeVarsCSS": h.generateThemeVarsCSS,
+		"assetURL": func(name string) string {
+			return "/_assets/" + name
+		},
 		"inlineAsset": func(name string) (template.JS, error) {
 			// Search theme dir first, then shared (overlay semantics)
 			for _, dir := range []string{themeDir, "assets/shared"} {

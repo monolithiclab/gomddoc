@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -31,7 +32,8 @@ type HTTPServer struct {
 	handler *Handler
 }
 
-// NewHTTPServer creates a new HTTP server with the given dependencies
+// NewHTTPServer creates a new HTTP server with the given dependencies.
+// staticFS may be nil if no static asset directories exist.
 func NewHTTPServer(
 	cfg *config.Config,
 	provider provider.Provider,
@@ -40,6 +42,7 @@ func NewHTTPServer(
 	templateRenderer template.Renderer,
 	metaIndex *metadata.Index,
 	redirectFinder RedirectFinder,
+	staticFS fs.FS,
 ) *HTTPServer {
 	handler := NewHandler(provider, registry, enricherRegistry, templateRenderer, &cfg.Site, redirectFinder)
 
@@ -64,6 +67,11 @@ func NewHTTPServer(
 		metaHandler := NewMetadataHandler(metaIndex)
 		mux.HandleFunc("GET /api/tags", metaHandler.TagsHandler)
 		mux.HandleFunc("GET /api/tags/{tag}", metaHandler.TagPagesHandler)
+	}
+
+	if staticFS != nil {
+		assetsHandler := NewAssetsHandler(staticFS)
+		mux.Handle("GET /_assets/", http.StripPrefix("/_assets/", assetsHandler))
 	}
 
 	mux.Handle("/", h)

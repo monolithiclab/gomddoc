@@ -128,8 +128,10 @@ func (s *ServeCmd) Run() error {
 		NavBuilder: navBuilderAdapter(navGen),
 	}))
 
+	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
+
 	redirectFinder := redirectFinderAdapter(navGen)
-	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, redirectFinder)
+	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, redirectFinder, staticFS)
 
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()

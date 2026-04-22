@@ -875,6 +875,45 @@ func TestFuncMap_InlineAsset_NotFound(t *testing.T) {
 	}
 }
 
+func TestAssetURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		asset   string
+		wantURL string
+	}{
+		{"simple file", "style.css", "/_assets/style.css"},
+		{"nested path", "js/app.js", "/_assets/js/app.js"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			testFS := fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl": {
+					Data: []byte(`{{assetURL "` + tt.asset + `"}}`),
+				},
+			}
+			siteConfig := config.NewSiteConfig(".")
+			r := NewHTMLRenderer(&siteConfig, testFS)
+
+			result, err := r.Render(context.Background(), "default.html.tmpl", &TemplateContext{
+				Site: &siteConfig,
+				Page: PageContext{Path: "/"},
+			})
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			got := strings.TrimSpace(string(result))
+			if got != tt.wantURL {
+				t.Errorf("assetURL = %q, want %q", got, tt.wantURL)
+			}
+		})
+	}
+}
+
 func TestHasVisibleDescendants_Direct(t *testing.T) {
 	t.Parallel()
 
@@ -1057,9 +1096,9 @@ func TestPartialOverrideResolution(t *testing.T) {
 		{
 			name: "no site partials uses theme partials only",
 			fs: fstest.MapFS{
-				"assets/themes/default/layouts/default.html.tmpl":  {Data: []byte(layout)},
-				"assets/themes/default/partials/head.html.tmpl":    {Data: []byte(themeHead)},
-				"assets/themes/default/partials/footer.html.tmpl":  {Data: []byte(themeFooter)},
+				"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layout)},
+				"assets/themes/default/partials/head.html.tmpl":   {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl": {Data: []byte(themeFooter)},
 			},
 			theme:    "default",
 			wantBody: "theme-head|theme-footer",
@@ -1067,10 +1106,10 @@ func TestPartialOverrideResolution(t *testing.T) {
 		{
 			name: "site partial overrides one theme partial",
 			fs: fstest.MapFS{
-				"assets/themes/default/layouts/default.html.tmpl":  {Data: []byte(layout)},
-				"assets/themes/default/partials/head.html.tmpl":    {Data: []byte(themeHead)},
-				"assets/themes/default/partials/footer.html.tmpl":  {Data: []byte(themeFooter)},
-				"partials/head.html.tmpl":                          {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
+				"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layout)},
+				"assets/themes/default/partials/head.html.tmpl":   {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl": {Data: []byte(themeFooter)},
+				"partials/head.html.tmpl":                         {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
 			},
 			theme:    "default",
 			wantBody: "site-head|theme-footer",
@@ -1078,11 +1117,11 @@ func TestPartialOverrideResolution(t *testing.T) {
 		{
 			name: "site partial overrides all theme partials",
 			fs: fstest.MapFS{
-				"assets/themes/default/layouts/default.html.tmpl":  {Data: []byte(layout)},
-				"assets/themes/default/partials/head.html.tmpl":    {Data: []byte(themeHead)},
-				"assets/themes/default/partials/footer.html.tmpl":  {Data: []byte(themeFooter)},
-				"partials/head.html.tmpl":                          {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
-				"partials/footer.html.tmpl":                        {Data: []byte(`{{ define "footer" }}site-footer{{ end }}`)},
+				"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layout)},
+				"assets/themes/default/partials/head.html.tmpl":   {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl": {Data: []byte(themeFooter)},
+				"partials/head.html.tmpl":                         {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
+				"partials/footer.html.tmpl":                       {Data: []byte(`{{ define "footer" }}site-footer{{ end }}`)},
 			},
 			theme:    "default",
 			wantBody: "site-head|site-footer",
@@ -1090,10 +1129,10 @@ func TestPartialOverrideResolution(t *testing.T) {
 		{
 			name: "custom theme with site partial override",
 			fs: fstest.MapFS{
-				"assets/themes/mytheme/layouts/default.html.tmpl":  {Data: []byte(layout)},
-				"assets/themes/mytheme/partials/head.html.tmpl":    {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
-				"assets/themes/mytheme/partials/footer.html.tmpl":  {Data: []byte(`{{ define "footer" }}mytheme-footer{{ end }}`)},
-				"partials/head.html.tmpl":                          {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
+				"assets/themes/mytheme/layouts/default.html.tmpl": {Data: []byte(layout)},
+				"assets/themes/mytheme/partials/head.html.tmpl":   {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
+				"assets/themes/mytheme/partials/footer.html.tmpl": {Data: []byte(`{{ define "footer" }}mytheme-footer{{ end }}`)},
+				"partials/head.html.tmpl":                         {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
 			},
 			theme:    "mytheme",
 			wantBody: "site-head|mytheme-footer",
@@ -1101,10 +1140,10 @@ func TestPartialOverrideResolution(t *testing.T) {
 		{
 			name: "custom theme inherits default partials for missing definitions",
 			fs: fstest.MapFS{
-				"assets/themes/mytheme/layouts/default.html.tmpl":   {Data: []byte(layout)},
-				"assets/themes/mytheme/partials/head.html.tmpl":     {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
-				"assets/themes/default/partials/head.html.tmpl":     {Data: []byte(themeHead)},
-				"assets/themes/default/partials/footer.html.tmpl":   {Data: []byte(themeFooter)},
+				"assets/themes/mytheme/layouts/default.html.tmpl": {Data: []byte(layout)},
+				"assets/themes/mytheme/partials/head.html.tmpl":   {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
+				"assets/themes/default/partials/head.html.tmpl":   {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl": {Data: []byte(themeFooter)},
 			},
 			theme:    "mytheme",
 			wantBody: "mytheme-head|theme-footer",
@@ -1112,11 +1151,11 @@ func TestPartialOverrideResolution(t *testing.T) {
 		{
 			name: "site partial overrides default partial inherited by custom theme",
 			fs: fstest.MapFS{
-				"assets/themes/mytheme/layouts/default.html.tmpl":   {Data: []byte(layout)},
-				"assets/themes/mytheme/partials/head.html.tmpl":     {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
-				"assets/themes/default/partials/head.html.tmpl":     {Data: []byte(themeHead)},
-				"assets/themes/default/partials/footer.html.tmpl":   {Data: []byte(themeFooter)},
-				"partials/footer.html.tmpl":                         {Data: []byte(`{{ define "footer" }}site-footer{{ end }}`)},
+				"assets/themes/mytheme/layouts/default.html.tmpl": {Data: []byte(layout)},
+				"assets/themes/mytheme/partials/head.html.tmpl":   {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
+				"assets/themes/default/partials/head.html.tmpl":   {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl": {Data: []byte(themeFooter)},
+				"partials/footer.html.tmpl":                       {Data: []byte(`{{ define "footer" }}site-footer{{ end }}`)},
 			},
 			theme:    "mytheme",
 			wantBody: "mytheme-head|site-footer",

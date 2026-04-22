@@ -95,6 +95,14 @@ func (b *BuildCmd) Run() error {
 		return err
 	}
 
+	// Copy static assets to _assets/ directory in the output
+	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
+	if staticFS != nil {
+		if err := b.copyStaticAssets(staticFS, stats); err != nil {
+			return fmt.Errorf("copy static assets: %w", err)
+		}
+	}
+
 	elapsed := time.Since(start)
 	slog.Info("Build complete",
 		slog.Int64("markdown_files", stats.markdownFiles.Load()),
@@ -264,6 +272,33 @@ func (b *BuildCmd) copyFile(contentRoot fs.FS, filePath string, stats *buildStat
 	slog.Debug("Copied", slog.String("file", filePath))
 
 	return nil
+}
+
+// copyStaticAssets walks the static filesystem and copies all files to the _assets/ output directory.
+func (b *BuildCmd) copyStaticAssets(staticFS fs.FS, stats *buildStats) error {
+	return fs.WalkDir(staticFS, ".", func(filePath string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("walk static %s: %w", filePath, err)
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		content, readErr := fs.ReadFile(staticFS, filePath)
+		if readErr != nil {
+			return fmt.Errorf("read static %s: %w", filePath, readErr)
+		}
+
+		outPath := filepath.Join("_assets", filePath)
+		if writeErr := b.writeOutputFile(outPath, content); writeErr != nil {
+			return writeErr
+		}
+
+		stats.copiedFiles.Add(1)
+		stats.totalBytes.Add(int64(len(content)))
+		slog.Debug("Copied static asset", slog.String("file", outPath))
+		return nil
+	})
 }
 
 // writeOutputFile writes content to a file in the output directory, creating parent directories as needed.
