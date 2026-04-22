@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -224,6 +225,43 @@ func TestNewConfig(t *testing.T) {
 
 	if config.ShutdownTimeout.Seconds() != 1 {
 		t.Errorf("Expected shutdown timeout 1s, got %v", config.ShutdownTimeout)
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	// Create test markdown file
+	err := os.WriteFile("security_test.md", []byte("# Security Test"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	defer os.Remove("security_test.md")
+
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	handler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	// Wrap handler with security middleware
+	secureHandler := securityHeaders(http.HandlerFunc(handler))
+
+	req := httptest.NewRequest("GET", "/security_test.md", nil)
+	w := httptest.NewRecorder()
+
+	secureHandler.ServeHTTP(w, req)
+
+	// Check that security headers are present
+	if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("Expected X-Content-Type-Options: nosniff, got: %q", w.Header().Get("X-Content-Type-Options"))
+	}
+
+	if w.Header().Get("X-Frame-Options") != "DENY" {
+		t.Errorf("Expected X-Frame-Options: DENY, got: %q", w.Header().Get("X-Frame-Options"))
+	}
+
+	// Check that the response is still successful
+	if w.Code != 200 {
+		t.Errorf("Expected status 200, got: %d", w.Code)
 	}
 }
 
