@@ -117,13 +117,19 @@ func (b *BuildCmd) Run() error {
 		}
 	}
 
+	// Build metadata index once for SEO + redirect generation
+	metaIdx, err := metadata.BuildIndex(context.Background(), contentRoot, cfg.Site.Exclude)
+	if err != nil {
+		return fmt.Errorf("build metadata index: %w", err)
+	}
+
 	// Generate SEO files (robots.txt and sitemap.xml)
-	if err := b.generateSEOFiles(prov, &cfg.Site, pipeline.Resolver); err != nil {
+	if err := b.generateSEOFiles(metaIdx, &cfg.Site, pipeline.Resolver, prov); err != nil {
 		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
 	// Generate redirect HTML files for redirect_from frontmatter
-	if err := b.generateRedirectFiles(prov, &cfg.Site, pipeline.Resolver); err != nil {
+	if err := b.generateRedirectFiles(metaIdx, &cfg.Site, pipeline.Resolver); err != nil {
 		return fmt.Errorf("generate redirect files: %w", err)
 	}
 
@@ -398,7 +404,7 @@ func (b *BuildCmd) copyStaticAssets(staticFS fs.FS, stats *buildStats) error {
 }
 
 // generateSEOFiles generates robots.txt and optionally sitemap.xml in the output directory.
-func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.SiteConfig, resolver *resolve.PathResolver) error {
+func (b *BuildCmd) generateSEOFiles(idx *metadata.Index, siteConfig *config.SiteConfig, resolver *resolve.PathResolver, prov provider.Provider) error {
 	// Always generate robots.txt
 	robotsTxt := server.GenerateRobotsTxt(siteConfig.Meta.Domain)
 	if err := b.writeOutputFile("robots.txt", []byte(robotsTxt)); err != nil {
@@ -408,16 +414,6 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 
 	// Generate sitemap.xml only if domain is configured
 	if siteConfig.Meta.Domain != "" {
-		contentRoot, err := prov.RootFS(context.Background())
-		if err != nil {
-			return fmt.Errorf("get content root for sitemap: %w", err)
-		}
-
-		idx, err := metadata.BuildIndex(context.Background(), contentRoot, siteConfig.Exclude)
-		if err != nil {
-			return fmt.Errorf("build metadata index for sitemap: %w", err)
-		}
-
 		sitemapData, err := server.GenerateSitemap(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, resolver)
 		if err != nil {
 			return fmt.Errorf("generate sitemap: %w", err)
@@ -443,17 +439,7 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 }
 
 // generateRedirectFiles builds redirect HTML files from redirect_from frontmatter.
-func (b *BuildCmd) generateRedirectFiles(prov provider.Provider, siteConfig *config.SiteConfig, resolver *resolve.PathResolver) error {
-	contentRoot, err := prov.RootFS(context.Background())
-	if err != nil {
-		return fmt.Errorf("get content root for redirects: %w", err)
-	}
-
-	idx, err := metadata.BuildIndex(context.Background(), contentRoot, siteConfig.Exclude)
-	if err != nil {
-		return fmt.Errorf("build metadata index for redirects: %w", err)
-	}
-
+func (b *BuildCmd) generateRedirectFiles(idx *metadata.Index, siteConfig *config.SiteConfig, resolver *resolve.PathResolver) error {
 	redirects := server.BuildRedirectMap(idx, resolver)
 	if len(redirects) == 0 {
 		return nil
