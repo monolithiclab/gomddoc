@@ -94,9 +94,6 @@ func TestInitCmd_ConfigRoundTrips(t *testing.T) {
 	if sc.Theme.Name != "nord" {
 		t.Errorf("Theme.Name = %q, want %q", sc.Theme.Name, "nord")
 	}
-	if sc.ColorChips != true {
-		t.Error("ColorChips should be true")
-	}
 }
 
 func TestGenerateConfigYAML(t *testing.T) {
@@ -159,9 +156,6 @@ func TestGenerateConfigYAML_AllFields(t *testing.T) {
 	}
 	if !strings.Contains(s, "dir_index: false") {
 		t.Error("missing dir_index setting")
-	}
-	if !strings.Contains(s, "color_chips: true") {
-		t.Error("missing color_chips setting")
 	}
 	if !strings.Contains(s, config.DefaultHighlightTheme) {
 		t.Error("missing highlight theme")

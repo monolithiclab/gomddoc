@@ -272,6 +272,7 @@ func (b *BuildCmd) buildFile(
 			Content:  template.HTML(renderResult.Content), // #nosec G203
 			Path:     "/" + filePath,
 			Meta:     metadata,
+			Features: config.MergeFeatures(siteConfig.Theme.Features, enrichment.Features),
 			TOC:      enrichment.TOC,
 			PrevPage: enrichment.PrevPage,
 			NextPage: enrichment.NextPage,
@@ -454,17 +455,19 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 func (b *BuildCmd) renderErrorPage(statusCode int, templateRenderer tmpl.Renderer, siteConfig *config.SiteConfig) ([]byte, error) {
 	statusTitle := http.StatusText(statusCode)
 
+	errorMeta := map[string]any{
+		"title":         statusTitle,
+		"robots":        "noindex",
+		"error_code":    statusCode,
+		"error_title":   statusTitle,
+		"error_message": server.StatusMessage(statusCode),
+	}
 	ctx := &tmpl.TemplateContext{
 		Site: siteConfig,
 		Page: tmpl.PageContext{
-			Path: "/" + strconv.Itoa(statusCode),
-			Meta: map[string]any{
-				"title":         statusTitle,
-				"robots":        "noindex",
-				"error_code":    statusCode,
-				"error_title":   statusTitle,
-				"error_message": server.StatusMessage(statusCode),
-			},
+			Path:     "/" + strconv.Itoa(statusCode),
+			Meta:     errorMeta,
+			Features: config.MergeFeatures(siteConfig.Theme.Features),
 		},
 	}
 

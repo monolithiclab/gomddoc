@@ -72,7 +72,7 @@ func TestMarkdownRenderer_SyntaxHighlighting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+			renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 			result, err := renderer.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
@@ -95,7 +95,7 @@ func TestMarkdownRenderer_HighlightThemes(t *testing.T) {
 
 	for _, theme := range themes {
 		t.Run("theme_"+theme, func(t *testing.T) {
-			renderer := NewMarkdownRenderer(MarkdownOptions{HighlightTheme: theme, ColorChips: true})
+			renderer := NewMarkdownRenderer(MarkdownOptions{HighlightTheme: theme, Features: map[string]bool{"color_chips": true}})
 			result, err := renderer.Render(context.Background(), input, &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() with theme %q error = %v", theme, err)

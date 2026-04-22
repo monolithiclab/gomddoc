@@ -79,18 +79,19 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
     - `.Site.DefaultIndex`: Default index file name.
     - `.Site.DirIndex`: Whether directory listing is enabled.
     - `.Site.EditURL`: Base URL for "Edit this page" links.
-    - `.Site.ColorChips`: Whether color chips are enabled.
+    - `.Site.Features`: Feature toggle map (`map[string]bool`).
     - `.Site.Highlighting.Theme`: Chroma syntax highlighting theme name.
 
 - **`.Page`**: Current page data (`PageContext`).
     - `.Page.Content`: The rendered HTML content (type `template.HTML`, safe for embedding).
     - `.Page.Path`: Current request URL path.
     - `.Page.Meta`: Map of YAML Front Matter metadata (e.g., `{{ index .Page.Meta "title" }}`).
+    - `.Page.Features`: Pre-merged feature toggles (site defaults + page overrides).
     - `.Page.TOC`: Table of Contents tree (use the `toc` template function to render).
 
 ### Template Functions
 
-Seven custom functions are available in templates:
+Eight custom functions are available in templates:
 
 - **`breadcrumbs`**: Generates breadcrumb navigation from a path.
   ```html
@@ -127,6 +128,16 @@ Seven custom functions are available in templates:
   {{ end }}
   ```
 
+- **`.Feature`**: Method on `TemplateContext` that checks whether a named feature is enabled. Returns `true` by default for unknown features. Uses the pre-merged `Page.Features` map (site defaults + page frontmatter overrides).
+  ```html
+  {{- if .Feature "dark_mode" }}
+  <button id="theme-toggle">Toggle Theme</button>
+  {{- end }}
+  {{- if .Feature "color_chips" }}
+  <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
+  {{- end }}
+  ```
+
 - **`inlineJSAsset`**: Loads an asset from the theme directory (falling back to shared assets) and returns it as `template.JS` for safe embedding inside `<script>` tags.
   ```html
   <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
@@ -155,7 +166,9 @@ Seven custom functions are available in templates:
 <body>
     <header>
         <a href="/">{{ .Site.Meta.Title }}</a>
+        {{- if .Feature "dark_mode" }}
         <button id="theme-toggle">Toggle Theme</button>
+        {{- end }}
     </header>
 
     <nav id="nav-sidebar">
@@ -179,29 +192,31 @@ Seven custom functions are available in templates:
 
     {{ template "toc" . }}
 
+    {{- if .Feature "color_chips" }}
     <!-- Color Chip Web Component -->
     <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
+    {{- end }}
 </body>
 </html>
 ```
 
 ## Theme Features Checklist
 
-When creating a custom theme, ensure it supports these features for parity with built-in themes:
+When creating a custom theme, ensure it supports these features for parity with built-in themes. All optional features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggled per-site and per-page:
 
-- **Light/dark mode toggle** via `{{ inlineJSAsset "theme-toggle.mjs" }}` — manages `data-theme` attribute, localStorage, and `prefers-color-scheme` fallback. Customize button content with `data-light`/`data-dark` text attributes or `[data-show-theme]` children for SVG icons.
+- **Light/dark mode toggle** — guarded by `{{ .Feature "dark_mode" }}`. Uses `{{ inlineJSAsset "theme-toggle.mjs" }}` to manage `data-theme` attribute, localStorage, and `prefers-color-scheme` fallback. Customize button content with `data-light`/`data-dark` text attributes or `[data-show-theme]` children for SVG icons.
 - **Navigation sidebar** via `{{ navigation .Page.Path }}`
-- **Table of contents** via `{{ template "toc" . }}` partial with `toc-item` recursive template
-- **TOC scroll highlighting** via `{{ inlineJSAsset "toc-highlight.mjs" }}` — tracks scroll position, sets `.active` class on matching TOC link
+- **Table of contents** — guarded by `{{ .Feature "toc" }}`. Uses `{{ template "toc" . }}` partial with `toc-item` recursive template.
+- **TOC scroll highlighting** — guarded by `{{ .Feature "toc" }}`. Uses `{{ inlineJSAsset "toc-highlight.mjs" }}` to track scroll position and set `.active` class on matching TOC link.
 - **Breadcrumbs** via `{{ breadcrumbs .Page.Path }}`
-- **Search button** with `id="search-toggle"` in the header
-- **Search modal** via `{{ inlineJSAsset "search.mjs" }}` — uses CSS custom properties for styling
+- **Search button** — guarded by `{{ .Feature "search" }}`. Button with `id="search-toggle"` in the header.
+- **Search modal** — guarded by `{{ .Feature "search" }}`. Uses `{{ inlineJSAsset "search.mjs" }}` with CSS custom properties for styling.
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`
-- **Color chip web component** via `{{ inlineJSAsset "color-chip.mjs" }}`
-- **Copy-to-clipboard** via `{{ inlineJSAsset "code-copy.mjs" }}` — creates `.copy-btn` on code blocks, customize text with `data-copy-label`/`data-copied-label` on `<html>`
+- **Color chip web component** — guarded by `{{ .Feature "color_chips" }}`. Uses `{{ inlineJSAsset "color-chip.mjs" }}`.
+- **Copy-to-clipboard** — guarded by `{{ .Feature "code_copy" }}`. Uses `{{ inlineJSAsset "code-copy.mjs" }}`, creates `.copy-btn` on code blocks. Customize text with `data-copy-label`/`data-copied-label` on `<html>`.
 - **Heading anchors** (`.heading-anchor` class, revealed on hover)
 - **Touch accessibility** with `@media (hover: none)` for copy buttons and heading anchors
-- **KaTeX** CSS and auto-render scripts for math rendering
-- **Mermaid** script for diagram rendering (theme-aware: dark/light)
+- **KaTeX** — guarded by `{{ .Feature "katex" }}`. CSS link in `<head>` and auto-render scripts.
+- **Mermaid** — guarded by `{{ .Feature "mermaid" }}`. Script for diagram rendering (theme-aware: dark/light).
 - **Canonical URLs and Open Graph tags** via `{{ canonicalURL .Page.Path }}` when domain is configured
 - **Responsive design** with mobile breakpoints

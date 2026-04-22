@@ -7,12 +7,7 @@ This file provides guidance to AI agents when working with code in this reposito
 `gomddoc` is a production-ready HTTP server that serves Markdown files as HTML. Go application
 with a stateless, git-native architecture. No databases, no CMS, no editorial workflows.
 
-**Key docs** (read these for deep context, don't duplicate their content here):
-
-- `docs/architecture.md` — architecture reference (components, data flow, middleware, themes)
-- `docs/decisions.md` — architectural decisions log with alternatives considered
-- `docs/roadmap.md` — phased roadmap, deferred ideas
-- `docs/guide/` — user-facing guide (12 chapters)
+**Key docs** (read these for deep context, don't duplicate their content here — see Documentation section below for purpose and workflow):
 
 ## Commands
 
@@ -27,6 +22,40 @@ FORCE_UPDATE=1 make lint    # Reinstall linters
 ```
 
 Always use Makefile targets. `make ci` is the single command to validate changes.
+
+## Documentation
+
+```
+REVIEW.md                   # Codebase review tracker (issues, recommendations, scores)
+docs/
+├── architecture.md         # Component relationships, data flow, middleware, themes
+├── decisions.md            # Technical choices log (with alternatives considered)
+├── roadmap.md              # Phased roadmap, deferred ideas
+├── guide/                  # Feature documentation (agent + human audience)
+├── specs/                  # Feature specifications (written before implementation)
+└── custom-renderers.md     # (legacy — should be folded into guide/)
+```
+
+**Purpose of each:**
+
+- **REVIEW.md** — created by review tools (Claude, Gemini) and manual input. Tracks open issues,
+  fixed issues, scores, and prioritized recommendations. Source of truth for what needs fixing.
+- **architecture.md** — how the building blocks relate: pipeline stages, provider/renderer/template
+  layering, middleware chain, theme resolution. Update when adding or restructuring components.
+- **decisions.md** — log of technical choices with alternatives considered and rationale. Prevents
+  repeating past mistakes. Add an entry when making a non-obvious architectural decision.
+- **guide/** — feature documentation aimed primarily at agents (via MCP) so they can use gomddoc
+  correctly, but useful for humans too. Update when adding user-facing features.
+- **specs/** — complete feature specifications written *before* implementation for non-trivial
+  features. Written by agents, validated by the developer. Implementation follows the spec.
+
+**Feature workflow:**
+
+1. Features originate from `REVIEW.md` issues or user requests (roadmap additions)
+2. Write a spec in `docs/specs/`, asking the developer clarifying questions
+3. Developer validates the spec
+4. Implement the feature
+5. Update `docs/roadmap.md`, `docs/architecture.md`, `docs/decisions.md`, and `docs/guide/` as needed
 
 ## Project Structure
 
@@ -79,13 +108,16 @@ material/
 ### After implementing changes
 
 #### New CLI feature
+
 1. Update `material/public-website` if user-facing
 2. Check if themes in `material/themes` need updates
 
 #### Theme capability change
+
 1. Check if template system needs changes
 2. Update marketing site's custom theme if affected
 
 #### Configuration change
+
 1. Update `material/public-website/docs/configuration.md`
 2. Update theme READMEs in `material/themes/` if relevant

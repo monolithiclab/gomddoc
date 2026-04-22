@@ -1353,7 +1353,7 @@ func TestJSONLDFunction(t *testing.T) {
 		siteConfig := config.NewSiteConfig(".")
 		siteConfig.Meta.Domain = "docs.example.com"
 		siteConfig.Meta.Title = "My Docs"
-		siteConfig.HasSearch = true
+		siteConfig.Theme.Features = map[string]bool{"search": true}
 
 		r := NewHTMLRenderer(&siteConfig, testFS)
 		ctx := &TemplateContext{
@@ -1567,5 +1567,76 @@ func TestRender_SingleflightCoalescesConcurrentParsing(t *testing.T) {
 	sets := cache.setCalls.Load()
 	if sets != 1 {
 		t.Errorf("expected exactly 1 cache Set (singleflight coalescing), got %d", sets)
+	}
+}
+
+func TestTemplateContext_Feature(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		features map[string]bool
+		pageMeta map[string]any
+		feature  string
+		want     bool
+	}{
+		{
+			name:     "nil features defaults true",
+			features: nil,
+			pageMeta: nil,
+			feature:  "katex",
+			want:     true,
+		},
+		{
+			name:     "explicitly disabled",
+			features: map[string]bool{"katex": false},
+			pageMeta: nil,
+			feature:  "katex",
+			want:     false,
+		},
+		{
+			name:     "explicitly enabled",
+			features: map[string]bool{"katex": true},
+			pageMeta: nil,
+			feature:  "katex",
+			want:     true,
+		},
+		{
+			name:     "page override disables",
+			features: map[string]bool{"katex": true},
+			pageMeta: map[string]any{"features": map[string]any{"katex": false}},
+			feature:  "katex",
+			want:     false,
+		},
+		{
+			name:     "page override enables",
+			features: map[string]bool{"katex": false},
+			pageMeta: map[string]any{"features": map[string]any{"katex": true}},
+			feature:  "katex",
+			want:     true,
+		},
+		{
+			name:     "unknown feature defaults true",
+			features: map[string]bool{"katex": false},
+			pageMeta: nil,
+			feature:  "dark_mode",
+			want:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := &TemplateContext{
+				Site: &config.SiteConfig{Theme: config.ThemeConfig{Features: tt.features}},
+				Page: PageContext{
+					Meta:     tt.pageMeta,
+					Features: config.MergeFeatures(tt.features, config.ExtractPageFeatures(tt.pageMeta)),
+				},
+			}
+			if got := ctx.Feature(tt.feature); got != tt.want {
+				t.Errorf("Feature(%q) = %v, want %v", tt.feature, got, tt.want)
+			}
+		})
 	}
 }

@@ -304,6 +304,63 @@ install gomddoc`) or aim for Homebrew core inclusion later. Low complexity once 
 - [ ] **Webhooks**: Endpoint to trigger `git fetch` on push events (cache invalidation).
 - [ ] **PR preview**: Serve content from PR branches for review.
 
+## Theme Configuration
+
+_Allow themes to ship sane defaults for features and variables, reducing site-level boilerplate._
+
+- [ ] **Theme-level config file**: Each theme can include a `config.yml` in its directory
+      (e.g., `assets/themes/midnight/config.yml`) defining default feature toggles and theme
+      variables. This lets themes declare their intent — a dark-first theme can default
+      `dark_mode: true`, a minimal theme can disable `color_chips`, and every theme can ship
+      its full color palette as variable defaults without requiring the site to copy them.
+
+      **Config loading order** (highest wins):
+
+      ```
+      CLI flags / arguments
+        ↓
+      Environment variables (GOMDDOC_SITE_*)
+        ↓
+      Page frontmatter (per-page overrides)
+        ↓
+      Site config (.gomddoc/config.yml)
+        ↓
+      Theme config (assets/themes/<name>/config.yml)
+        ↓
+      Hardcoded defaults
+      ```
+
+      **Theme config schema** (subset of site config — only presentation-related fields):
+
+      ```yaml
+      # assets/themes/midnight/config.yml
+      features:
+        dark_mode: true
+        color_chips: false
+
+      theme:
+        vars:
+          bg: "#0d1117"
+          text: "#e6edf3"
+          primary: "#7c3aed"
+          dark-bg: "#0d1117"
+          dark-text: "#e6edf3"
+      ```
+
+      Theme config provides defaults that site config overrides. A site using the `midnight`
+      theme gets its color palette for free, but can override any variable in
+      `.gomddoc/config.yml` under `theme.vars`. Similarly, theme feature defaults are
+      overridden by site-level `features:` and then by per-page frontmatter.
+
+      **Scope restrictions**: Theme config can only set `features` and `theme.vars` — not
+      `meta`, `edit_url`, `default_index`, or other operational settings. This prevents themes
+      from overriding site identity or behavior.
+
+      **Implementation**: Load theme config after defaults, before site config, in the config
+      loading pipeline. Use the same YAML parsing as site config. Bundled themes include their
+      config in the embedded FS; installed themes load from `.gomddoc/assets/themes/<name>/`.
+      Medium complexity.
+
 ## Phase 13: Theme Marketplace
 
 _Enable community theme sharing via a GitHub-based registry._
@@ -314,7 +371,8 @@ _Enable community theme sharing via a GitHub-based registry._
       registry. Contains an `index.json` manifest listing available themes with name, description, author,
       version, repository URL, and preview image URLs.
 - [ ] **Theme package format**: Each theme is a Git repository containing `default.html.tmpl`, optional
-      partials, a `README.md` with frontmatter metadata (name, category, fonts, colors), and screenshot
+      partials, an optional `config.yml` with feature and variable defaults (see Theme Configuration),
+      a `README.md` with frontmatter metadata (name, category, fonts, colors), and screenshot
       previews (`light.png`, `dark.png`).
 - [ ] **Custom registries**: Users can configure alternative marketplace URLs in `.gomddoc/config.yml`
       via `theme_registry: https://github.com/org/custom-themes` for private or corporate theme registries.

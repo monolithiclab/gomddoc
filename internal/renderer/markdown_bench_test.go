@@ -795,7 +795,7 @@ func BenchmarkMarkdownRender(b *testing.B) {
 
 	r := NewMarkdownRenderer(MarkdownOptions{
 		HighlightTheme: "github",
-		ColorChips:     true,
+		Features:       map[string]bool{"color_chips": true},
 	})
 	ctx := context.Background()
 	enrichment := &enricher.EnrichmentData{}

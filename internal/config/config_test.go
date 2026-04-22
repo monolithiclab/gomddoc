@@ -1183,3 +1183,21 @@ func TestNewSiteConfig_DotDirectory(t *testing.T) {
 		t.Error("NewSiteConfig(\".\") should produce a non-empty title")
 	}
 }
+
+func TestSiteConfig_ApplyEnvOverrides_Features(t *testing.T) {
+	t.Setenv("GOMDDOC_SITE_THEME_FEATURES_KATEX", "false")
+	t.Setenv("GOMDDOC_SITE_THEME_FEATURES_MERMAID", "false")
+
+	sc := NewSiteConfig(".")
+	sc.ApplyEnvOverrides()
+
+	if FeatureEnabled("katex", sc.Theme.Features) {
+		t.Error("katex should be disabled via env var")
+	}
+	if FeatureEnabled("mermaid", sc.Theme.Features) {
+		t.Error("mermaid should be disabled via env var")
+	}
+	if !FeatureEnabled("dark_mode", sc.Theme.Features) {
+		t.Error("dark_mode should still default to true")
+	}
+}

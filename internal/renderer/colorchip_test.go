@@ -174,7 +174,7 @@ func TestMarkdownRenderer_ColorChips(t *testing.T) {
 		},
 	}
 
-	r := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+	r := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 	ctx := context.Background()
 
 	for _, tt := range tests {
@@ -200,67 +200,11 @@ func TestMarkdownRenderer_ColorChips(t *testing.T) {
 	}
 }
 
-func TestColorChipsEnabled(t *testing.T) {
-	tests := []struct {
-		name          string
-		globalDefault bool
-		metadata      map[string]any
-		want          bool
-	}{
-		{
-			name:          "global enabled, no frontmatter",
-			globalDefault: true,
-			metadata:      nil,
-			want:          true,
-		},
-		{
-			name:          "global disabled, no frontmatter",
-			globalDefault: false,
-			metadata:      nil,
-			want:          false,
-		},
-		{
-			name:          "global enabled, frontmatter disables",
-			globalDefault: true,
-			metadata:      map[string]any{"color_chips": false},
-			want:          false,
-		},
-		{
-			name:          "global disabled, frontmatter enables",
-			globalDefault: false,
-			metadata:      map[string]any{"color_chips": true},
-			want:          true,
-		},
-		{
-			name:          "frontmatter with unrelated keys",
-			globalDefault: true,
-			metadata:      map[string]any{"title": "Test"},
-			want:          true,
-		},
-		{
-			name:          "frontmatter with non-bool value ignored",
-			globalDefault: true,
-			metadata:      map[string]any{"color_chips": "yes"},
-			want:          true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := colorChipsEnabled(tt.globalDefault, tt.metadata)
-			if got != tt.want {
-				t.Errorf("colorChipsEnabled(%v, %v) = %v, want %v",
-					tt.globalDefault, tt.metadata, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestMarkdownRenderer_ColorChips_Disabled(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("globally disabled", func(t *testing.T) {
-		r := NewMarkdownRenderer(MarkdownOptions{})
+		r := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": false}})
 		result, err := r.Render(ctx, []byte("Color: `#FF5733`"), &enricher.EnrichmentData{})
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
@@ -271,10 +215,11 @@ func TestMarkdownRenderer_ColorChips_Disabled(t *testing.T) {
 	})
 
 	t.Run("globally enabled but enrichment metadata disables", func(t *testing.T) {
-		r := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
-		input := "---\ncolor_chips: false\n---\nColor: `#FF5733`"
+		r := NewMarkdownRenderer(MarkdownOptions{})
+		input := "---\nfeatures:\n  color_chips: false\n---\nColor: `#FF5733`"
 		result, err := r.Render(ctx, []byte(input), &enricher.EnrichmentData{
-			Metadata: map[string]any{"color_chips": false},
+			Metadata: map[string]any{"features": map[string]any{"color_chips": false}},
+			Features: map[string]bool{"color_chips": false},
 		})
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
@@ -285,10 +230,11 @@ func TestMarkdownRenderer_ColorChips_Disabled(t *testing.T) {
 	})
 
 	t.Run("globally disabled but enrichment metadata enables", func(t *testing.T) {
-		r := NewMarkdownRenderer(MarkdownOptions{})
-		input := "---\ncolor_chips: true\n---\nColor: `#FF5733`"
+		r := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": false}})
+		input := "---\nfeatures:\n  color_chips: true\n---\nColor: `#FF5733`"
 		result, err := r.Render(ctx, []byte(input), &enricher.EnrichmentData{
-			Metadata: map[string]any{"color_chips": true},
+			Metadata: map[string]any{"features": map[string]any{"color_chips": true}},
+			Features: map[string]bool{"color_chips": true},
 		})
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)

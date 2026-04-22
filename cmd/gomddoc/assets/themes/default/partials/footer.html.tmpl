@@ -1,8 +1,8 @@
 {{ define "footer" }}
 {{- $editLink := editURL .Page.Path }}
 {{- if $editLink }}
-            <footer>
-              <a href="{{ $editLink }}" target="_blank" rel="noopener noreferrer">Edit this page</a>
-            </footer>
+  <footer>
+    <a href="{{ $editLink }}" target="_blank" rel="noopener noreferrer">Edit this page</a>
+  </footer>
 {{- end }}
 {{ end }}

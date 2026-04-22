@@ -51,7 +51,7 @@ func TestNewHTTPServer(t *testing.T) {
 
 	// Create registry with renderers
 	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{ColorChips: true}))
+	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
 	registry.Register(renderer.NewPassthroughRenderer())
 
 	// Create test renderer with template
@@ -142,7 +142,7 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 	defer prov.Close()
 
 	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{ColorChips: true}))
+	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
 	registry.Register(renderer.NewPassthroughRenderer())
 
 	templateContent := `<!DOCTYPE html><html><body>{{.Page.Content}}</body></html>`

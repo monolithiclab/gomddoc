@@ -8,6 +8,7 @@
 {{- end }}
 
 {{ define "toc" }}
+{{- if .Feature "toc" }}
 {{- $items := toc .Page.TOC }}
 {{- if $items }}
           <aside id="toc-sidebar" aria-label="Table of Contents">
@@ -24,5 +25,6 @@
               <line x1="3" y1="18" x2="21" y2="18"></line>
             </svg>
           </button>
+{{- end }}
 {{- end }}
 {{ end }}

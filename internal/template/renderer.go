@@ -43,10 +43,17 @@ type PageContext struct {
 	Content    template.HTML
 	Path       string             // Current request path
 	Meta       map[string]any     // Extracted metadata (e.g., front matter)
+	Features   map[string]bool    // Pre-merged feature toggles (site defaults + page overrides)
 	TOC        *enricher.TOCNode  // Table of Contents
 	Navigation *enricher.NavTree  // Navigation tree (populated by enricher)
 	PrevPage   *enricher.PageLink // Previous page in navigation order
 	NextPage   *enricher.PageLink // Next page in navigation order
+}
+
+// Feature returns whether a named feature is enabled for this page.
+// Uses pre-merged features (site defaults + page overrides), defaulting to true.
+func (tc *TemplateContext) Feature(name string) bool {
+	return config.FeatureEnabled(name, tc.Page.Features)
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects
@@ -279,7 +286,7 @@ func (h *HTMLRenderer) generateJSONLD(page PageContext) template.HTML {
 		Domain:       h.siteConfig.Meta.Domain,
 		SiteName:     h.siteConfig.Meta.Title,
 		DefaultIndex: h.siteConfig.DefaultIndex,
-		HasSearch:    h.siteConfig.HasSearch,
+		HasSearch:    config.FeatureEnabled("search", h.siteConfig.Theme.Features),
 	}
 
 	// Build breadcrumbs with full URLs

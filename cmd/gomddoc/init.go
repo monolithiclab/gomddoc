@@ -60,7 +60,6 @@ func (i *InitCmd) Run() error {
 type initConfig struct {
 	DefaultIndex string          `yaml:"default_index"`
 	DirIndex     bool            `yaml:"dir_index"`
-	ColorChips   bool            `yaml:"color_chips"`
 	Meta         initMetaConfig  `yaml:"meta"`
 	Theme        initThemeConfig `yaml:"theme"`
 	Highlighting initHLConfig    `yaml:"highlighting"`
@@ -85,7 +84,6 @@ const configHeader = "# gomddoc site configuration\n# See: https://github.com/mo
 func generateConfigYAML(title, theme string) ([]byte, error) {
 	cfg := initConfig{
 		DefaultIndex: config.DefaultIndex,
-		ColorChips:   true,
 		Meta:         initMetaConfig{Title: title},
 		Theme:        initThemeConfig{Name: theme},
 		Highlighting: initHLConfig{Theme: config.DefaultHighlightTheme},

@@ -84,10 +84,27 @@ Extracted from completed spec files before deletion.
 - **Lazy initialization**: Clone happens on first `ReadFile()`, not at startup
 - **In-memory storage**: No persistent disk cache, cleared on restart (restart = update content)
 
+## Feature Toggle System
+
+**Chosen**: Generic `map[string]bool` with default-to-true semantics and three-layer override (config → env → frontmatter)
+
+**Alternatives considered**:
+- **Individual boolean fields** (`ColorChips bool`, `HasSearch bool`): Initial implementation. Each new feature required a struct field, config tag, env tag, template check, and renderer wiring. Doesn't scale.
+- **Bitfield/enum**: Compile-time checked but can't add features from config/frontmatter without code changes.
+- **String set (`map[string]struct{}`)**: Can't distinguish "disabled" from "not configured". No natural default-to-true.
+
+**Why `map[string]bool`**: Arbitrary features without code changes. `nil` map = all enabled (safe default). Per-feature env vars via `GOMDDOC_SITE_FEATURES_<NAME>=bool`. Per-page frontmatter override via `features:` map. Pre-merged at `PageContext` construction time — templates call `.Feature "name"` without re-merging. Feature keys validated with `^[a-z][a-z0-9_]*$` regex.
+
+**Key decisions**:
+- **Default-to-true**: Unknown features return `true`. This means adding a new feature guard to a template doesn't break existing sites — it only takes effect when explicitly disabled. Requires no config migration.
+- **Pre-merged on PageContext**: Site defaults + page overrides are merged once at `TemplateContext` construction (in handler/build), not on every `.Feature` call. Uses `maps.Clone` to avoid mutating the site config.
+- **Env var pattern**: `GOMDDOC_SITE_FEATURES_KATEX=false` uses reflection-based `walkStruct` extended with `reflect.Map` handling for `map[string]bool` types.
+- **Renderer gating**: Post-processors (heading_anchors, color_chips) check the merged feature map before executing. The renderer receives the site-level features and merges with page metadata.
+
 ## API Design Patterns
 
 - **Options struct** preferred over functional options (simpler, sufficient, zero-value gives sensible defaults)
-- Example: `NewMarkdownRenderer(MarkdownOptions{ColorChips: true})` — empty struct gives defaults
+- Example: `NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})` — empty struct gives defaults
 - **Constructor pattern**: `config.NewFromServeArgs(dir, port, devMode, gitSSHKey)` replaced `Load()` + `ParseFlags()`
 
 ## Disk-Based Git Storage
@@ -145,7 +162,7 @@ Extracted from completed spec files before deletion.
 
 **Why web component**: Shadow DOM encapsulation means the chip renders identically across all 8 themes without any theme-specific CSS. The `::part(swatch)` and `::part(label)` CSS parts allow themes to customize appearance if needed. Click-to-copy with "Copied!" feedback provides utility. The component is loaded once via `{{ inlineJSAsset "color-chip.mjs" }}` — shared across all themes from `assets/shared/`.
 
-**Post-processing integration**: The `transformColorChips()` function converts `<code>#HEX</code>` to `<color-chip>#HEX</color-chip>` during rendering. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by `color_chips` config (default: true) with per-page frontmatter override.
+**Post-processing integration**: The `transformColorChips()` function converts `<code>#HEX</code>` to `<color-chip>#HEX</color-chip>` during rendering. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by the `color_chips` feature toggle (default: enabled) with per-page frontmatter override via `features: { color_chips: false }`.
 
 ## TOC Scroll Highlighting
 

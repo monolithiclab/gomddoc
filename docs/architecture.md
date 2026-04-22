@@ -104,12 +104,15 @@ first, then MarkdownRenderer (so HTML is the default for `Accept: */*`), then Pa
 
 After goldmark renders the Markdown to HTML, three post-processors run in sequence:
 
-1. **Heading Anchors** (`addHeadingAnchors()`) — Inserts `<a href="#id" class="heading-anchor" aria-hidden="true">#</a>` into headings with auto-generated IDs. Revealed on hover via CSS.
+1. **Heading Anchors** (`addHeadingAnchors()`) — Inserts `<a href="#id" class="heading-anchor" aria-hidden="true">#</a>` into headings with auto-generated IDs. Revealed on hover via CSS. Gated by `heading_anchors` feature toggle.
 2. **Admonitions** (`transformAdmonitions()`) — Converts GitHub-style `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` blockquotes into `<div class="admonition admonition-{type}">` elements with styled titles.
-3. **Color Chips** (`transformColorChips()`) — Replaces inline `<code>#HEX</code>` with `<color-chip>#HEX</color-chip>` web component elements. Controlled by global config (`color_chips`) and per-page frontmatter override.
+3. **Color Chips** (`transformColorChips()`) — Replaces inline `<code>#HEX</code>` with `<color-chip>#HEX</color-chip>` web component elements. Gated by `color_chips` feature toggle.
 
-Each stage operates on the HTML string output of the previous stage. The pipeline is deterministic and
-order-dependent (heading anchors must run before admonitions to avoid processing anchor elements as content).
+Each post-processor is gated by the feature toggle system. Theme-level features (`ThemeConfig.Features`)
+are merged with per-page frontmatter overrides to produce a merged feature map. Post-processors only
+run when their feature is enabled (default: all enabled). Each stage operates on the HTML string output
+of the previous stage. The pipeline is deterministic and order-dependent (heading anchors must run before
+admonitions to avoid processing anchor elements as content).
 
 ### 3. Registry
 
@@ -200,6 +203,7 @@ type Renderer interface {
 | `toc` | `toc(tocTree, [min, max]) → []*TOCNode` | Returns filtered TOC nodes for template rendering (default: h1-h2) |
 | `navigation` | `navigation(navTree) → HTML` | Sidebar from enrichment `NavTree` |
 | `editURL` | `editURL(pagePath) → string` | Combines `edit_url` config with page path |
+| `.Feature` | `.Feature(name) → bool` | Checks if a named feature is enabled (pre-merged site + page overrides) |
 | `inlineJSAsset` | `inlineJSAsset(name) → JS` | Loads asset as `template.JS` for `<script>` embedding |
 | `inlineCSSAsset` | `inlineCSSAsset(name) → CSS` | Loads asset as `template.CSS` for `<style>` embedding |
 | `inlineHTMLAsset` | `inlineHTMLAsset(name) → HTML` | Loads asset as `template.HTML` for HTML context (e.g. SVGs) |
@@ -382,15 +386,21 @@ Middleware is applied in two layers using `RouteGroup` for structured route regi
 | **ocean** | Colorful | Teal/navy gradients, sine-wave header clip-path |
 
 **Common Features (all themes):**
-- Light/dark mode toggle with `prefers-color-scheme` auto-detection
-- TOC scroll highlighting (active heading tracking)
-- Copy-to-clipboard code blocks
-- Heading anchor links (revealed on hover)
+
+All optional features are gated by the feature toggle system (`{{ .Feature "name" }}` template guards)
+and can be disabled per-site or per-page:
+
+- Light/dark mode toggle with `prefers-color-scheme` auto-detection (`dark_mode`)
+- TOC scroll highlighting and sidebar (`toc`)
+- Copy-to-clipboard code blocks (`code_copy`)
+- Heading anchor links, revealed on hover (`heading_anchors`)
+- Color chip hex swatches (`color_chips`)
+- Search modal with Ctrl+K shortcut (`search`)
+- KaTeX math rendering, client-side CDN (`katex`)
+- Mermaid diagram support, client-side CDN, theme-aware (`mermaid`)
 - Admonition styling (5 types)
 - Touch device accessibility (`@media (hover: none)`)
 - Responsive design (mobile/tablet/desktop)
-- KaTeX math rendering (client-side CDN)
-- Mermaid diagram support (client-side CDN, theme-aware)
 
 **Theme Resolution Order:** Site `.gomddoc/assets/themes/<name>/` → Embedded `cmd/gomddoc/assets/themes/<name>/`
 → Fallback to `default` theme.
@@ -422,7 +432,7 @@ dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output
 - Click-to-copy with "Copied!" feedback (1.5s timeout)
 - Accessible: `role="img"`, `aria-label`, exposed `::part(swatch)` and `::part(label)` for styling
 - Inherits theme colors via CSS custom properties
-- Controlled by `color_chips` config (global) and `color_chips` frontmatter (per-page)
+- Controlled by `color_chips` feature toggle (global) and per-page frontmatter override
 
 **Pipeline integration:** The `transformColorChips()` post-processor converts `<code>#HEX</code>` to
 `<color-chip>#HEX</color-chip>`. Themes load the component via `{{ inlineJSAsset "color-chip.mjs" }}`.
@@ -583,10 +593,10 @@ type SiteConfig struct {
     DefaultIndex string           `env:"DEFAULT_INDEX" yaml:"default_index"` // "README.md"
     DirIndex     bool             `env:"DIR_INDEX"     yaml:"dir_index"`     // false
     EditURL      string           `env:"EDIT_URL"      yaml:"edit_url"`      // ""
-    ColorChips   bool             `env:"COLOR_CHIPS"   yaml:"color_chips"`   // true
     Meta         MetaConfig       `env:"META"          yaml:"meta"`
-    Theme        ThemeConfig      `env:"THEME"         yaml:"theme"`          // name + vars
+    Theme        ThemeConfig      `env:"THEME"         yaml:"theme"`          // name + vars + features
     Highlighting HighlightConfig  `env:"HIGHLIGHTING"  yaml:"highlighting"`
+    Search       SearchConfig     `env:"SEARCH"        yaml:"search"`         // index: true
 }
 ```
 
@@ -660,6 +670,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | `docs://` URI scheme | Semantic resource identification separate from HTTP URLs; clear namespace for MCP resource discovery |
 | Section extraction without goldmark | Line-based heading parser keeps MCP package lightweight; no dependency on rendering pipeline |
 | All tools `readOnlyHint` | Trust signal for MCP clients to enable auto-approval — gomddoc never modifies content |
+| Generic feature toggles (`map[string]bool`) | Replaces per-feature booleans; default-to-true semantics; config + env + frontmatter override; pre-merged on `PageContext` |
 | Client-side KaTeX/Mermaid | Zero server deps; CDN delivery; theme-aware dark/light rendering |
 | TOC scroll highlighting | `IntersectionObserver`-free approach using `getBoundingClientRect` for broad compatibility |
 | Touch `@media (hover: none)` | Mobile/tablet users can't hover — show interactive elements by default |
@@ -685,7 +696,8 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Metadata Index**: Aggregated frontmatter data across all pages for tag-based discovery
 - **Static Site Generation**: `gomddoc build` output for deployment to static hosts
 - **Color Chip**: `<color-chip>` web component that renders hex color codes as interactive swatches
-- **Post-Processing Pipeline**: Sequential HTML transformations after goldmark rendering (anchors → admonitions → color chips)
+- **Feature Toggle**: A named boolean flag (`map[string]bool`) controlling optional capabilities (dark mode, TOC, color chips, etc.). Site-level defaults merged with per-page frontmatter overrides. Default-to-true semantics.
+- **Post-Processing Pipeline**: Sequential HTML transformations after goldmark rendering (anchors → admonitions → color chips), gated by feature toggles
 - **Theme**: A package with layouts, partials, and optional static assets that defines visual presentation
 - **Theme Variables**: CSS custom properties (`--theme-*`) injected from site config for color/typography customization
 - **Page Type**: Layout variant selected via frontmatter `layout` field (e.g., `page`, `api`, `changelog`)

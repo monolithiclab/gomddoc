@@ -152,6 +152,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 			Content:    template.HTML(htmlContent), // #nosec G203
 			Path:       r.URL.Path,
 			Meta:       metadata,
+			Features:   config.MergeFeatures(h.siteConfig.Theme.Features, enrichment.Features),
 			TOC:        enrichment.TOC,
 			Navigation: enrichment.Navigation,
 			PrevPage:   enrichment.PrevPage,
@@ -217,17 +218,19 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 func (h *Handler) renderErrorPage(r *http.Request, statusCode int, pagePath string) []byte {
 	statusTitle := http.StatusText(statusCode)
 
+	errorMeta := map[string]any{
+		"title":         statusTitle,
+		"robots":        "noindex",
+		"error_code":    statusCode,
+		"error_title":   statusTitle,
+		"error_message": StatusMessage(statusCode),
+	}
 	context := &tmpl.TemplateContext{
 		Site: h.siteConfig,
 		Page: tmpl.PageContext{
-			Path: pagePath,
-			Meta: map[string]any{
-				"title":         statusTitle,
-				"robots":        "noindex",
-				"error_code":    statusCode,
-				"error_title":   statusTitle,
-				"error_message": StatusMessage(statusCode),
-			},
+			Path:     pagePath,
+			Meta:     errorMeta,
+			Features: config.MergeFeatures(h.siteConfig.Theme.Features),
 		},
 	}
 

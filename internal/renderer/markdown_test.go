@@ -9,7 +9,7 @@ import (
 )
 
 func TestMarkdownRenderer_MimeTypes(t *testing.T) {
-	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 
 	inputTypes := renderer.InputMimeTypes()
 	if len(inputTypes) != 1 || inputTypes[0] != "text/markdown" {
@@ -64,7 +64,7 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+			renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 			result, err := renderer.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 
 			if err != nil {
@@ -92,7 +92,7 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 }
 
 func TestMarkdownRenderer_FrontMatter(t *testing.T) {
-	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 	input := `---
 title: Hello World
 tags: [a, b]
@@ -118,7 +118,7 @@ tags: [a, b]
 func TestMarkdownRenderer_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 	testContextCancellation(t, func(ctx context.Context) error {
 		_, err := renderer.Render(ctx, []byte("# Test"), &enricher.EnrichmentData{})
 		return err
@@ -126,7 +126,7 @@ func TestMarkdownRenderer_ContextCancellation(t *testing.T) {
 }
 
 func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
-	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 	ctx := context.Background()
 
 	// Test that renderer can be used concurrently
@@ -151,7 +151,7 @@ func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
 }
 
 func TestMarkdownRenderer_LargeContent(t *testing.T) {
-	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 
 	// Generate large markdown content
 	var builder strings.Builder

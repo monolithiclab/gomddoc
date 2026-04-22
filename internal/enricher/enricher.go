@@ -47,6 +47,7 @@ type PageLink struct {
 // renderers and templates can use.
 type EnrichmentData struct {
 	Metadata    map[string]any
+	Features    map[string]bool // Page-level feature overrides from frontmatter
 	TOC         *TOCNode
 	Navigation  *NavTree
 	RelatedDocs []RelatedDoc

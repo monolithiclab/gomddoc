@@ -236,7 +236,7 @@ func TestMarkdownRenderer_Admonitions(t *testing.T) {
 		},
 	}
 
-	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
+	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 	ctx := context.Background()
 
 	for _, tt := range tests {

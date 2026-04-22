@@ -136,7 +136,6 @@ These settings control how your documentation is presented and served. They are 
 default_index: "README.md"
 dir_index: false
 edit_url: "https://github.com/org/repo/edit/main"
-color_chips: true
 
 meta:
   title: "My Project Docs"
@@ -145,9 +144,16 @@ meta:
 
 theme:
   name: "default"
+  features:
+    color_chips: true
+    katex: false
+    mermaid: false
 
 highlighting:
   theme: "github"
+
+search:
+  index: true
 ```
 
 ### Content Behavior
@@ -210,14 +216,6 @@ A base URL for "Edit this page" links that appear at the bottom of each page. Wh
 
 When configured, a page at `/docs/guide.md` will produce an edit link pointing to `https://github.com/org/repo/edit/main/docs/guide.md`.
 
-### Rendering Options
-
-**Color Chips**
-Controls whether hex color codes in backticks (e.g., `` `#ff5733` ``) are rendered as interactive color swatches. Can be overridden per-page via frontmatter.
-*   **YAML:** `color_chips`
-*   **Env Var:** `GOMDDOC_SITE_COLOR_CHIPS`
-*   **Default:** `true`
-
 ### Theme (`SITE.THEME`)
 
 **Theme Name**
@@ -225,6 +223,67 @@ Selects the visual theme to apply. gomddoc ships with 8 built-in themes: `defaul
 *   **YAML:** `theme.name`
 *   **Env Var:** `GOMDDOC_SITE_THEME_NAME`
 *   **Default:** `default`
+
+**Feature Toggles**
+
+Feature toggles control which optional theme capabilities are enabled. All features default to **enabled** (`true`) unless explicitly disabled. Features can be toggled globally via config, per-environment via env vars, or per-page via frontmatter.
+
+**YAML:** `theme.features`
+
+```yaml
+theme:
+  name: default
+  features:
+    dark_mode: true
+    toc: true
+    code_copy: true
+    color_chips: true
+    search: true       # Auto-enabled when search index is available
+    katex: false        # Disable KaTeX math rendering
+    mermaid: false      # Disable Mermaid diagrams
+    heading_anchors: true
+```
+
+**Env Vars:** `GOMDDOC_SITE_THEME_FEATURES_<NAME>=true|false`
+
+Each feature can be toggled individually via environment variables:
+
+```bash
+GOMDDOC_SITE_THEME_FEATURES_KATEX=false gomddoc serve     # Disable KaTeX
+GOMDDOC_SITE_THEME_FEATURES_MERMAID=false gomddoc serve    # Disable Mermaid
+GOMDDOC_SITE_THEME_FEATURES_COLOR_CHIPS=false gomddoc serve # Disable color chips
+```
+
+**Available features:**
+
+| Feature | Default | Controls |
+|---------|---------|----------|
+| `dark_mode` | `true` | Light/dark mode toggle button and script |
+| `toc` | `true` | Table of contents sidebar |
+| `code_copy` | `true` | Copy-to-clipboard button on code blocks |
+| `color_chips` | `true` | Hex color code interactive swatches |
+| `search` | `true` | Search button and modal (auto-enabled when search index is available) |
+| `katex` | `true` | KaTeX math rendering (CSS and auto-render scripts) |
+| `mermaid` | `true` | Mermaid diagram rendering |
+| `heading_anchors` | `true` | Clickable anchor links on headings (renderer post-processor) |
+| `admonitions` | `true` | Admonition block rendering (renderer post-processor) |
+
+Features not listed in config default to enabled. Setting a feature to `false` prevents the corresponding template blocks and renderer post-processors from executing.
+
+**Per-page overrides:** See [Frontmatter & Page-Level Overrides](#frontmatter--page-level-overrides) below.
+
+### Search (`SITE.SEARCH`)
+
+Controls full-text search index building. When enabled, gomddoc builds an inverted index at startup and exposes a `/api/search` endpoint. The search UI in the theme is controlled separately via `theme.features.search`.
+
+*   **YAML:** `search.index`
+*   **Env Var:** `GOMDDOC_SITE_SEARCH_INDEX`
+*   **Default:** `true`
+
+```yaml
+search:
+  index: false    # Disable search index building
+```
 
 ### Syntax Highlighting (`SITE.HIGHLIGHTING`)
 
@@ -249,7 +308,7 @@ or environment variable setting — but only for that page.
 | `title` | — | Sets the page title in `<title>`, Open Graph `og:title`, search results, and the tags API |
 | `description` | `meta.description` | Page-level `<meta name="description">` and `og:description` (falls back to site description) |
 | `og_type` | — | Controls `<meta property="og:type">` for this page (default: `article`) |
-| `color_chips` | `color_chips` | Enables or disables color chip rendering on this page, overriding the global setting |
+| `features` | `theme.features` | Per-page feature toggle overrides (see below) |
 | `robots` | `meta.robots` | Controls `<meta name="robots">` for this page (e.g., `noindex`). Pages with `noindex` are excluded from the sitemap |
 | `lang` | `language` | Sets the `<html lang="...">` attribute for this page, overriding the site-level language |
 | `tags` | — | Page tags for the metadata index, queryable via `/api/tags` and the MCP `find_related` tool |
@@ -257,10 +316,36 @@ or environment variable setting — but only for that page.
 
 ### How Overrides Work
 
-The `color_chips` field is the clearest example of the override pattern. If your site config sets
-`color_chips: false` to disable color chips globally, a page with `color_chips: true` in its
-frontmatter will still render color chips. The reverse also works — disable chips on a single
-technical page while keeping them on everywhere else.
+**Feature toggles** use a merge strategy: site-level features provide defaults, and per-page
+frontmatter overrides specific features without affecting others. For example, if your site
+enables `color_chips` globally, a page can disable it with:
+
+```yaml
+---
+features:
+  color_chips: false
+---
+```
+
+The reverse also works — enable a feature on a single page while keeping it disabled site-wide:
+
+```yaml
+# .gomddoc/config.yml
+theme:
+  features:
+    katex: false    # KaTeX disabled globally
+```
+
+```yaml
+---
+# page frontmatter
+features:
+  katex: true     # Enable KaTeX just for this page
+---
+```
+
+Features are merged at page construction time: site defaults are cloned, then page overrides
+are applied on top. Templates access the merged result via `{{ .Feature "name" }}`.
 
 The `description` field falls back through two levels: page frontmatter first, then
 `meta.description` from the config file. If neither is set, the description meta tag is omitted.
@@ -312,3 +397,4 @@ Environment variables follow the struct nesting with underscores:
 - `GOMDDOC_SERVER_PORT` — Maps to `Config.Server.Port`
 - `GOMDDOC_SITE_DEFAULT_INDEX` — Maps to `Config.Site.DefaultIndex`
 - `GOMDDOC_SITE_META_TITLE` — Maps to `Config.Site.Meta.Title`
+- `GOMDDOC_SITE_FEATURES_KATEX` — Maps to `Config.Site.Features["katex"]`

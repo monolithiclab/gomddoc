@@ -49,7 +49,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	registry.Register(renderer.NewMarkdownPassthroughRenderer())
 	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
 		HighlightTheme: cfg.Site.Highlighting.Theme,
-		ColorChips:     cfg.Site.ColorChips,
+		Features:       cfg.Site.Theme.Features,
 	}))
 	registry.Register(renderer.NewPassthroughRenderer())
 
@@ -105,13 +105,16 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		p.URLRedirects = server.BuildRedirectMap(metaIndex)
 	}
 
-	if opts.EnableSearch {
+	if opts.EnableSearch && cfg.Site.Search.Index {
 		searchIdx, searchErr := search.BuildIndex(context.Background(), contentRoot, p.MetaIndex)
 		if searchErr != nil {
 			slog.Warn("Failed to build search index", slog.Any("error", searchErr))
 		} else {
 			p.SearchIndex = searchIdx
-			cfg.Site.HasSearch = true
+			if cfg.Site.Theme.Features == nil {
+				cfg.Site.Theme.Features = make(map[string]bool)
+			}
+			cfg.Site.Theme.Features["search"] = true
 		}
 	}
 

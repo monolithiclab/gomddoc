@@ -11,6 +11,7 @@ import (
 	"github.com/yuin/goldmark/text"
 	"go.abhg.dev/goldmark/toc"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 )
 
@@ -99,6 +100,7 @@ func (m *MarkdownEnricher) Enrich(ctx context.Context, content []byte, path stri
 
 	enrichment := &EnrichmentData{
 		Metadata: mdMeta,
+		Features: config.ExtractPageFeatures(mdMeta),
 		TOC:      tocNode,
 	}
 

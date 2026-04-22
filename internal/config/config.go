@@ -74,12 +74,16 @@ type SiteConfig struct {
 	DefaultIndex string          `env:"DEFAULT_INDEX" yaml:"default_index"`
 	DirIndex     bool            `env:"DIR_INDEX" yaml:"dir_index"`
 	EditURL      string          `env:"EDIT_URL" yaml:"edit_url"`
-	ColorChips   bool            `env:"COLOR_CHIPS" yaml:"color_chips"`
 	Language     string          `env:"LANGUAGE" yaml:"language"`
 	Meta         MetaConfig      `env:"META" yaml:"meta"`
 	Theme        ThemeConfig     `env:"THEME" yaml:"theme"`
 	Highlighting HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
-	HasSearch    bool            `yaml:"-"` // Set at runtime, not from config file
+	Search       SearchConfig    `env:"SEARCH" yaml:"search"`
+}
+
+// SearchConfig holds search settings
+type SearchConfig struct {
+	Index bool `env:"INDEX" yaml:"index"`
 }
 
 // MetaConfig holds site metadata
@@ -92,8 +96,9 @@ type MetaConfig struct {
 
 // ThemeConfig holds theme settings
 type ThemeConfig struct {
-	Name string            `env:"NAME" yaml:"name"`
-	Vars map[string]string `yaml:"vars"`
+	Name     string            `env:"NAME" yaml:"name"`
+	Vars     map[string]string `yaml:"vars"`
+	Features map[string]bool   `env:"FEATURES" yaml:"features"`
 }
 
 // HighlightConfig holds syntax highlighting settings
@@ -179,7 +184,6 @@ func NewSiteConfig(dir string) SiteConfig {
 	return SiteConfig{
 		DefaultIndex: DefaultIndex,
 		DirIndex:     false,
-		ColorChips:   true,
 		Language:     "en",
 		Meta: MetaConfig{
 			Title: title,
@@ -189,6 +193,9 @@ func NewSiteConfig(dir string) SiteConfig {
 		},
 		Highlighting: HighlightConfig{
 			Theme: DefaultHighlightTheme,
+		},
+		Search: SearchConfig{
+			Index: true,
 		},
 	}
 }
@@ -279,6 +286,11 @@ func (sc *SiteConfig) Validate() error {
 			return fmt.Errorf("invalid domain: %w", err)
 		}
 	}
+
+	if err := ValidateFeatureKeys(sc.Theme.Features); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -466,6 +478,33 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 					newPrefix = prefix + "_" + envTag
 				}
 				walkStruct(field.Elem(), field.Elem().Type(), newPrefix)
+			}
+			continue
+		}
+
+		if kind == reflect.Map && field.Type() == reflect.TypeFor[map[string]bool]() {
+			if envTag == "" {
+				continue
+			}
+			mapPrefix := prefix + "_" + envTag + "_"
+			for _, env := range os.Environ() {
+				if !strings.HasPrefix(env, mapPrefix) {
+					continue
+				}
+				parts := strings.SplitN(env, "=", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				key := strings.ToLower(strings.TrimPrefix(parts[0], mapPrefix))
+				if boolValue, err := strconv.ParseBool(parts[1]); err == nil {
+					if field.IsNil() {
+						field.Set(reflect.MakeMap(field.Type()))
+					}
+					field.SetMapIndex(reflect.ValueOf(key), reflect.ValueOf(boolValue))
+					slog.Debug("Applied env override",
+						slog.String("var", parts[0]),
+						slog.String("kind", "map[string]bool"))
+				}
 			}
 			continue
 		}

@@ -30,7 +30,8 @@ author: Jane Doe
 tags: [go, markdown]
 date: 2026-03-25
 og_type: article
-color_chips: true
+features:
+  color_chips: true
 ---
 
 # Content starts here
@@ -47,7 +48,7 @@ gomddoc processes these frontmatter fields with special behavior:
 | `tags` | array | Page tags — normalized to lowercase, queryable via `/api/tags` endpoint |
 | `date` | string | Publication date (`YYYY-MM-DD`) — included in tags API responses |
 | `og_type` | string | Open Graph type (defaults to `article`) — controls `<meta property="og:type">` |
-| `color_chips` | bool | Per-page override for color chip rendering (overrides global `color_chips` setting) |
+| `features` | map | Per-page feature toggle overrides (e.g., `features: { color_chips: false }`) |
 
 ### Custom Fields
 
@@ -195,14 +196,16 @@ Both 3-digit (`#fff`) and 6-digit (`#ffffff`) hex codes are supported. The color
 Color chips are enabled by default. You can disable them globally in `.gomddoc/config.yml`:
 
 ```yaml
-color_chips: false
+features:
+  color_chips: false
 ```
 
 Or per-page via frontmatter:
 
 ```markdown
 ---
-color_chips: false
+features:
+  color_chips: false
 ---
 # My Page Without Color Chips
 ```

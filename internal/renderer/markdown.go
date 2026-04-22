@@ -13,6 +13,7 @@ import (
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
@@ -33,9 +34,10 @@ type MarkdownOptions struct {
 	// code blocks. Defaults to "github" when empty.
 	HighlightTheme string
 
-	// ColorChips enables inline color chip rendering for backtick-wrapped hex
-	// codes (e.g. `#E91E63`). Can be overridden per page via frontmatter.
-	ColorChips bool
+	// Features controls which markdown post-processing features are enabled.
+	// If nil, all features default to enabled.
+	// Per-page frontmatter can override site-level settings.
+	Features map[string]bool
 }
 
 // MarkdownRenderer transforms markdown content to HTML.
@@ -44,8 +46,8 @@ type MarkdownOptions struct {
 // The renderer is stateless and thread-safe. The underlying goldmark instance
 // is shared across renders.
 type MarkdownRenderer struct {
-	md         goldmark.Markdown
-	colorChips bool
+	md       goldmark.Markdown
+	features map[string]bool
 }
 
 // NewMarkdownRenderer creates a new markdown renderer with the given options.
@@ -79,8 +81,8 @@ func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
 	)
 
 	return &MarkdownRenderer{
-		md:         md,
-		colorChips: opts.ColorChips,
+		md:       md,
+		features: opts.Features,
 	}
 }
 
@@ -110,16 +112,22 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 		return nil, err
 	}
 
-	// Post-process: add anchor links to headings, transform admonitions, then color chips
-	rendered := addHeadingAnchors(buf.Bytes())
-	rendered = transformAdmonitions(rendered)
-
-	// Color chips: check enrichment metadata for per-page override
-	var metadata map[string]any
+	// Post-process: conditionally apply post-processors based on features.
+	// Per-page frontmatter can override site-level feature settings.
+	var pageFeatures map[string]bool
 	if enrichment != nil {
-		metadata = enrichment.Metadata
+		pageFeatures = enrichment.Features
 	}
-	if colorChipsEnabled(m.colorChips, metadata) {
+	merged := config.MergeFeatures(m.features, pageFeatures)
+
+	rendered := buf.Bytes()
+	if config.FeatureEnabled("heading_anchors", merged) {
+		rendered = addHeadingAnchors(rendered)
+	}
+	if config.FeatureEnabled("admonitions", merged) {
+		rendered = transformAdmonitions(rendered)
+	}
+	if config.FeatureEnabled("color_chips", merged) {
 		rendered = transformColorChips(rendered)
 	}
 
@@ -127,17 +135,4 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 		Content:  rendered,
 		MimeType: "text/html; charset=utf-8",
 	}, nil
-}
-
-// colorChipsEnabled returns whether color chips should be applied.
-// Per-page frontmatter (color_chips: true/false) overrides the global default.
-func colorChipsEnabled(globalDefault bool, metadata map[string]any) bool {
-	if metadata != nil {
-		if v, ok := metadata["color_chips"]; ok {
-			if b, ok := v.(bool); ok {
-				return b
-			}
-		}
-	}
-	return globalDefault
 }
