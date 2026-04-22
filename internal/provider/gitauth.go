@@ -68,16 +68,20 @@ func setupSSHAuth(user string, sshKeyFile string) (transport.AuthMethod, error) 
 
 // createHostKeyCallback creates a host key verification callback.
 // Returns an error when known_hosts is unavailable (fail closed).
+// Checks SSH_KNOWN_HOSTS env var first, falls back to ~/.ssh/known_hosts.
 func createHostKeyCallback() (gossh.HostKeyCallback, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("cannot determine home directory: %w", err)
+	knownHostsPath := os.Getenv("SSH_KNOWN_HOSTS")
+	if knownHostsPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("cannot determine home directory: %w", err)
+		}
+		knownHostsPath = filepath.Join(home, ".ssh", "known_hosts")
 	}
-	knownHostsPath := filepath.Join(home, ".ssh", "known_hosts")
 	callback, err := ssh.NewKnownHostsCallback(knownHostsPath)
 	if err != nil {
 		return nil, fmt.Errorf("known_hosts required for SSH: %w", err)
 	}
-	slog.Debug("Using known_hosts for host key verification", slog.String("path", knownHostsPath))
+	slog.Debug("Using known_hosts for host key verification", slog.String("path", knownHostsPath)) // #nosec G706 -- admin-controlled env var or default path
 	return callback, nil
 }
