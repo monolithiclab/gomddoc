@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io/fs"
@@ -27,28 +28,41 @@ type SearchResult struct {
 	Score       float64 `json:"score"`
 }
 
-// document stores indexed content for a single file.
+// maxSnippetBody is the maximum body size stored per document for snippet generation.
+// Snippets are ~160 chars; findBestWindow samples 50 positions. 8 KB is ample context
+// while capping memory for large documents.
+const maxSnippetBody = 8192
+
+// document stores display data and snippet body for a single indexed file.
 type document struct {
 	path        string
 	title       string
 	description string
-	body        string         // markdown body (frontmatter stripped) for snippet generation
-	termFreqs   map[string]int // term -> count in body
-	totalTerms  int
+	body        string // markdown body (truncated to maxSnippetBody) for snippet generation
 }
+
+// field identifies which document field a posting belongs to.
+type field uint8
+
+const (
+	fieldBody field = iota
+	fieldTitle
+	fieldDesc
+)
 
 // posting is an entry in the inverted index.
 type posting struct {
 	docIdx int
 	freq   int
+	field  field
 }
 
 // Index is an immutable full-text search index. Thread-safe after construction.
 type Index struct {
-	docs     []document
-	inverted map[string][]posting
-	docCount int
-	avgDL    float64 // average document length for TF-IDF normalization
+	docs          []document
+	inverted      map[string][]posting
+	docTermCounts []int // body token count per doc, for TF normalization
+	docCount      int
 }
 
 // BuildIndex walks the filesystem, reads all markdown files, tokenizes their content,
@@ -88,8 +102,12 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 
 	// Phase 2: Read and tokenize concurrently.
 	type parseResult struct {
-		doc document
-		ok  bool
+		doc        document
+		bodyFreqs  map[string]int
+		bodyTotal  int
+		titleFreqs map[string]int
+		descFreqs  map[string]int
+		ok         bool
 	}
 
 	results := make([]parseResult, len(paths))
@@ -111,16 +129,20 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 			body := text.StripFrontmatter(content)
 			bodyStr := stripMarkdown(string(body))
 
-			freqs, total := tokenizeToFreqs(bodyStr)
-			if total == 0 {
+			bodyFreqs, bodyTotal := tokenizeToFreqs(bodyStr)
+			if bodyTotal == 0 {
 				return nil
 			}
 
+			// Truncate body for snippet storage to cap memory usage.
+			snippetBody := bodyStr
+			if len(snippetBody) > maxSnippetBody {
+				snippetBody = snippetBody[:maxSnippetBody]
+			}
+
 			doc := document{
-				path:       "/" + p,
-				body:       bodyStr,
-				termFreqs:  freqs,
-				totalTerms: total,
+				path: "/" + p,
+				body: snippetBody,
 			}
 
 			// Get title and description from metadata index if available.
@@ -137,7 +159,17 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 				doc.title = text.DeriveTitle(p)
 			}
 
-			results[i] = parseResult{doc: doc, ok: true}
+			titleFreqs, _ := tokenizeToFreqs(doc.title)
+			descFreqs, _ := tokenizeToFreqs(doc.description)
+
+			results[i] = parseResult{
+				doc:        doc,
+				bodyFreqs:  bodyFreqs,
+				bodyTotal:  bodyTotal,
+				titleFreqs: titleFreqs,
+				descFreqs:  descFreqs,
+				ok:         true,
+			}
 			return nil
 		})
 	}
@@ -151,59 +183,76 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 		inverted: make(map[string][]posting),
 	}
 
-	totalTerms := 0
 	for _, r := range results {
 		if !r.ok {
 			continue
 		}
 		docIdx := len(idx.docs)
 		idx.docs = append(idx.docs, r.doc)
+		idx.docTermCounts = append(idx.docTermCounts, r.bodyTotal)
 
-		for term, freq := range r.doc.termFreqs {
-			idx.inverted[term] = append(idx.inverted[term], posting{docIdx: docIdx, freq: freq})
+		for term, freq := range r.bodyFreqs {
+			idx.inverted[term] = append(idx.inverted[term], posting{docIdx: docIdx, freq: freq, field: fieldBody})
 		}
-		totalTerms += r.doc.totalTerms
+		for term, freq := range r.titleFreqs {
+			idx.inverted[term] = append(idx.inverted[term], posting{docIdx: docIdx, freq: freq, field: fieldTitle})
+		}
+		for term, freq := range r.descFreqs {
+			idx.inverted[term] = append(idx.inverted[term], posting{docIdx: docIdx, freq: freq, field: fieldDesc})
+		}
 	}
 
 	idx.docCount = len(idx.docs)
-	if idx.docCount > 0 {
-		idx.avgDL = float64(totalTerms) / float64(idx.docCount)
-	}
 
 	return idx, nil
 }
 
 // Search finds documents matching all query terms (AND semantics), ranked by TF-IDF
-// with boosted scores for title and description matches. Returns at most limit results.
+// with field-specific boosts. Returns at most limit results.
 func (idx *Index) Search(query string, limit int) []SearchResult {
 	queryTokens := tokenize(query)
 	if len(queryTokens) == 0 {
 		return []SearchResult{}
 	}
 
-	// Find documents containing ALL query tokens.
+	// Per-token info: precomputed IDF and per-doc postings.
+	type tokenInfo struct {
+		idf   float64
+		byDoc map[int][]posting
+	}
+
+	perToken := make([]tokenInfo, len(queryTokens))
+
+	// Find documents containing ALL query tokens (AND semantics).
 	var candidates []int
 	for i, token := range queryTokens {
-		postings, ok := idx.inverted[token]
+		posts, ok := idx.inverted[token]
 		if !ok {
 			return []SearchResult{} // AND: if any token has no matches, no results
 		}
 
-		docSet := make(map[int]bool, len(postings))
-		for _, p := range postings {
-			docSet[p.docIdx] = true
+		byDoc := make(map[int][]posting, len(posts))
+		for _, p := range posts {
+			byDoc[p.docIdx] = append(byDoc[p.docIdx], p)
+		}
+
+		// df = number of distinct documents containing this token (across all fields).
+		df := len(byDoc)
+		perToken[i] = tokenInfo{
+			idf:   math.Log(float64(idx.docCount) / float64(df)),
+			byDoc: byDoc,
 		}
 
 		if i == 0 {
-			candidates = make([]int, 0, len(docSet))
-			for d := range docSet {
+			candidates = make([]int, 0, len(byDoc))
+			for d := range byDoc {
 				candidates = append(candidates, d)
 			}
 		} else {
 			// Intersect
 			filtered := candidates[:0]
 			for _, d := range candidates {
-				if docSet[d] {
+				if _, ok := byDoc[d]; ok {
 					filtered = append(filtered, d)
 				}
 			}
@@ -215,7 +264,7 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 		}
 	}
 
-	// Score candidates.
+	// Score candidates using field-specific boosts.
 	type scored struct {
 		docIdx int
 		score  float64
@@ -223,48 +272,27 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 	scoredResults := make([]scored, len(candidates))
 
 	for i, docIdx := range candidates {
-		doc := idx.docs[docIdx]
 		score := 0.0
-
-		for _, token := range queryTokens {
-			tf := float64(doc.termFreqs[token]) / float64(doc.totalTerms)
-			df := len(idx.inverted[token])
-			idf := math.Log(float64(idx.docCount) / float64(df))
-			score += tf * idf
-		}
-
-		// Title boost: 3x for each query token found in title
-		titleLower := strings.ToLower(doc.title)
-		for _, token := range queryTokens {
-			if strings.Contains(titleLower, token) {
-				df := len(idx.inverted[token])
-				idf := math.Log(float64(idx.docCount) / float64(df))
-				score += 3.0 * idf
+		for _, ti := range perToken {
+			for _, p := range ti.byDoc[docIdx] {
+				switch p.field {
+				case fieldBody:
+					// Safe: bodyTotal == 0 docs are excluded during indexing.
+					tf := float64(p.freq) / float64(idx.docTermCounts[docIdx])
+					score += tf * ti.idf
+				case fieldTitle:
+					score += 3.0 * ti.idf
+				case fieldDesc:
+					score += 1.5 * ti.idf
+				}
 			}
 		}
-
-		// Description boost: 1.5x
-		descLower := strings.ToLower(doc.description)
-		for _, token := range queryTokens {
-			if strings.Contains(descLower, token) {
-				df := len(idx.inverted[token])
-				idf := math.Log(float64(idx.docCount) / float64(df))
-				score += 1.5 * idf
-			}
-		}
-
 		scoredResults[i] = scored{docIdx: docIdx, score: score}
 	}
 
 	// Sort by score descending.
 	slices.SortFunc(scoredResults, func(a, b scored) int {
-		if a.score > b.score {
-			return -1
-		}
-		if a.score < b.score {
-			return 1
-		}
-		return 0
+		return cmp.Compare(b.score, a.score)
 	})
 
 	// Take top limit.

@@ -285,17 +285,20 @@ Exposed via JSON API:
 
 ```go
 type Index struct {
-    docs     []document
-    inverted map[string][]posting
-    docCount int
-    avgDL    float64
+    docs          []document
+    inverted      map[string][]posting
+    docTermCounts []int // body token count per doc, for TF normalization
+    docCount      int
 }
 ```
 
 Built at startup alongside the metadata index using the same 3-phase concurrent pattern. Tokenizes
-markdown content (stripped of syntax) into an inverted index. Ranking uses TF-IDF with title (3x) and
-description (1.5x) boosts. Queries use AND semantics. Snippet generation highlights matched terms with
-`<mark>` tags.
+markdown content (stripped of syntax) into a unified inverted index where each posting carries a field
+tag (`fieldBody`, `fieldTitle`, `fieldDesc`). Title and description are tokenized through the same
+pipeline as body content — no separate substring matching or lowered-string storage. Ranking uses
+per-field TF-IDF: body uses standard TF*IDF, title gets a 3x IDF boost, and description gets a 1.5x
+boost. IDF is precomputed once per query token. Queries use AND semantics — a document qualifies if
+the token appears in any field. Snippet generation highlights matched terms with `<mark>` tags.
 
 Exposed via JSON API:
 - `GET /api/search?q=<query>&limit=<n>` — Full-text search with ranked results

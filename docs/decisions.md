@@ -296,6 +296,18 @@ mode compatibility — no per-theme CSS needed. Follows the `color-chip.mjs` pre
 
 **Build mode:** Option B (Pagefind) deferred as optional post-build step.
 
+## Search Index: Field-Tagged Postings
+
+**Chosen**: Unified inverted index with field-tagged postings (`fieldBody`, `fieldTitle`, `fieldDesc`)
+
+**Previous approach**: Hybrid index — inverted index for body content, linear `strings.Contains` on pre-lowered `titleLower`/`descLower` fields for title/description matching. `avgDL` computed but unused. IDF recomputed per candidate per token.
+
+**Alternatives considered**:
+- **Three separate inverted indexes** (one per field): Clean separation but triples lookup cost per query token (3 map lookups instead of 1). Complicates AND intersection across fields — a document matching "deploy" in title and "guide" in body requires cross-index merging. More memory overhead from three map structures.
+- **Composite weighted frequencies** (pre-blend field weights into a single score per term per doc): Single lookup but loses per-field scoring flexibility. Changing boost factors requires full reindex. Can't distinguish which field matched for result presentation.
+
+**Why field-tagged postings**: Single map lookup per query token. Postings carry a `field` tag, so scoring partitions by field naturally with a `switch`. Title/description go through the same `tokenizeToFreqs` pipeline as body — no separate lowering or substring matching. `document` struct drops `titleLower`, `descLower`, `termFreqs`, `totalTerms`. `Index` drops `avgDL`, adds `docTermCounts` for per-document body TF normalization. IDF precomputed once per query token in a `tokenInfo` struct. Boost factors (3x title, 1.5x description) adjustable without reindexing.
+
 ## Systematic `t.Parallel()` Adoption
 
 **Chosen**: Add `t.Parallel()` to every test function and subtest unless incompatible
