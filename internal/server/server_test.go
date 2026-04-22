@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/processor"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template"
 )
 
@@ -27,8 +27,12 @@ func TestNewHTTPServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
+	defer prov.Close()
 
-	proc := processor.NewMarkdownProcessor()
+	// Create registry with renderers
+	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownRenderer())
+	registry.Register(renderer.NewPassthroughRenderer())
 
 	// Create test renderer with template
 	templateContent := `<!DOCTYPE html>
@@ -45,7 +49,7 @@ func TestNewHTTPServer(t *testing.T) {
 
 	rend := template.NewHTMLRenderer(siteConfig, testFS)
 
-	server := NewHTTPServer(cfg, prov, proc, rend)
+	server := NewHTTPServer(cfg, prov, registry, rend)
 	if server == nil {
 		t.Fatal("Server should not be nil")
 	}

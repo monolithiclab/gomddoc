@@ -11,8 +11,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/processor"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	"github.com/monolithiclab/gomddoc/internal/template"
 )
@@ -79,24 +79,27 @@ func startCmd() int {
 		}
 	}()
 
-	processor := processor.NewMarkdownProcessor()
+	// Create renderer registry with markdown and passthrough renderers
+	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownRenderer())
+	registry.Register(renderer.NewPassthroughRenderer())
 
 	// Create template cache based on dev mode (factory pattern)
 
-	// Create renderer with injected dependencies (using functional options for cache)
-	renderer := template.NewHTMLRenderer(cfg.Site, assets)
+	// Create template renderer with injected dependencies (using functional options for cache)
+	templateRenderer := template.NewHTMLRenderer(cfg.Site, assets)
 	if !cfg.DevMode {
-		renderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
+		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
 	}
 
 	// Validate that default theme exists (fatal error if missing)
-	if err := renderer.ValidateDefaultTheme(); err != nil {
+	if err := templateRenderer.ValidateDefaultTheme(); err != nil {
 		slog.Error("Default theme missing", slog.Any("error", err))
 		return ExitConfigError
 	}
 
 	// Create and configure server
-	httpServer := server.NewHTTPServer(cfg, provider, processor, renderer)
+	httpServer := server.NewHTTPServer(cfg, provider, registry, templateRenderer)
 
 	// Setup graceful shutdown
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

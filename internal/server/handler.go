@@ -4,103 +4,179 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/processor"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
 
 // Handler holds dependencies for HTTP request handling
 type Handler struct {
-	siteConfig *config.SiteConfig // Only site config, NOT full Config (security)
-	provider   provider.Provider
-	processor  processor.Processor
-	renderer   tmpl.Renderer
+	provider         provider.Provider
+	registry         renderer.RendererRegistry
+	templateRenderer tmpl.Renderer
+	siteConfig       *config.SiteConfig
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
-func NewHandler(siteConfig *config.SiteConfig, provider provider.Provider, processor processor.Processor, renderer tmpl.Renderer) *Handler {
+func NewHandler(
+	provider provider.Provider,
+	registry renderer.RendererRegistry,
+	templateRenderer tmpl.Renderer,
+	siteConfig *config.SiteConfig,
+) *Handler {
 	return &Handler{
-		siteConfig: siteConfig,
-		provider:   provider,
-		processor:  processor,
-		renderer:   renderer,
+		provider:         provider,
+		registry:         registry,
+		templateRenderer: templateRenderer,
+		siteConfig:       siteConfig,
 	}
 }
 
-// ServeMarkdown handles HTTP requests for markdown files
-func (h *Handler) ServeMarkdown(w http.ResponseWriter, r *http.Request) {
-	// Read the file content
-	filename := r.URL.Path
-	md, _, err := h.provider.ReadFile(filename)
+// ServeContent handles HTTP requests with content negotiation and rendering.
+//
+// Flow:
+//  1. Read file from provider (gets content + input MIME type)
+//  2. Get renderer for input MIME type
+//  3. Render content (transforms to output MIME type)
+//  4. Content negotiation on output MIME type with Accept header
+//  5. Serve as HTML (wrapped in template) or raw (passthrough)
+func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
+	// 1. Read file + get MIME type
+	content, mimeType, err := h.provider.ReadFile(r.URL.Path)
 	if err != nil {
-		h.handleError(w, err, filename)
+		h.handleError(w, r, err, r.URL.Path)
 		return
 	}
 
-	// Process markdown to HTML
-	processedContent, err := h.processor.Process(md)
+	// 2. Get renderer for input MIME type
+	normalized := renderer.NormalizeMimeType(mimeType)
+	contentRenderer, err := h.registry.Get(normalized)
 	if err != nil {
-		slog.Error("Cannot process markdown", slog.String("filename", filename), slog.Any("error", err))
+		h.handleError(w, r, err, r.URL.Path)
+		return
+	}
+
+	// 3. Render content to get output MIME type
+	output, outputMimeType, err := contentRenderer.Render(r.Context(), content)
+	if err != nil {
+		h.handleError(w, r, err, r.URL.Path)
+		return
+	}
+
+	// 4. Determine final MIME type
+	finalMimeType := outputMimeType
+	if finalMimeType == "" {
+		finalMimeType = mimeType // Preserve full MIME type from provider (passthrough)
+	}
+
+	// 5. Content negotiation on OUTPUT MIME type
+	acceptedTypes := ParseAccept(r.Header.Get("Accept"))
+	finalNormalized := renderer.NormalizeMimeType(finalMimeType)
+
+	accepted := false
+	for _, mt := range acceptedTypes {
+		if mt.Matches(finalNormalized) {
+			accepted = true
+			break
+		}
+	}
+
+	if !accepted {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusInternalServerError)
-		h.writeErrorResponse(w, "Internal server error")
+		w.WriteHeader(http.StatusNotAcceptable)
+		message := "Not Acceptable: server can only provide " + finalNormalized
+		_, _ = w.Write([]byte(message))
 		return
 	}
 
-	// Prepare template context
-	// IMPORTANT: Only SiteConfig is exposed to templates, NOT Config (for security)
+	// 6. Serve based on output MIME type
+	if finalNormalized == "text/html" {
+		h.serveHTML(w, r, output)
+	} else {
+		h.serveRaw(w, output, finalMimeType)
+	}
+}
+
+// serveHTML wraps HTML content in the site template and serves it.
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte) {
 	context := &tmpl.TemplateContext{
-		Site: h.siteConfig, // Expose SiteConfig (safe, doesn't include server internals)
+		Site: h.siteConfig,
 		Page: tmpl.PageContext{
-			Content:     template.HTML(string(processedContent)), // #nosec G203
-			Breadcrumbs: tmpl.GenerateBreadcrumbs(h.provider, filename),
+			Content:     template.HTML(htmlContent), // #nosec G203
+			Breadcrumbs: tmpl.GenerateBreadcrumbs(h.provider, r.URL.Path),
 		},
 	}
 
-	// Render the template with request context for cancellation support
-	renderedHTML, err := h.renderer.Render(r.Context(), "layout.html.tmpl", context)
+	rendered, err := h.templateRenderer.Render(r.Context(), "layout.html.tmpl", context)
 	if err != nil {
-		slog.Error("Cannot render template", slog.Any("error", err))
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusInternalServerError)
-		h.writeErrorResponse(w, "Internal server error")
+		h.handleError(w, r, err, r.URL.Path)
 		return
 	}
 
-	// Write successful response
-	w.Header().Set("Content-Type", h.processor.ContentType())
-	w.Header().Set("Cache-Control", "public, max-age=300") // 5 minute cache
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(rendered)))
+	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.WriteHeader(http.StatusOK)
-	_, writeErr := w.Write(renderedHTML)
+	_, writeErr := w.Write(rendered)
 	if writeErr != nil {
 		slog.Error("Cannot write response", slog.Any("error", writeErr))
 	}
 }
 
-// handleError handles file reading errors and sends appropriate HTTP responses
-func (h *Handler) handleError(w http.ResponseWriter, err error, filename string) {
-	statusCode := classifyError(err)
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(statusCode)
-
-	switch statusCode {
-	case http.StatusNotFound:
-		slog.Info("File not found", slog.String("filename", filename))
-		h.writeErrorResponse(w, "File not found")
-	case http.StatusForbidden:
-		slog.Info("Access forbidden", slog.String("filename", filename), slog.Any("error", err))
-		h.writeErrorResponse(w, "Forbidden")
-	default:
-		slog.Error("Cannot read file", slog.String("filename", filename), slog.Any("error", err))
-		h.writeErrorResponse(w, "Internal server error")
+// serveRaw serves content directly without template wrapping (passthrough).
+func (h *Handler) serveRaw(w http.ResponseWriter, content []byte, mimeType string) {
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.WriteHeader(http.StatusOK)
+	_, writeErr := w.Write(content)
+	if writeErr != nil {
+		slog.Error("Cannot write response", slog.Any("error", writeErr))
 	}
 }
 
-// writeErrorResponse writes an error message to the response
-func (h *Handler) writeErrorResponse(w http.ResponseWriter, message string) {
+// handleError handles errors and sends appropriate HTTP responses.
+func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error, path string) {
+	statusCode := classifyError(err)
+
+	// Log based on severity
+	switch statusCode {
+	case http.StatusNotFound:
+		slog.Info("File not found",
+			slog.Int("status", statusCode),
+			slog.String("path", path),
+		)
+	case http.StatusForbidden:
+		slog.Info("Access forbidden",
+			slog.Int("status", statusCode),
+			slog.String("path", path),
+			slog.String("error", err.Error()),
+		)
+	default:
+		slog.Error("Request failed",
+			slog.Int("status", statusCode),
+			slog.String("path", path),
+			slog.String("error", err.Error()),
+		)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(statusCode)
+
+	// Serve simple error pages
+	var message string
+	switch statusCode {
+	case http.StatusNotFound:
+		message = "<h1>404 Not Found</h1>"
+	case http.StatusForbidden:
+		message = "<h1>403 Forbidden</h1>"
+	default:
+		message = "<h1>500 Internal Server Error</h1>"
+	}
+
 	_, writeErr := w.Write([]byte(message))
 	if writeErr != nil {
 		slog.Error("Cannot write error response", slog.Any("error", writeErr))

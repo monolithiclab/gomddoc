@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/processor"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template"
 )
 
@@ -29,13 +29,18 @@ type HTTPServer struct {
 }
 
 // NewHTTPServer creates a new HTTP server with the given dependencies
-func NewHTTPServer(cfg *config.Config, provider provider.Provider, processor processor.Processor, renderer template.Renderer) *HTTPServer {
-	// Pass only SiteConfig to handler (not full Config for security)
-	handler := NewHandler(cfg.Site, provider, processor, renderer)
+func NewHTTPServer(
+	cfg *config.Config,
+	provider provider.Provider,
+	registry renderer.RendererRegistry,
+	templateRenderer template.Renderer,
+) *HTTPServer {
+	// Create handler with new signature
+	handler := NewHandler(provider, registry, templateRenderer, cfg.Site)
 
 	// Apply middleware chain
-	var h http.Handler = http.HandlerFunc(handler.ServeMarkdown)
-	h = BlockHiddenPaths(h) // NEW: Block all hidden files/directories (., .git, .env, etc.)
+	var h http.Handler = http.HandlerFunc(handler.ServeContent)
+	h = BlockHiddenPaths(h) // Block all hidden files/directories (., .git, .env, etc.)
 	// Exception: .well-known/ is allowed (IETF RFC 8615)
 	h = SecurityHeaders(h) // Must be last so headers are set first
 
