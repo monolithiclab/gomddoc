@@ -493,3 +493,77 @@ func TestGenerate_DeepNesting(t *testing.T) {
 		t.Errorf("expected active 'Deep Page', got label=%q isActive=%v", deepNode.Label, deepNode.IsActive)
 	}
 }
+
+func TestFindFirstPage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		root *NavNode
+		want string
+	}{
+		{
+			name: "nil root",
+			root: nil,
+			want: "",
+		},
+		{
+			name: "empty children",
+			root: &NavNode{Children: nil},
+			want: "",
+		},
+		{
+			name: "single file",
+			root: &NavNode{
+				Children: []*NavNode{
+					{Label: "Guide", Path: "/guide.md"},
+				},
+			},
+			want: "/guide.md",
+		},
+		{
+			name: "dir then file",
+			root: &NavNode{
+				Children: []*NavNode{
+					{Label: "Docs", Path: "/docs/", IsDir: true, Children: []*NavNode{
+						{Label: "Setup", Path: "/docs/setup.md"},
+					}},
+					{Label: "README", Path: "/readme.md"},
+				},
+			},
+			want: "/docs/setup.md",
+		},
+		{
+			name: "only empty dirs",
+			root: &NavNode{
+				Children: []*NavNode{
+					{Label: "Empty", Path: "/empty/", IsDir: true},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "nested dirs to file",
+			root: &NavNode{
+				Children: []*NavNode{
+					{Label: "A", Path: "/a/", IsDir: true, Children: []*NavNode{
+						{Label: "B", Path: "/a/b/", IsDir: true, Children: []*NavNode{
+							{Label: "Deep", Path: "/a/b/deep.md"},
+						}},
+					}},
+				},
+			},
+			want: "/a/b/deep.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := FindFirstPage(tt.root)
+			if got != tt.want {
+				t.Errorf("FindFirstPage() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

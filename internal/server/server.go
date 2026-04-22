@@ -12,6 +12,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -37,9 +38,9 @@ func NewHTTPServer(
 	registry renderer.RendererRegistry,
 	templateRenderer template.Renderer,
 	metaIndex *metadata.Index,
+	navGen *navigation.Generator,
 ) *HTTPServer {
-	// Create handler with new signature
-	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site)
+	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site, navGen)
 
 	// Apply middleware chain (outermost first, innermost closest to handler)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)

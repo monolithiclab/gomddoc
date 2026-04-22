@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
@@ -21,7 +22,7 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig)
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 	tests := []struct {
 		name           string
@@ -127,7 +128,7 @@ func TestHandlerServeContent_BinaryFiles(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig)
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/test.png", nil)
 	req.Header.Set("Accept", "*/*")
@@ -163,7 +164,7 @@ func TestHandlerErrorResponses(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig)
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/nonexistent/deeply/nested/file.md", nil)
 	w := httptest.NewRecorder()
@@ -194,7 +195,7 @@ func TestHandlerCacheHeaders(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig)
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/test.md", nil)
 	w := httptest.NewRecorder()
@@ -222,7 +223,7 @@ func TestHandlerForbiddenDirectory(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false) // dirIndex=false
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig)
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/testdir", nil)
 	w := httptest.NewRecorder()
@@ -235,5 +236,60 @@ func TestHandlerForbiddenDirectory(t *testing.T) {
 
 	if !strings.Contains(w.Body.String(), "403 Forbidden") {
 		t.Errorf("response should contain '403 Forbidden'")
+	}
+}
+
+func TestHandlerDirectoryRedirect(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"docs/guide.md":   &fstest.MapFile{Data: []byte("# Guide")},
+		"docs/install.md": &fstest.MapFile{Data: []byte("# Install")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	registry := setupTestRegistry()
+	rend := setupTestRenderer()
+	navGen := navigation.NewGenerator(files, "README.md")
+	handler := NewHandler(prov, registry, rend, &siteConfig, navGen)
+
+	req := httptest.NewRequest("GET", "/docs", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeContent(w, req)
+
+	if w.Code != 302 {
+		t.Errorf("status = %d, want 302", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	if location != "/docs/guide.md" {
+		t.Errorf("Location = %q, want /docs/guide.md", location)
+	}
+}
+
+func TestHandlerDirectoryRedirect_EmptyDir(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"empty/.keep": &fstest.MapFile{Data: []byte("")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	registry := setupTestRegistry()
+	rend := setupTestRenderer()
+	navGen := navigation.NewGenerator(files, "README.md")
+	handler := NewHandler(prov, registry, rend, &siteConfig, navGen)
+
+	req := httptest.NewRequest("GET", "/empty", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeContent(w, req)
+
+	// Empty dir with no markdown files → still 403
+	if w.Code != 403 {
+		t.Errorf("status = %d, want 403", w.Code)
 	}
 }

@@ -96,10 +96,12 @@ The filename to look for when a user requests a directory (e.g., `/api/`).
 *   **Default:** `README.md`
 
 **Directory Listings**
-Controls whether to auto-generate a Markdown list of files when a directory is requested but no `README.md` exists.
+Controls what happens when a directory is requested but no index file (e.g., `README.md`) exists:
+*   `false` (default): Redirects (302) to the first page in the navigation tree. If no pages exist in the directory, returns 403 Forbidden.
+*   `true`: Auto-generates a Markdown list of files in the directory.
 *   **YAML:** `dir_index`
 *   **Env Var:** `GOMDDOC_SITE_DIR_INDEX`
-*   **Default:** `false` (Returns 403 Forbidden for security)
+*   **Default:** `false`
 
 ### Metadata (`SITE.META`)
 

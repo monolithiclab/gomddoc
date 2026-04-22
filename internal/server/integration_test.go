@@ -130,7 +130,7 @@ func TestIntegration_ContentServing(t *testing.T) {
 			prov := newMemoryProvider(files, "README.md", tt.dirIndex)
 			registry := setupTestRegistry()
 			rend := setupTestRenderer()
-			handler := NewHandler(prov, registry, rend, &siteConfig)
+			handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 			req := httptest.NewRequest("GET", tt.path, nil)
 			req.Header.Set("Accept", tt.acceptHeader)
@@ -214,7 +214,7 @@ func TestIntegration_DirectoryListing(t *testing.T) {
 			prov := newMemoryProvider(files, "README.md", tt.dirIndex)
 			registry := setupTestRegistry()
 			rend := setupTestRenderer()
-			handler := NewHandler(prov, registry, rend, &siteConfig)
+			handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 			req := httptest.NewRequest("GET", tt.path, nil)
 			req.Header.Set("Accept", "text/html")
@@ -250,7 +250,7 @@ func TestIntegration_ContextCancellation(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig)
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
 
 	// Create request with already-cancelled context
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)

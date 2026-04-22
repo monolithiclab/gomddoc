@@ -121,7 +121,7 @@ func (s *ServeCmd) Run() error {
 		slog.Warn("Failed to build metadata index", slog.Any("error", err))
 	}
 
-	httpServer := server.NewHTTPServer(cfg, prov, registry, templateRenderer, metaIndex)
+	httpServer := server.NewHTTPServer(cfg, prov, registry, templateRenderer, metaIndex, navGen)
 
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()

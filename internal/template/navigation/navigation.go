@@ -195,6 +195,23 @@ func (g *Generator) extractTitle(filePath string) string {
 	return ""
 }
 
+// FindFirstPage walks the navigation tree depth-first and returns the path
+// of the first non-directory (leaf) node. Returns "" if no page is found.
+func FindFirstPage(root *NavNode) string {
+	if root == nil {
+		return ""
+	}
+	for _, child := range root.Children {
+		if !child.IsDir {
+			return child.Path
+		}
+		if p := FindFirstPage(child); p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
 // RenderNavTree renders a NavNode tree as HTML with nested <ul>/<li> elements.
 // Directories use <details>/<summary> for collapsible sections.
 // Files use <a> links with class="active" when IsActive is true.

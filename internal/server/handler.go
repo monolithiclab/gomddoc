@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -19,6 +21,7 @@ type Handler struct {
 	registry         renderer.RendererRegistry
 	templateRenderer tmpl.Renderer
 	siteConfig       *config.SiteConfig
+	navGen           *navigation.Generator
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
@@ -27,12 +30,14 @@ func NewHandler(
 	registry renderer.RendererRegistry,
 	templateRenderer tmpl.Renderer,
 	siteConfig *config.SiteConfig,
+	navGen *navigation.Generator,
 ) *Handler {
 	return &Handler{
 		provider:         provider,
 		registry:         registry,
 		templateRenderer: templateRenderer,
 		siteConfig:       siteConfig,
+		navGen:           navGen,
 	}
 }
 
@@ -48,6 +53,14 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// 1. Read file + get MIME type
 	content, mimeType, err := h.provider.ReadFile(r.Context(), r.URL.Path)
 	if err != nil {
+		// When a directory has no index file, redirect to the first page
+		// in the navigation tree instead of returning 403.
+		if errors.Is(err, provider.ErrDirListingDisabled) && h.navGen != nil {
+			if target := h.findRedirectTarget(r.URL.Path); target != "" {
+				http.Redirect(w, r, target, http.StatusFound)
+				return
+			}
+		}
 		h.handleError(w, r, err, r.URL.Path)
 		return
 	}
@@ -166,6 +179,13 @@ func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byt
 			slog.String("request_id", GetRequestID(r.Context())),
 			slog.Any("error", writeErr))
 	}
+}
+
+// findRedirectTarget uses the navigation generator to find the first page
+// under the given directory path for redirect when no index exists.
+func (h *Handler) findRedirectTarget(dirPath string) string {
+	tree := h.navGen.Generate(dirPath)
+	return navigation.FindFirstPage(tree)
 }
 
 // handleError handles errors and sends appropriate HTTP responses.

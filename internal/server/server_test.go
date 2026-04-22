@@ -64,7 +64,7 @@ func TestNewHTTPServer(t *testing.T) {
 
 	rend := template.NewHTMLRenderer(&siteConfig, testFS)
 
-	server := NewHTTPServer(cfg, prov, registry, rend, nil)
+	server := NewHTTPServer(cfg, prov, registry, rend, nil, nil)
 	if server == nil {
 		t.Fatal("Server should not be nil")
 	}
@@ -140,7 +140,7 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 	}
 	rend := template.NewHTMLRenderer(&siteConfig, testFS)
 
-	server := NewHTTPServer(cfg, prov, registry, rend, nil)
+	server := NewHTTPServer(cfg, prov, registry, rend, nil, nil)
 
 	// Start server in goroutine
 	startErr := make(chan error, 1)

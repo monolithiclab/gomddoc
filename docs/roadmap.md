@@ -64,10 +64,9 @@ See `docs/architecture.md` for detailed architecture and `docs/guide/` for user 
       elements, title extraction, and active path highlighting.
 - [x] **Metadata indexing**: Lightweight frontmatter parser indexes tags/categories across all pages.
       JSON API: `GET /api/tags` and `GET /api/tags/{tag}`.
-- [ ] **Rethink `dir_index`**: The current implementation generates a synthetic README with links to all
-      pages, but this is now redundant with the navigation sidebar. Replace with a redirect to the first
-      file in the navigation tree when a directory has no index file (README.md by default). This gives
-      users immediate content instead of a generated link list. Deprecate the synthetic index approach.
+- [x] **Rethink `dir_index`**: When `dir_index=false` (default), directories without an index file now
+      redirect (302) to the first page in the navigation tree instead of returning 403. The synthetic
+      listing (`dir_index=true`) is preserved as a legacy option. Empty directories still return 403.
 
 ## Phase 6: Renderer Enhancement (Partial)
 
