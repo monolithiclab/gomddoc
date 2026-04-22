@@ -8,7 +8,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
@@ -189,10 +189,10 @@ func TestTOCFunction(t *testing.T) {
 	siteConfig := config.NewSiteConfig(".")
 	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
 
-	tocRoot := &renderer.TOCNode{
+	tocRoot := &enricher.TOCNode{
 		Level: 0,
-		Children: []*renderer.TOCNode{
-			{Level: 1, Text: "H1", ID: "h1", Children: []*renderer.TOCNode{
+		Children: []*enricher.TOCNode{
+			{Level: 1, Text: "H1", ID: "h1", Children: []*enricher.TOCNode{
 				{Level: 2, Text: "H2", ID: "h2"},
 			}},
 			{Level: 1, Text: "H1-2", ID: "h1-2"},
@@ -234,11 +234,11 @@ func TestTOCFunction_Filtering(t *testing.T) {
 	siteConfig := config.NewSiteConfig(".")
 	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
 
-	tocRoot := &renderer.TOCNode{
+	tocRoot := &enricher.TOCNode{
 		Level: 0,
-		Children: []*renderer.TOCNode{
-			{Level: 1, Text: "H1", ID: "h1", Children: []*renderer.TOCNode{
-				{Level: 2, Text: "H2", ID: "h2", Children: []*renderer.TOCNode{
+		Children: []*enricher.TOCNode{
+			{Level: 1, Text: "H1", ID: "h1", Children: []*enricher.TOCNode{
+				{Level: 2, Text: "H2", ID: "h2", Children: []*enricher.TOCNode{
 					{Level: 3, Text: "H3", ID: "h3"},
 					{Level: 4, Text: "H4", ID: "h4"},
 				}},
@@ -534,7 +534,7 @@ func TestTOCFunction_EmptyTOC(t *testing.T) {
 	}
 
 	// Test with empty children
-	ctx.Page.TOC = &renderer.TOCNode{Level: 0, Children: nil}
+	ctx.Page.TOC = &enricher.TOCNode{Level: 0, Children: nil}
 	result, err = rendererObj.Render(context.Background(), "toc_empty.html.tmpl", ctx)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
@@ -559,15 +559,15 @@ func TestHasVisibleDescendants(t *testing.T) {
 
 	// Create a deep structure where H2 is nested under H1
 	// This tests the hasVisibleDescendants recursive path
-	tocRoot := &renderer.TOCNode{
+	tocRoot := &enricher.TOCNode{
 		Level: 0,
-		Children: []*renderer.TOCNode{
+		Children: []*enricher.TOCNode{
 			{
 				Level: 1, Text: "H1", ID: "h1",
-				Children: []*renderer.TOCNode{
+				Children: []*enricher.TOCNode{
 					{
 						Level: 2, Text: "H2", ID: "h2",
-						Children: []*renderer.TOCNode{
+						Children: []*enricher.TOCNode{
 							{Level: 3, Text: "H3", ID: "h3"},
 						},
 					},
@@ -881,21 +881,21 @@ func TestHasVisibleDescendants_Direct(t *testing.T) {
 
 	tests := []struct {
 		name string
-		node *renderer.TOCNode
+		node *enricher.TOCNode
 		min  int
 		max  int
 		want bool
 	}{
 		{
 			name: "nil children",
-			node: &renderer.TOCNode{},
+			node: &enricher.TOCNode{},
 			min:  1,
 			max:  3,
 			want: false,
 		},
 		{
 			name: "direct visible child",
-			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
+			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
 				{Level: 2},
 			}},
 			min:  1,
@@ -904,8 +904,8 @@ func TestHasVisibleDescendants_Direct(t *testing.T) {
 		},
 		{
 			name: "nested visible descendant via below-min parent",
-			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
-				{Level: 0, Children: []*renderer.TOCNode{
+			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 0, Children: []*enricher.TOCNode{
 					{Level: 2},
 				}},
 			}},
@@ -915,7 +915,7 @@ func TestHasVisibleDescendants_Direct(t *testing.T) {
 		},
 		{
 			name: "all children out of range above max",
-			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
+			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
 				{Level: 5},
 			}},
 			min:  1,
@@ -924,9 +924,9 @@ func TestHasVisibleDescendants_Direct(t *testing.T) {
 		},
 		{
 			name: "deeply nested visible descendant",
-			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
-				{Level: 0, Children: []*renderer.TOCNode{
-					{Level: 0, Children: []*renderer.TOCNode{
+			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 0, Children: []*enricher.TOCNode{
+					{Level: 0, Children: []*enricher.TOCNode{
 						{Level: 2},
 					}},
 				}},
@@ -937,8 +937,8 @@ func TestHasVisibleDescendants_Direct(t *testing.T) {
 		},
 		{
 			name: "below-min child without visible descendants",
-			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
-				{Level: 0, Children: []*renderer.TOCNode{
+			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 0, Children: []*enricher.TOCNode{
 					{Level: 5},
 				}},
 			}},
@@ -1005,9 +1005,9 @@ func TestGenerateEditURL_ViaTemplate(t *testing.T) {
 func TestGenerateTOC_WithLevels(t *testing.T) {
 	t.Parallel()
 
-	toc := &renderer.TOCNode{
-		Children: []*renderer.TOCNode{
-			{Level: 1, ID: "intro", Text: "Introduction", Children: []*renderer.TOCNode{
+	toc := &enricher.TOCNode{
+		Children: []*enricher.TOCNode{
+			{Level: 1, ID: "intro", Text: "Introduction", Children: []*enricher.TOCNode{
 				{Level: 2, ID: "setup", Text: "Setup"},
 				{Level: 2, ID: "usage", Text: "Usage"},
 			}},

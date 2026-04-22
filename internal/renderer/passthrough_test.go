@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func TestPassthroughRenderer_MimeTypes(t *testing.T) {
@@ -54,7 +56,7 @@ func TestPassthroughRenderer_Render(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			renderer := NewPassthroughRenderer()
-			result, err := renderer.Render(context.Background(), tt.input)
+			result, err := renderer.Render(context.Background(), tt.input, &enricher.EnrichmentData{})
 
 			if err != nil {
 				t.Fatalf("Render() error = %v, want nil", err)
@@ -64,9 +66,6 @@ func TestPassthroughRenderer_Render(t *testing.T) {
 				t.Errorf("Render() output = %v, want %v", result.Content, tt.input)
 			}
 
-			if result.Metadata != nil {
-				t.Error("Render() metadata should be nil for passthrough")
-			}
 		})
 	}
 }
@@ -76,7 +75,7 @@ func TestPassthroughRenderer_ContextCancellation(t *testing.T) {
 
 	renderer := NewPassthroughRenderer()
 	testContextCancellation(t, func(ctx context.Context) error {
-		_, err := renderer.Render(ctx, []byte("test content"))
+		_, err := renderer.Render(ctx, []byte("test content"), &enricher.EnrichmentData{})
 		return err
 	})
 }
@@ -92,7 +91,7 @@ func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
 	for i := range concurrency {
 		go func(n int) {
 			input := []byte("Content " + string(rune('A'+(n%26))))
-			result, err := renderer.Render(ctx, input)
+			result, err := renderer.Render(ctx, input, &enricher.EnrichmentData{})
 			if err != nil {
 				t.Errorf("Concurrent render failed: %v", err)
 			}
@@ -115,7 +114,7 @@ func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
 func TestPassthroughRenderer_NilInput(t *testing.T) {
 	renderer := NewPassthroughRenderer()
 
-	result, err := renderer.Render(context.Background(), nil)
+	result, err := renderer.Render(context.Background(), nil, &enricher.EnrichmentData{})
 
 	if err != nil {
 		t.Fatalf("Render() error = %v, want nil", err)

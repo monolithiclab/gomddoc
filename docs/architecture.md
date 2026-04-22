@@ -19,10 +19,12 @@ graph TD
     A[HTTP Request] --> B["Middleware<br/>1. Security Headers<br/>2. RequestID<br/>3. Compression<br/>4. Method Filter<br/>5. Hidden Path Block<br/>6. Metrics"]
     B --> C["Handler<br/>ServeContent()"]
     C --> D["Provider<br/>ReadFile"]
+    C --> EN["Enricher<br/>Enrich"]
     C --> E["Registry<br/>Get"]
     C --> F["Template<br/>Render"]
     E --> G["Renderer<br/>Render"]
     D --> H[HTTP Response]
+    EN --> G
     G --> H
     F --> H
 ```
@@ -67,25 +69,24 @@ Both providers share a common `normalizePath()` function for converting request 
 type ContentRenderer interface {
     InputMimeTypes() []string
     OutputMimeTypes() []string
-    Render(ctx context.Context, content []byte) (*RenderResult, error)
+    Render(ctx context.Context, content []byte, enrichment *enricher.EnrichmentData) (*RenderResult, error)
 }
 
 type RenderResult struct {
     Content  []byte
     MimeType string
-    Metadata map[string]any
-    TOC      *TOCNode
 }
 ```
 
 Renderers declare both input and output MIME types, enabling two-dimensional content negotiation
-(input type from the file + output type from the client's Accept header).
+(input type from the file + output type from the client's Accept header). Metadata and TOC are
+provided by the enricher pipeline, not the renderer.
 
 **Built-in Renderers:**
 
 | Renderer | InputMimeTypes | OutputMimeTypes | Purpose |
 | --- | --- | --- | --- |
-| **MarkdownPassthroughRenderer** | `["text/markdown"]` | `["text/markdown"]` | Raw markdown with metadata/TOC extracted |
+| **MarkdownPassthroughRenderer** | `["text/markdown"]` | `["text/markdown"]` | Raw markdown with frontmatter stripped |
 | **MarkdownRenderer** | `["text/markdown"]` | `["text/html"]` | Markdown → HTML with post-processing |
 | **PassthroughRenderer** | `["*/*"]` | `["*/*"]` | Catch-all, content unchanged |
 
@@ -123,18 +124,51 @@ type RendererRegistry interface {
 
 Thread-safe with `sync.RWMutex`. Storage uses `[]registryEntry` (ordered list, not map).
 
-### 4. Handler Layer
+### 4. Enricher Layer
+
+**Responsibility:** Pre-rendering structured data extraction
+
+```go
+type Enricher interface {
+    SupportedMimeTypes() []string
+    Enrich(ctx context.Context, content []byte, path string) (*EnrichmentData, error)
+}
+
+type EnrichmentData struct {
+    Metadata    map[string]any
+    TOC         *TOCNode
+    Navigation  *NavTree
+    RelatedDocs []RelatedDoc
+}
+```
+
+The enricher runs before rendering to extract metadata, TOC, navigation, and related documents from
+content. This decouples structured data extraction from output format — both HTML and markdown
+renderers receive the same enrichment data.
+
+**Built-in Enrichers:**
+
+| Enricher | MIME Types | Extracts |
+| --- | --- | --- |
+| **MarkdownEnricher** | `text/markdown` | Frontmatter, TOC, related docs via metadata index |
+| **NoOpEnricher** | _(fallback)_ | Empty `EnrichmentData{}` |
+
+The `EnricherRegistry` is MIME-type-keyed and always returns an enricher (`Get()` never returns nil).
+Uses `sync.RWMutex` for thread safety.
+
+### 5. Handler Layer
 
 **Responsibility:** HTTP orchestration and content negotiation
 
 **Flow:**
 1. Read file + get MIME type (Provider)
-2. Parse Accept header → negotiate renderer via 2D registry lookup (input type + accepted output)
-3. If no match → 406 Not Acceptable with available output types
-4. Render content (produces output content + metadata + TOC)
-5. Serve (wrapped in template if HTML, raw otherwise)
+2. Enrich content (extract metadata, TOC, related docs)
+3. Parse Accept header → negotiate renderer via 2D registry lookup (input type + accepted output)
+4. If no match → 406 Not Acceptable with available output types
+5. Render content with enrichment data
+6. Serve (wrapped in template if HTML, raw otherwise)
 
-### 5. Template Layer
+### 6. Template Layer
 
 **Responsibility:** HTML template rendering with caching and breadcrumbs
 
@@ -163,7 +197,7 @@ type Renderer interface {
 
 All functions are nil-safe — they return empty values when their backing generator is not configured.
 
-### 6. Navigation Layer
+### 7. Navigation Layer
 
 **Responsibility:** Auto-generated sidebar navigation from content structure
 
@@ -185,7 +219,7 @@ The default index file (e.g., `README.md`) is excluded from the tree. Empty dire
 Rendered via the `{{ navigation .Page.Path }}` template function as nested `<details>/<summary>` elements
 for collapsible directories with `<a>` links for files.
 
-### 7. Metadata Index
+### 8. Metadata Index
 
 **Responsibility:** Aggregate frontmatter metadata across all pages
 
@@ -204,7 +238,7 @@ Exposed via JSON API:
 - `GET /api/tags` — All tags (sorted)
 - `GET /api/tags/{tag}` — Pages with the given tag
 
-### 8. Static Site Generator
+### 9. Static Site Generator
 
 **Responsibility:** Build static HTML from content for deployment to static hosts
 
@@ -213,7 +247,7 @@ The `gomddoc build` command reuses the same provider → renderer → template p
 copies non-markdown files as-is, and generates `index.html` alongside `README.html` for clean URLs.
 File processing is parallelized with an `errgroup` worker pool bounded by `runtime.NumCPU()`.
 
-### 9. Middleware Chain
+### 10. Middleware Chain
 
 **Order (outermost to innermost):**
 
@@ -224,7 +258,7 @@ File processing is parallelized with an `errgroup` worker pool bounded by `runti
 5. **BlockHiddenPaths** — Returns 404 for dot-prefixed path segments (except `.well-known` per RFC 8615)
 6. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
 
-### 10. Theme System
+### 11. Theme System
 
 **Responsibility:** Visual presentation with 8 bundled themes and user customization
 
@@ -255,7 +289,7 @@ File processing is parallelized with an `errgroup` worker pool bounded by `runti
 **Theme Resolution Order:** Site `.gomddoc/assets/themes/<name>/` → Embedded `cmd/gomddoc/assets/themes/<name>/`
 → Fallback to `default` theme.
 
-### 11. Color Chip Web Component
+### 12. Color Chip Web Component
 
 **Responsibility:** Render inline hex color codes as interactive color swatches
 
@@ -282,6 +316,7 @@ sequenceDiagram
     participant M as Middleware
     participant H as Handler
     participant P as Provider
+    participant EN as Enricher
     participant Reg as Registry
     participant R as MarkdownRenderer
     participant T as Template
@@ -290,11 +325,13 @@ sequenceDiagram
     M->>H: ServeContent()
     H->>P: ReadFile("/docs/guide.md")
     P-->>H: content + "text/markdown"
+    H->>EN: Enrich(ctx, content, path)
+    EN-->>H: EnrichmentData{metadata, TOC}
     H->>H: ParseAccept("text/html")
     H->>Reg: Get("text/markdown", [text/html])
     Reg-->>H: MarkdownRenderer + "text/html"
-    H->>R: Render(ctx, content)
-    R-->>H: RenderResult{HTML, metadata, TOC}
+    H->>R: Render(ctx, content, enrichment)
+    R-->>H: RenderResult{HTML}
     H->>T: Render("default.html.tmpl", {Site, Page})
     T-->>H: Templated HTML
     H-->>C: 200 OK (HTML + ETag + Cache-Control)
@@ -448,8 +485,8 @@ See [Custom Renderers Guide](custom-renderers.md) for complete examples. In brie
 type MyRenderer struct{}
 func (r *MyRenderer) InputMimeTypes() []string  { return []string{"text/x-custom"} }
 func (r *MyRenderer) OutputMimeTypes() []string { return []string{"text/html"} }
-func (r *MyRenderer) Render(ctx context.Context, content []byte) (*renderer.RenderResult, error) {
-    // transform content...
+func (r *MyRenderer) Render(ctx context.Context, content []byte, enrichment *enricher.EnrichmentData) (*renderer.RenderResult, error) {
+    // transform content, optionally use enrichment.Metadata/TOC...
     return &renderer.RenderResult{Content: output, MimeType: "text/html; charset=utf-8"}, nil
 }
 
@@ -469,7 +506,8 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Separate Provider/Renderer | I/O vs transformation separation; mock either independently |
 | PassthroughRenderer `*/*` | No maintenance when new file types added; guarantees all types handled |
 | Context in Provider | Propagates cancellation/deadlines from HTTP handlers through provider calls |
-| `RenderResult` struct | Extensible return (content + metadata + TOC) without interface churn |
+| `RenderResult` struct | Minimal return (content + MIME type); metadata/TOC provided by enricher |
+| Enricher before render | Decouples structured data extraction from output format; same enrichment for HTML and markdown |
 | `path` not `filepath` for fs.FS | `io/fs` spec requires forward slashes; `filepath` breaks on Windows |
 | Clone timeout via context | Standard Go pattern; `git.CloneContext()` respects cancellation |
 | SSH fail-closed | Security: no TOFU fallback; require known_hosts for host key verification |
@@ -486,6 +524,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 ## Glossary
 
 - **Provider**: Reads files and detects MIME types (filesystem or Git)
+- **Enricher**: Pre-rendering step that extracts structured data (metadata, TOC, related docs) from content
 - **Renderer**: Transforms content from one MIME type to another
 - **Registry**: MIME type → renderer mapping with wildcard support
 - **Handler**: HTTP request orchestrator

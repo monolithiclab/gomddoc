@@ -22,7 +22,7 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
 
 	tests := []struct {
 		name           string
@@ -127,7 +127,7 @@ func TestHandlerServeContent_MarkdownPassthrough(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/test.md", nil)
 	req.Header.Set("Accept", "text/markdown")
@@ -159,7 +159,7 @@ func TestHandlerServeContent_406WithAvailableTypes(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/test.md", nil)
 	req.Header.Set("Accept", "application/json")
@@ -192,7 +192,7 @@ func TestHandlerServeContent_BinaryFiles(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/test.png", nil)
 	req.Header.Set("Accept", "*/*")
@@ -228,7 +228,7 @@ func TestHandlerErrorResponses(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/nonexistent/deeply/nested/file.md", nil)
 	w := httptest.NewRecorder()
@@ -259,7 +259,7 @@ func TestHandlerCacheHeaders(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/test.md", nil)
 	w := httptest.NewRecorder()
@@ -287,7 +287,7 @@ func TestHandlerForbiddenDirectory(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false) // dirIndex=false
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
 
 	req := httptest.NewRequest("GET", "/testdir", nil)
 	w := httptest.NewRecorder()
@@ -316,7 +316,7 @@ func TestHandlerDirectoryRedirect(t *testing.T) {
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
 	navGen := navigation.NewGenerator(files, "README.md")
-	handler := NewHandler(prov, registry, rend, &siteConfig, navGen)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, navGen)
 
 	req := httptest.NewRequest("GET", "/docs", nil)
 	w := httptest.NewRecorder()
@@ -345,7 +345,7 @@ func TestHandlerDirectoryRedirect_EmptyDir(t *testing.T) {
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
 	navGen := navigation.NewGenerator(files, "README.md")
-	handler := NewHandler(prov, registry, rend, &siteConfig, navGen)
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, navGen)
 
 	req := httptest.NewRequest("GET", "/empty", nil)
 	w := httptest.NewRecorder()

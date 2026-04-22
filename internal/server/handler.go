@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
@@ -21,6 +22,7 @@ import (
 type Handler struct {
 	provider         provider.Provider
 	registry         renderer.RendererRegistry
+	enricherRegistry enricher.EnricherRegistry
 	templateRenderer tmpl.Renderer
 	siteConfig       *config.SiteConfig
 	navGen           *navigation.Generator
@@ -30,6 +32,7 @@ type Handler struct {
 func NewHandler(
 	provider provider.Provider,
 	registry renderer.RendererRegistry,
+	enricherRegistry enricher.EnricherRegistry,
 	templateRenderer tmpl.Renderer,
 	siteConfig *config.SiteConfig,
 	navGen *navigation.Generator,
@@ -37,6 +40,7 @@ func NewHandler(
 	return &Handler{
 		provider:         provider,
 		registry:         registry,
+		enricherRegistry: enricherRegistry,
 		templateRenderer: templateRenderer,
 		siteConfig:       siteConfig,
 		navGen:           navGen,
@@ -84,17 +88,24 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Render content
-	renderResult, err := contentRenderer.Render(r.Context(), content)
+	// 3. Enrich content (extract metadata, TOC, navigation, related docs)
+	enrichment, err := h.enricherRegistry.Get(normalized).Enrich(r.Context(), content, r.URL.Path)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return
 	}
 
-	// 4. Serve based on selected output MIME type
+	// 4. Render content
+	renderResult, err := contentRenderer.Render(r.Context(), content, enrichment)
+	if err != nil {
+		h.handleError(w, r, err, r.URL.Path)
+		return
+	}
+
+	// 5. Serve based on selected output MIME type
 	outputNormalized := renderer.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
-		h.serveHTML(w, r, renderResult.Content, renderResult.Metadata, renderResult.TOC)
+		h.serveHTML(w, r, renderResult.Content, enrichment)
 	} else {
 		// Use the full MIME type from RenderResult if available, otherwise the selected output
 		serveMimeType := renderResult.MimeType
@@ -106,8 +117,8 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveHTML wraps HTML content in the site template and serves it.
-func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, metadata map[string]any, toc *renderer.TOCNode) {
-	// Initialize metadata if nil
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData) {
+	metadata := enrichment.Metadata
 	if metadata == nil {
 		metadata = make(map[string]any)
 	}
@@ -123,7 +134,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 			Content: template.HTML(htmlContent), // #nosec G203
 			Path:    r.URL.Path,
 			Meta:    metadata,
-			TOC:     toc,
+			TOC:     enrichment.TOC,
 		},
 	}
 

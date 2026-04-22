@@ -97,49 +97,27 @@ uses the file's MIME type and the client's `Accept` header to select the best re
 - [x] **Build command**: Registry-based dispatch replaces hardcoded `text/markdown` check. Uses
       `registry.Get(mimeType, htmlAccept)` to determine renderable files.
 
-### 6b: Content Enricher Pipeline
+### 6b: Content Enricher Pipeline (Done)
 
-Introduce an `Enricher` step that runs before rendering. The enricher extracts structured data from
+Introduced an `Enricher` step that runs before rendering. The enricher extracts structured data from
 content (metadata, TOC, navigation, related documents) independent of the output format. Renderers
-receive enrichment data and decide what to use.
+receive enrichment data and focus solely on content transformation.
 
-- [ ] **Enricher interface**:
-
-  ```go
-  type EnrichmentData struct {
-      Metadata    map[string]any
-      TOC         *TOCNode
-      Navigation  *NavTree       // format-agnostic tree; renderers decide presentation
-      RelatedDocs []RelatedDoc
-  }
-
-  type NavTree struct {
-      Items []NavItem
-  }
-
-  type NavItem struct {
-      Title    string
-      Path     string
-      Active   bool      // on the current page's path
-      Children []NavItem
-  }
-
-  type Enricher interface {
-      SupportedMimeTypes() []string
-      Enrich(ctx context.Context, content []byte, path string) (*EnrichmentData, error)
-  }
-  ```
-
-- [ ] **MarkdownEnricher**: Extracts YAML frontmatter, builds TOC from headings, resolves navigation
-      context from the file path, and finds related documents via shared tags (using the metadata index).
-- [ ] **Render signature change**: `Render(ctx, content, enrichment)` — renderers receive enrichment data.
-      The HTML renderer uses TOC/metadata for template context. The passthrough renderer may inject
-      related doc links or return content unchanged. Renderers are not required to use enrichment.
-- [ ] **Handler pipeline**: `Provider.ReadFile() → Enricher.Enrich() → Renderer.Render(content, enrichment)
-→ Handler (template wrap if HTML, raw otherwise)`. The enricher needs access to the metadata index
-      and navigation builder (dependency injection via constructor, not stateless like renderers).
-- [ ] **Enricher registry**: MIME-type-keyed registry similar to the renderer registry. Falls back to a
-      no-op enricher (returns empty `EnrichmentData`) for types without a dedicated enricher.
+- [x] **`internal/enricher/` package**: New package with `EnrichmentData`, `TOCNode`, `NavTree`, `NavItem`,
+      `RelatedDoc` types, `Enricher` and `EnricherRegistry` interfaces.
+- [x] **MarkdownEnricher**: Lightweight goldmark (GFM + meta, no highlighting) extracts YAML frontmatter,
+      builds TOC from headings, and finds related documents via shared tags (using metadata index).
+      Accepts `NavBuilder` function for navigation (avoids import cycles).
+- [x] **NoOpEnricher**: Returns empty `EnrichmentData{}`. Used as registry fallback for non-markdown types.
+- [x] **Enricher registry**: MIME-type-keyed `DefaultEnricherRegistry` with `sync.RWMutex`. `Get()` never
+      returns nil — falls back to NoOpEnricher. Normalizes MIME types (strips charset params).
+- [x] **Render signature change**: `Render(ctx, content, enrichment)` — renderers receive `*EnrichmentData`.
+      Simplified `RenderResult` to just `Content` + `MimeType` (metadata/TOC removed, provided by enricher).
+- [x] **Handler pipeline**: `ReadFile → Enrich(content, path) → ParseAccept → Get(input, accepted)
+      → Render(content, enrichment) → serveHTML(content, enrichment)`. Enrichment happens before rendering.
+- [x] **TOCNode moved**: From `renderer` to `enricher` package. Template package imports `enricher` directly.
+- [x] **Renderer cleanup**: MarkdownRenderer removed metadata/TOC extraction (still parses markdown for
+      HTML + post-processing). MarkdownPassthroughRenderer simplified to just frontmatter stripping.
 
 ### 6c: Additional Renderers
 
@@ -331,10 +309,8 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus (Phase 6b):** Content enricher pipeline — cleaner separation of concerns between metadata
-extraction and rendering, enabling richer cross-document features.
-**Next up (Phase 8):** Theme folder restructuring (partials, page types, static assets) and theme variables.
-**Then (Phase 5 & 6c):** Full-text search for content discovery, and expanding renderer support (AsciiDoc, OpenAPI).
+**Immediate focus (Phase 8):** Theme folder restructuring (partials, page types, static assets) and theme variables.
+**Next up (Phase 5 & 6c):** Full-text search for content discovery, and expanding renderer support (AsciiDoc, OpenAPI).
 
 ## Deferred (Not Planned)
 

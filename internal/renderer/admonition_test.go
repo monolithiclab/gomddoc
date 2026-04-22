@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func TestTransformAdmonitions(t *testing.T) {
@@ -239,7 +241,7 @@ func TestMarkdownRenderer_Admonitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := renderer.Render(ctx, []byte(tt.input))
+			result, err := renderer.Render(ctx, []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}

@@ -39,6 +39,7 @@ gomddoc/
 ├── cmd/gomddoc/           # CLI entry point (Kong), serve + build subcommands
 ├── internal/
 │   ├── config/            # Configuration (NewFromServeArgs, validation, YAML, env overrides)
+│   ├── enricher/          # Content enrichment (metadata, TOC, related docs extraction before rendering)
 │   ├── metadata/          # Frontmatter indexing, tag API
 │   ├── provider/          # Content providers (filesystem, git with memory/disk storage)
 │   ├── negotiate/         # Content negotiation (MediaType, ParseAccept, Matches)
@@ -60,6 +61,7 @@ gomddoc/
 - **Options struct pattern** for constructors (e.g., `NewMarkdownRenderer(MarkdownOptions{...})`)
 - **Config/SiteConfig separation**: server config not exposed to templates (security)
 - **Config precedence**: CLI flags > env vars > `.gomddoc/config.yml` > defaults
+- **Enricher pipeline**: enricher extracts metadata/TOC before rendering; renderers receive `*enricher.EnrichmentData`
 - **Post-processing pipeline**: goldmark → heading anchors → admonitions → color chips
 
 ## Key Dependencies

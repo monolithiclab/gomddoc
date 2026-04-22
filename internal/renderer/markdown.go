@@ -3,7 +3,6 @@ package renderer
 import (
 	"bytes"
 	"context"
-	"log/slog"
 	"mime"
 
 	"github.com/yuin/goldmark"
@@ -13,7 +12,8 @@ import (
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
-	"go.abhg.dev/goldmark/toc"
+
+	enricher "github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func init() {
@@ -95,28 +95,16 @@ func (m *MarkdownRenderer) OutputMimeTypes() []string {
 }
 
 // Render converts markdown content to HTML.
-func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderResult, error) {
-	// Check context before expensive operations
+// Metadata and TOC come from the enrichment data, not from parsing here.
+func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichment *enricher.EnrichmentData) (*RenderResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Create parser context to extract metadata
 	pCtx := parser.NewContext()
-
-	// Parse the content
 	reader := text.NewReader(content)
 	doc := m.md.Parser().Parse(reader, parser.WithContext(pCtx))
 
-	// Extract TOC using goldmark-toc
-	tocItems, err := toc.Inspect(doc, content)
-	if err != nil {
-		slog.Warn("Failed to extract TOC", slog.Any("error", err))
-	}
-	// Extract metadata
-	metadata := meta.Get(pCtx)
-
-	// Render the document
 	var buf bytes.Buffer
 	if err := m.md.Renderer().Render(&buf, content, doc); err != nil {
 		return nil, err
@@ -126,21 +114,15 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 	rendered := addHeadingAnchors(buf.Bytes())
 	rendered = TransformAdmonitions(rendered)
 
+	// Color chips: check enrichment metadata for per-page override
+	metadata := enrichment.Metadata
 	if colorChipsEnabled(m.colorChips, metadata) {
 		rendered = transformColorChips(rendered)
-	}
-
-	// Convert TOC
-	var tocNode *TOCNode
-	if tocItems != nil {
-		tocNode = convertTOC(tocItems.Items)
 	}
 
 	return &RenderResult{
 		Content:  rendered,
 		MimeType: "text/html; charset=utf-8",
-		Metadata: metadata,
-		TOC:      tocNode,
 	}, nil
 }
 
@@ -155,40 +137,4 @@ func colorChipsEnabled(globalDefault bool, metadata map[string]any) bool {
 		}
 	}
 	return globalDefault
-}
-
-// convertTOC converts goldmark-toc Items to our internal TOCNode structure.
-func convertTOC(items toc.Items) *TOCNode {
-	if len(items) == 0 {
-		return nil
-	}
-
-	root := &TOCNode{
-		Level:    0,
-		Children: make([]*TOCNode, len(items)),
-	}
-
-	for i, item := range items {
-		root.Children[i] = convertItem(item, 1)
-	}
-
-	return root
-}
-
-func convertItem(item *toc.Item, level int) *TOCNode {
-	node := &TOCNode{
-		Level: level,
-		Text:  string(item.Title),
-		ID:    string(item.ID),
-	}
-
-	// Lazy-allocate children only when needed
-	if len(item.Items) > 0 {
-		node.Children = make([]*TOCNode, 0, len(item.Items))
-		for _, child := range item.Items {
-			node.Children = append(node.Children, convertItem(child, level+1))
-		}
-	}
-
-	return node
 }

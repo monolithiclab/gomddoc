@@ -3,10 +3,12 @@ package renderer
 import (
 	"context"
 
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 )
 
 // RenderResult holds the output of a content rendering operation.
+// Metadata and TOC are provided by the enricher, not the renderer.
 type RenderResult struct {
 	// Content is the transformed content bytes.
 	Content []byte
@@ -14,21 +16,6 @@ type RenderResult struct {
 	// MimeType is the MIME type of the output content.
 	// Empty string means the input MIME type should be preserved (passthrough).
 	MimeType string
-
-	// Metadata is key-value pairs extracted from the content (e.g., front matter).
-	// This can be used by templates for title, description, tags, etc.
-	Metadata map[string]any
-
-	// TOC is the table of contents extracted from the content.
-	TOC *TOCNode
-}
-
-// TOCNode represents a node in the table of contents.
-type TOCNode struct {
-	Level    int
-	Text     string
-	ID       string
-	Children []*TOCNode
 }
 
 // ContentRenderer transforms content from input MIME type to output MIME type.
@@ -40,34 +27,18 @@ type TOCNode struct {
 // two-dimensional content negotiation (input type + Accept header).
 type ContentRenderer interface {
 	// InputMimeTypes returns the MIME types this renderer can accept as input.
-	// MIME types should be normalized (without charset parameters).
-	//
-	// Examples:
-	//   - "text/markdown"
-	//   - "*/*" (wildcard for catch-all renderers)
 	InputMimeTypes() []string
 
 	// OutputMimeTypes returns the MIME types this renderer can produce as output.
-	//
-	// Examples:
-	//   - "text/html"
-	//   - "text/markdown" (passthrough with metadata extraction)
-	//   - "*/*" (wildcard: output type mirrors input type)
 	OutputMimeTypes() []string
 
 	// Render processes content and returns the transformed output.
-	//
-	// Parameters:
-	//   - ctx: Context for cancellation and timeout handling
-	//   - content: Input content bytes to process
-	//
-	// Returns:
-	//   - result: The rendering result containing content, MIME type, and metadata
-	//   - error: Processing error, including context cancellation
+	// The enrichment parameter provides pre-extracted metadata, TOC, navigation,
+	// and related documents. Renderers may use or ignore enrichment data.
 	//
 	// The renderer should check ctx.Err() before expensive operations to support
 	// request cancellation and timeouts.
-	Render(ctx context.Context, content []byte) (*RenderResult, error)
+	Render(ctx context.Context, content []byte, enrichment *enricher.EnrichmentData) (*RenderResult, error)
 }
 
 // RendererRegistry manages content renderer mappings with two-dimensional

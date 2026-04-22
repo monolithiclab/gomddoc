@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
@@ -37,7 +37,7 @@ type PageContext struct {
 	Content template.HTML
 	Path    string            // Current request path
 	Meta    map[string]any    // Extracted metadata (e.g., front matter)
-	TOC     *renderer.TOCNode // Table of Contents
+	TOC     *enricher.TOCNode // Table of Contents
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects
@@ -254,7 +254,7 @@ func (h *HTMLRenderer) generateBreadcrumbs(path string) []breadcrumb.Breadcrumb 
 }
 
 // generateTOC generates the Table of Contents HTML
-func (h *HTMLRenderer) generateTOC(toc *renderer.TOCNode, levels ...int) template.HTML {
+func (h *HTMLRenderer) generateTOC(toc *enricher.TOCNode, levels ...int) template.HTML {
 	if toc == nil || len(toc.Children) == 0 {
 		return ""
 	}
@@ -273,7 +273,7 @@ func (h *HTMLRenderer) generateTOC(toc *renderer.TOCNode, levels ...int) templat
 	return template.HTML(buf.String()) // #nosec G203
 }
 
-func (h *HTMLRenderer) renderTOCNode(buf *bytes.Buffer, node *renderer.TOCNode, minLevel, maxLevel int) {
+func (h *HTMLRenderer) renderTOCNode(buf *bytes.Buffer, node *enricher.TOCNode, minLevel, maxLevel int) {
 	// If this node is within range (or it's the root/container), render its children
 	// Root is level 0.
 
@@ -321,7 +321,7 @@ func (h *HTMLRenderer) renderTOCNode(buf *bytes.Buffer, node *renderer.TOCNode, 
 	buf.WriteString("</ul>")
 }
 
-func hasVisibleDescendants(node *renderer.TOCNode, min, max int) bool {
+func hasVisibleDescendants(node *enricher.TOCNode, min, max int) bool {
 	for _, child := range node.Children {
 		if child.Level >= min && child.Level <= max {
 			return true

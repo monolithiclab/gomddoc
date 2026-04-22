@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
@@ -143,4 +144,10 @@ func setupTestRegistry() renderer.RendererRegistry {
 	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{ColorChips: true}))
 	registry.Register(renderer.NewPassthroughRenderer())
 	return registry
+}
+
+func setupTestEnricherRegistry() enricher.EnricherRegistry {
+	reg := enricher.NewDefaultEnricherRegistry()
+	reg.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{}))
+	return reg
 }

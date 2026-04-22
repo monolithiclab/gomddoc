@@ -11,6 +11,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
@@ -84,7 +85,12 @@ func (p *PreviewCmd) Run() error {
 		slog.Warn("Failed to build metadata index", slog.Any("error", err))
 	}
 
-	httpServer := server.NewHTTPServer(cfg, prov, registry, templateRenderer, metaIndex, navGen)
+	enricherRegistry := enricher.NewDefaultEnricherRegistry()
+	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{
+		MetaIndex: metaIndex,
+	}))
+
+	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, navGen)
 
 	url := server.ListenURL(cfg.Server.Port)
 	fmt.Printf("Preview: %s\n", url)

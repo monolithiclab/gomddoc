@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
@@ -36,11 +37,12 @@ func NewHTTPServer(
 	cfg *config.Config,
 	provider provider.Provider,
 	registry renderer.RendererRegistry,
+	enricherRegistry enricher.EnricherRegistry,
 	templateRenderer template.Renderer,
 	metaIndex *metadata.Index,
 	navGen *navigation.Generator,
 ) *HTTPServer {
-	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site, navGen)
+	handler := NewHandler(provider, registry, enricherRegistry, templateRenderer, &cfg.Site, navGen)
 
 	// Apply middleware chain (outermost first, innermost closest to handler)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)

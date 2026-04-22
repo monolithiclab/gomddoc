@@ -1,6 +1,10 @@
 package renderer
 
-import "context"
+import (
+	"context"
+
+	"github.com/monolithiclab/gomddoc/internal/enricher"
+)
 
 // PassthroughRenderer is a no-op renderer that returns content unchanged.
 // It registers with the wildcard MIME type "*/*" to act as a catch-all
@@ -33,16 +37,13 @@ func (p *PassthroughRenderer) OutputMimeTypes() []string {
 // The empty output MIME type signals to the handler to use the provider's
 // detected MIME type for the HTTP response, enabling proper content type
 // headers for binary files, images, etc.
-func (p *PassthroughRenderer) Render(ctx context.Context, content []byte) (*RenderResult, error) {
-	// Check context before processing
+func (p *PassthroughRenderer) Render(ctx context.Context, content []byte, _ *enricher.EnrichmentData) (*RenderResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	// Return content unchanged with empty MIME type (passthrough)
 	return &RenderResult{
 		Content:  content,
 		MimeType: "",
-		Metadata: nil,
 	}, nil
 }

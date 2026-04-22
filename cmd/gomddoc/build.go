@@ -18,6 +18,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
@@ -84,9 +85,12 @@ func (b *BuildCmd) Run() error {
 		return fmt.Errorf("build validate theme: %w", err)
 	}
 
+	enricherRegistry := enricher.NewDefaultEnricherRegistry()
+	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{}))
+
 	slog.Info("Building static site", slog.String("source", b.Dir), slog.String("output", b.Output))
 
-	stats, err := b.walkAndBuild(contentRoot, registry, templateRenderer, &cfg.Site)
+	stats, err := b.walkAndBuild(contentRoot, registry, enricherRegistry, templateRenderer, &cfg.Site)
 	if err != nil {
 		return err
 	}
@@ -109,6 +113,7 @@ func (b *BuildCmd) Run() error {
 func (b *BuildCmd) walkAndBuild(
 	contentRoot fs.FS,
 	registry renderer.RendererRegistry,
+	enricherRegistry enricher.EnricherRegistry,
 	templateRenderer *tmpl.HTMLRenderer,
 	siteConfig *config.SiteConfig,
 ) (*buildStats, error) {
@@ -158,7 +163,7 @@ func (b *BuildCmd) walkAndBuild(
 				// No HTML renderer for this type → copy as-is
 				return b.copyFile(contentRoot, fp, stats)
 			}
-			return b.buildFile(ctx, contentRoot, fp, contentRenderer, templateRenderer, siteConfig, stats)
+			return b.buildFile(ctx, contentRoot, fp, contentRenderer, enricherRegistry, normalized, templateRenderer, siteConfig, stats)
 		})
 	}
 
@@ -175,6 +180,8 @@ func (b *BuildCmd) buildFile(
 	contentRoot fs.FS,
 	filePath string,
 	contentRenderer renderer.ContentRenderer,
+	enricherRegistry enricher.EnricherRegistry,
+	mimeType string,
 	templateRenderer *tmpl.HTMLRenderer,
 	siteConfig *config.SiteConfig,
 	stats *buildStats,
@@ -184,13 +191,18 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("read %s: %w", filePath, err)
 	}
 
-	renderResult, err := contentRenderer.Render(ctx, content)
+	enrichment, err := enricherRegistry.Get(mimeType).Enrich(ctx, content, "/"+filePath)
+	if err != nil {
+		return fmt.Errorf("enrich %s: %w", filePath, err)
+	}
+
+	renderResult, err := contentRenderer.Render(ctx, content, enrichment)
 	if err != nil {
 		return fmt.Errorf("render %s: %w", filePath, err)
 	}
 
 	// Build metadata with title fallback
-	metadata := renderResult.Metadata
+	metadata := enrichment.Metadata
 	if metadata == nil {
 		metadata = make(map[string]any)
 	}
@@ -204,7 +216,7 @@ func (b *BuildCmd) buildFile(
 			Content: template.HTML(renderResult.Content), // #nosec G203
 			Path:    "/" + filePath,
 			Meta:    metadata,
-			TOC:     renderResult.TOC,
+			TOC:     enrichment.TOC,
 		},
 	}
 

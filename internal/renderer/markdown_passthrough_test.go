@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func TestMarkdownPassthroughRenderer_MimeTypes(t *testing.T) {
@@ -25,8 +27,7 @@ func TestMarkdownPassthroughRenderer_Render(t *testing.T) {
 		name         string
 		input        string
 		wantContains string
-		wantMeta     string
-		wantNoFM     bool // expect frontmatter stripped
+		wantNoFM     bool
 	}{
 		{
 			name:         "plain markdown",
@@ -37,7 +38,6 @@ func TestMarkdownPassthroughRenderer_Render(t *testing.T) {
 			name:         "frontmatter stripped",
 			input:        "---\ntitle: Test\n---\n# Hello\n\nWorld",
 			wantContains: "# Hello",
-			wantMeta:     "Test",
 			wantNoFM:     true,
 		},
 		{
@@ -50,7 +50,7 @@ func TestMarkdownPassthroughRenderer_Render(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := NewMarkdownPassthroughRenderer()
-			result, err := r.Render(context.Background(), []byte(tt.input))
+			result, err := r.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
@@ -67,33 +67,7 @@ func TestMarkdownPassthroughRenderer_Render(t *testing.T) {
 			if tt.wantNoFM && strings.Contains(output, "---") {
 				t.Errorf("output should not contain frontmatter delimiters, got: %s", output)
 			}
-
-			if tt.wantMeta != "" {
-				if result.Metadata == nil {
-					t.Fatal("Metadata is nil, expected frontmatter")
-				}
-				if title, ok := result.Metadata["title"].(string); !ok || title != tt.wantMeta {
-					t.Errorf("Metadata[title] = %v, want %q", result.Metadata["title"], tt.wantMeta)
-				}
-			}
 		})
-	}
-}
-
-func TestMarkdownPassthroughRenderer_TOC(t *testing.T) {
-	r := NewMarkdownPassthroughRenderer()
-	input := "# First\n\n## Second\n\n### Third\n"
-
-	result, err := r.Render(context.Background(), []byte(input))
-	if err != nil {
-		t.Fatalf("Render() error = %v", err)
-	}
-
-	if result.TOC == nil {
-		t.Fatal("TOC is nil")
-	}
-	if len(result.TOC.Children) == 0 {
-		t.Error("TOC should have children")
 	}
 }
 
@@ -102,7 +76,7 @@ func TestMarkdownPassthroughRenderer_ContextCancellation(t *testing.T) {
 
 	r := NewMarkdownPassthroughRenderer()
 	testContextCancellation(t, func(ctx context.Context) error {
-		_, err := r.Render(ctx, []byte("# Test"))
+		_, err := r.Render(ctx, []byte("# Test"), &enricher.EnrichmentData{})
 		return err
 	})
 }

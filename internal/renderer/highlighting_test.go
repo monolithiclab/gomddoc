@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func TestMarkdownRenderer_SyntaxHighlighting(t *testing.T) {
@@ -71,7 +73,7 @@ func TestMarkdownRenderer_SyntaxHighlighting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
-			result, err := renderer.Render(context.Background(), []byte(tt.input))
+			result, err := renderer.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
@@ -94,7 +96,7 @@ func TestMarkdownRenderer_HighlightThemes(t *testing.T) {
 	for _, theme := range themes {
 		t.Run("theme_"+theme, func(t *testing.T) {
 			renderer := NewMarkdownRenderer(MarkdownOptions{HighlightTheme: theme, ColorChips: true})
-			result, err := renderer.Render(context.Background(), input)
+			result, err := renderer.Render(context.Background(), input, &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() with theme %q error = %v", theme, err)
 			}

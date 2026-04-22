@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func TestMarkdownRenderer_MimeTypes(t *testing.T) {
@@ -63,7 +65,7 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
-			result, err := renderer.Render(context.Background(), []byte(tt.input))
+			result, err := renderer.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 
 			if err != nil {
 				t.Fatalf("Render() error = %v, want nil", err)
@@ -97,17 +99,11 @@ tags: [a, b]
 ---
 # Content`
 
-	result, err := renderer.Render(context.Background(), []byte(input))
+	result, err := renderer.Render(context.Background(), []byte(input), &enricher.EnrichmentData{
+		Metadata: map[string]any{"title": "Hello World"},
+	})
 	if err != nil {
 		t.Fatalf("Render() error = %v, want nil", err)
-	}
-
-	if result.Metadata == nil {
-		t.Fatal("Render() metadata is nil")
-	}
-
-	if title, ok := result.Metadata["title"].(string); !ok || title != "Hello World" {
-		t.Errorf("Metadata['title'] = %v, want 'Hello World'", result.Metadata["title"])
 	}
 
 	outputStr := string(result.Content)
@@ -124,7 +120,7 @@ func TestMarkdownRenderer_ContextCancellation(t *testing.T) {
 
 	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
 	testContextCancellation(t, func(ctx context.Context) error {
-		_, err := renderer.Render(ctx, []byte("# Test"))
+		_, err := renderer.Render(ctx, []byte("# Test"), &enricher.EnrichmentData{})
 		return err
 	})
 }
@@ -140,7 +136,7 @@ func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
 	for i := range concurrency {
 		go func(n int) {
 			input := []byte("# Heading " + string(rune('A'+(n%26))))
-			_, err := renderer.Render(ctx, input)
+			_, err := renderer.Render(ctx, input, &enricher.EnrichmentData{})
 			if err != nil {
 				t.Errorf("Concurrent render failed: %v", err)
 			}
@@ -167,7 +163,7 @@ func TestMarkdownRenderer_LargeContent(t *testing.T) {
 		builder.WriteString(".\n\n")
 	}
 
-	result, err := renderer.Render(context.Background(), []byte(builder.String()))
+	result, err := renderer.Render(context.Background(), []byte(builder.String()), &enricher.EnrichmentData{})
 
 	if err != nil {
 		t.Fatalf("Render() error = %v, want nil", err)

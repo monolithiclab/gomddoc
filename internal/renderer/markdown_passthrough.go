@@ -3,34 +3,18 @@ package renderer
 import (
 	"bytes"
 	"context"
-	"log/slog"
 
-	"github.com/yuin/goldmark"
-	meta "github.com/yuin/goldmark-meta"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
-	"go.abhg.dev/goldmark/toc"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
-// MarkdownPassthroughRenderer returns raw markdown content with metadata and
-// TOC extracted. It enables LLM-friendly API access via Accept: text/markdown.
-type MarkdownPassthroughRenderer struct {
-	md goldmark.Markdown
-}
+// MarkdownPassthroughRenderer returns raw markdown content with frontmatter
+// stripped. Metadata and TOC are provided by the enricher, not extracted here.
+// It enables LLM-friendly API access via Accept: text/markdown.
+type MarkdownPassthroughRenderer struct{}
 
 // NewMarkdownPassthroughRenderer creates a new markdown passthrough renderer.
 func NewMarkdownPassthroughRenderer() *MarkdownPassthroughRenderer {
-	md := goldmark.New(
-		goldmark.WithExtensions(
-			extension.GFM,
-			meta.Meta,
-		),
-		goldmark.WithParserOptions(
-			parser.WithAutoHeadingID(),
-		),
-	)
-	return &MarkdownPassthroughRenderer{md: md}
+	return &MarkdownPassthroughRenderer{}
 }
 
 // InputMimeTypes returns the MIME types this renderer accepts.
@@ -43,38 +27,17 @@ func (m *MarkdownPassthroughRenderer) OutputMimeTypes() []string {
 	return []string{"text/markdown"}
 }
 
-// Render extracts metadata and TOC from markdown but returns the raw content.
-// The content is returned with frontmatter stripped.
-func (m *MarkdownPassthroughRenderer) Render(ctx context.Context, content []byte) (*RenderResult, error) {
+// Render returns raw markdown with frontmatter stripped.
+func (m *MarkdownPassthroughRenderer) Render(ctx context.Context, content []byte, _ *enricher.EnrichmentData) (*RenderResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	pCtx := parser.NewContext()
-	reader := text.NewReader(content)
-	doc := m.md.Parser().Parse(reader, parser.WithContext(pCtx))
-
-	// Extract TOC
-	tocItems, err := toc.Inspect(doc, content)
-	if err != nil {
-		slog.Warn("Failed to extract TOC", slog.Any("error", err))
-	}
-
-	metadata := meta.Get(pCtx)
-
-	// Strip frontmatter: find the end of the second "---" delimiter
 	body := stripFrontmatter(content)
-
-	var tocNode *TOCNode
-	if tocItems != nil {
-		tocNode = convertTOC(tocItems.Items)
-	}
 
 	return &RenderResult{
 		Content:  body,
 		MimeType: "text/markdown; charset=utf-8",
-		Metadata: metadata,
-		TOC:      tocNode,
 	}, nil
 }
 

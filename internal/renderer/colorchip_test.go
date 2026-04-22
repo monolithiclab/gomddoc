@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func TestTransformColorChips(t *testing.T) {
@@ -177,7 +179,7 @@ func TestMarkdownRenderer_ColorChips(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := r.Render(ctx, []byte(tt.input))
+			result, err := r.Render(ctx, []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
@@ -259,7 +261,7 @@ func TestMarkdownRenderer_ColorChips_Disabled(t *testing.T) {
 
 	t.Run("globally disabled", func(t *testing.T) {
 		r := NewMarkdownRenderer(MarkdownOptions{})
-		result, err := r.Render(ctx, []byte("Color: `#FF5733`"))
+		result, err := r.Render(ctx, []byte("Color: `#FF5733`"), &enricher.EnrichmentData{})
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
@@ -268,27 +270,31 @@ func TestMarkdownRenderer_ColorChips_Disabled(t *testing.T) {
 		}
 	})
 
-	t.Run("globally enabled but frontmatter disables", func(t *testing.T) {
+	t.Run("globally enabled but enrichment metadata disables", func(t *testing.T) {
 		r := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
 		input := "---\ncolor_chips: false\n---\nColor: `#FF5733`"
-		result, err := r.Render(ctx, []byte(input))
+		result, err := r.Render(ctx, []byte(input), &enricher.EnrichmentData{
+			Metadata: map[string]any{"color_chips": false},
+		})
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
 		if strings.Contains(string(result.Content), "color-chip") {
-			t.Error("color chips should not appear when frontmatter disables them")
+			t.Error("color chips should not appear when enrichment metadata disables them")
 		}
 	})
 
-	t.Run("globally disabled but frontmatter enables", func(t *testing.T) {
+	t.Run("globally disabled but enrichment metadata enables", func(t *testing.T) {
 		r := NewMarkdownRenderer(MarkdownOptions{})
 		input := "---\ncolor_chips: true\n---\nColor: `#FF5733`"
-		result, err := r.Render(ctx, []byte(input))
+		result, err := r.Render(ctx, []byte(input), &enricher.EnrichmentData{
+			Metadata: map[string]any{"color_chips": true},
+		})
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
 		if !strings.Contains(string(result.Content), "color-chip") {
-			t.Error("color chips should appear when frontmatter enables them")
+			t.Error("color chips should appear when enrichment metadata enables them")
 		}
 	})
 }

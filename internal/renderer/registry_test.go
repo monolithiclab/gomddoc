@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 )
 
@@ -24,11 +25,10 @@ func (m *mockRenderer) OutputMimeTypes() []string {
 	return m.outputMime
 }
 
-func (m *mockRenderer) Render(ctx context.Context, content []byte) (*RenderResult, error) {
+func (m *mockRenderer) Render(_ context.Context, content []byte, _ *enricher.EnrichmentData) (*RenderResult, error) {
 	return &RenderResult{
 		Content:  content,
 		MimeType: "",
-		Metadata: nil,
 	}, nil
 }
 
