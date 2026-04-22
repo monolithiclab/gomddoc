@@ -26,11 +26,16 @@ type FilesystemProvider struct {
 //   - dirIndex: Enable directory listing generation (false = secure by default)
 func NewFilesystemProvider(dir, defaultIndex string, dirIndex bool) (*FilesystemProvider, error) {
 	fsys := os.DirFS(dir)
+	return NewFilesystemProviderFromFS(fsys, defaultIndex, dirIndex)
+}
 
+// NewFilesystemProviderFromFS creates a new filesystem provider from an existing fs.FS.
+// This is useful for testing with in-memory filesystems or using custom fs implementations.
+func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool) (*FilesystemProvider, error) {
 	// Type assertion to fs.StatFS (needed for Stat() method)
 	statFS, ok := fsys.(fs.StatFS)
 	if !ok {
-		return nil, fmt.Errorf("filesystem does not support Stat: %s", dir)
+		return nil, fmt.Errorf("filesystem does not support Stat")
 	}
 
 	return &FilesystemProvider{
