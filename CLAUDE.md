@@ -96,6 +96,7 @@ gomddoc/
 - Table-driven tests with `[]struct{...}` test tables
 - Sentinel errors with `errors.Is()` for classification
 - All errors wrapped with `fmt.Errorf("context: %w", err)`
+- Join path with path.Join with each folder its own parameter (eg. bad: `path.Join("assets/themes/", cfg.Theme)`; good: `path.Join("assets", "themes", cfg.Theme)`)
 
 ### Subsequent tasks
 

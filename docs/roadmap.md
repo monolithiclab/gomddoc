@@ -63,6 +63,10 @@ See `docs/architecture.md` for detailed architecture and `docs/guide/` for user 
       elements, title extraction, and active path highlighting.
 - [x] **Metadata indexing**: Lightweight frontmatter parser indexes tags/categories across all pages.
       JSON API: `GET /api/tags` and `GET /api/tags/{tag}`.
+- [ ] **Rethink `dir_index`**: The current implementation generates a synthetic README with links to all
+      pages, but this is now redundant with the navigation sidebar. Replace with a redirect to the first
+      file in the navigation tree when a directory has no index file (README.md by default). This gives
+      users immediate content instead of a generated link list. Deprecate the synthetic index approach.
 
 ## Phase 6: Renderer Enhancement (Partial)
 
@@ -151,8 +155,27 @@ _Expand format support for technical documentation._
 
 - [x] **`gomddoc build` command**: Walk content tree, render markdown through template pipeline, output
       static HTML. Generates `index.html` alongside `README.html` for clean URLs. Copies non-markdown files as-is.
+- [ ] **Sitemap generation**: Generate `sitemap.xml` during build with `<url>` entries for all rendered
+      pages. Include `<lastmod>` from Git commit dates (filesystem provider falls back to file mtime).
+      Respects `base_url` from site config for absolute URLs. Excludes hidden files and non-HTML outputs.
 - [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
 - [ ] **Static host compatibility**: Output structure compatible with S3, Netlify, Cloudflare Pages.
+
+## Phase 7b: `gomddoc preview` — Quick Local Preview
+
+_A zero-friction subcommand for previewing documentation locally, distinct from the production-grade `serve`._
+
+- [ ] **`gomddoc preview [dir]`**: Serve a directory (defaults to `.`) with sensible defaults optimized for
+      local authoring. Differences from `serve`:
+  - **Auto port**: Find an available port starting from 8080. No "address already in use" errors.
+  - **Auto open**: Launch the default browser and navigate to the local URL on startup (`--no-open` to disable).
+  - **Dev mode on**: Implies `--dev` (no caching, hot reload) without requiring the flag.
+  - **Directory index**: Enable `dir_index: true` by default so folders without a README show a file listing.
+  - **Minimal output**: Print only the URL and "Press Ctrl+C to stop" — no verbose startup logs.
+- [ ] **Port discovery**: Use `net.Listen(":0")` or scan from 8080 upward to find a free port.
+      Store the chosen port in a predictable location (e.g. `.gomddoc/.preview-port`) so tooling can find it.
+- [ ] **Browser open**: Use `open` (macOS), `xdg-open` (Linux), or `start` (Windows) to launch the browser.
+      Respect `$BROWSER` env var if set.
 
 ## Phase 8: Theming Engine
 
@@ -294,8 +317,9 @@ _Enable community theme sharing via a GitHub-based registry._
 
 | Command                 | Purpose                                              | Status  |
 | ----------------------- | ---------------------------------------------------- | ------- |
-| `gomddoc serve`         | HTTP server for live documentation                   | Done    |
+| `gomddoc serve`         | Production HTTP server for documentation             | Done    |
 | `gomddoc build`         | Static site generation                               | Done    |
+| `gomddoc preview`       | Quick local preview with auto-open browser           | Planned |
 | `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Planned |
 | `gomddoc validate`      | Validate config and check for broken links           | Planned |
 | `gomddoc theme list`    | List available themes from the marketplace           | Planned |
