@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -72,9 +73,22 @@ func NewHTTPServer(
 	}
 }
 
+// listenURL returns a clickable URL for the server address.
+func listenURL(addr string) string {
+	host, port, _ := net.SplitHostPort(addr)
+	if host == "" {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
 // Start starts the HTTP server
 func (s *HTTPServer) Start(ctx context.Context) error {
-	slog.Info("Listening...", slog.String("Addr", s.server.Addr))
+	slog.Info("Server started",
+		slog.String("url", listenURL(s.server.Addr)),
+		slog.String("dir", s.config.Server.Dir),
+		slog.Bool("dev", s.config.Server.DevMode),
+	)
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

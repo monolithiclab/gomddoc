@@ -55,7 +55,7 @@ GOMDDOC_SERVER_DIR_INDEX=true ./build/gomddoc serve
 ```bash
 # Start server
 $ ./build/gomddoc serve
-2025/10/06 13:00:00 INFO Listening... Addr=:8080
+2025/10/06 13:00:00 INFO Server started url=http://localhost:8080 dir=. dev=false
 
 # Access different content types
 curl http://localhost:8080/                    # Serves README.md as HTML
