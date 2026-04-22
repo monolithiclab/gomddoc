@@ -42,6 +42,10 @@ var (
 	// ErrFileTooLarge is returned when a file exceeds the maximum allowed size.
 	// This error should result in HTTP 413 Request Entity Too Large.
 	ErrFileTooLarge = errors.New("file too large")
+
+	// ErrProviderClosed is returned when an operation is attempted on a
+	// provider that has already been closed.
+	ErrProviderClosed = errors.New("provider closed")
 )
 
 // PathError provides structured error information for provider operations.

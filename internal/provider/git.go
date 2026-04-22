@@ -199,7 +199,7 @@ func (g *GitProvider) ensureCloned(ctx context.Context) error {
 	g.mu.RLock()
 	if g.closed {
 		g.mu.RUnlock()
-		return &PathError{Op: "read", Path: "", Err: errors.New("provider closed")}
+		return &PathError{Op: "read", Path: "", Err: ErrProviderClosed}
 	}
 	if g.repo != nil {
 		g.mu.RUnlock()
@@ -213,7 +213,7 @@ func (g *GitProvider) ensureCloned(ctx context.Context) error {
 
 	// Double-check after acquiring write lock
 	if g.closed {
-		return &PathError{Op: "read", Path: "", Err: errors.New("provider closed")}
+		return &PathError{Op: "read", Path: "", Err: ErrProviderClosed}
 	}
 	if g.repo != nil {
 		return nil
