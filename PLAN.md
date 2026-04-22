@@ -91,9 +91,9 @@ type DocumentProcessor interface {
 
 - Extended CommonMark with GitHub Flavored Markdown
 - Custom extensions: tables, task lists, footnotes, strikethrough
-- Math rendering via KaTeX integration
-- Mermaid diagram support
-- ~~Syntax highlighting via Chroma (200+ languages)~~ DONE (WU-12)
+- Math rendering via KaTeX integration (DONE - client-side via CDN)
+- Mermaid diagram support (DONE - client-side via CDN)
+- Syntax highlighting via Chroma (200+ languages)
 - Custom shortcodes: `{{< youtube "id" >}}`, `{{< tweet "id" >}}`
 - Auto-generated table of contents
 - Reading time estimation
@@ -155,7 +155,7 @@ themes/
 **Static File Serving**
 
 - MIME type detection with appropriate headers
-- ~~Gzip/Brotli compression for text assets~~ Gzip compression: DONE (Phase 4.3)
+- Gzip/Brotli compression for text assets
 - ETags and Last-Modified headers
 - Range request support
 - Security headers: CSP, CORS configuration
@@ -469,14 +469,6 @@ type PerformanceOptimizer interface {
 
 ### 6.1 Development Tools
 
-**GitHub-Style Admonitions** (COMPLETED)
-
-- [x] Post-processor for blockquote-based admonition syntax
-- [x] Five admonition types: NOTE, TIP, IMPORTANT, WARNING, CAUTION
-- [x] Case-insensitive type markers
-- [x] CSS styles in default theme
-- [x] Comprehensive test coverage
-
 **Hot Reload System**
 
 - File system watching with debouncing
@@ -601,9 +593,9 @@ type MetricsCollector interface {
 }
 ```
 
-**Prometheus Metrics** (DONE - WU-10)
+**Prometheus Metrics**
 
-- ~~Standard HTTP metrics: duration, status codes, request size~~ DONE
+- Standard HTTP metrics: duration, status codes, request size
 - Application metrics: processing time, cache ratios
 - Content metrics: page views, unique visitors
 - System metrics: memory, goroutines, GC duration
@@ -618,7 +610,6 @@ type MetricsCollector interface {
 
 **Distributed Tracing**
 
-- [x] Request ID middleware (`X-Request-ID` header, context propagation, upstream trust)
 - OpenTelemetry integration
 - Span creation for processing pipeline
 - Trace correlation across services
@@ -734,23 +725,10 @@ processors:
 4. Enterprise integrations
 5. Advanced developer tooling
 
-### Phase 7: UI Enhancements
-
-#### 7.1 Table of Contents Sidebar
-- Sticky TOC sidebar with scroll highlighting
-- Mobile-responsive with toggle overlay
-- IntersectionObserver-based active heading tracking
-
-#### 7.2 Heading Anchor Links (COMPLETED)
-- Hover-to-reveal `#` anchor links on all headings with IDs
-- CSS transitions for smooth opacity reveal on heading hover
-- Accessible with `aria-hidden="true"` on decorative anchors
-- Regex-based HTML post-processing of goldmark output
-
 # Deferred Features
 
 - Content versioning/revision history
 - VS Code extension
 - Git hooks integration
 - Advanced image optimization
-- ~~Dark/light mode theming~~ (DONE - toggle button in nav with localStorage persistence)
+- Dark/light mode theming
