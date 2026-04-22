@@ -69,6 +69,7 @@ type HTTPConfig struct {
 type SiteConfig struct {
 	DefaultIndex string      `env:"DEFAULT_INDEX" yaml:"default_index"`
 	DirIndex     bool        `env:"DIR_INDEX" yaml:"dir_index"`
+	EditURL      string      `env:"EDIT_URL" yaml:"edit_url"`
 	Meta         MetaConfig  `env:"META" yaml:"meta"`
 	Theme        ThemeConfig `env:"THEME" yaml:"theme"`
 }

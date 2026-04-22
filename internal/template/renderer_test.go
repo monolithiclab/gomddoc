@@ -558,6 +558,124 @@ func TestHasVisibleDescendants(t *testing.T) {
 	}
 }
 
+func TestEditURLFunction(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		editURL  string
+		pagePath string
+		want     string
+	}{
+		{
+			name:     "empty edit URL returns empty string",
+			editURL:  "",
+			pagePath: "/docs/guide.md",
+			want:     "",
+		},
+		{
+			name:     "basic edit URL with leading slash path",
+			editURL:  "https://github.com/org/repo/edit/main",
+			pagePath: "/docs/guide.md",
+			want:     "https://github.com/org/repo/edit/main/docs/guide.md",
+		},
+		{
+			name:     "edit URL with trailing slash",
+			editURL:  "https://github.com/org/repo/edit/main/",
+			pagePath: "/docs/guide.md",
+			want:     "https://github.com/org/repo/edit/main/docs/guide.md",
+		},
+		{
+			name:     "path without leading slash",
+			editURL:  "https://github.com/org/repo/edit/main",
+			pagePath: "docs/guide.md",
+			want:     "https://github.com/org/repo/edit/main/docs/guide.md",
+		},
+		{
+			name:     "root path",
+			editURL:  "https://github.com/org/repo/edit/main",
+			pagePath: "/README.md",
+			want:     "https://github.com/org/repo/edit/main/README.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			siteConfig := config.NewSiteConfig(".")
+			siteConfig.EditURL = tt.editURL
+
+			testFS := fstest.MapFS{
+				"assets/themes/default/test.html.tmpl": {
+					Data: []byte("<html></html>"),
+				},
+			}
+			r := NewHTMLRenderer(&siteConfig, testFS)
+
+			got := r.generateEditURL(tt.pagePath)
+			if got != tt.want {
+				t.Errorf("generateEditURL(%q) = %q, want %q", tt.pagePath, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEditURLInTemplate(t *testing.T) {
+	t.Parallel()
+
+	templateContent := `{{- $editLink := editURL .Page.Path }}{{- if $editLink }}<a href="{{ $editLink }}">Edit</a>{{- end }}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/edit.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	t.Run("edit link shown when configured", func(t *testing.T) {
+		t.Parallel()
+
+		siteConfig := config.NewSiteConfig(".")
+		siteConfig.EditURL = "https://github.com/org/repo/edit/main"
+
+		r := NewHTMLRenderer(&siteConfig, testFS)
+		ctx := &TemplateContext{
+			Site: &siteConfig,
+			Page: PageContext{Path: "/docs/guide.md"},
+		}
+
+		result, err := r.Render(context.Background(), "edit.html.tmpl", ctx)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+
+		if !strings.Contains(string(result), "https://github.com/org/repo/edit/main/docs/guide.md") {
+			t.Errorf("Expected edit link in output, got %q", string(result))
+		}
+	})
+
+	t.Run("edit link hidden when not configured", func(t *testing.T) {
+		t.Parallel()
+
+		siteConfig := config.NewSiteConfig(".")
+		// EditURL is empty by default
+
+		r := NewHTMLRenderer(&siteConfig, testFS)
+		ctx := &TemplateContext{
+			Site: &siteConfig,
+			Page: PageContext{Path: "/docs/guide.md"},
+		}
+
+		result, err := r.Render(context.Background(), "edit.html.tmpl", ctx)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+
+		if string(result) != "" {
+			t.Errorf("Expected empty output when EditURL not configured, got %q", string(result))
+		}
+	})
+}
+
 func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
 	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
 	testFS := fstest.MapFS{
