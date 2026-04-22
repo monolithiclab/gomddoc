@@ -92,7 +92,169 @@ func TestValidate_InvalidPort(t *testing.T) {
 	config.Port = "invalid"
 	err := config.Validate()
 	if err == nil {
-		t.Error("Expected validation to fail for invalid port")
+		t.Error("Expected validation to fail for invalid port format")
+	}
+}
+
+func TestValidate_PortRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		port      string
+		wantError bool
+	}{
+		{
+			name:      "port 0 is invalid",
+			port:      ":0",
+			wantError: true,
+		},
+		{
+			name:      "port 65536 is invalid",
+			port:      ":65536",
+			wantError: true,
+		},
+		{
+			name:      "port 99999 is invalid",
+			port:      ":99999",
+			wantError: true,
+		},
+		{
+			name:      "negative port is invalid",
+			port:      ":-1",
+			wantError: true,
+		},
+		{
+			name:      "port 1 is valid",
+			port:      ":1",
+			wantError: false,
+		},
+		{
+			name:      "port 8080 is valid",
+			port:      ":8080",
+			wantError: false,
+		},
+		{
+			name:      "port 65535 is valid",
+			port:      ":65535",
+			wantError: false,
+		},
+		{
+			name:      "port with host is valid",
+			port:      "localhost:8080",
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := New()
+			cfg.Port = tt.port
+			err := cfg.Validate()
+			if tt.wantError && err == nil {
+				t.Errorf("Expected validation to fail for port %q", tt.port)
+			}
+			if !tt.wantError && err != nil {
+				t.Errorf("Expected validation to pass for port %q, got error: %v", tt.port, err)
+			}
+		})
+	}
+}
+
+func TestValidate_Directory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		dir       string
+		wantError bool
+	}{
+		{
+			name:      "current directory is valid",
+			dir:       ".",
+			wantError: false,
+		},
+		{
+			name:      "non-existent directory fails",
+			dir:       "/nonexistent/path/that/does/not/exist",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := New()
+			cfg.Dir = tt.dir
+			err := cfg.Validate()
+			if tt.wantError && err == nil {
+				t.Errorf("Expected validation to fail for dir %q", tt.dir)
+			}
+			if !tt.wantError && err != nil {
+				t.Errorf("Expected validation to pass for dir %q, got error: %v", tt.dir, err)
+			}
+		})
+	}
+}
+
+func TestValidate_DirectoryIsFile(t *testing.T) {
+	// Create a temporary file to test that files are rejected
+	tmpFile, err := os.CreateTemp("", "config_test_*.txt")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	cfg := New()
+	cfg.Dir = tmpFile.Name()
+	err = cfg.Validate()
+	if err == nil {
+		t.Error("Expected validation to fail when Dir is a file, not a directory")
+	}
+}
+
+func TestValidate_ShutdownTimeout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		timeout   time.Duration
+		wantError bool
+	}{
+		{
+			name:      "positive timeout is valid",
+			timeout:   5 * time.Second,
+			wantError: false,
+		},
+		{
+			name:      "zero timeout is valid",
+			timeout:   0,
+			wantError: false,
+		},
+		{
+			name:      "negative timeout fails",
+			timeout:   -1 * time.Second,
+			wantError: true,
+		},
+		{
+			name:      "very long timeout is valid but warns",
+			timeout:   120 * time.Second,
+			wantError: false, // Warns but doesn't fail
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := New()
+			cfg.ShutdownTimeout = tt.timeout
+			err := cfg.Validate()
+			if tt.wantError && err == nil {
+				t.Errorf("Expected validation to fail for timeout %v", tt.timeout)
+			}
+			if !tt.wantError && err != nil {
+				t.Errorf("Expected validation to pass for timeout %v, got error: %v", tt.timeout, err)
+			}
+		})
 	}
 }
 

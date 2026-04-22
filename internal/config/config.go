@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -81,12 +83,37 @@ func (c *Config) ParseFlags() {
 }
 
 // Validate validates the configuration values.
-// For timeout values, invalid values trigger a warning and are reset to defaults
-// rather than causing validation failure.
+// Critical configuration errors (port, directory) cause validation failure.
+// For timeout values, invalid values trigger a warning and are reset to defaults.
 func (c *Config) Validate() error {
-	// Validate application config
-	if _, _, err := net.SplitHostPort(c.Port); err != nil {
-		return fmt.Errorf("invalid port flag: %w", err)
+	// Validate port format and range
+	_, portStr, err := net.SplitHostPort(c.Port)
+	if err != nil {
+		return fmt.Errorf("invalid port format: %w", err)
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535, got: %s", portStr)
+	}
+
+	// Validate directory exists and is accessible
+	info, err := os.Stat(c.Dir)
+	if err != nil {
+		return fmt.Errorf("directory validation failed: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory: %s", c.Dir)
+	}
+
+	// Validate shutdown timeout (negative is invalid, warn if too long)
+	if c.ShutdownTimeout < 0 {
+		return fmt.Errorf("shutdown timeout cannot be negative: %v", c.ShutdownTimeout)
+	}
+	if c.ShutdownTimeout > 60*time.Second {
+		slog.Warn("Shutdown timeout is very long",
+			slog.Duration("timeout", c.ShutdownTimeout),
+			slog.Duration("recommended_max", 60*time.Second))
 	}
 
 	// Validate ReadHeaderTimeout (must be positive, max 60s)
