@@ -126,10 +126,20 @@ Seven custom functions are available in templates:
   {{ end }}
   ```
 
-- **`inlineAsset`**: Loads a JavaScript or CSS asset from the theme directory, falling back to the shared assets directory. Used for embedding shared components like the color chip web component and search modal.
+- **`inlineJSAsset`**: Loads an asset from the theme directory (falling back to shared assets) and returns it as `template.JS` for safe embedding inside `<script>` tags.
   ```html
-  <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>
-  <script type="module">{{ inlineAsset "search.mjs" }}</script>
+  <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
+  <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
+  ```
+
+- **`inlineCSSAsset`**: Loads an asset and returns it as `template.CSS` for safe embedding inside `<style>` tags.
+  ```html
+  <style>{{ inlineCSSAsset "custom.css" }}</style>
+  ```
+
+- **`inlineHTMLAsset`**: Loads an asset and returns it as `template.HTML` for safe embedding in HTML context (e.g. inline SVGs).
+  ```html
+  {{ inlineHTMLAsset "logo.svg" }}
   ```
 
 ### Example Layout
@@ -171,7 +181,7 @@ Seven custom functions are available in templates:
     </aside>
 
     <!-- Color Chip Web Component -->
-    <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>
+    <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
 </body>
 </html>
 ```
@@ -185,9 +195,9 @@ When creating a custom theme, ensure it supports these features for parity with 
 - **Table of contents** via `{{ toc .Page.TOC }}` with scroll highlighting
 - **Breadcrumbs** via `{{ breadcrumbs .Page.Path }}`
 - **Search button** with `id="search-toggle"` in the header
-- **Search modal** via `{{ inlineAsset "search.mjs" }}` — uses CSS custom properties for styling
+- **Search modal** via `{{ inlineJSAsset "search.mjs" }}` — uses CSS custom properties for styling
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`
-- **Color chip web component** via `{{ inlineAsset "color-chip.mjs" }}`
+- **Color chip web component** via `{{ inlineJSAsset "color-chip.mjs" }}`
 - **Copy-to-clipboard** on code blocks
 - **Heading anchors** (`.heading-anchor` class, revealed on hover)
 - **Touch accessibility** with `@media (hover: none)` for copy buttons and heading anchors

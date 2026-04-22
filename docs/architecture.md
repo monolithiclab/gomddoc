@@ -199,7 +199,9 @@ type Renderer interface {
 | `toc` | `toc(tocTree, [min, max]) → HTML` | Nested `<ul>` table of contents (default: h1-h2) |
 | `navigation` | `navigation(navTree) → HTML` | Sidebar from enrichment `NavTree` |
 | `editURL` | `editURL(pagePath) → string` | Combines `edit_url` config with page path |
-| `inlineAsset` | `inlineAsset(name) → JS` | Loads asset from theme dir → shared dir fallback |
+| `inlineJSAsset` | `inlineJSAsset(name) → JS` | Loads asset as `template.JS` for `<script>` embedding |
+| `inlineCSSAsset` | `inlineCSSAsset(name) → CSS` | Loads asset as `template.CSS` for `<style>` embedding |
+| `inlineHTMLAsset` | `inlineHTMLAsset(name) → HTML` | Loads asset as `template.HTML` for HTML context (e.g. SVGs) |
 | `themeVarsCSS` | `themeVarsCSS() → CSS` | Generates `<style>` with `--theme-*` CSS custom properties from config |
 | `assetURL` | `assetURL(name) → string` | Resolves static file to `/_assets/{name}` URL (validates existence) |
 
@@ -270,7 +272,7 @@ description (1.5x) boosts. Queries use AND semantics. Snippet generation highlig
 Exposed via JSON API:
 - `GET /api/search?q=<query>&limit=<n>` — Full-text search with ranked results
 
-**Search UI:** A shared `search.mjs` module (loaded via `inlineAsset`) provides a search modal across
+**Search UI:** A shared `search.mjs` module (loaded via `inlineJSAsset`) provides a search modal across
 all themes. Opens via Ctrl+K / Cmd+K or a header search button. Debounced fetch to `/api/search`,
 keyboard navigation (arrow keys + Enter), and highlighted snippets. CSS uses theme custom properties
 (`--color-bg`, `--color-text`, `--color-primary`, etc.) for automatic cross-theme compatibility.
@@ -411,7 +413,7 @@ dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output
 
 **Responsibility:** Render inline hex color codes as interactive color swatches
 
-**Location:** `cmd/gomddoc/assets/shared/color-chip.mjs` (shared across all themes via `inlineAsset`)
+**Location:** `cmd/gomddoc/assets/shared/color-chip.mjs` (shared across all themes via `inlineJSAsset`)
 
 **Features:**
 - Shadow DOM encapsulation — no style leakage between themes
@@ -422,7 +424,7 @@ dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output
 - Controlled by `color_chips` config (global) and `color_chips` frontmatter (per-page)
 
 **Pipeline integration:** The `transformColorChips()` post-processor converts `<code>#HEX</code>` to
-`<color-chip>#HEX</color-chip>`. Themes load the component via `{{ inlineAsset "color-chip.mjs" }}`.
+`<color-chip>#HEX</color-chip>`. Themes load the component via `{{ inlineJSAsset "color-chip.mjs" }}`.
 
 ## Data Flow
 
@@ -651,7 +653,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Lightweight frontmatter parser | 10-100x faster than full goldmark render for metadata-only extraction |
 | Build reuses serve pipeline | Single source of truth for rendering; no divergence between serve and build output |
 | Color chip as web component | Shadow DOM encapsulation prevents theme CSS conflicts; `::part()` allows per-theme styling |
-| `inlineAsset` template func | Themes share components without copy-paste; search order (theme → shared) allows overrides |
+| `inlineJSAsset` / `inlineCSSAsset` / `inlineHTMLAsset` | Themes share components without copy-paste; search order (theme → shared) allows overrides; typed returns match `html/template` context escaping |
 | MCP as thin adapter | Reuses Provider, MetaIndex, SearchIndex, Navigation — no new parsing/indexing; MCP package is purely protocol translation |
 | Official Go MCP SDK | Semver stable (v1.4.x), auto-generates JSON Schema from Go struct tags, struct-based options matching gomddoc conventions |
 | `docs://` URI scheme | Semantic resource identification separate from HTTP URLs; clear namespace for MCP resource discovery |
@@ -686,7 +688,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Theme**: A package with layouts, partials, and optional static assets that defines visual presentation
 - **Theme Variables**: CSS custom properties (`--theme-*`) injected from site config for color/typography customization
 - **Page Type**: Layout variant selected via frontmatter `layout` field (e.g., `page`, `api`, `changelog`)
-- **`inlineAsset`**: Template function that loads JS/CSS from theme directory with shared directory fallback
+- **`inlineJSAsset`** / **`inlineCSSAsset`** / **`inlineHTMLAsset`**: Template functions that load assets from theme directory with shared directory fallback, returning the correct `html/template` safe type for each context
 - **`assetURL`**: Template function that resolves static files to `/_assets/` URLs
 - **MCP Server**: Model Context Protocol adapter exposing Provider, MetaIndex, SearchIndex, and Navigation to AI models
 - **MCP Tool**: A model-invocable action (search, read, list, navigate) exposed via the MCP protocol

@@ -1,5 +1,5 @@
 // Search Modal — shared across all gomddoc themes
-// Loaded via {{ inlineAsset "search.mjs" }} in scripts.html.tmpl
+// Loaded via {{ inlineJSAsset "search.mjs" }} in scripts.html.tmpl
 (function () {
   'use strict';
 

@@ -239,7 +239,6 @@ func (h *HTMLRenderer) parseGlob(tmpl *template.Template, glob string) (bool, er
 
 // funcMap returns the map of functions available in templates
 func (h *HTMLRenderer) funcMap() template.FuncMap {
-	themeDir := path.Join("assets", "themes", h.siteConfig.Theme.Name)
 	return template.FuncMap{
 		"breadcrumbs":  h.generateBreadcrumbs,
 		"toc":          h.generateTOC,
@@ -254,16 +253,9 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"assetURL": func(name string) string {
 			return "/_assets/" + name
 		},
-		"inlineAsset": func(name string) (template.JS, error) {
-			// Search theme dir first, then shared (overlay semantics)
-			for _, dir := range []string{themeDir, "assets/shared"} {
-				data, err := fs.ReadFile(h.assetsFS, path.Join(dir, name))
-				if err == nil {
-					return template.JS(data), nil // #nosec G203 -- trusted embedded asset
-				}
-			}
-			return "", fmt.Errorf("asset %q not found in theme or shared", name)
-		},
+		"inlineJSAsset":   h.inlineJSAsset,
+		"inlineCSSAsset":  h.inlineCSSAsset,
+		"inlineHTMLAsset": h.inlineHTMLAsset,
 	}
 }
 

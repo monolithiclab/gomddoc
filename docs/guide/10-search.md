@@ -148,7 +148,7 @@ add search support with two additions:
 
 2. Include the search module in your template's scripts section:
    ```html
-   <script type="module">{{ inlineAsset "search.mjs" }}</script>
+   <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
    ```
 
 The search modal creates its own DOM elements and injects CSS dynamically using your theme's CSS

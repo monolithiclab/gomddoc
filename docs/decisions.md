@@ -136,14 +136,14 @@ Extracted from completed spec files before deletion.
 
 ## Color Chip Web Component
 
-**Chosen**: Shadow DOM `<color-chip>` custom element, shared via `inlineAsset`
+**Chosen**: Shadow DOM `<color-chip>` custom element, shared via `inlineJSAsset`
 
 **Alternatives considered**:
 - **Inline `<span>` with styles**: Simple but leaks CSS between themes; each theme must define chip styles independently
 - **Server-side SVG**: Would add rendering complexity; no interactivity (click-to-copy)
 - **CSS-only with `background-color`**: No click-to-copy; requires parsing hex in CSS (not possible without JS)
 
-**Why web component**: Shadow DOM encapsulation means the chip renders identically across all 8 themes without any theme-specific CSS. The `::part(swatch)` and `::part(label)` CSS parts allow themes to customize appearance if needed. Click-to-copy with "Copied!" feedback provides utility. The component is loaded once via `{{ inlineAsset "color-chip.mjs" }}` — shared across all themes from `assets/shared/`.
+**Why web component**: Shadow DOM encapsulation means the chip renders identically across all 8 themes without any theme-specific CSS. The `::part(swatch)` and `::part(label)` CSS parts allow themes to customize appearance if needed. Click-to-copy with "Copied!" feedback provides utility. The component is loaded once via `{{ inlineJSAsset "color-chip.mjs" }}` — shared across all themes from `assets/shared/`.
 
 **Post-processing integration**: The `transformColorChips()` function converts `<code>#HEX</code>` to `<color-chip>#HEX</color-chip>` during rendering. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by `color_chips` config (default: true) with per-page frontmatter override.
 
@@ -178,16 +178,17 @@ Extracted from completed spec files before deletion.
 - **Client-side KaTeX/Mermaid**: Loaded from jsDelivr CDN. Zero server-side deps. Theme-aware (Mermaid initializes with dark/light theme based on `data-theme` attribute).
 - **`prefers-color-scheme` CSS fallback**: All themes include `@media (prefers-color-scheme: dark) { :root:not([data-theme]) { ... } }` so dark mode works even without JavaScript/localStorage.
 
-## `inlineAsset` Template Function
+## Inline Asset Template Functions
 
-**Chosen**: Template function that loads assets from theme directory with shared directory fallback
+**Chosen**: Three typed template functions (`inlineJSAsset`, `inlineCSSAsset`, `inlineHTMLAsset`) that load assets from theme directory with shared directory fallback
 
 **Alternatives considered**:
 - **Embed directly in each theme**: Duplicates code across 8 themes; updating means touching all themes
 - **External `<script src>` URL**: Requires static asset serving infrastructure (Phase 8e); not yet available
 - **Global template function with hardcoded paths**: Inflexible; can't be overridden per-theme
+- **Single `inlineAsset` returning one type**: Go's `html/template` applies context-aware escaping — `template.JS` works in `<script>` but is escaped in `<style>` or bare HTML; `template.HTML` works bare but is quoted/escaped inside `<script>`. No single type works in all contexts.
 
-**Why `inlineAsset`**: Search order (theme dir → shared dir) lets themes override shared assets without forking. Returns `template.JS` for safe inline embedding. Currently used for `color-chip.mjs`. When Phase 8e (static asset serving) ships, themes can migrate to `<script src="{{ assetURL ... }}">` while keeping `inlineAsset` as a fallback for small snippets.
+**Why three typed functions**: Search order (theme dir → shared dir) lets themes override shared assets without forking. Each function returns the correct `html/template` safe type for its context: `template.JS` for `<script>`, `template.CSS` for `<style>`, `template.HTML` for bare HTML (e.g. inline SVGs). Asset file reading is shared via an unexported `readAsset` method. When Phase 8e (static asset serving) ships, themes can migrate to `<script src="{{ assetURL ... }}">` while keeping inline asset functions as a fallback for small snippets.
 
 ## Cache Busting Strategy
 
@@ -272,7 +273,7 @@ Snippets are generated with `<mark>` highlighting around query terms.
 
 **API:** `GET /api/search?q=<query>&limit=<n>` returns JSON array of `{path, title, description, snippet, score}`.
 
-**Search UI:** Shared `search.mjs` module loaded via `{{ inlineAsset "search.mjs" }}` across all 8 themes.
+**Search UI:** Shared `search.mjs` module loaded via `{{ inlineJSAsset "search.mjs" }}` across all 8 themes.
 CSS injected dynamically using theme custom properties (`--color-*`) for automatic cross-theme and dark
 mode compatibility — no per-theme CSS needed. Follows the `color-chip.mjs` precedent for shared assets.
 

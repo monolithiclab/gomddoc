@@ -54,7 +54,7 @@ go-git library limitations.
 - [x] **Full-text search (serve)**: Stdlib inverted index (`internal/search/`) built at startup. TF-IDF ranking
       with title/description boosts, AND query semantics, snippet generation with `<mark>` highlighting.
       API: `GET /api/search?q=<query>&limit=<n>`. Enabled in `serve` and `preview` modes.
-- [x] **Search UI**: Client-side search modal shared across all 8 themes via `inlineAsset "search.mjs"`.
+- [x] **Search UI**: Client-side search modal shared across all 8 themes via `inlineJSAsset "search.mjs"`.
       Ctrl+K / Cmd+K shortcut, debounced API fetch, arrow key navigation, highlighted snippets.
       CSS uses theme custom properties for automatic cross-theme and dark mode compatibility.
 - [ ] **Full-text search (build)**: Option B (Pagefind) as optional post-build step.
