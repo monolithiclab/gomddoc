@@ -68,35 +68,9 @@
     {{- end }}
   </script>
 
-  {{- if .Feature "toc" }}
-  <!-- TOC Scroll Highlighting -->
-  <script>{{ inlineJSAsset "toc-highlight.mjs" }}</script>
-  {{- end }}
-
-  {{- if .Feature "code_copy" }}
-  <!-- Code Copy Button -->
-  <script>{{ inlineJSAsset "code-copy.mjs" }}</script>
-  {{- end }}
-
-  {{- if .Feature "color_chips" }}
-  <!-- Color Chip Web Component -->
-  <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
-  {{- end }}
-
-  {{- if .Feature "search" }}
-  <!-- Search Modal -->
-  <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
-  {{- end }}
-
-  {{- if .Feature "katex" }}
-  <!-- KaTeX Auto-render -->
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"></script>
-  <script>document.addEventListener("DOMContentLoaded",function(){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}]})});</script>
-  {{- end }}
+  {{ template "scripts-shared" . }}
 
   {{- if .Feature "mermaid" }}
-  <!-- Mermaid -->
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
     mermaid.initialize({

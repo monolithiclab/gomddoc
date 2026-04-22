@@ -15,11 +15,11 @@
 
 {{ define "nav" }}
 {{- if and .Page.Navigation .Page.Navigation.Items }}
-      <aside id="nav-sidebar" aria-label="Navigation">
+      <aside id="nav-sidebar" aria-label="Site navigation">
         <nav>
           <ul>{{ range .Page.Navigation.Items }}{{ template "nav-item" . }}{{ end }}</ul>
         </nav>
       </aside>
-      <div id="nav-overlay"></div>
+      <div id="nav-overlay" aria-hidden="true"></div>
 {{- end }}
 {{ end }}
