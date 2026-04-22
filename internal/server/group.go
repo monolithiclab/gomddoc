@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -26,9 +27,7 @@ func NewGroup(mux *http.ServeMux, prefix string, mw ...func(http.Handler) http.H
 // Subgroup creates a child group. The child inherits the parent's prefix and
 // middleware, with its own prefix and middleware appended.
 func (g *RouteGroup) Subgroup(prefix string, mw ...func(http.Handler) http.Handler) *RouteGroup {
-	combined := make([]func(http.Handler) http.Handler, len(g.middleware)+len(mw))
-	copy(combined, g.middleware)
-	copy(combined[len(g.middleware):], mw)
+	combined := slices.Concat(g.middleware, mw)
 	return &RouteGroup{
 		mux:        g.mux,
 		prefix:     g.prefix + prefix,

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 
@@ -162,9 +163,7 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 	}
 
 	// Copy bytes since buffer will be reused
-	result := make([]byte, buf.Len())
-	copy(result, buf.Bytes())
-	return result, nil
+	return slices.Clone(buf.Bytes()), nil
 }
 
 // parseTemplate parses a layout template with its partials, with automatic fallback to default theme.

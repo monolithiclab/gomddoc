@@ -184,9 +184,7 @@ func pageFromFrontmatter(path string, fm map[string]any) PageInfo {
 
 // AllPages returns all indexed pages.
 func (idx *Index) AllPages() []PageInfo {
-	result := make([]PageInfo, len(idx.pages))
-	copy(result, idx.pages)
-	return result
+	return slices.Clone(idx.pages)
 }
 
 // AllTags returns all unique tags, sorted alphabetically.
