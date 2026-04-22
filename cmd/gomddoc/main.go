@@ -24,6 +24,7 @@ var version = "dev"
 type CLI struct {
 	Version kong.VersionFlag `name:"version" help:"Show version and exit."`
 	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
+	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
 }
 
 // infoProviderAdapter adapts provider.Provider to breadcrumb.InfoProvider
