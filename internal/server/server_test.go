@@ -43,8 +43,7 @@ func TestNewHTTPServer(t *testing.T) {
 		},
 	}
 
-	cache := &template.PassthroughTemplateStore{}
-	rend := template.NewHTMLRenderer(testFS, siteConfig, cache)
+	rend := template.NewHTMLRenderer(siteConfig, testFS)
 
 	server := NewHTTPServer(cfg, prov, proc, rend)
 	if server == nil {

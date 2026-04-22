@@ -57,12 +57,3 @@ func (p *PassthroughTemplateStore) Set(key string, tmpl *template.Template) {
 func (p *PassthroughTemplateStore) Clear() {
 	// No-op - nothing to clear
 }
-
-// NewTemplateCache creates appropriate cache implementation based on dev mode
-// Factory pattern: devMode=true → PassthroughTemplateStore, devMode=false → CachedTemplateStore
-func NewTemplateCache(devMode bool) TemplateCache {
-	if devMode {
-		return &PassthroughTemplateStore{}
-	}
-	return &CachedTemplateStore{}
-}

@@ -54,11 +54,27 @@ func (t *testFSProvider) Close() error {
 }
 
 func TestNewHTMLRenderer(t *testing.T) {
+	testFS := fstest.MapFS{
+		"assets/themes/default/test.html.tmpl": {
+			Data: []byte("<html></html>"),
+		},
+	}
 	siteConfig := config.NewSiteConfig(".")
-	cache := NewTemplateCache(false)
-	renderer := NewHTMLRenderer(nil, siteConfig, cache)
+
+	// Test with explicit cache
+	cache := &CachedTemplateStore{}
+	renderer := NewHTMLRenderer(siteConfig, testFS, WithCache(cache))
 	if renderer == nil {
 		t.Fatal("Renderer should not be nil")
+	}
+
+	// Test with default cache (no options)
+	renderer2 := NewHTMLRenderer(siteConfig, testFS)
+	if renderer2 == nil {
+		t.Fatal("Renderer should not be nil")
+	}
+	if renderer2.cache == nil {
+		t.Fatal("Cache should default to PassthroughTemplateStore")
 	}
 }
 
@@ -119,8 +135,8 @@ func TestHTMLRendererRender(t *testing.T) {
 
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test Page"
-	cache := NewTemplateCache(false)
-	renderer := NewHTMLRenderer(testFS, siteConfig, cache)
+	cache := &CachedTemplateStore{}
+	renderer := NewHTMLRenderer(siteConfig, testFS, WithCache(cache))
 
 	ctx := &TemplateContext{
 		Site: siteConfig,
@@ -164,8 +180,8 @@ func TestTemplateCache(t *testing.T) {
 
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test"
-	cache := NewTemplateCache(false) // Production mode with caching
-	renderer := NewHTMLRenderer(testFS, siteConfig, cache)
+	cache := &CachedTemplateStore{} // Production mode with caching
+	renderer := NewHTMLRenderer(siteConfig, testFS, WithCache(cache))
 
 	ctx := &TemplateContext{
 		Site: siteConfig,
@@ -209,8 +225,8 @@ func TestRenderWithContextCancellation(t *testing.T) {
 
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test"
-	cache := NewTemplateCache(true) // Dev mode - no caching, always parses
-	renderer := NewHTMLRenderer(testFS, siteConfig, cache)
+	// Dev mode - no caching, always parses
+	renderer := NewHTMLRenderer(siteConfig, testFS)
 
 	ctx := &TemplateContext{
 		Site: siteConfig,

@@ -69,13 +69,12 @@ func main() {
 	processor := processor.NewMarkdownProcessor()
 
 	// Create template cache based on dev mode (factory pattern)
-	templateCache := template.NewTemplateCache(cfg.DevMode)
-	if cfg.DevMode {
-		slog.Info("[DEV] Using passthrough cache (no template caching)")
-	}
 
-	// Create renderer with injected dependencies
-	renderer := template.NewHTMLRenderer(assets, cfg.Site, templateCache)
+	// Create renderer with injected dependencies (using functional options for cache)
+	renderer := template.NewHTMLRenderer(cfg.Site, assets)
+	if !cfg.DevMode {
+		renderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
+	}
 
 	// Validate that default theme exists (fatal error if missing)
 	if err := renderer.ValidateDefaultTheme(); err != nil {

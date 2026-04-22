@@ -129,21 +129,3 @@ func TestPassthroughTemplateStore_ClearNoOp(t *testing.T) {
 	// Clear should not panic (no-op)
 	cache.Clear()
 }
-
-func TestNewTemplateCache_DevMode(t *testing.T) {
-	cache := NewTemplateCache(true)
-
-	// Should return PassthroughTemplateStore
-	if _, ok := cache.(*PassthroughTemplateStore); !ok {
-		t.Errorf("NewTemplateCache(true) should return PassthroughTemplateStore, got %T", cache)
-	}
-}
-
-func TestNewTemplateCache_ProductionMode(t *testing.T) {
-	cache := NewTemplateCache(false)
-
-	// Should return CachedTemplateStore
-	if _, ok := cache.(*CachedTemplateStore); !ok {
-		t.Errorf("NewTemplateCache(false) should return CachedTemplateStore, got %T", cache)
-	}
-}

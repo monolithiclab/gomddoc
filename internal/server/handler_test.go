@@ -27,9 +27,8 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 	}
 
 	siteConfig := config.NewSiteConfig(".")
-	cache := &tmpl.PassthroughTemplateStore{}
 
-	return tmpl.NewHTMLRenderer(testFS, siteConfig, cache)
+	return tmpl.NewHTMLRenderer(siteConfig, testFS)
 }
 
 func TestNewHandler(t *testing.T) {

@@ -133,14 +133,38 @@ type HTMLRenderer struct {
 	cache      TemplateCache      // Injected dependency (strategy pattern)
 }
 
+// RendererOption is a functional option for configuring HTMLRenderer
+type RendererOption func(*HTMLRenderer)
+
+// WithCache sets the template cache implementation for the renderer
+// If not provided, defaults to PassthroughTemplateStore (no caching)
+func WithCache(cache TemplateCache) RendererOption {
+	return func(r *HTMLRenderer) {
+		r.cache = cache
+	}
+}
+
 // NewHTMLRenderer creates a new HTML template renderer
-// Cache implementation is injected, allowing production vs dev mode behavior
+// Required parameters: siteConfig and assetsFS (cannot operate without them)
+// Optional parameters: cache (defaults to PassthroughTemplateStore)
 // Only SiteConfig is stored (NOT full Config) to prevent leaking operational settings to templates
-func NewHTMLRenderer(assetsFS fs.FS, siteConfig *config.SiteConfig, cache TemplateCache) *HTMLRenderer {
-	return &HTMLRenderer{
-		assetsFS:   assetsFS,
+func NewHTMLRenderer(siteConfig *config.SiteConfig, assetsFS fs.FS, opts ...RendererOption) *HTMLRenderer {
+	r := &HTMLRenderer{
 		siteConfig: siteConfig,
-		cache:      cache,
+		assetsFS:   assetsFS,
+		cache:      &PassthroughTemplateStore{}, // Default: no caching
+	}
+
+	// Apply optional configurations
+	r.Configure(opts...)
+
+	return r
+}
+
+// Configure configures an HTMLRenderer instance with additional options
+func (h *HTMLRenderer) Configure(opts ...RendererOption) {
+	for _, opt := range opts {
+		opt(h)
 	}
 }
 
