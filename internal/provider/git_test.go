@@ -590,33 +590,6 @@ func TestIsLFSPointer(t *testing.T) {
 	}
 }
 
-func TestDetectMIME(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		path     string
-		wantMIME string
-	}{
-		{"file.md", "text/markdown"},
-		{"file.html", "text/html"},
-		{"file.json", "application/json"},
-		{"file.css", "text/css"},
-		{"file.js", "text/javascript"},
-		{"file.unknown", "application/octet-stream"},
-		{"file", "application/octet-stream"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			t.Parallel()
-			got := detectMIME(tt.path)
-			if !containsString(got, tt.wantMIME) {
-				t.Errorf("detectMIME(%q) = %q, want to contain %q", tt.path, got, tt.wantMIME)
-			}
-		})
-	}
-}
-
 func TestClassifyCloneError(t *testing.T) {
 	t.Parallel()
 

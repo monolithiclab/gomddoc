@@ -4,46 +4,6 @@ import (
 	"testing"
 )
 
-func TestIsGitURL(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		input string
-		want  bool
-	}{
-		// Valid Git URLs
-		{"git protocol", "git://github.com/user/repo", true},
-		{"git+ssh protocol", "git+ssh://git@github.com/user/repo", true},
-		{"git+https protocol", "git+https://github.com/user/repo", true},
-		{"git with .git suffix", "git://github.com/user/repo.git", true},
-		{"git+ssh with fragment", "git+ssh://git@github.com/org/docs#main", true},
-		{"git+https with fragment and subdir", "git+https://github.com/user/mono#main:docs", true},
-
-		// Not Git URLs
-		{"empty string", "", false},
-		{"plain https", "https://github.com/user/repo", false},
-		{"plain ssh", "ssh://git@github.com/user/repo", false},
-		{"file path", "/path/to/dir", false},
-		{"relative path", "./docs", false},
-		{"windows path", "C:\\Users\\docs", false},
-		{"http URL", "http://github.com/user/repo", false},
-		{"ftp URL", "ftp://example.com/file", false},
-		{"partial match git", "git-something://host/path", false},
-		{"partial match prefix", "notgit://host/path", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := IsGitURL(tt.input)
-			if got != tt.want {
-				t.Errorf("IsGitURL(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestParseGitURL(t *testing.T) {
 	t.Parallel()
 

@@ -2,7 +2,6 @@ package provider
 
 import (
 	"io/fs"
-	"mime"
 	"path"
 	"strings"
 	"sync"
@@ -14,6 +13,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage"
 	"github.com/go-git/go-git/v5/storage/memory"
+
+	"github.com/monolithiclab/gomddoc/internal/common"
 )
 
 // Default configuration values for GitProvider
@@ -357,7 +358,7 @@ func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]b
 		}
 	}
 
-	mimeType := detectMIME(requestPath)
+	mimeType := common.DetectMIME(requestPath)
 	return []byte(content), mimeType, nil
 }
 
@@ -383,7 +384,7 @@ func (g *GitProvider) handleDirectoryLocked(cleanPath, requestPath string) ([]by
 		if err != nil {
 			return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
 		}
-		mimeType := detectMIME(g.defaultIndex)
+		mimeType := common.DetectMIME(g.defaultIndex)
 		return []byte(content), mimeType, nil
 	}
 
@@ -489,13 +490,4 @@ func normalizePath(requestPath string) string {
 // isLFSPointer checks if content is a Git LFS pointer file.
 func isLFSPointer(content string) bool {
 	return strings.HasPrefix(content, "version https://git-lfs.github.com/")
-}
-
-// detectMIME returns the MIME type for a file path.
-func detectMIME(filePath string) string {
-	mimeType := mime.TypeByExtension(path.Ext(filePath))
-	if mimeType == "" {
-		return "application/octet-stream"
-	}
-	return mimeType
 }

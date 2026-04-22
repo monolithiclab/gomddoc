@@ -7,8 +7,9 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/monolithiclab/gomddoc/internal/common"
 )
 
 // Default values for HTTP server timeouts
@@ -106,7 +107,7 @@ func (c *Config) Validate() error {
 
 	// Skip filesystem validation for Git URLs
 	// Git URL validation happens at provider construction time
-	if !isGitURL(c.Dir) {
+	if !common.IsGitURL(c.Dir) {
 		// Validate directory exists and is accessible
 		info, err := os.Stat(c.Dir)
 		if err != nil {
@@ -186,13 +187,4 @@ func (c *Config) Validate() error {
 // This converts MaxHeaderMB (megabytes) to bytes for use with http.Server.
 func (c *Config) MaxHeaderBytes() int {
 	return c.MaxHeaderMB << 20
-}
-
-// isGitURL checks if a string is a Git URL.
-// Returns true for URLs starting with git://, git+ssh://, or git+https://.
-// This is a local copy to avoid circular imports with the provider package.
-func isGitURL(s string) bool {
-	return strings.HasPrefix(s, "git://") ||
-		strings.HasPrefix(s, "git+ssh://") ||
-		strings.HasPrefix(s, "git+https://")
 }

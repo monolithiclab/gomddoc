@@ -1,5 +1,7 @@
 package provider
 
+import "github.com/monolithiclab/gomddoc/internal/common"
+
 // NewProvider creates the appropriate provider based on the directory/URL.
 //
 // For Git URLs (git://, git+ssh://, git+https://), it creates a GitProvider
@@ -16,7 +18,7 @@ package provider
 // Returns an error if the provider cannot be created. For Git URLs, URL
 // parsing errors are returned immediately; clone errors occur on first access.
 func NewProvider(dir, defaultIndex string, dirIndex bool) (Provider, error) {
-	if IsGitURL(dir) {
+	if common.IsGitURL(dir) {
 		return NewGitProvider(dir, defaultIndex, dirIndex)
 	}
 	return NewFilesystemProvider(dir, defaultIndex, dirIndex)

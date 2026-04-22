@@ -8,6 +8,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/monolithiclab/gomddoc/internal/common"
 )
 
 // FilesystemProvider implements Provider for local filesystem access
@@ -90,10 +92,7 @@ func (f *FilesystemProvider) ReadFile(requestPath string) ([]byte, string, error
 	}
 
 	// Detect MIME type (returns full type with charset if registered)
-	mimeType := mime.TypeByExtension(filepath.Ext(requestPath))
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
+	mimeType := common.DetectMIME(requestPath)
 
 	return content, mimeType, nil
 }

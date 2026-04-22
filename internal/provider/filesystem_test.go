@@ -110,9 +110,9 @@ func TestFilesystemProvider_ReadFile(t *testing.T) {
 func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 	readmeContent := "Directory README"
 	mapFS := fstest.MapFS{
-		"test_dir_provider/README.txt": &fstest.MapFile{Data: []byte(readmeContent)},
-		"test_dir_provider/empty/":     &fstest.MapFile{Mode: 0755 | 040000}, // Directory
-		"test_dir_provider/empty/file1.txt": &fstest.MapFile{Data: []byte("test")},
+		"test_dir_provider/README.txt":       &fstest.MapFile{Data: []byte(readmeContent)},
+		"test_dir_provider/empty/":           &fstest.MapFile{Mode: 0755 | 040000}, // Directory
+		"test_dir_provider/empty/file1.txt":  &fstest.MapFile{Data: []byte("test")},
 		"test_dir_provider/empty/file2.html": &fstest.MapFile{Data: []byte("test")},
 	}
 
@@ -174,7 +174,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 		if !strings.Contains(contentStr, "# Index") {
 			t.Error("ReadFile() directory listing should contain heading")
 		}
-		
+
 		// Check for file listings
 		if !strings.Contains(contentStr, "file1.txt") {
 			t.Error("ReadFile() directory listing should contain file1.txt")
