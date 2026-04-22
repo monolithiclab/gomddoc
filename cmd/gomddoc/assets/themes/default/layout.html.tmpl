@@ -18,6 +18,25 @@
         :root {
             --pico-font-size: 90%;
         }
+        .heading-anchor {
+            text-decoration: none;
+            color: var(--pico-muted-color);
+            opacity: 0;
+            margin-left: 0.5rem;
+            transition: opacity 0.2s;
+            font-weight: normal;
+        }
+        h1:hover .heading-anchor,
+        h2:hover .heading-anchor,
+        h3:hover .heading-anchor,
+        h4:hover .heading-anchor,
+        h5:hover .heading-anchor,
+        h6:hover .heading-anchor {
+            opacity: 1;
+        }
+        .heading-anchor:hover {
+            color: var(--pico-primary);
+        }
         .page-layout {
             display: flex;
             gap: 2rem;

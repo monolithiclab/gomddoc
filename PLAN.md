@@ -725,6 +725,19 @@ processors:
 4. Enterprise integrations
 5. Advanced developer tooling
 
+### Phase 7: UI Enhancements
+
+#### 7.1 Table of Contents Sidebar
+- Sticky TOC sidebar with scroll highlighting
+- Mobile-responsive with toggle overlay
+- IntersectionObserver-based active heading tracking
+
+#### 7.2 Heading Anchor Links (COMPLETED)
+- Hover-to-reveal `#` anchor links on all headings with IDs
+- CSS transitions for smooth opacity reveal on heading hover
+- Accessible with `aria-hidden="true"` on decorative anchors
+- Regex-based HTML post-processing of goldmark output
+
 # Deferred Features
 
 - Content versioning/revision history
