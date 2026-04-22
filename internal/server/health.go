@@ -36,7 +36,7 @@ func (h *HealthHandler) ReadyHandler(w http.ResponseWriter, _ *http.Request) {
 		slog.Warn("readiness check failed", slog.String("error", err.Error()))
 		writeHealthJSON(w, http.StatusServiceUnavailable, healthResponse{
 			Status: "unavailable",
-			Error:  err.Error(),
+			Error:  "provider not ready",
 		})
 		return
 	}

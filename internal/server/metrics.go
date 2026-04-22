@@ -6,17 +6,18 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
-	httpRequestsTotal = prometheus.NewCounterVec(
+	httpRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "http_requests_total",
 			Help: "Total number of HTTP requests",
 		},
 		[]string{"method", "status"},
 	)
-	httpRequestDuration = prometheus.NewHistogramVec(
+	httpRequestDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "http_request_duration_seconds",
 			Help:    "HTTP request duration in seconds",
@@ -25,11 +26,6 @@ var (
 		[]string{"method"},
 	)
 )
-
-func init() {
-	prometheus.MustRegister(httpRequestsTotal)
-	prometheus.MustRegister(httpRequestDuration)
-}
 
 // statusRecorder wraps http.ResponseWriter to capture the response status code.
 type statusRecorder struct {

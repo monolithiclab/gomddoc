@@ -299,7 +299,7 @@ func TestShouldSkipContentType(t *testing.T) {
 		{"application/zip", true},
 		{"application/gzip", true},
 		{"application/wasm", true},
-		{"image/svg+xml", true}, // SVG is technically compressible but grouped under image/
+		{"image/svg+xml", false}, // SVG is text-based XML and compresses well
 		{"text/html; charset=utf-8", false},
 		{"IMAGE/PNG", true}, // case insensitive
 	}

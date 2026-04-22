@@ -46,8 +46,9 @@ func Compression(next http.Handler) http.Handler {
 		// Always set Vary so caches know the response depends on Accept-Encoding
 		w.Header().Set("Vary", "Accept-Encoding")
 
-		// Check if client accepts gzip
-		if !acceptsGzip(r) {
+		// Skip compression for HEAD requests (body is discarded anyway)
+		// and for clients that don't accept gzip
+		if r.Method == http.MethodHead || !acceptsGzip(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -83,6 +84,10 @@ func shouldSkipContentType(ct string) bool {
 	// Strip parameters (charset, boundary, etc.)
 	if idx := strings.Index(ct, ";"); idx >= 0 {
 		ct = strings.TrimSpace(ct[:idx])
+	}
+	// SVG is text-based XML and compresses well despite being under image/
+	if strings.HasPrefix(ct, "image/svg") {
+		return false
 	}
 	for _, skip := range skipCompressionTypes {
 		if strings.HasPrefix(ct, skip) {

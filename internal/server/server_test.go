@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net"
+	"strconv"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -171,11 +172,5 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 }
 
 func netPortToString(port int) string {
-	return string([]byte{
-		byte('0' + port/10000%10),
-		byte('0' + port/1000%10),
-		byte('0' + port/100%10),
-		byte('0' + port/10%10),
-		byte('0' + port%10),
-	})
+	return strconv.Itoa(port)
 }
