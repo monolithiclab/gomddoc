@@ -12,10 +12,11 @@ func TestBuildThemeVarsCSS(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		vars         map[string]string
-		wantContains []string
-		wantEmpty    bool
+		name           string
+		vars           map[string]string
+		wantContains   []string
+		wantNotContain []string
+		wantEmpty      bool
 	}{
 		{
 			name:      "nil vars produces empty CSS",
@@ -63,6 +64,33 @@ func TestBuildThemeVarsCSS(t *testing.T) {
 				"--theme-text: #333",
 			},
 		},
+		{
+			name: "key with spaces rejected",
+			vars: map[string]string{
+				"bg color": "#fff",
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "key with CSS injection rejected",
+			vars: map[string]string{
+				"bg: red; } body { background": "#000",
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "mixed valid and invalid keys",
+			vars: map[string]string{
+				"primary":  "#e63946",
+				"evil key": "#000",
+			},
+			wantContains: []string{
+				"--theme-primary: #e63946",
+			},
+			wantNotContain: []string{
+				"evil",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -81,6 +109,11 @@ func TestBuildThemeVarsCSS(t *testing.T) {
 			for _, want := range tt.wantContains {
 				if !strings.Contains(css, want) {
 					t.Errorf("CSS should contain %q, got:\n%s", want, css)
+				}
+			}
+			for _, notWant := range tt.wantNotContain {
+				if strings.Contains(css, notWant) {
+					t.Errorf("CSS should NOT contain %q, got:\n%s", notWant, css)
 				}
 			}
 		})

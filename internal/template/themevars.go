@@ -2,6 +2,8 @@ package template
 
 import (
 	"html/template"
+	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -22,6 +24,10 @@ func (h *HTMLRenderer) generateThemeVarsCSS() template.CSS {
 	return h.themeVars.css
 }
 
+// validThemeVarKey matches safe CSS custom property name suffixes:
+// alphanumeric characters and hyphens only.
+var validThemeVarKey = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+
 func buildThemeVarsCSS(vars map[string]string) template.CSS {
 	if len(vars) == 0 {
 		return ""
@@ -30,6 +36,10 @@ func buildThemeVarsCSS(vars map[string]string) template.CSS {
 	var b strings.Builder
 	b.WriteString(":root {\n")
 	for k, v := range vars {
+		if !validThemeVarKey.MatchString(k) {
+			slog.Warn("skipping theme var with invalid key (only a-z/0-9 allowed)", "key", k)
+			continue
+		}
 		b.WriteString("  --theme-")
 		b.WriteString(k)
 		b.WriteString(": ")
@@ -38,5 +48,10 @@ func buildThemeVarsCSS(vars map[string]string) template.CSS {
 	}
 	b.WriteString("}\n")
 
-	return template.CSS(b.String()) // #nosec G203 -- trusted config CSS
+	// If all vars were invalid, return empty instead of an empty :root block.
+	if b.Len() == len(":root {\n}\n") {
+		return ""
+	}
+
+	return template.CSS(b.String()) // #nosec G203 -- validated config CSS
 }

@@ -23,8 +23,8 @@ func TestPreviewCmd_FieldTags(t *testing.T) {
 	// Verify that PreviewCmd has the expected Kong struct tags
 	// by checking that the struct can be instantiated with expected values
 	cmd := PreviewCmd{
-		Dir:    "/tmp/docs",
-		Port:   ":9090",
+		Dir:  "/tmp/docs",
+		Port: ":9090",
 		Open: true,
 	}
 
