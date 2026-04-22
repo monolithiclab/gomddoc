@@ -272,6 +272,10 @@ Snippets are generated with `<mark>` highlighting around query terms.
 
 **API:** `GET /api/search?q=<query>&limit=<n>` returns JSON array of `{path, title, description, snippet, score}`.
 
+**Search UI:** Shared `search.mjs` module loaded via `{{ inlineAsset "search.mjs" }}` across all 8 themes.
+CSS injected dynamically using theme custom properties (`--color-*`) for automatic cross-theme and dark
+mode compatibility — no per-theme CSS needed. Follows the `color-chip.mjs` precedent for shared assets.
+
 **Build mode:** Option B (Pagefind) deferred as optional post-build step.
 
 ## Deferred / Discarded Ideas

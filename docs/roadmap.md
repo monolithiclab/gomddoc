@@ -25,8 +25,8 @@ of current capabilities, see `docs/architecture.md`.
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
 7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO).
 
-**Phase 5 note:** Server-side full-text search (stdlib inverted index) is implemented for `serve`
-and `preview` modes. Client-side search UI in progress. Build-mode search (Pagefind) deferred.
+**Phase 5 note:** Server-side full-text search and client-side search UI are complete for `serve`
+and `preview` modes. Build-mode search (Pagefind) deferred.
 
 **Phase 4 note:** Benchmarks, pprof, and allocation reduction are complete. CI benchmark
 tracking is deferred until a CI pipeline is established. Partial clones are blocked by
@@ -52,7 +52,9 @@ go-git library limitations.
 - [x] **Full-text search (serve)**: Stdlib inverted index (`internal/search/`) built at startup. TF-IDF ranking
       with title/description boosts, AND query semantics, snippet generation with `<mark>` highlighting.
       API: `GET /api/search?q=<query>&limit=<n>`. Enabled in `serve` and `preview` modes.
-- [ ] **Search UI**: Client-side search modal with keyboard navigation, shared across all themes.
+- [x] **Search UI**: Client-side search modal shared across all 8 themes via `inlineAsset "search.mjs"`.
+      Ctrl+K / Cmd+K shortcut, debounced API fetch, arrow key navigation, highlighted snippets.
+      CSS uses theme custom properties for automatic cross-theme and dark mode compatibility.
 - [ ] **Full-text search (build)**: Option B (Pagefind) as optional post-build step.
 
 ## Phase 7: Static Site Generation
@@ -290,9 +292,9 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus (Phase 4 & 5):** CI benchmark tracking, allocation reduction, full-text search for content discovery.
-**Next up (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
+**Immediate focus (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
 **High-value (Phase 10a):** MCP interface — low complexity (thin adapter over existing layers), high differentiation.
+**Deferred:** CI benchmark tracking (Phase 4, needs CI pipeline), build-mode search (Phase 5, Pagefind).
 
 ## Deferred (Not Planned)
 

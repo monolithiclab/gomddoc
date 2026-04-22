@@ -264,7 +264,12 @@ description (1.5x) boosts. Queries use AND semantics. Snippet generation highlig
 Exposed via JSON API:
 - `GET /api/search?q=<query>&limit=<n>` — Full-text search with ranked results
 
-### 9. Static Site Generator
+**Search UI:** A shared `search.mjs` module (loaded via `inlineAsset`) provides a search modal across
+all themes. Opens via Ctrl+K / Cmd+K or a header search button. Debounced fetch to `/api/search`,
+keyboard navigation (arrow keys + Enter), and highlighted snippets. CSS uses theme custom properties
+(`--color-bg`, `--color-text`, `--color-primary`, etc.) for automatic cross-theme compatibility.
+
+### 10. Static Site Generator
 
 **Responsibility:** Build static HTML from content for deployment to static hosts
 
