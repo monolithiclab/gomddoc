@@ -9,6 +9,8 @@ import (
 )
 
 func TestPassthroughRenderer_MimeTypes(t *testing.T) {
+	t.Parallel()
+
 	renderer := NewPassthroughRenderer()
 
 	inputTypes := renderer.InputMimeTypes()
@@ -23,6 +25,8 @@ func TestPassthroughRenderer_MimeTypes(t *testing.T) {
 }
 
 func TestPassthroughRenderer_Render(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		input []byte
@@ -55,6 +59,8 @@ func TestPassthroughRenderer_Render(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			renderer := NewPassthroughRenderer()
 			result, err := renderer.Render(context.Background(), tt.input, &enricher.EnrichmentData{})
 
@@ -81,6 +87,8 @@ func TestPassthroughRenderer_ContextCancellation(t *testing.T) {
 }
 
 func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
+	t.Parallel()
+
 	renderer := NewPassthroughRenderer()
 	ctx := context.Background()
 
@@ -112,6 +120,8 @@ func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
 }
 
 func TestPassthroughRenderer_NilInput(t *testing.T) {
+	t.Parallel()
+
 	renderer := NewPassthroughRenderer()
 
 	result, err := renderer.Render(context.Background(), nil, &enricher.EnrichmentData{})

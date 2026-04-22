@@ -6,6 +6,7 @@ import (
 )
 
 func TestGenerate(t *testing.T) {
+	t.Parallel()
 	dirs := map[string]bool{
 		"/":         true,
 		"/docs":     true,
@@ -69,6 +70,7 @@ func TestGenerate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := generator.Generate(tt.path)
 			if !reflect.DeepEqual(got, tt.expected) {
 				t.Errorf("Generate() = %v, want %v", got, tt.expected)

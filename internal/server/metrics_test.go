@@ -32,6 +32,7 @@ func getHistogramCount(t *testing.T, hist *prometheus.HistogramVec, labels ...st
 }
 
 func TestMetrics_RequestCount(t *testing.T) {
+	t.Parallel()
 	before := getCounterValue(t, httpRequestsTotal, "GET", "200")
 
 	handler := Metrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +50,7 @@ func TestMetrics_RequestCount(t *testing.T) {
 }
 
 func TestMetrics_RequestDuration(t *testing.T) {
+	t.Parallel()
 	before := getHistogramCount(t, httpRequestDuration, "GET")
 
 	handler := Metrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +68,7 @@ func TestMetrics_RequestDuration(t *testing.T) {
 }
 
 func TestMetrics_StatusCodeCapture(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		statusCode int
@@ -77,6 +80,7 @@ func TestMetrics_StatusCodeCapture(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			statusStr := strconv.Itoa(tt.statusCode)
 			before := getCounterValue(t, httpRequestsTotal, "GET", statusStr)
 
@@ -97,6 +101,7 @@ func TestMetrics_StatusCodeCapture(t *testing.T) {
 }
 
 func TestMetrics_DefaultStatusCode(t *testing.T) {
+	t.Parallel()
 	// When WriteHeader is not called explicitly, the default should be 200.
 	before := getCounterValue(t, httpRequestsTotal, "GET", "200")
 

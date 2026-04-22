@@ -20,6 +20,7 @@ var okHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 })
 
 func TestRouteGroup_Handle(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		prefix      string
@@ -72,6 +73,7 @@ func TestRouteGroup_Handle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mux := http.NewServeMux()
 			g := NewGroup(mux, tt.prefix, tt.middleware...)
 			g.Handle(tt.pattern, okHandler)
@@ -93,6 +95,7 @@ func TestRouteGroup_Handle(t *testing.T) {
 }
 
 func TestRouteGroup_NestedGroups(t *testing.T) {
+	t.Parallel()
 	mux := http.NewServeMux()
 
 	root := NewGroup(mux, "/api", headerMiddleware("X-Root", "root"))
@@ -117,6 +120,7 @@ func TestRouteGroup_NestedGroups(t *testing.T) {
 }
 
 func TestRouteGroup_MiddlewareOrder(t *testing.T) {
+	t.Parallel()
 	var order []string
 	trackMiddleware := func(name string) func(http.Handler) http.Handler {
 		return func(next http.Handler) http.Handler {

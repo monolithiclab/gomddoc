@@ -9,6 +9,8 @@ import (
 )
 
 func TestMarkdownPassthroughRenderer_MimeTypes(t *testing.T) {
+	t.Parallel()
+
 	r := NewMarkdownPassthroughRenderer()
 
 	inputTypes := r.InputMimeTypes()
@@ -23,6 +25,8 @@ func TestMarkdownPassthroughRenderer_MimeTypes(t *testing.T) {
 }
 
 func TestMarkdownPassthroughRenderer_Render(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		input        string
@@ -49,6 +53,8 @@ func TestMarkdownPassthroughRenderer_Render(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := NewMarkdownPassthroughRenderer()
 			result, err := r.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
@@ -82,6 +88,8 @@ func TestMarkdownPassthroughRenderer_ContextCancellation(t *testing.T) {
 }
 
 func TestStripFrontmatter(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		input string
@@ -111,6 +119,8 @@ func TestStripFrontmatter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := string(stripFrontmatter([]byte(tt.input)))
 			if got != tt.want {
 				t.Errorf("stripFrontmatter() = %q, want %q", got, tt.want)

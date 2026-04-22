@@ -9,6 +9,8 @@ import (
 )
 
 func TestMarkdownRenderer_MimeTypes(t *testing.T) {
+	t.Parallel()
+
 	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 
 	inputTypes := renderer.InputMimeTypes()
@@ -23,6 +25,8 @@ func TestMarkdownRenderer_MimeTypes(t *testing.T) {
 }
 
 func TestMarkdownRenderer_Render(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		input          string
@@ -64,6 +68,8 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 			result, err := renderer.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 
@@ -92,6 +98,8 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 }
 
 func TestMarkdownRenderer_FrontMatter(t *testing.T) {
+	t.Parallel()
+
 	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 	input := `---
 title: Hello World
@@ -126,6 +134,8 @@ func TestMarkdownRenderer_ContextCancellation(t *testing.T) {
 }
 
 func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
+	t.Parallel()
+
 	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 	ctx := context.Background()
 
@@ -151,6 +161,8 @@ func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
 }
 
 func TestMarkdownRenderer_LargeContent(t *testing.T) {
+	t.Parallel()
+
 	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 
 	// Generate large markdown content

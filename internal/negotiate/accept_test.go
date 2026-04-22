@@ -5,6 +5,7 @@ import (
 )
 
 func TestParseAccept(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		header    string
@@ -99,6 +100,7 @@ func TestParseAccept(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := ParseAccept(tt.header)
 
 			if len(result) != len(tt.wantOrder) {
@@ -117,6 +119,7 @@ func TestParseAccept(t *testing.T) {
 }
 
 func TestMediaType_Matches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		mediaType MediaType
@@ -210,6 +213,7 @@ func TestMediaType_Matches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := tt.mediaType.Matches(tt.mimeType)
 			if got != tt.want {
 				t.Errorf("MediaType.Matches() = %v, want %v", got, tt.want)

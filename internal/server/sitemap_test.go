@@ -28,6 +28,7 @@ var sitemapNoindexFS = fstest.MapFS{
 }
 
 func TestSitemapHandler(t *testing.T) {
+	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
 	handler := NewSitemapHandler(idx, "https://docs.example.com", "README.md", prov, nil)
@@ -65,6 +66,7 @@ func TestSitemapHandler(t *testing.T) {
 }
 
 func TestGenerateSitemap(t *testing.T) {
+	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
 	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil)
@@ -88,6 +90,7 @@ func TestGenerateSitemap(t *testing.T) {
 }
 
 func TestGenerateSitemap_EmptyDomain(t *testing.T) {
+	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
 	data, err := GenerateSitemap(context.Background(), idx, "", "README.md", prov, nil)
@@ -102,6 +105,7 @@ func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 }
 
 func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
+	t.Parallel()
 	idx := buildTestIndex(t, sitemapNoindexFS)
 	prov := newMemoryProvider(sitemapNoindexFS, "README.md", false)
 	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil)
@@ -129,6 +133,7 @@ func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
 }
 
 func TestGenerateSitemap_NilProvider(t *testing.T) {
+	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", nil, nil)
 	if err != nil {
@@ -145,6 +150,7 @@ func TestGenerateSitemap_NilProvider(t *testing.T) {
 }
 
 func TestGenerateSitemap_WithResolver(t *testing.T) {
+	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
 

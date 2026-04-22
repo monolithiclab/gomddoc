@@ -9,6 +9,8 @@ import (
 )
 
 func TestMarkdownRenderer_SyntaxHighlighting(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		input        string
@@ -72,6 +74,8 @@ func TestMarkdownRenderer_SyntaxHighlighting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
 			result, err := renderer.Render(context.Background(), []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
@@ -89,12 +93,16 @@ func TestMarkdownRenderer_SyntaxHighlighting(t *testing.T) {
 }
 
 func TestMarkdownRenderer_HighlightThemes(t *testing.T) {
+	t.Parallel()
+
 	themes := []string{"github", "monokai", "dracula", ""}
 
 	input := []byte("```go\nfunc main() {}\n```")
 
 	for _, theme := range themes {
 		t.Run("theme_"+theme, func(t *testing.T) {
+			t.Parallel()
+
 			renderer := NewMarkdownRenderer(MarkdownOptions{HighlightTheme: theme, Features: map[string]bool{"color_chips": true}})
 			result, err := renderer.Render(context.Background(), input, &enricher.EnrichmentData{})
 			if err != nil {

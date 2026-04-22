@@ -11,6 +11,8 @@ import (
 )
 
 func TestInitCmd_Run(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	cmd := &InitCmd{Dir: dir, Theme: "default"}
@@ -34,6 +36,8 @@ func TestInitCmd_Run(t *testing.T) {
 }
 
 func TestInitCmd_AlreadyInitialized(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	cmd := &InitCmd{Dir: dir, Theme: "default"}
@@ -51,6 +55,8 @@ func TestInitCmd_AlreadyInitialized(t *testing.T) {
 }
 
 func TestInitCmd_CustomTheme(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	cmd := &InitCmd{Dir: dir, Theme: "midnight"}
@@ -70,6 +76,8 @@ func TestInitCmd_CustomTheme(t *testing.T) {
 }
 
 func TestInitCmd_ConfigRoundTrips(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 
 	cmd := &InitCmd{Dir: dir, Theme: "nord"}
@@ -97,6 +105,8 @@ func TestInitCmd_ConfigRoundTrips(t *testing.T) {
 }
 
 func TestGenerateConfigYAML(t *testing.T) {
+	t.Parallel()
+
 	content, err := generateConfigYAML("My Project", "material")
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +121,8 @@ func TestGenerateConfigYAML(t *testing.T) {
 }
 
 func TestInitCmd_NonexistentParentDir(t *testing.T) {
+	t.Parallel()
+
 	cmd := &InitCmd{Dir: "/nonexistent/path/that/does/not/exist", Theme: "default"}
 	err := cmd.Run()
 	if err == nil {
@@ -119,6 +131,8 @@ func TestInitCmd_NonexistentParentDir(t *testing.T) {
 }
 
 func TestInitCmd_Defaults(t *testing.T) {
+	t.Parallel()
+
 	cmd := InitCmd{}
 	if cmd.Dir != "" {
 		t.Errorf("Dir default = %q, want empty (Kong sets '.')", cmd.Dir)
@@ -129,6 +143,8 @@ func TestInitCmd_Defaults(t *testing.T) {
 }
 
 func TestInitCmd_ReadOnlyDir(t *testing.T) {
+	t.Parallel()
+
 	dir := filepath.Join(t.TempDir(), "readonly")
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		t.Fatal(err)
@@ -146,6 +162,8 @@ func TestInitCmd_ReadOnlyDir(t *testing.T) {
 }
 
 func TestGenerateConfigYAML_AllFields(t *testing.T) {
+	t.Parallel()
+
 	content, err := generateConfigYAML("Test Project", "nord")
 	if err != nil {
 		t.Fatal(err)

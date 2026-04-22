@@ -5,6 +5,8 @@ import (
 )
 
 func TestPreviewCmd_Defaults(t *testing.T) {
+	t.Parallel()
+
 	cmd := PreviewCmd{}
 
 	if cmd.Dir != "" {
@@ -19,6 +21,8 @@ func TestPreviewCmd_Defaults(t *testing.T) {
 }
 
 func TestPreviewCmd_FieldTags(t *testing.T) {
+	t.Parallel()
+
 	cmd := PreviewCmd{
 		Dir:  "/tmp/docs",
 		Port: ":9090",

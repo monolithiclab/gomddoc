@@ -7,6 +7,8 @@ import (
 )
 
 func TestNewFromServeArgs(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	// Create a config file in the temp dir
@@ -60,6 +62,8 @@ func TestNewFromServeArgs_EnvOverrides(t *testing.T) {
 }
 
 func TestNewFromServeArgs_DynamicDefaults(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 
 	// Create minimal config without title
@@ -83,6 +87,8 @@ func TestNewFromServeArgs_DynamicDefaults(t *testing.T) {
 }
 
 func TestNewFromServeArgs_DevMode(t *testing.T) {
+	t.Parallel()
+
 	cfg, err := NewFromServeArgs(".", ":8080", true, "")
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
@@ -94,6 +100,8 @@ func TestNewFromServeArgs_DevMode(t *testing.T) {
 }
 
 func TestNewFromServeArgs_GitSSHKey(t *testing.T) {
+	t.Parallel()
+
 	cfg, err := NewFromServeArgs(".", ":8080", false, "/path/to/key")
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)

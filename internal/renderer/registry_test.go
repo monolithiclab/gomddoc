@@ -41,6 +41,8 @@ func acceptOnly(mimeType string) []negotiate.MediaType {
 }
 
 func TestDefaultRegistry_Register(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		renderers []ContentRenderer
@@ -84,6 +86,8 @@ func TestDefaultRegistry_Register(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			registry := NewDefaultRegistry()
 
 			for _, r := range tt.renderers {
@@ -110,6 +114,8 @@ func TestDefaultRegistry_Register(t *testing.T) {
 }
 
 func TestDefaultRegistry_Get_2D(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		renderers      []mockRenderer
@@ -241,6 +247,8 @@ func TestDefaultRegistry_Get_2D(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			registry := NewDefaultRegistry()
 
 			for i := range tt.renderers {
@@ -269,6 +277,8 @@ func TestDefaultRegistry_Get_2D(t *testing.T) {
 }
 
 func TestDefaultRegistry_AvailableOutputTypes(t *testing.T) {
+	t.Parallel()
+
 	registry := NewDefaultRegistry()
 	registry.Register(&mockRenderer{name: "md-pt", inputMime: []string{"text/markdown"}, outputMime: []string{"text/markdown"}})
 	registry.Register(&mockRenderer{name: "md-html", inputMime: []string{"text/markdown"}, outputMime: []string{"text/html"}})
@@ -290,6 +300,8 @@ func TestDefaultRegistry_AvailableOutputTypes(t *testing.T) {
 }
 
 func TestDefaultRegistry_ThreadSafety(t *testing.T) {
+	t.Parallel()
+
 	registry := NewDefaultRegistry()
 
 	var wg sync.WaitGroup
@@ -326,6 +338,8 @@ func TestDefaultRegistry_ThreadSafety(t *testing.T) {
 }
 
 func TestDefaultRegistry_EmptyRegistry(t *testing.T) {
+	t.Parallel()
+
 	registry := NewDefaultRegistry()
 
 	_, _, err := registry.Get("text/plain", acceptAll)
@@ -338,6 +352,8 @@ func TestDefaultRegistry_EmptyRegistry(t *testing.T) {
 }
 
 func TestDefaultRegistry_NoMatchingOutput(t *testing.T) {
+	t.Parallel()
+
 	registry := NewDefaultRegistry()
 	registry.Register(&mockRenderer{name: "md-html", inputMime: []string{"text/markdown"}, outputMime: []string{"text/html"}})
 

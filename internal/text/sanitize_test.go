@@ -6,6 +6,7 @@ import (
 )
 
 func TestSanitize(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -33,6 +34,7 @@ func TestSanitize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := Sanitize(tt.input)
 			if got != tt.want {
 				t.Errorf("Sanitize(%q) = %q, want %q", tt.input, got, tt.want)
@@ -52,6 +54,7 @@ func TestSanitize_NoAllocation_CleanString(t *testing.T) {
 }
 
 func TestSafeString_LogValue(t *testing.T) {
+	t.Parallel()
 	s := SafeString("path/with\nnewline")
 	val := s.LogValue()
 	if val.Kind() != slog.KindString {
@@ -64,6 +67,7 @@ func TestSafeString_LogValue(t *testing.T) {
 }
 
 func TestSafe_Attr(t *testing.T) {
+	t.Parallel()
 	attr := Safe("path", "/test\r\ninjection")
 	if attr.Key != "path" {
 		t.Errorf("attr.Key = %q, want %q", attr.Key, "path")

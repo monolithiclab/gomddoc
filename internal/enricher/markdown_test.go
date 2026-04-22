@@ -9,6 +9,7 @@ import (
 )
 
 func TestMarkdownEnricher_SupportedMimeTypes(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 	types := e.SupportedMimeTypes()
 	if len(types) != 1 || types[0] != "text/markdown" {
@@ -17,6 +18,7 @@ func TestMarkdownEnricher_SupportedMimeTypes(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_Metadata(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	content := []byte("---\ntitle: Test Page\ndescription: A test\ntags:\n  - go\n  - docs\n---\n# Hello\nWorld")
@@ -40,6 +42,7 @@ func TestMarkdownEnricher_Enrich_Metadata(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_TOC(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	content := []byte("# First\n## Second\n### Third\n## Another Second\n")
@@ -82,6 +85,7 @@ func TestMarkdownEnricher_Enrich_TOC(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_NoFrontmatter(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	content := []byte("# Hello\nPlain markdown without frontmatter.")
@@ -101,6 +105,7 @@ func TestMarkdownEnricher_Enrich_NoFrontmatter(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_EmptyContent(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	result, err := e.Enrich(context.Background(), nil, "/empty.md")
@@ -114,6 +119,7 @@ func TestMarkdownEnricher_Enrich_EmptyContent(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_Navigation(t *testing.T) {
+	t.Parallel()
 	navItems := []NavItem{
 		{Title: "Guide", Path: "/guide/", IsDir: true, Children: []NavItem{
 			{Title: "Getting Started", Path: "/guide/start.md"},
@@ -146,6 +152,7 @@ func TestMarkdownEnricher_Enrich_Navigation(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_NavigationNil(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	result, err := e.Enrich(context.Background(), []byte("# Test"), "/test.md")
@@ -159,6 +166,7 @@ func TestMarkdownEnricher_Enrich_NavigationNil(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_NavigationEmpty(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{
 		NavBuilder: func(_ string) []NavItem { return nil },
 	})
@@ -174,6 +182,7 @@ func TestMarkdownEnricher_Enrich_NavigationEmpty(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_RelatedDocs(t *testing.T) {
+	t.Parallel()
 	fsys := fstest.MapFS{
 		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
 		"api.md":   {Data: []byte("---\ntitle: API Reference\ntags:\n  - tutorial\n  - api\n---\n# API")},
@@ -207,6 +216,7 @@ func TestMarkdownEnricher_Enrich_RelatedDocs(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutIndex(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	content := []byte("---\ntags:\n  - go\n---\n# Test")
@@ -221,6 +231,7 @@ func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutIndex(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutTags(t *testing.T) {
+	t.Parallel()
 	fsys := fstest.MapFS{
 		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
 	}
@@ -245,6 +256,7 @@ func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutTags(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_MalformedTags(t *testing.T) {
+	t.Parallel()
 	fsys := fstest.MapFS{
 		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
 	}
@@ -269,6 +281,7 @@ func TestMarkdownEnricher_Enrich_MalformedTags(t *testing.T) {
 }
 
 func TestMarkdownEnricher_Enrich_ContextCancelled(t *testing.T) {
+	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	ctx, cancel := context.WithCancel(context.Background())

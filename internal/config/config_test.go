@@ -57,6 +57,8 @@ func TestNew(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
+
 	config := New()
 	err := config.Validate()
 	if err != nil {
@@ -126,6 +128,8 @@ func TestValidate_PortRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := New()
 			cfg.Server.Port = tt.port
 			err := cfg.Validate()
@@ -177,6 +181,8 @@ func TestValidate_Directory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := New()
 			cfg.Server.Dir = tt.dir
 			err := cfg.Validate()
@@ -191,6 +197,8 @@ func TestValidate_Directory(t *testing.T) {
 }
 
 func TestValidate_DirectoryIsFile(t *testing.T) {
+	t.Parallel()
+
 	// Create a temporary file to test that files are rejected
 	tmpFile, err := os.CreateTemp("", "config_test_*.txt")
 	if err != nil {
@@ -239,6 +247,8 @@ func TestValidate_ShutdownTimeout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := New()
 			cfg.Server.HTTP.ShutdownTimeout = tt.timeout
 			err := cfg.Validate()
@@ -411,6 +421,8 @@ func TestValidate_TimeoutDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := New()
 			tt.mutate(cfg)
 			err := cfg.Validate()

@@ -23,6 +23,7 @@ func (m *mockEnricher) Enrich(_ context.Context, _ []byte, _ string) (*Enrichmen
 }
 
 func TestDefaultEnricherRegistry_Get_Registered(t *testing.T) {
+	t.Parallel()
 	reg := NewDefaultEnricherRegistry()
 	reg.Register(&mockEnricher{name: "markdown", mimeTypes: []string{"text/markdown"}})
 
@@ -38,6 +39,7 @@ func TestDefaultEnricherRegistry_Get_Registered(t *testing.T) {
 }
 
 func TestDefaultEnricherRegistry_Get_Fallback(t *testing.T) {
+	t.Parallel()
 	reg := NewDefaultEnricherRegistry()
 	reg.Register(&mockEnricher{name: "markdown", mimeTypes: []string{"text/markdown"}})
 
@@ -55,6 +57,7 @@ func TestDefaultEnricherRegistry_Get_Fallback(t *testing.T) {
 }
 
 func TestDefaultEnricherRegistry_Get_NormalizesCharset(t *testing.T) {
+	t.Parallel()
 	reg := NewDefaultEnricherRegistry()
 	reg.Register(&mockEnricher{name: "markdown", mimeTypes: []string{"text/markdown"}})
 
@@ -71,6 +74,7 @@ func TestDefaultEnricherRegistry_Get_NormalizesCharset(t *testing.T) {
 }
 
 func TestDefaultEnricherRegistry_Get_OverwritesOnDuplicate(t *testing.T) {
+	t.Parallel()
 	reg := NewDefaultEnricherRegistry()
 	reg.Register(&mockEnricher{name: "old", mimeTypes: []string{"text/markdown"}})
 	reg.Register(&mockEnricher{name: "new", mimeTypes: []string{"text/markdown"}})
@@ -87,6 +91,7 @@ func TestDefaultEnricherRegistry_Get_OverwritesOnDuplicate(t *testing.T) {
 }
 
 func TestDefaultEnricherRegistry_Get_MultipleMimeTypes(t *testing.T) {
+	t.Parallel()
 	reg := NewDefaultEnricherRegistry()
 	reg.Register(&mockEnricher{name: "text", mimeTypes: []string{"text/markdown", "text/plain"}})
 
@@ -103,6 +108,7 @@ func TestDefaultEnricherRegistry_Get_MultipleMimeTypes(t *testing.T) {
 }
 
 func TestDefaultEnricherRegistry_Get_EmptyRegistry(t *testing.T) {
+	t.Parallel()
 	reg := NewDefaultEnricherRegistry()
 
 	// Should return NoOp, never nil
@@ -121,6 +127,7 @@ func TestDefaultEnricherRegistry_Get_EmptyRegistry(t *testing.T) {
 }
 
 func TestDefaultEnricherRegistry_ThreadSafety(t *testing.T) {
+	t.Parallel()
 	reg := NewDefaultEnricherRegistry()
 
 	var wg sync.WaitGroup

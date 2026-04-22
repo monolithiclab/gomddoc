@@ -21,6 +21,7 @@ func buildTestIndex(t *testing.T, files fstest.MapFS) *metadata.Index {
 }
 
 func TestTagsHandler(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		files      fstest.MapFS
@@ -58,6 +59,7 @@ func TestTagsHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			index := buildTestIndex(t, tt.files)
 			handler := NewMetadataHandler(index)
 
@@ -93,6 +95,7 @@ func TestTagsHandler(t *testing.T) {
 }
 
 func TestTagPagesHandler(t *testing.T) {
+	t.Parallel()
 	files := fstest.MapFS{
 		"doc1.md": &fstest.MapFile{Data: []byte("---\ntitle: Doc1\ntags:\n  - go\n  - testing\n---\n# Doc1")},
 		"doc2.md": &fstest.MapFile{Data: []byte("---\ntitle: Doc2\ntags:\n  - go\n  - api\n---\n# Doc2")},
@@ -131,6 +134,7 @@ func TestTagPagesHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 
@@ -158,6 +162,7 @@ func TestTagPagesHandler(t *testing.T) {
 }
 
 func TestTagPagesHandler_EmptyTag(t *testing.T) {
+	t.Parallel()
 	index := buildTestIndex(t, fstest.MapFS{})
 	handler := NewMetadataHandler(index)
 
@@ -182,6 +187,7 @@ func TestTagPagesHandler_EmptyTag(t *testing.T) {
 }
 
 func TestWriteJSON(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		status     int
@@ -214,6 +220,7 @@ func TestWriteJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			w := httptest.NewRecorder()
 
 			writeJSON(w, tt.status, tt.value)

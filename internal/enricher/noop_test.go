@@ -6,6 +6,7 @@ import (
 )
 
 func TestNoOpEnricher_SupportedMimeTypes(t *testing.T) {
+	t.Parallel()
 	e := &NoOpEnricher{}
 	types := e.SupportedMimeTypes()
 	if types != nil {
@@ -14,6 +15,7 @@ func TestNoOpEnricher_SupportedMimeTypes(t *testing.T) {
 }
 
 func TestNoOpEnricher_Enrich(t *testing.T) {
+	t.Parallel()
 	e := &NoOpEnricher{}
 
 	result, err := e.Enrich(context.Background(), []byte("some content"), "/test.txt")

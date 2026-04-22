@@ -31,6 +31,7 @@ func largeBody() string {
 }
 
 func TestCompression_GzipWhenAccepted(t *testing.T) {
+	t.Parallel()
 	body := largeBody()
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -59,6 +60,7 @@ func TestCompression_GzipWhenAccepted(t *testing.T) {
 }
 
 func TestCompression_NoGzipWithoutAcceptEncoding(t *testing.T) {
+	t.Parallel()
 	body := largeBody()
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -82,6 +84,7 @@ func TestCompression_NoGzipWithoutAcceptEncoding(t *testing.T) {
 }
 
 func TestCompression_SkipSmallResponses(t *testing.T) {
+	t.Parallel()
 	smallBody := "tiny"
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -105,6 +108,7 @@ func TestCompression_SkipSmallResponses(t *testing.T) {
 }
 
 func TestCompression_VaryHeaderAlwaysSet(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		acceptEncoding string
@@ -116,6 +120,7 @@ func TestCompression_VaryHeaderAlwaysSet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/plain")
 				_, _ = w.Write([]byte("body"))
@@ -137,6 +142,7 @@ func TestCompression_VaryHeaderAlwaysSet(t *testing.T) {
 }
 
 func TestCompression_ContentLengthRemovedWhenCompressing(t *testing.T) {
+	t.Parallel()
 	body := largeBody()
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -157,6 +163,7 @@ func TestCompression_ContentLengthRemovedWhenCompressing(t *testing.T) {
 }
 
 func TestCompression_ContentEncodingSetWhenCompressing(t *testing.T) {
+	t.Parallel()
 	body := largeBody()
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css")
@@ -175,6 +182,7 @@ func TestCompression_ContentEncodingSetWhenCompressing(t *testing.T) {
 }
 
 func TestCompression_SkipAlreadyCompressedContentTypes(t *testing.T) {
+	t.Parallel()
 	body := largeBody()
 	tests := []struct {
 		name        string
@@ -192,6 +200,7 @@ func TestCompression_SkipAlreadyCompressedContentTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", tt.contentType)
 				_, _ = w.Write([]byte(body))
@@ -211,6 +220,7 @@ func TestCompression_SkipAlreadyCompressedContentTypes(t *testing.T) {
 }
 
 func TestCompression_Flusher(t *testing.T) {
+	t.Parallel()
 	body := largeBody()
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -238,6 +248,7 @@ func TestCompression_Flusher(t *testing.T) {
 }
 
 func TestCompression_PreservesStatusCode(t *testing.T) {
+	t.Parallel()
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusNotFound)
@@ -256,6 +267,7 @@ func TestCompression_PreservesStatusCode(t *testing.T) {
 }
 
 func TestAcceptsGzip(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		encoding string
@@ -272,6 +284,7 @@ func TestAcceptsGzip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
 			if tt.encoding != "" {
 				r.Header.Set("Accept-Encoding", tt.encoding)
@@ -284,6 +297,7 @@ func TestAcceptsGzip(t *testing.T) {
 }
 
 func TestCompressionWriter_Unwrap(t *testing.T) {
+	t.Parallel()
 	rec := httptest.NewRecorder()
 	cw := &compressionWriter{ResponseWriter: rec}
 	if cw.Unwrap() != rec {
@@ -292,6 +306,7 @@ func TestCompressionWriter_Unwrap(t *testing.T) {
 }
 
 func TestCompressionWriter_WriteDecided_Compress(t *testing.T) {
+	t.Parallel()
 	// Handler writes a large body in two chunks to exercise writeDecided with gzip active.
 	firstChunk := strings.Repeat("A", minCompressionSize+1)
 	secondChunk := strings.Repeat("B", 500)
@@ -321,6 +336,7 @@ func TestCompressionWriter_WriteDecided_Compress(t *testing.T) {
 }
 
 func TestCompressionWriter_WriteDecided_Passthrough(t *testing.T) {
+	t.Parallel()
 	// Handler writes a large body with image/png content type in two chunks.
 	// The first write triggers the decision (passthrough because image/png is skipped).
 	// The second write goes through writeDecided without gzip.
@@ -351,6 +367,7 @@ func TestCompressionWriter_WriteDecided_Passthrough(t *testing.T) {
 }
 
 func TestCompression_HeadRequest(t *testing.T) {
+	t.Parallel()
 	body := largeBody()
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -402,6 +419,7 @@ func TestCompressionWriter_ReturnBuf_OversizedDiscarded(t *testing.T) {
 }
 
 func TestShouldSkipContentType(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		contentType string
 		skip        bool
@@ -424,6 +442,7 @@ func TestShouldSkipContentType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.contentType, func(t *testing.T) {
+			t.Parallel()
 			if got := shouldSkipContentType(tt.contentType); got != tt.skip {
 				t.Errorf("shouldSkipContentType(%q) = %v, want %v", tt.contentType, got, tt.skip)
 			}

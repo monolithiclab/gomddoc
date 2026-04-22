@@ -8,6 +8,7 @@ import (
 )
 
 func TestRobotsHandler(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		domain         string
@@ -29,6 +30,7 @@ func TestRobotsHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			handler := NewRobotsHandler(tt.domain)
 			req := httptest.NewRequest(http.MethodGet, "/robots.txt", nil)
 			w := httptest.NewRecorder()
@@ -66,6 +68,7 @@ func TestRobotsHandler(t *testing.T) {
 }
 
 func TestGenerateRobotsTxt(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		domain string
@@ -84,6 +87,7 @@ func TestGenerateRobotsTxt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := GenerateRobotsTxt(tt.domain)
 			if !strings.Contains(got, "User-agent: *") {
 				t.Error("should contain User-agent directive")

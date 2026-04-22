@@ -11,6 +11,7 @@ func init() {
 }
 
 func TestDetectMIME(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		path string
@@ -28,6 +29,7 @@ func TestDetectMIME(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := DetectMIME(tt.path); got != tt.want {
 				t.Errorf("DetectMIME(%q) = %v, want %v", tt.path, got, tt.want)
 			}
@@ -36,6 +38,7 @@ func TestDetectMIME(t *testing.T) {
 }
 
 func TestNormalizeMimeType(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		mimeType string
@@ -80,6 +83,7 @@ func TestNormalizeMimeType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := NormalizeMimeType(tt.mimeType)
 			if got != tt.want {
 				t.Errorf("NormalizeMimeType(%q) = %q, want %q", tt.mimeType, got, tt.want)

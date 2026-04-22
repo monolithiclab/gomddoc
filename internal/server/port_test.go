@@ -8,6 +8,7 @@ import (
 )
 
 func TestFindAvailablePort(t *testing.T) {
+	t.Parallel()
 	port, err := FindAvailablePort(8080)
 	if err != nil {
 		t.Fatalf("FindAvailablePort(8080) returned error: %v", err)
@@ -28,6 +29,7 @@ func TestFindAvailablePort(t *testing.T) {
 }
 
 func TestFindAvailablePort_SkipsOccupied(t *testing.T) {
+	t.Parallel()
 	// Occupy a port
 	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -54,6 +56,7 @@ func TestFindAvailablePort_SkipsOccupied(t *testing.T) {
 }
 
 func TestIsAutoPort(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		port string
 		want bool

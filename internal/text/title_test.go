@@ -3,6 +3,7 @@ package text
 import "testing"
 
 func TestDeriveTitle(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path string
 		want string
@@ -24,6 +25,7 @@ func TestDeriveTitle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
 			got := DeriveTitle(tt.path)
 			if got != tt.want {
 				t.Errorf("DeriveTitle(%q) = %q, want %q", tt.path, got, tt.want)

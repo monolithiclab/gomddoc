@@ -10,6 +10,7 @@ import (
 )
 
 func TestRequestID_Generated(t *testing.T) {
+	t.Parallel()
 	handler := RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -32,6 +33,7 @@ func TestRequestID_Generated(t *testing.T) {
 }
 
 func TestRequestID_PreservesIncoming(t *testing.T) {
+	t.Parallel()
 	handler := RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify the incoming ID is available in context
 		id := GetRequestID(r.Context())
@@ -54,6 +56,7 @@ func TestRequestID_PreservesIncoming(t *testing.T) {
 }
 
 func TestGetRequestID_FromContext(t *testing.T) {
+	t.Parallel()
 	ctx := context.WithValue(context.Background(), requestIDKey{}, "test-id-456")
 	id := GetRequestID(ctx)
 	if id != "test-id-456" {
@@ -62,6 +65,7 @@ func TestGetRequestID_FromContext(t *testing.T) {
 }
 
 func TestGetRequestID_MissingContext(t *testing.T) {
+	t.Parallel()
 	id := GetRequestID(context.Background())
 	if id != "" {
 		t.Errorf("Expected empty string for missing context value, got %q", id)
@@ -69,6 +73,7 @@ func TestGetRequestID_MissingContext(t *testing.T) {
 }
 
 func TestRequestID_UniqueForConcurrentRequests(t *testing.T) {
+	t.Parallel()
 	handler := RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
