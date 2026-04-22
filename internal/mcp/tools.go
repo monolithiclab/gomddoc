@@ -264,12 +264,10 @@ func (s *MCPServer) handleFindRelated(_ context.Context, _ *mcp.CallToolRequest,
 		normalizedPath = "/" + normalizedPath
 	}
 
+	page := s.deps.MetaIndex.ByPath(normalizedPath)
 	var pageTags []string
-	for _, p := range s.deps.MetaIndex.AllPages() {
-		if p.Path == normalizedPath {
-			pageTags = p.Tags
-			break
-		}
+	if page != nil {
+		pageTags = page.Tags
 	}
 
 	if len(pageTags) == 0 {
@@ -325,24 +323,24 @@ func (s *MCPServer) buildPageHeader(filePath string) string {
 		normalizedPath = "/" + normalizedPath
 	}
 
-	for _, p := range s.deps.MetaIndex.AllPages() {
-		if p.Path == normalizedPath {
-			var b strings.Builder
-			b.WriteString("---\n")
-			if p.Title != "" {
-				fmt.Fprintf(&b, "title: %s\n", p.Title)
-			}
-			if p.Description != "" {
-				fmt.Fprintf(&b, "description: %s\n", p.Description)
-			}
-			if len(p.Tags) > 0 {
-				fmt.Fprintf(&b, "tags: [%s]\n", strings.Join(p.Tags, ", "))
-			}
-			b.WriteString("---\n\n")
-			return b.String()
-		}
+	p := s.deps.MetaIndex.ByPath(normalizedPath)
+	if p == nil {
+		return ""
 	}
-	return ""
+
+	var b strings.Builder
+	b.WriteString("---\n")
+	if p.Title != "" {
+		fmt.Fprintf(&b, "title: %s\n", p.Title)
+	}
+	if p.Description != "" {
+		fmt.Fprintf(&b, "description: %s\n", p.Description)
+	}
+	if len(p.Tags) > 0 {
+		fmt.Fprintf(&b, "tags: [%s]\n", strings.Join(p.Tags, ", "))
+	}
+	b.WriteString("---\n\n")
+	return b.String()
 }
 
 type pageEntry struct {

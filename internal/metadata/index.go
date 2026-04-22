@@ -30,8 +30,9 @@ type PageInfo struct {
 
 // Index aggregates metadata from all Markdown files in a content root.
 type Index struct {
-	pages []PageInfo
-	byTag map[string][]int // tag -> page indices
+	pages  []PageInfo
+	byTag  map[string][]int // tag -> page indices
+	byPath map[string]int   // path -> page index
 }
 
 // BuildIndex walks the given filesystem, extracts frontmatter from all
@@ -110,7 +111,8 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, excludePatterns []string) (*I
 
 	// Phase 3: Merge results sequentially into the final index.
 	idx := &Index{
-		byTag: make(map[string][]int),
+		byTag:  make(map[string][]int),
+		byPath: make(map[string]int),
 	}
 
 	for _, r := range results {
@@ -119,6 +121,7 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, excludePatterns []string) (*I
 		}
 		pageIdx := len(idx.pages)
 		idx.pages = append(idx.pages, r.page)
+		idx.byPath[r.page.Path] = pageIdx
 		for _, tag := range r.page.Tags {
 			idx.byTag[tag] = append(idx.byTag[tag], pageIdx)
 		}
@@ -191,6 +194,17 @@ func (idx *Index) AllTags() []string {
 	}
 	slices.Sort(tags)
 	return tags
+}
+
+// ByPath returns the page at the given path, or nil if not found.
+// The path should include a leading slash (e.g., "/docs/guide.md").
+func (idx *Index) ByPath(path string) *PageInfo {
+	i, ok := idx.byPath[path]
+	if !ok {
+		return nil
+	}
+	p := idx.pages[i]
+	return &p
 }
 
 // ByTag returns all pages with the given tag. The tag is matched
