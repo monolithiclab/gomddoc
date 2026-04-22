@@ -109,6 +109,23 @@ For private repositories, provide an SSH key:
 gomddoc mcp git@github.com:org/docs.git --git-key-file ~/.ssh/id_ed25519
 ```
 
+## Streamable HTTP Transport
+
+In addition to the stdio transport used by `gomddoc mcp`, the MCP server is also available over
+HTTP when running `gomddoc serve` or `gomddoc preview`. The endpoint is mounted at `/_mcp/` and
+uses the MCP Streamable HTTP transport — the same protocol, but over HTTP instead of stdin/stdout.
+
+This enables remote MCP clients to connect to a running gomddoc instance without launching a
+subprocess. The endpoint is protected by the same authentication middleware as other endpoints
+(when `--basic-auth-file` is configured).
+
+```
+POST /_mcp/   → MCP JSON-RPC over Streamable HTTP
+```
+
+No additional configuration is needed — the `/_mcp/` endpoint is always available when the HTTP
+server is running.
+
 ## Available Tools
 
 gomddoc exposes six tools through the MCP protocol. All tools are annotated as read-only and

@@ -23,7 +23,7 @@ The foundation is production-ready with 87.3% test coverage. For a full descript
 of current capabilities, see `docs/architecture.md`.
 
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
-7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO), 10a (MCP server).
+7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO), 10a-10b (MCP server + HTTP).
 Six review batches resolved 45/46 identified issues (security, correctness, deduplication,
 hardening).
 
@@ -256,13 +256,15 @@ _Full MCP server with tools, resources, prompts, and section-level access._
       extracts content under a specific heading ID without goldmark dependency. Key
       differentiator — sub-page access for token-efficient retrieval.
 
-### 10b: HTTP Integration
+### 10b: HTTP Integration (Complete)
 
 _Streamable HTTP transport for remote MCP access._
 
-- [ ] **Streamable HTTP at `/_mcp/`**: Mount `MCPServer.HTTPHandler()` on the existing HTTP
-      server behind the auth RouteGroup. Add `MCPHandler http.Handler` to `HTTPServerConfig`.
-      Protected by the same authentication middleware as other endpoints.
+- [x] **Streamable HTTP at `/_mcp/`**: Mount `MCPServer.HTTPHandler()` on the existing HTTP
+      server behind the auth RouteGroup. `MCPHandler http.Handler` added to `HTTPServerConfig`.
+      Protected by the same authentication middleware as other endpoints. MCP server is created
+      in `setupServer` and shared between stdio (`gomddoc mcp`) and HTTP (`gomddoc serve/preview`)
+      transports.
 
 
 ## Distribution and Packaging
@@ -366,7 +368,6 @@ _Enable community theme sharing via a GitHub-based registry._
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
 **Immediate focus (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
-**Next (Phase 10b):** MCP HTTP integration — mount Streamable HTTP transport at `/_mcp/` on existing server.
 **Deferred:** CI benchmark tracking (Phase 4, needs CI pipeline), build-mode search (Phase 5, Pagefind).
 
 ## Deferred (Not Planned)

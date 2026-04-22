@@ -162,8 +162,15 @@ Serves theme static assets (CSS, JS, fonts). Only available in `build` mode — 
 
 ## MCP Server (Model Context Protocol)
 
-gomddoc includes a built-in MCP server for AI-native documentation access. Start it with
-`gomddoc mcp [dir]` (stdio transport). See the [MCP Server guide](../04-mcp.md) for setup instructions.
+gomddoc includes a built-in MCP server for AI-native documentation access. Two transports are
+available:
+
+- **stdio**: `gomddoc mcp [dir]` — for local clients (Claude Desktop, Cursor, Claude Code)
+- **Streamable HTTP**: `/_mcp/` endpoint on any running `gomddoc serve` or `gomddoc preview`
+  instance — for remote clients
+
+The HTTP endpoint is protected by the same authentication middleware as other endpoints. See the
+[MCP Server guide](../04-mcp.md) for setup instructions.
 
 ### MCP Tools
 
@@ -209,4 +216,4 @@ All content requests pass through this middleware chain (outermost to innermost)
 6. **BlockHiddenPaths** — blocks dotfiles except `/.well-known/`
 7. **Metrics** — records Prometheus metrics
 
-Health, metrics, API, and SEO endpoints are registered directly on the mux and bypass the content middleware chain (including authentication). Pprof endpoints (`/debug/pprof/*`) are behind the auth RouteGroup and require credentials when `--basic-auth-file` is configured.
+Health, metrics, API, and SEO endpoints are registered directly on the mux and bypass the content middleware chain (including authentication). The MCP endpoint (`/_mcp/`) and pprof endpoints (`/debug/pprof/*`) are behind the auth RouteGroup and require credentials when `--basic-auth-file` is configured.

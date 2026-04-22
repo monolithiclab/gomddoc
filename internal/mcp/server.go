@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"io/fs"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -17,7 +16,6 @@ type ServerDeps struct {
 	Provider     provider.Provider
 	MetaIndex    *metadata.Index
 	SearchIndex  *search.Index
-	ContentRoot  fs.FS
 	DefaultIndex string
 	SiteName     string
 	Version      string

@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	gomcp "github.com/monolithiclab/gomddoc/internal/mcp"
+	"github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
@@ -44,16 +44,10 @@ func (m *MCPCmd) Run() error {
 		return err
 	}
 
-	contentRoot, err := prov.RootFS(context.Background())
-	if err != nil {
-		return err
-	}
-
-	mcpServer := gomcp.NewServer(gomcp.ServerDeps{
+	mcpServer := mcp.NewServer(mcp.ServerDeps{
 		Provider:     prov,
 		MetaIndex:    pipeline.MetaIndex,
 		SearchIndex:  pipeline.SearchIndex,
-		ContentRoot:  contentRoot,
 		DefaultIndex: cfg.Site.DefaultIndex,
 		SiteName:     cfg.Site.Meta.Title,
 		Version:      version,

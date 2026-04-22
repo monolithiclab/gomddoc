@@ -132,7 +132,7 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 		Site: siteConfig,
 	}
 	// Use port string properly
-	cfg.Server.Port = ":" + netPortToString(port)
+	cfg.Server.Port = ":" + strconv.Itoa(port)
 
 	// Create dependencies
 	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
@@ -286,6 +286,10 @@ func TestHTTPServer_AuthProtectsAllEndpoints(t *testing.T) {
 		"style.css": {Data: []byte("body{}")},
 	}
 
+	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
 	srv := NewHTTPServer(HTTPServerConfig{
 		Config:           cfg,
 		Provider:         newMemoryProvider(fstest.MapFS{}, "README.md", false),
@@ -296,6 +300,7 @@ func TestHTTPServer_AuthProtectsAllEndpoints(t *testing.T) {
 		SearchIndex:      searchIdx,
 		StaticFS:         staticFS,
 		AuthStore:        store,
+		MCPHandler:       mcpHandler,
 	})
 
 	// All these endpoints should require auth
@@ -306,6 +311,7 @@ func TestHTTPServer_AuthProtectsAllEndpoints(t *testing.T) {
 		"/debug/pprof/",
 		"/metrics",
 		"/sitemap.xml",
+		"/_mcp/",
 	}
 
 	for _, path := range protectedPaths {
@@ -398,6 +404,63 @@ func TestHTTPServer_SecurityHeadersOnAllRoutes(t *testing.T) {
 	}
 }
 
-func netPortToString(port int) string {
-	return strconv.Itoa(port)
+func TestMCPEndpoint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		handler    http.Handler
+		wantStatus int
+	}{
+		{
+			name: "MCP enabled returns 200",
+			handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}),
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "MCP disabled returns 404",
+			handler:    nil,
+			wantStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{
+				Server: config.ServerConfig{
+					Port: ":8080",
+					Dir:  ".",
+					HTTP: config.HTTPConfig{
+						ShutdownTimeout:   1 * time.Second,
+						ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+						WriteTimeout:      config.DefaultWriteTimeout,
+						IdleTimeout:       config.DefaultIdleTimeout,
+						MaxHeaderMB:       config.DefaultMaxHeaderMB,
+					},
+				},
+				Site: config.NewSiteConfig("."),
+			}
+
+			srv := NewHTTPServer(HTTPServerConfig{
+				Config:           cfg,
+				Provider:         newMemoryProvider(fstest.MapFS{}, "README.md", false),
+				Registry:         setupTestRegistry(),
+				EnricherRegistry: setupTestEnricherRegistry(),
+				TemplateRenderer: setupTestRenderer(),
+				MCPHandler:       tt.handler,
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/_mcp/", nil)
+			w := httptest.NewRecorder()
+			srv.server.Handler.ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("GET /_mcp/ status = %d, want %d", w.Code, tt.wantStatus)
+			}
+		})
+	}
 }

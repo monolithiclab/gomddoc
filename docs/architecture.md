@@ -355,8 +355,9 @@ Middleware is applied in two layers using `RouteGroup` for structured route regi
 |-------|--------|-----------|--------|
 | health | `/health` | _(none)_ | `/live`, `/ready` |
 | _(mux direct)_ | | _(none)_ | `/robots.txt`, `/_assets/*` |
-| auth | | BasicAuth (if configured) | `/metrics`, `/sitemap.xml` |
+| auth | | BasicAuth (if configured) | `/metrics`, `/sitemap.xml`, `/_mcp/*` |
 | auth → api | `/api` | _(inherits auth)_ | `/tags`, `/tags/{tag}`, `/search` |
+| auth → mcp | `/_mcp` | _(inherits auth)_ | MCP Streamable HTTP endpoint |
 | auth → debug | `/debug/pprof` | _(inherits auth)_ | `/`, `/cmdline`, `/profile`, `/symbol`, `/trace` |
 | auth → content | | Compression, MethodFilter, BlockHiddenPaths, Metrics | `/` (catch-all) |
 

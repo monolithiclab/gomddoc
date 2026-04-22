@@ -10,6 +10,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
@@ -194,6 +195,15 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		return nil, err
 	}
 
+	mcpServer := mcp.NewServer(mcp.ServerDeps{
+		Provider:     prov,
+		MetaIndex:    pipeline.MetaIndex,
+		SearchIndex:  pipeline.SearchIndex,
+		DefaultIndex: cfg.Site.DefaultIndex,
+		SiteName:     cfg.Site.Meta.Title,
+		Version:      version,
+	})
+
 	serverConfig := server.HTTPServerConfig{
 		Config:           cfg,
 		Provider:         pipeline.Provider,
@@ -205,6 +215,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		RedirectFinder:   pipeline.RedirectFinder,
 		StaticFS:         pipeline.StaticFS,
 		AuthStore:        opts.AuthStore,
+		MCPHandler:       mcpServer.HTTPHandler(),
 	}
 
 	httpServer := server.NewHTTPServer(serverConfig)

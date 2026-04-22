@@ -46,6 +46,7 @@ type HTTPServerConfig struct {
 	RedirectFinder   RedirectFinder   // nil disables redirect lookup
 	StaticFS         fs.FS            // nil disables static asset serving
 	AuthStore        *CredentialStore // nil disables basic auth
+	MCPHandler       http.Handler     // nil disables MCP endpoint at /_mcp/
 }
 
 // NewHTTPServer creates a new HTTP server with the given dependencies.
@@ -88,6 +89,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	if opts.SearchIndex != nil {
 		searchHandler := NewSearchHandler(opts.SearchIndex)
 		api.HandleFunc("GET /search", searchHandler.SearchEndpoint)
+	}
+
+	if opts.MCPHandler != nil {
+		auth.Handle("/_mcp/", http.StripPrefix("/_mcp", opts.MCPHandler))
 	}
 
 	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {

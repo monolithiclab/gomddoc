@@ -81,10 +81,10 @@ func setupTest(t *testing.T) *testFixture {
 	prov := &testProvider{fsys: testFS, defaultIndex: "README.md"}
 
 	mcpServer := NewServer(ServerDeps{
-		Provider:     prov,
-		MetaIndex:    metaIdx,
-		SearchIndex:  searchIdx,
-		ContentRoot:  testFS,
+		Provider:    prov,
+		MetaIndex:   metaIdx,
+		SearchIndex: searchIdx,
+
 		DefaultIndex: "README.md",
 		SiteName:     "Test Docs",
 		Version:      "test",
