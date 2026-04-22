@@ -106,6 +106,25 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         
+        pre { position: relative; }
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 4px;
+            background: var(--pico-background-color);
+            color: var(--pico-muted-color);
+        }
+        pre:hover .copy-btn { opacity: 1; }
+        .copy-btn:hover { color: var(--pico-color); }
+        .copy-btn.copied { color: var(--pico-ins-color); }
+
         @media (max-width: 992px) {
             .page-layout {
                 flex-direction: column;
@@ -246,6 +265,29 @@
                         observer.observe(section);
                     });
                 }
+            })();
+
+            // Code block copy button - wrapped in IIFE for encapsulation
+            (function() {
+                'use strict';
+                document.querySelectorAll('pre > code').forEach(function(codeBlock) {
+                    var pre = codeBlock.parentNode;
+                    var btn = document.createElement('button');
+                    btn.className = 'copy-btn';
+                    btn.textContent = 'Copy';
+                    btn.setAttribute('aria-label', 'Copy code to clipboard');
+                    btn.addEventListener('click', function() {
+                        navigator.clipboard.writeText(codeBlock.textContent).then(function() {
+                            btn.textContent = 'Copied!';
+                            btn.classList.add('copied');
+                            setTimeout(function() {
+                                btn.textContent = 'Copy';
+                                btn.classList.remove('copied');
+                            }, 2000);
+                        });
+                    });
+                    pre.appendChild(btn);
+                });
             })();
         </script>
     </body>
