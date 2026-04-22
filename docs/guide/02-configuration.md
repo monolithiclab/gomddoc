@@ -318,10 +318,10 @@ GOMDDOC_SITE_THEME_FEATURES_COLOR_CHIPS=false gomddoc serve # Disable color chip
 | `search` | `true` | Search button and modal (auto-enabled when search index is available) |
 | `katex` | `true` | KaTeX math rendering (CSS and auto-render scripts) |
 | `mermaid` | `true` | Mermaid diagram rendering |
-| `heading_anchors` | `true` | Clickable anchor links on headings (renderer post-processor) |
-| `admonitions` | `true` | Admonition block rendering (renderer post-processor) |
+| `heading_anchors` | `true` | Clickable anchor links on headings (goldmark extension) |
+| `admonitions` | `true` | Admonition block rendering (goldmark extension) |
 
-Features not listed in config default to enabled. Setting a feature to `false` prevents the corresponding template blocks and renderer post-processors from executing.
+Features not listed in config default to enabled. Setting a feature to `false` prevents the corresponding template blocks and goldmark extensions from executing.
 
 **Per-page overrides:** See [Frontmatter & Page-Level Overrides](#frontmatter--page-level-overrides) below.
 

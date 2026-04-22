@@ -119,25 +119,21 @@ provided by the enricher pipeline, not the renderer.
 | Renderer | InputMimeTypes | OutputMimeTypes | Purpose |
 | --- | --- | --- | --- |
 | **MarkdownPassthroughRenderer** | `["text/markdown"]` | `["text/markdown"]` | Raw markdown with frontmatter stripped |
-| **MarkdownRenderer** | `["text/markdown"]` | `["text/html"]` | Markdown → HTML with post-processing |
+| **MarkdownRenderer** | `["text/markdown"]` | `["text/html"]` | Markdown → HTML with goldmark extensions |
 | **PassthroughRenderer** | `["*/*"]` | `["*/*"]` | Catch-all, content unchanged |
 
 Registration order matters: later registrations win ties. MarkdownPassthroughRenderer is registered
 first, then MarkdownRenderer (so HTML is the default for `Accept: */*`), then PassthroughRenderer.
 
-**Post-Processing Pipeline:**
+**Goldmark Extensions:**
 
-After goldmark renders the Markdown to HTML, three post-processors run in sequence:
+Three custom goldmark extensions operate at the AST level during parsing and rendering:
 
-1. **Heading Anchors** (`addHeadingAnchors()`) — Inserts `<a href="#id" class="heading-anchor" aria-hidden="true">#</a>` into headings with auto-generated IDs. Revealed on hover via CSS. Gated by `heading_anchors` feature toggle.
-2. **Admonitions** (`transformAdmonitions()`) — Converts GitHub-style `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` blockquotes into `<div class="admonition admonition-{type}">` elements with styled titles.
-3. **Color Chips** (`transformColorChips()`) — Replaces inline `<code>#HEX</code>` with `<color-chip>#HEX</color-chip>` web component elements. Gated by `color_chips` feature toggle.
+1. **Heading Anchors** (`HeadingAnchorExtension`) — Custom `NodeRenderer` for `ast.KindHeading` that appends `<a href="#id" class="heading-anchor" aria-hidden="true">#</a>` to headings with auto-generated IDs. Gated by `heading_anchors` feature toggle.
+2. **Admonitions** (`AdmonitionExtension`) — AST transformer that detects `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` patterns in blockquotes and replaces them with `AdmonitionNode` custom AST nodes, rendered as `<div class="admonition admonition-{type}">` elements. Gated by `admonitions` feature toggle.
+3. **Color Chips** (`ColorChipExtension`) — AST transformer that detects hex color codes in `ast.CodeSpan` nodes and replaces them with `ColorChipNode` custom AST nodes, rendered as `<color-chip>#HEX</color-chip>` web component elements. Gated by `color_chips` feature toggle.
 
-Each post-processor is gated by the feature toggle system. Theme-level features (`ThemeConfig.Features`)
-are merged with per-page frontmatter overrides to produce a merged feature map. Post-processors only
-run when their feature is enabled (default: all enabled). Each stage operates on the HTML string output
-of the previous stage. The pipeline is deterministic and order-dependent (heading anchors must run before
-admonitions to avoid processing anchor elements as content).
+Feature flags are passed to extensions via two channels: the parser context key (for AST transformers) and a document attribute (for node renderers). This enables per-page feature overrides via frontmatter. All extensions are always registered on the goldmark instance — disabled extensions simply skip transformation, leaving the original AST nodes to render with goldmark's defaults.
 
 ### 3. Registry
 
@@ -461,7 +457,8 @@ dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output
 - Inherits theme colors via CSS custom properties
 - Controlled by `color_chips` feature toggle (global) and per-page frontmatter override
 
-**Pipeline integration:** The `transformColorChips()` post-processor converts `<code>#HEX</code>` to
+**Pipeline integration:** The `ColorChipExtension` goldmark extension replaces `ast.CodeSpan` nodes
+containing hex color codes with `ColorChipNode` custom AST nodes during parsing, which render as
 `<color-chip>#HEX</color-chip>`. Themes load the component via `{{ inlineJSAsset "color-chip.mjs" }}`.
 
 ## Data Flow
@@ -731,7 +728,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Static Site Generation**: `gomddoc build` output for deployment to static hosts
 - **Color Chip**: `<color-chip>` web component that renders hex color codes as interactive swatches
 - **Feature Toggle**: A named boolean flag (`map[string]bool`) controlling optional capabilities (dark mode, TOC, color chips, etc.). Site-level defaults merged with per-page frontmatter overrides. Default-to-true semantics.
-- **Post-Processing Pipeline**: Sequential HTML transformations after goldmark rendering (anchors → admonitions → color chips), gated by feature toggles
+- **Goldmark Extensions**: Custom goldmark `Extender` implementations (heading anchors, admonitions, color chips) that operate at the AST level during parsing and rendering, gated by feature toggles
 - **Theme**: A package with layouts, partials, and optional static assets that defines visual presentation
 - **Theme Variables**: CSS custom properties (`--theme-*`) injected from site config for color/typography customization
 - **Page Type**: Layout variant selected via frontmatter `layout` field (e.g., `page`, `api`, `changelog`)

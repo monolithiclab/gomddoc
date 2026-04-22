@@ -99,7 +99,7 @@ Extracted from completed spec files before deletion.
 - **Default-to-true**: Unknown features return `true`. This means adding a new feature guard to a template doesn't break existing sites — it only takes effect when explicitly disabled. Requires no config migration.
 - **Pre-merged on PageContext**: Site defaults + page overrides are merged once at `TemplateContext` construction (in handler/build), not on every `.Feature` call. Uses `maps.Clone` to avoid mutating the site config.
 - **Env var pattern**: `GOMDDOC_SITE_FEATURES_KATEX=false` uses reflection-based `walkStruct` extended with `reflect.Map` handling for `map[string]bool` types.
-- **Renderer gating**: Post-processors (heading_anchors, color_chips) check the merged feature map before executing. The renderer receives the site-level features and merges with page metadata.
+- **Renderer gating**: Goldmark extensions (heading_anchors, admonitions, color_chips) check the merged feature map via parser context (AST transformers) or document attribute (node renderers). The renderer sets merged features on both channels before parsing/rendering.
 
 ## API Design Patterns
 
@@ -162,7 +162,7 @@ Extracted from completed spec files before deletion.
 
 **Why web component**: Shadow DOM encapsulation means the chip renders identically across all 8 themes without any theme-specific CSS. The `::part(swatch)` and `::part(label)` CSS parts allow themes to customize appearance if needed. Click-to-copy with "Copied!" feedback provides utility. The component is loaded once via `{{ inlineJSAsset "color-chip.mjs" }}` — shared across all themes from `assets/shared/`.
 
-**Post-processing integration**: The `transformColorChips()` function converts `<code>#HEX</code>` to `<color-chip>#HEX</color-chip>` during rendering. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by the `color_chips` feature toggle (default: enabled) with per-page frontmatter override via `features: { color_chips: false }`.
+**Pipeline integration**: The `ColorChipExtension` goldmark extension detects hex color codes in `ast.CodeSpan` nodes during AST transformation and replaces them with `ColorChipNode` custom nodes, rendered as `<color-chip>#HEX</color-chip>`. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by the `color_chips` feature toggle (default: enabled) with per-page frontmatter override via `features: { color_chips: false }`.
 
 ## TOC Scroll Highlighting
 
@@ -296,6 +296,21 @@ mode compatibility — no per-theme CSS needed. Follows the `color-chip.mjs` pre
 
 **Build mode:** Option B (Pagefind) deferred as optional post-build step.
 
+## Systematic `t.Parallel()` Adoption
+
+**Chosen**: Add `t.Parallel()` to every test function and subtest unless incompatible
+
+**Incompatible patterns** (correctly excluded):
+- `t.Setenv` — mutates process environment, panics if test is parallel
+- `testing.AllocsPerRun` — panics in parallel tests (Go runtime restriction)
+
+**Scope**: config, server, renderer, enricher, negotiate, text, template/breadcrumb, cmd/gomddoc —
+all packages that had gaps identified in the 8th review pass.
+
+**Why**: Parallel tests catch shared-state bugs at test time rather than production, and reduce total
+test suite wall-clock time. The Go testing framework enforces that `t.Setenv` and `t.Parallel` are
+mutually exclusive at runtime, so the exclusion is safe by construction.
+
 ## MCP Server (Phase 10)
 
 **Chosen**: Official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk` v1.4.x) with thin adapter architecture
@@ -333,6 +348,24 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 **Collision strategy**:
 - **File vs. directory**: File wins. If `guide.md` and `guide/` both exist, `/guide` resolves to the file. A warning is logged at startup.
 - **Multi-extension conflicts**: The first extension in the `strip_extensions` config list wins. If both `guide.md` and `guide.html` exist and both extensions are strippable, the one whose extension appears first in the config claims `/guide`. The other is skipped with a warning.
+
+## Post-Processors to Goldmark Extensions
+
+**Chosen**: Replace regex-based HTML post-processors with proper goldmark AST extensions
+
+**Previous approach**: Three functions (`addHeadingAnchors`, `transformAdmonitions`, `transformColorChips`) ran sequentially on rendered HTML bytes using regex replacement. Feature flags were checked at the `Render()` call site.
+
+**Alternatives considered**:
+- **Renderer-only extensions** (override `NodeRenderer` for existing node types): Less code but mixes detection logic into rendering, can't represent admonitions/color chips in the AST
+- **Hybrid** (AST transform for admonitions, renderer-only for anchors/chips): Right-sized complexity but inconsistent patterns
+
+**Why full AST extensions**: Each feature represents different semantic content. Modeling them as AST nodes (or renderer overrides for headings) keeps the architecture clean. Extensions compose naturally with other goldmark extensions. AST-level transforms are testable independently of HTML output.
+
+**Key design decisions**:
+- **Two-channel feature flags**: Parser context key for AST transformers (which have `parser.Context`), document attribute for node renderers (which only have `ast.Node`). Both set by `MarkdownRenderer.Render()` before parsing/rendering.
+- **Always-registered extensions**: All three extensions are registered on the goldmark instance. Disabled extensions skip transformation at runtime, leaving original AST nodes to render with goldmark's defaults.
+- **No custom node for heading anchors**: Headings don't change structurally — only the HTML output gains an anchor link. A renderer override for `ast.KindHeading` is sufficient.
+- **Custom nodes for admonitions/color chips**: `AdmonitionNode` (block) and `ColorChipNode` (inline) replace `ast.Blockquote` and `ast.CodeSpan` respectively. This makes the semantic change visible in the AST.
 
 ## Deferred / Discarded Ideas
 
