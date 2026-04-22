@@ -96,7 +96,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	}
 
 	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex)
+		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider)
 		auth.Handle("GET /sitemap.xml", sitemapHandler)
 	}
 

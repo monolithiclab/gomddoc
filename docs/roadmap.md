@@ -132,8 +132,8 @@ _High-impact features that differentiate gomddoc from competitors._
       (last commit date) per page from Git provider. Filesystem provider falls back to mtime.
       Used in JSON-LD, sitemap `<lastmod>`, and optionally displayed in UI ("Last updated on...").
       Cache at startup or lazily to avoid per-request Git operations. Medium complexity.
-- [ ] **Sitemap `<lastmod>` timestamps**: Add `<lastmod>` to sitemap entries using file mtime
-      from `fs.Stat()`. For git provider, uses commit timestamps. Low complexity.
+- [x] **Sitemap `<lastmod>` timestamps**: `<lastmod>` on each sitemap entry from `fs.Stat()`
+      file mtime. Git provider returns commit timestamps. Omitted gracefully if stat fails.
 
 ### 9c: SEO Polish (P2)
 

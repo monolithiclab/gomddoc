@@ -1,22 +1,27 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
+var sitemapTestTime = time.Date(2025, 6, 15, 10, 30, 0, 0, time.UTC)
+
 var sitemapTestFS = fstest.MapFS{
-	"README.md":      {Data: []byte("---\ntitle: Home\ndescription: Welcome\n---\n# Home\n")},
-	"docs/guide.md":  {Data: []byte("---\ntitle: Guide\ntags: [tutorial]\n---\n# Guide\n")},
-	"docs/README.md": {Data: []byte("---\ntitle: Docs Index\n---\n# Docs\n")},
+	"README.md":      {Data: []byte("---\ntitle: Home\ndescription: Welcome\n---\n# Home\n"), ModTime: sitemapTestTime},
+	"docs/guide.md":  {Data: []byte("---\ntitle: Guide\ntags: [tutorial]\n---\n# Guide\n"), ModTime: sitemapTestTime},
+	"docs/README.md": {Data: []byte("---\ntitle: Docs Index\n---\n# Docs\n"), ModTime: sitemapTestTime},
 }
 
 func TestSitemapHandler(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
-	handler := NewSitemapHandler(idx, "https://docs.example.com", "README.md")
+	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
+	handler := NewSitemapHandler(idx, "https://docs.example.com", "README.md", prov)
 
 	req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
 	w := httptest.NewRecorder()
@@ -45,11 +50,15 @@ func TestSitemapHandler(t *testing.T) {
 	if !strings.Contains(body, "https://docs.example.com/docs/") {
 		t.Error("response should contain docs/ URL (README.md stripped)")
 	}
+	if !strings.Contains(body, "<lastmod>2025-06-15</lastmod>") {
+		t.Error("response should contain <lastmod> dates")
+	}
 }
 
 func TestGenerateSitemap(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
-	data, err := GenerateSitemap(idx, "https://docs.example.com", "README.md")
+	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov)
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -64,11 +73,15 @@ func TestGenerateSitemap(t *testing.T) {
 	if !strings.Contains(body, "https://docs.example.com/docs/guide.md") {
 		t.Error("should contain guide.md URL")
 	}
+	if !strings.Contains(body, "<lastmod>2025-06-15</lastmod>") {
+		t.Error("should contain <lastmod> with file modification date")
+	}
 }
 
 func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
-	data, err := GenerateSitemap(idx, "", "README.md")
+	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
+	data, err := GenerateSitemap(context.Background(), idx, "", "README.md", prov)
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -76,5 +89,21 @@ func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 	body := string(data)
 	if strings.Contains(body, "<loc>") {
 		t.Error("should not contain any <loc> entries when domain is empty")
+	}
+}
+
+func TestGenerateSitemap_NilProvider(t *testing.T) {
+	idx := buildTestIndex(t, sitemapTestFS)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", nil)
+	if err != nil {
+		t.Fatalf("GenerateSitemap: %v", err)
+	}
+
+	body := string(data)
+	if strings.Contains(body, "<lastmod>") {
+		t.Error("should not contain <lastmod> when provider is nil")
+	}
+	if !strings.Contains(body, "https://docs.example.com/docs/guide.md") {
+		t.Error("should still contain URLs")
 	}
 }

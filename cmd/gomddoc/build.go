@@ -90,7 +90,7 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate SEO files (robots.txt and sitemap.xml)
-	if err := b.generateSEOFiles(contentRoot, &cfg.Site); err != nil {
+	if err := b.generateSEOFiles(prov, &cfg.Site); err != nil {
 		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
@@ -295,7 +295,7 @@ func (b *BuildCmd) copyStaticAssets(staticFS fs.FS, stats *buildStats) error {
 }
 
 // generateSEOFiles generates robots.txt and optionally sitemap.xml in the output directory.
-func (b *BuildCmd) generateSEOFiles(contentRoot fs.FS, siteConfig *config.SiteConfig) error {
+func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.SiteConfig) error {
 	// Always generate robots.txt
 	robotsTxt := server.GenerateRobotsTxt(siteConfig.Meta.Domain)
 	if err := b.writeOutputFile("robots.txt", []byte(robotsTxt)); err != nil {
@@ -305,12 +305,17 @@ func (b *BuildCmd) generateSEOFiles(contentRoot fs.FS, siteConfig *config.SiteCo
 
 	// Generate sitemap.xml only if domain is configured
 	if siteConfig.Meta.Domain != "" {
+		contentRoot, err := prov.RootFS(context.Background())
+		if err != nil {
+			return fmt.Errorf("get content root for sitemap: %w", err)
+		}
+
 		idx, err := metadata.BuildIndex(context.Background(), contentRoot)
 		if err != nil {
 			return fmt.Errorf("build metadata index for sitemap: %w", err)
 		}
 
-		sitemapData, err := server.GenerateSitemap(idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex)
+		sitemapData, err := server.GenerateSitemap(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov)
 		if err != nil {
 			return fmt.Errorf("generate sitemap: %w", err)
 		}

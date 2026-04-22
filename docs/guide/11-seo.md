@@ -76,15 +76,21 @@ discovered by the metadata index:
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://docs.example.com/</loc>
+    <lastmod>2025-06-15</lastmod>
   </url>
   <url>
     <loc>https://docs.example.com/guide/getting-started.md</loc>
+    <lastmod>2025-06-10</lastmod>
   </url>
 </urlset>
 ```
 
-In `serve` mode, the sitemap is generated dynamically on each request using the metadata index.
-In `build` mode, `sitemap.xml` is written as a static file in the output directory.
+Each entry includes a `<lastmod>` date derived from the file's modification time. For the
+filesystem provider, this is the OS file mtime. For the git provider, it reflects the commit
+timestamp. If a file cannot be stat'd, the `<lastmod>` is simply omitted for that entry.
+
+In `serve` mode, the sitemap is generated dynamically on first request and cached. In `build`
+mode, `sitemap.xml` is written as a static file in the output directory.
 
 Submitting your sitemap to search engines (via Google Search Console or Bing Webmaster Tools) helps
 them discover all your pages efficiently, especially for large documentation sites where not every
