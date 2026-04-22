@@ -29,12 +29,10 @@ func TestGenerate_BasicTree(t *testing.T) {
 		t.Fatalf("expected 3 root children, got %d", len(root.Children))
 	}
 
-	// Directories come first
+	// Sorted alphabetically: docs/, guide.md, reference.md
 	if root.Children[0].Label != "Docs" || !root.Children[0].IsDir {
 		t.Errorf("first child should be Docs dir, got %q (isDir=%v)", root.Children[0].Label, root.Children[0].IsDir)
 	}
-
-	// Then files alphabetically
 	if root.Children[1].Label != "Getting Started" {
 		t.Errorf("second child label should be 'Getting Started', got %q", root.Children[1].Label)
 	}
@@ -249,24 +247,27 @@ func TestGenerate_SortOrder(t *testing.T) {
 		t.Fatal("expected non-nil root")
 	}
 
-	// Dirs first (alpha, beta), then files (alpha.md, zebra.md)
-	expected := []string{"Alpha", "Beta", "Alpha", "Zebra"}
+	// Sorted alphabetically: alpha/ (dir), alpha.md (file), beta/ (dir), zebra.md (file)
+	expected := []struct {
+		label string
+		isDir bool
+	}{
+		{"Alpha", true},
+		{"Alpha", false},
+		{"Beta", true},
+		{"Zebra", false},
+	}
 	if len(root.Children) != 4 {
 		t.Fatalf("expected 4 children, got %d", len(root.Children))
 	}
 
 	for i, exp := range expected {
-		if root.Children[i].Label != exp {
-			t.Errorf("child[%d] label = %q, want %q", i, root.Children[i].Label, exp)
+		if root.Children[i].Label != exp.label {
+			t.Errorf("child[%d] label = %q, want %q", i, root.Children[i].Label, exp.label)
 		}
-	}
-
-	// First two should be dirs
-	if !root.Children[0].IsDir || !root.Children[1].IsDir {
-		t.Error("first two children should be directories")
-	}
-	if root.Children[2].IsDir || root.Children[3].IsDir {
-		t.Error("last two children should be files")
+		if root.Children[i].IsDir != exp.isDir {
+			t.Errorf("child[%d] isDir = %v, want %v", i, root.Children[i].IsDir, exp.isDir)
+		}
 	}
 }
 

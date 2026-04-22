@@ -62,75 +62,57 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 		return
 	}
 
-	// Separate directories and files, filtering as we go
-	var dirs []fs.DirEntry
-	var files []fs.DirEntry
-
+	// Filter to visible entries (skip hidden, non-markdown, default index)
+	var visible []fs.DirEntry
 	for _, entry := range entries {
 		name := entry.Name()
-
-		// Skip hidden files and directories
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
+		if entry.IsDir() || (strings.HasSuffix(name, ".md") && name != g.defaultIndex) {
+			visible = append(visible, entry)
+		}
+	}
+
+	// Sort all entries alphabetically — directories and files interleaved
+	slices.SortFunc(visible, func(a, b fs.DirEntry) int {
+		return strings.Compare(a.Name(), b.Name())
+	})
+
+	for _, entry := range visible {
+		name := entry.Name()
+		entryPath := joinPath(dir, name)
 
 		if entry.IsDir() {
-			dirs = append(dirs, entry)
-		} else if strings.HasSuffix(name, ".md") && name != g.defaultIndex {
-			files = append(files, entry)
-		}
-	}
-
-	// Sort directories first, then files, both alphabetically
-	slices.SortFunc(dirs, func(a, b fs.DirEntry) int {
-		return strings.Compare(a.Name(), b.Name())
-	})
-	slices.SortFunc(files, func(a, b fs.DirEntry) int {
-		return strings.Compare(a.Name(), b.Name())
-	})
-
-	// Add directories
-	for _, d := range dirs {
-		name := d.Name()
-		entryPath := joinPath(dir, name)
-		urlPath := "/" + entryPath + "/"
-
-		node := &NavNode{
-			Label: text.TitleCase(name),
-			Path:  urlPath,
-			IsDir: true,
-		}
-
-		g.buildTree(node, entryPath)
-
-		// Only include directories with renderable children
-		if len(node.Children) > 0 {
+			urlPath := "/" + entryPath + "/"
+			node := &NavNode{
+				Label: text.TitleCase(name),
+				Path:  urlPath,
+				IsDir: true,
+			}
+			g.buildTree(node, entryPath)
+			// Only include directories with renderable children
+			if len(node.Children) > 0 {
+				parent.Children = append(parent.Children, node)
+			}
+		} else {
+			urlPath := "/" + entryPath
+			label := g.extractTitle(entryPath)
+			if label == "" {
+				// Fall back to title-cased filename without extension,
+				// replacing hyphens and underscores with spaces
+				base := strings.TrimSuffix(name, path.Ext(name))
+				base = strings.ReplaceAll(base, "-", " ")
+				base = strings.ReplaceAll(base, "_", " ")
+				label = text.TitleCase(base)
+			}
+			node := &NavNode{
+				Label: label,
+				Path:  urlPath,
+				IsDir: false,
+			}
 			parent.Children = append(parent.Children, node)
 		}
-	}
-
-	// Add files
-	for _, f := range files {
-		name := f.Name()
-		entryPath := joinPath(dir, name)
-		urlPath := "/" + entryPath
-
-		label := g.extractTitle(entryPath)
-		if label == "" {
-			// Fall back to title-cased filename without extension,
-			// replacing hyphens and underscores with spaces
-			base := strings.TrimSuffix(name, path.Ext(name))
-			base = strings.ReplaceAll(base, "-", " ")
-			base = strings.ReplaceAll(base, "_", " ")
-			label = text.TitleCase(base)
-		}
-
-		node := &NavNode{
-			Label: label,
-			Path:  urlPath,
-			IsDir: false,
-		}
-		parent.Children = append(parent.Children, node)
 	}
 }
 
