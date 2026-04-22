@@ -82,6 +82,9 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 
 	urls := make([]sitemapURL, 0, len(pages))
 	for _, page := range pages {
+		if robots, ok := page.Meta["robots"].(string); ok && strings.Contains(robots, "noindex") {
+			continue
+		}
 		loc := seo.PageURL(domain, "/"+page.Path, defaultIndex)
 		if loc != "" {
 			entry := sitemapURL{Loc: loc}

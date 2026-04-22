@@ -18,6 +18,13 @@ var sitemapTestFS = fstest.MapFS{
 	"docs/README.md": {Data: []byte("---\ntitle: Docs Index\n---\n# Docs\n"), ModTime: sitemapTestTime},
 }
 
+var sitemapNoindexFS = fstest.MapFS{
+	"README.md":      {Data: []byte("---\ntitle: Home\n---\n# Home\n"), ModTime: sitemapTestTime},
+	"docs/guide.md":  {Data: []byte("---\ntitle: Guide\n---\n# Guide\n"), ModTime: sitemapTestTime},
+	"docs/draft.md":  {Data: []byte("---\ntitle: Draft\nrobots: noindex\n---\n# Draft\n"), ModTime: sitemapTestTime},
+	"docs/hidden.md": {Data: []byte("---\ntitle: Hidden\nrobots: \"noindex, nofollow\"\n---\n# Hidden\n"), ModTime: sitemapTestTime},
+}
+
 func TestSitemapHandler(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
@@ -89,6 +96,33 @@ func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 	body := string(data)
 	if strings.Contains(body, "<loc>") {
 		t.Error("should not contain any <loc> entries when domain is empty")
+	}
+}
+
+func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
+	idx := buildTestIndex(t, sitemapNoindexFS)
+	prov := newMemoryProvider(sitemapNoindexFS, "README.md", false)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov)
+	if err != nil {
+		t.Fatalf("GenerateSitemap: %v", err)
+	}
+
+	body := string(data)
+
+	// Pages without noindex should be present
+	if !strings.Contains(body, "https://docs.example.com/docs/guide.md") {
+		t.Error("should contain guide.md (no robots directive)")
+	}
+	if !strings.Contains(body, "https://docs.example.com/") {
+		t.Error("should contain root URL (no robots directive)")
+	}
+
+	// Pages with noindex should be excluded
+	if strings.Contains(body, "draft.md") {
+		t.Error("should not contain draft.md (robots: noindex)")
+	}
+	if strings.Contains(body, "hidden.md") {
+		t.Error("should not contain hidden.md (robots: noindex, nofollow)")
 	}
 }
 

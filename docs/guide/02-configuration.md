@@ -186,6 +186,12 @@ The primary domain name for your site (e.g., `docs.example.com`). Used for canon
 *   **Env Var:** `GOMDDOC_SITE_META_DOMAIN`
 *   **Default:** Empty.
 
+**Robots**
+Controls the default `<meta name="robots">` tag for all pages. Common values: `"index, follow"` (default browser behavior), `"noindex"` (prevent indexing), `"noindex, nofollow"` (prevent indexing and link following). Can be overridden per page via frontmatter. Pages with `noindex` are automatically excluded from the sitemap.
+*   **YAML:** `meta.robots`
+*   **Env Var:** `GOMDDOC_SITE_META_ROBOTS`
+*   **Default:** Empty (no tag emitted; crawlers default to `index, follow`).
+
 ### Edit URL
 
 **Edit URL**
@@ -237,6 +243,7 @@ or environment variable setting — but only for that page.
 | `description` | `meta.description` | Page-level `<meta name="description">` and `og:description` (falls back to site description) |
 | `og_type` | — | Controls `<meta property="og:type">` for this page (default: `article`) |
 | `color_chips` | `color_chips` | Enables or disables color chip rendering on this page, overriding the global setting |
+| `robots` | `meta.robots` | Controls `<meta name="robots">` for this page (e.g., `noindex`). Pages with `noindex` are excluded from the sitemap |
 | `tags` | — | Page tags for the metadata index, queryable via `/api/tags` and the MCP `find_related` tool |
 | `date` | — | Publication date included in tags API responses |
 

@@ -86,6 +86,7 @@ type MetaConfig struct {
 	Title       string `env:"TITLE" yaml:"title"`
 	Description string `env:"DESCRIPTION" yaml:"description"`
 	Domain      string `env:"DOMAIN" yaml:"domain"`
+	Robots      string `env:"ROBOTS" yaml:"robots"`
 }
 
 // ThemeConfig holds theme settings

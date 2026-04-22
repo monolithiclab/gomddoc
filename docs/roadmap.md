@@ -129,9 +129,9 @@ _High-impact features that differentiate gomddoc from competitors._
 
 _Enhances competitiveness and closes remaining gaps._
 
-- [ ] **Per-page `robots` meta tag**: Frontmatter `robots: noindex` or `robots: noindex, nofollow`
-      controls per-page indexing. Site-wide default via config. Needed for draft pages or pages
-      that shouldn't appear in search results. Low complexity.
+- [x] **Per-page `robots` meta tag**: Frontmatter `robots: noindex` or `robots: noindex, nofollow`
+      controls per-page indexing. Site-wide default via `meta.robots` config. Pages with `noindex`
+      are automatically excluded from the sitemap. Low complexity.
 - [ ] **HTML `lang` attribute**: Add `lang` attribute to `<html>` tag (e.g., `<html lang="en">`).
       Configurable via `language` field in `SiteConfig`, default `"en"`. Lighthouse flags its
       absence. Low complexity.

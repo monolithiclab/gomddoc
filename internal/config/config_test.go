@@ -1104,6 +1104,39 @@ func TestSiteConfig_LoadFromFile_ThemeVarsNil(t *testing.T) {
 	}
 }
 
+func TestMetaConfig_Robots(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults to empty", func(t *testing.T) {
+		t.Parallel()
+		sc := NewSiteConfig(".")
+		if sc.Meta.Robots != "" {
+			t.Errorf("Meta.Robots default = %q, want empty", sc.Meta.Robots)
+		}
+	})
+
+	t.Run("loads from config file", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		sc := NewSiteConfig(tmpDir)
+
+		gomddocDir := filepath.Join(tmpDir, ".gomddoc")
+		if err := os.MkdirAll(gomddocDir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(gomddocDir, "config.yml"), []byte("meta:\n  robots: \"noindex, nofollow\"\n"), 0644); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+
+		if err := sc.LoadFromFile(tmpDir); err != nil {
+			t.Fatalf("LoadFromFile: %v", err)
+		}
+		if sc.Meta.Robots != "noindex, nofollow" {
+			t.Errorf("Meta.Robots = %q, want %q", sc.Meta.Robots, "noindex, nofollow")
+		}
+	})
+}
+
 func TestNewSiteConfig_DotDirectory(t *testing.T) {
 	t.Parallel()
 

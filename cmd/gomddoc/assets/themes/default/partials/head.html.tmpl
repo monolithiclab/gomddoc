@@ -3,6 +3,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{ .Site.Meta.Description }}">
+  {{ if .Page.Meta.robots }}<meta name="robots" content="{{ .Page.Meta.robots }}">
+  {{ else if .Site.Meta.Robots }}<meta name="robots" content="{{ .Site.Meta.Robots }}">{{ end }}
   <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   {{ $url := canonicalURL .Page.Path }}{{ if $url }}
