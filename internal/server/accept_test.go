@@ -51,9 +51,19 @@ func TestParseAccept(t *testing.T) {
 			wantOrder: []string{"text/html", "application/xhtml+xml", "image/webp", "application/xml", "*/*"},
 		},
 		{
-			name:      "quality factor zero",
+			name:      "q=0 filtered out with other types",
 			header:    "text/html;q=0, application/json",
-			wantOrder: []string{"application/json", "text/html"},
+			wantOrder: []string{"application/json"},
+		},
+		{
+			name:      "single type with q=0 returns empty",
+			header:    "text/html;q=0",
+			wantOrder: []string{},
+		},
+		{
+			name:      "mix of q=0 and q>0 entries",
+			header:    "text/html;q=0, application/json;q=0.9, text/plain;q=0, image/png;q=0.5",
+			wantOrder: []string{"application/json", "image/png"},
 		},
 		{
 			name:      "quality factor with decimal places",

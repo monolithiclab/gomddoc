@@ -118,7 +118,7 @@ Thread-safe with `sync.RWMutex`. Collision detection with `slog.Warn`.
 1. Read file + get MIME type (Provider)
 2. Get renderer from registry (normalized MIME type)
 3. Render content (produces output MIME type + metadata + TOC)
-4. Content negotiation on OUTPUT MIME type vs Accept header
+4. Content negotiation on OUTPUT MIME type vs Accept header (RFC 7231: entries with q=0 are filtered as "not acceptable")
 5. Serve (wrapped in template if HTML, raw otherwise)
 
 ### 5. Template Layer

@@ -26,6 +26,7 @@ func (mt MediaType) String() string {
 // Behavior:
 //   - Empty header returns "*/*" with q=1.0 (accept anything)
 //   - Quality factors parsed from q parameter (defaults to 1.0)
+//   - Entries with q=0 are excluded (per HTTP spec, q=0 means "not acceptable")
 //   - Invalid entries are silently skipped
 //   - Uses sort.SliceStable to preserve client preference order for equal q-values
 //
@@ -57,6 +58,11 @@ func ParseAccept(acceptHeader string) []MediaType {
 		parts := strings.Split(mediaType, "/")
 		if len(parts) != 2 {
 			continue // Invalid MIME type format
+		}
+
+		// Per HTTP spec, q=0 means "not acceptable" — skip these entries
+		if q == 0 {
+			continue
 		}
 
 		types = append(types, MediaType{
