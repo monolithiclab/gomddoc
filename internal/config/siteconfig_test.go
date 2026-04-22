@@ -8,12 +8,12 @@ import (
 
 func TestSiteConfig_Defaults(t *testing.T) {
 	tests := []struct {
-		name        string
-		dir         string
-		wantTitle   string
-		wantTheme   string
-		wantDomain  string
-		wantDesc    string
+		name       string
+		dir        string
+		wantTitle  string
+		wantTheme  string
+		wantDomain string
+		wantDesc   string
 	}{
 		{
 			name:       "current directory",
