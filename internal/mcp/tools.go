@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
@@ -134,6 +135,9 @@ func (s *MCPServer) handleReadPage(ctx context.Context, _ *mcp.CallToolRequest, 
 	if input.Path == "" {
 		return textResult("Path must not be empty."), nil, nil
 	}
+	if provider.IsHiddenPath(input.Path) {
+		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
+	}
 
 	content, _, err := s.deps.Provider.ReadFile(ctx, input.Path)
 	if err != nil {
@@ -226,6 +230,9 @@ func (s *MCPServer) handleReadSection(ctx context.Context, _ *mcp.CallToolReques
 	if input.Path == "" || input.HeadingID == "" {
 		return textResult("Both path and heading_id are required."), nil, nil
 	}
+	if provider.IsHiddenPath(input.Path) {
+		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
+	}
 
 	content, _, err := s.deps.Provider.ReadFile(ctx, input.Path)
 	if err != nil {
@@ -242,6 +249,9 @@ func (s *MCPServer) handleReadSection(ctx context.Context, _ *mcp.CallToolReques
 func (s *MCPServer) handleFindRelated(_ context.Context, _ *mcp.CallToolRequest, input FindRelatedInput) (*mcp.CallToolResult, any, error) {
 	if input.Path == "" {
 		return textResult("Path must not be empty."), nil, nil
+	}
+	if provider.IsHiddenPath(input.Path) {
+		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 	if s.deps.MetaIndex == nil {
 		return textResult("Metadata index is not available."), nil, nil

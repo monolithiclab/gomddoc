@@ -46,12 +46,12 @@ All request paths are normalized using forward slashes (`path.Clean`, not `filep
 
 ## 3. Hidden File Blocking
 
-gomddoc automatically blocks HTTP access to "hidden" files and directories (those starting with a dot `.`).
+gomddoc automatically blocks access to "hidden" files and directories (those starting with a dot `.`) across all entry points — both HTTP content routes and MCP tools/resources.
 
 - **Blocked:** `.env`, `.git/`, `.gomddoc/`, `.ssh/`, `.config/`, `.DS_Store`
 - **Allowed:** `/.well-known/` (Standard for SSL verification, security.txt — IETF RFC 8615)
 
-This prevents accidental exposure of configuration files, secrets, or git history.
+This prevents accidental exposure of configuration files, secrets, or git history. The validation logic (`provider.IsHiddenPath`) is shared between the HTTP `BlockHiddenPaths` middleware and MCP handlers to ensure consistent enforcement regardless of access method.
 
 ## 4. HTTP Method Filtering
 

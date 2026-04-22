@@ -348,7 +348,7 @@ Middleware is applied in two layers using `RouteGroup` for structured route regi
 
 4. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception)
 5. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
-6. **BlockHiddenPaths** — Returns 404 for dot-prefixed path segments (except `.well-known` per RFC 8615)
+6. **BlockHiddenPaths** — Returns 404 for dot-prefixed path segments (except `.well-known` per RFC 8615). Uses `provider.IsHiddenPath()` — the same check applied by MCP tools to ensure consistent path restrictions across all entry points.
 7. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
 
 **Route groups:**

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -84,42 +85,24 @@ func SecurityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// BlockHiddenPaths blocks HTTP access to hidden files and directories
-// Hidden files/directories are those starting with a dot (.) in Unix
-// This protects .gomddoc/, .git/, .env, .htaccess, .ssh/, etc.
-// Exception: .well-known/ is explicitly allowed (IETF RFC 8615 standard)
+// BlockHiddenPaths blocks HTTP access to hidden files and directories.
+// Uses provider.IsHiddenPath for path validation — the same check used by MCP tools
+// to ensure consistent path restrictions across all entry points.
 func BlockHiddenPaths(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Split path into segments
-		path := strings.TrimPrefix(r.URL.Path, "/")
+		if provider.IsHiddenPath(r.URL.Path) {
+			slog.Debug("Blocked hidden path access", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
+				text.Safe("path", r.URL.Path),
+				slog.String("remote", r.RemoteAddr))
 
-		// Check each segment for hidden files/directories
-		for segment := range strings.SplitSeq(path, "/") {
-			if segment == "" {
-				continue
-			}
-
-			// Allow .well-known (IETF RFC 8615 - used for Let's Encrypt, security.txt, etc.)
-			if segment == ".well-known" {
-				continue
-			}
-
-			// Block if segment starts with a dot
-			if strings.HasPrefix(segment, ".") {
-				slog.Debug("Blocked hidden path access", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			if _, err := w.Write([]byte("File not found")); err != nil {
+				slog.Debug("Failed to write response", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 					text.Safe("path", r.URL.Path),
-					text.Safe("segment", segment),
-					slog.String("remote", r.RemoteAddr))
-
-				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-				w.WriteHeader(http.StatusNotFound)
-				if _, err := w.Write([]byte("File not found")); err != nil {
-					slog.Debug("Failed to write response", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
-						text.Safe("path", r.URL.Path),
-						slog.Any("error", err))
-				}
-				return
+					slog.Any("error", err))
 			}
+			return
 		}
 
 		next.ServeHTTP(w, r)

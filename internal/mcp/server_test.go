@@ -65,6 +65,10 @@ func setupTest(t *testing.T) *testFixture {
 		"guide/getting-started.md": &fstest.MapFile{Data: []byte("---\ntitle: Getting Started\ndescription: How to get started\ntags:\n  - guide\n  - go\n---\n# Getting Started\n\n## Installation\n\nRun `go install`.\n\n## Usage\n\nRun `gomddoc serve`.\n")},
 		"guide/configuration.md":   &fstest.MapFile{Data: []byte("---\ntitle: Configuration\ndescription: Configuration reference\ntags:\n  - guide\n  - config\n---\n# Configuration\n\nConfigure via YAML.\n")},
 		"api/reference.md":         &fstest.MapFile{Data: []byte("---\ntitle: API Reference\ndescription: HTTP API docs\ntags:\n  - api\n---\n# API Reference\n\nEndpoints listed here.\n")},
+		// Hidden files that must not be accessible via MCP
+		".env":                &fstest.MapFile{Data: []byte("SECRET=hunter2")},
+		".gomddoc/config.yml": &fstest.MapFile{Data: []byte("theme: default")},
+		".git/config":         &fstest.MapFile{Data: []byte("[core]\nbare = false")},
 	}
 
 	ctx := context.Background()
@@ -496,5 +500,90 @@ func TestPrompts_SummarizePage(t *testing.T) {
 	text := result.Messages[0].Content.(*mcp.TextContent).Text
 	if !strings.Contains(text, "Welcome to the docs") {
 		t.Errorf("expected page content in prompt, got: %s", text)
+	}
+}
+
+// TestTools_HiddenPathBlocking verifies that MCP tools reject hidden paths,
+// preventing access to .env, .git/, .gomddoc/ etc. via the MCP entry point.
+func TestTools_HiddenPathBlocking(t *testing.T) {
+	t.Parallel()
+	f := setupTest(t)
+	defer f.close(t)
+
+	hiddenPaths := []string{
+		".env",
+		".git/config",
+		".gomddoc/config.yml",
+		"docs/.secret/notes.md",
+	}
+
+	t.Run("read_page", func(t *testing.T) {
+		for _, p := range hiddenPaths {
+			result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name:      "read_page",
+				Arguments: map[string]any{"path": p},
+			})
+			if err != nil {
+				t.Fatalf("CallTool read_page(%s): %v", p, err)
+			}
+			text := result.Content[0].(*mcp.TextContent).Text
+			if !strings.Contains(text, "not found") {
+				t.Errorf("read_page(%q) should block hidden path, got: %s", p, text)
+			}
+		}
+	})
+
+	t.Run("read_section", func(t *testing.T) {
+		for _, p := range hiddenPaths {
+			result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name:      "read_section",
+				Arguments: map[string]any{"path": p, "heading_id": "any"},
+			})
+			if err != nil {
+				t.Fatalf("CallTool read_section(%s): %v", p, err)
+			}
+			text := result.Content[0].(*mcp.TextContent).Text
+			if !strings.Contains(text, "not found") {
+				t.Errorf("read_section(%q) should block hidden path, got: %s", p, text)
+			}
+		}
+	})
+
+	t.Run("find_related", func(t *testing.T) {
+		for _, p := range hiddenPaths {
+			result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name:      "find_related",
+				Arguments: map[string]any{"path": p},
+			})
+			if err != nil {
+				t.Fatalf("CallTool find_related(%s): %v", p, err)
+			}
+			text := result.Content[0].(*mcp.TextContent).Text
+			if !strings.Contains(text, "not found") && !strings.Contains(text, "No tags found") {
+				t.Errorf("find_related(%q) should block hidden path, got: %s", p, text)
+			}
+		}
+	})
+}
+
+// TestResources_HiddenPathBlocking verifies that MCP page resources reject hidden paths.
+func TestResources_HiddenPathBlocking(t *testing.T) {
+	t.Parallel()
+	f := setupTest(t)
+	defer f.close(t)
+
+	hiddenURIs := []string{
+		"docs://site/page/.env",
+		"docs://site/page/.git/config",
+		"docs://site/page/.gomddoc/config.yml",
+	}
+
+	for _, uri := range hiddenURIs {
+		_, err := f.session.ReadResource(context.Background(), &mcp.ReadResourceParams{
+			URI: uri,
+		})
+		if err == nil {
+			t.Errorf("ReadResource(%q) should fail for hidden path", uri)
+		}
 	}
 }

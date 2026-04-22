@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
 func (s *MCPServer) registerResources() {
@@ -74,6 +76,9 @@ func (s *MCPServer) handlePageResource(ctx context.Context, req *mcp.ReadResourc
 	uri := req.Params.URI
 	filePath := strings.TrimPrefix(uri, "docs://site/page/")
 	if filePath == "" || filePath == uri {
+		return nil, mcp.ResourceNotFoundError(uri)
+	}
+	if provider.IsHiddenPath(filePath) {
 		return nil, mcp.ResourceNotFoundError(uri)
 	}
 
