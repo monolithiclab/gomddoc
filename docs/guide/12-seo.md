@@ -59,7 +59,7 @@ An XML sitemap is automatically generated at `/sitemap.xml` when a domain is con
 </urlset>
 ```
 
-The sitemap is available in both `serve` mode (dynamic endpoint) and `build` mode (generated as `sitemap.xml` in the output directory).
+In `serve` mode, the sitemap is generated once on the first request and cached for the lifetime of the process (the metadata index is immutable after startup). In `build` mode, `sitemap.xml` is written to the output directory.
 
 ## Robots.txt
 

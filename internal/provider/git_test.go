@@ -7,6 +7,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -328,7 +329,7 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 				t.Errorf("ReadFile() content = %q, want %q", string(content), tt.wantContent)
 			}
 
-			if tt.wantMIME != "" && !containsString(mimeType, tt.wantMIME) {
+			if tt.wantMIME != "" && !strings.Contains(mimeType, tt.wantMIME) {
 				t.Errorf("ReadFile() mimeType = %q, want to contain %q", mimeType, tt.wantMIME)
 			}
 		})
@@ -461,13 +462,13 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 		}
 
 		contentStr := string(content)
-		if !containsString(contentStr, "a.md") {
+		if !strings.Contains(contentStr, "a.md") {
 			t.Error("listing should contain a.md")
 		}
-		if !containsString(contentStr, "b.md") {
+		if !strings.Contains(contentStr, "b.md") {
 			t.Error("listing should contain b.md")
 		}
-		if containsString(contentStr, ".hidden") {
+		if strings.Contains(contentStr, ".hidden") {
 			t.Error("listing should not contain .hidden")
 		}
 	})
@@ -701,21 +702,6 @@ func TestGitProvider_Close(t *testing.T) {
 	if err := p.Close(); err != nil {
 		t.Errorf("Close() second call error = %v, want nil", err)
 	}
-}
-
-// containsString checks if str contains substr
-func containsString(str, substr string) bool {
-	return len(str) >= len(substr) && (str == substr || len(substr) == 0 ||
-		(len(str) > 0 && len(substr) > 0 && findSubstring(str, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // Ensure GitProvider implements Provider interface

@@ -128,6 +128,7 @@ The filename to look for when a user requests a directory (e.g., `/api/`).
 *   **YAML:** `default_index`
 *   **Env Var:** `GOMDDOC_SITE_DEFAULT_INDEX`
 *   **Default:** `README.md`
+*   **Validation:** Must not be empty — startup fails with an error if set to `""`.
 
 **Directory Listings**
 Controls what happens when a directory is requested but no index file (e.g., `README.md`) exists:

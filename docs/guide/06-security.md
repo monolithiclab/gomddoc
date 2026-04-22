@@ -77,7 +77,8 @@ When serving from a Git repository:
 
 When connecting to Git repositories over SSH:
 
-- Host key verification uses the user's `~/.ssh/known_hosts` file (resolved via `os.UserHomeDir()`).
+- Host key verification checks the `SSH_KNOWN_HOSTS` environment variable first, then falls back to
+  `~/.ssh/known_hosts` (resolved via `os.UserHomeDir()`).
 - **There is no TOFU (Trust On First Use) fallback.** If `known_hosts` is missing or the host is not listed,
   the connection fails with an error.
 - This "fail closed" design prevents man-in-the-middle attacks where an attacker impersonates a Git server.
@@ -85,6 +86,11 @@ When connecting to Git repositories over SSH:
 To add a host to known_hosts before using gomddoc:
 ```bash
 ssh-keyscan github.com >> ~/.ssh/known_hosts
+```
+
+In CI/CD or containers without a home directory, point the env var to the system known_hosts:
+```bash
+export SSH_KNOWN_HOSTS=/etc/ssh/known_hosts
 ```
 
 ## 7. HTTP Security Headers

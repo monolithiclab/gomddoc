@@ -88,10 +88,15 @@ gomddoc serve "git+ssh://git@gitlab.company.com/group/project.git"
 
 - The SSH Agent and default `~/.ssh/` key lookup are explicitly disabled for predictability.
   You *must* provide the key file path if using SSH.
-- **Host key verification** uses `~/.ssh/known_hosts`. There is no Trust-On-First-Use (TOFU) fallback.
-  If the host is not in known_hosts, the connection will fail. Add hosts beforehand:
+- **Host key verification** checks the `SSH_KNOWN_HOSTS` environment variable first, then falls
+  back to `~/.ssh/known_hosts`. There is no Trust-On-First-Use (TOFU) fallback. If the known_hosts
+  file is missing or the host is not listed, the connection will fail. Add hosts beforehand:
   ```bash
   ssh-keyscan github.com >> ~/.ssh/known_hosts
+  ```
+  In CI/CD or containers without a home directory, set the env var:
+  ```bash
+  export SSH_KNOWN_HOSTS=/etc/ssh/known_hosts
   ```
 
 ### Clone Behavior

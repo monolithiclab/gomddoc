@@ -172,4 +172,4 @@ All content requests pass through this middleware chain (outermost to innermost)
 6. **BlockHiddenPaths** — blocks dotfiles except `/.well-known/`
 7. **Metrics** — records Prometheus metrics
 
-Health, metrics, API, and SEO endpoints are registered directly on the mux and bypass the content middleware chain (including authentication).
+Health, metrics, API, and SEO endpoints are registered directly on the mux and bypass the content middleware chain (including authentication). Pprof endpoints (`/debug/pprof/*`) are behind the auth RouteGroup and require credentials when `--basic-auth-file` is configured.

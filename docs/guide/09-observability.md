@@ -186,9 +186,10 @@ View all goroutines in the browser:
 curl http://localhost:8080/debug/pprof/goroutine?debug=1
 ```
 
-> [!WARNING]
-> pprof endpoints bypass authentication and expose internal runtime
-> details. Only enable on trusted networks for debugging purposes.
+> [!NOTE]
+> pprof endpoints are protected by HTTP Basic Authentication when
+> `--basic-auth-file` is configured. Without auth, they are publicly
+> accessible — only enable on trusted networks for debugging purposes.
 
 ---
 

@@ -19,11 +19,12 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 
 ## Current State
 
-The foundation is production-ready with 87.9% test coverage. For a full description
+The foundation is production-ready with 87.3% test coverage. For a full description
 of current capabilities, see `docs/architecture.md`.
 
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
-7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO).
+7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO). Six review batches
+resolved 45/46 identified issues (security, correctness, deduplication, hardening).
 
 **Phase 5 note:** Server-side full-text search and client-side search UI are complete for `serve`
 and `preview` modes. Build-mode search (Pagefind) deferred.
