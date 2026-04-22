@@ -62,7 +62,12 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 	cfg.Server.Pprof = s.Pprof
 
 	if cfg.Server.DevMode {
-		slog.Info("Development mode enabled", slog.Any("config", cfg))
+		slog.Info("Development mode enabled",
+			slog.String("dir", cfg.Server.Dir),
+			slog.String("port", cfg.Server.Port),
+			slog.String("theme", cfg.Site.Theme.Name),
+			slog.Bool("pprof", cfg.Server.Pprof),
+		)
 	}
 
 	var providerOpts []provider.GitProviderOption
