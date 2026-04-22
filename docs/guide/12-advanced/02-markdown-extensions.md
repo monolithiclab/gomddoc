@@ -179,7 +179,7 @@ Mermaid diagrams are rendered client-side using the Mermaid JavaScript library l
 
 ## Color Chips
 
-Hex color codes wrapped in backticks are automatically rendered as interactive color swatches using a `<color-chip>` web component.
+Hex color codes wrapped in backticks are automatically rendered as interactive color swatches using a `<gmd-color-chip>` web component.
 
 ### Syntax
 

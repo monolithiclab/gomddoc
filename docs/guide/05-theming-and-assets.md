@@ -134,7 +134,7 @@ Custom functions available in templates:
   <button id="theme-toggle">Toggle Theme</button>
   {{- end }}
   {{- if .Feature "color_chips" }}
-  <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
+  <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
   {{- end }}
   ```
 
@@ -147,7 +147,7 @@ Custom functions available in templates:
 
 - **`inlineJSAsset`**: Loads an asset from the theme directory (falling back to shared assets) and returns it as `template.JS` for safe embedding inside `<script>` tags.
   ```html
-  <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
+  <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
   <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
   ```
 
@@ -201,7 +201,7 @@ Custom functions available in templates:
 
     {{- if .Feature "color_chips" }}
     <!-- Color Chip Web Component -->
-    <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
+    <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
     {{- end }}
 </body>
 </html>
@@ -219,7 +219,7 @@ When creating a custom theme, ensure it supports these features for parity with 
 - **Search button** — guarded by `{{ .Feature "search" }}`. Button with `id="search-toggle"` in the header.
 - **Search modal** — guarded by `{{ .Feature "search" }}`. Uses `{{ inlineJSAsset "search.mjs" }}` with CSS custom properties for styling.
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`
-- **Color chip web component** — guarded by `{{ .Feature "color_chips" }}`. Uses `{{ inlineJSAsset "color-chip.mjs" }}`.
+- **Color chip web component** — guarded by `{{ .Feature "color_chips" }}`. Uses `{{ inlineJSAsset "gmd-color-chip.mjs" }}`.
 - **Copy-to-clipboard** — guarded by `{{ .Feature "code_copy" }}`. Uses `{{ inlineJSAsset "code-copy.mjs" }}`, creates `.copy-btn` on code blocks. Customize text with `data-copy-label`/`data-copied-label` on `<html>`.
 - **Heading anchors** (`.heading-anchor` class, revealed on hover)
 - **Touch accessibility** with `@media (hover: none)` for copy buttons and heading anchors

@@ -379,6 +379,23 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 - **No custom node for heading anchors**: Headings don't change structurally — only the HTML output gains an anchor link. A renderer override for `ast.KindHeading` is sufficient.
 - **Custom nodes for admonitions/color chips**: `AdmonitionNode` (block) and `ColorChipNode` (inline) replace `ast.Blockquote` and `ast.CodeSpan` respectively. This makes the semantic change visible in the AST.
 
+## HTML-in-Go to Web Components
+
+**Chosen**: Replace hardcoded HTML in goldmark renderers with `<gmd-*>` web components
+
+**Previous approach**: Goldmark node renderers directly emitted HTML markup (`<div class="admonition">`, `<a class="heading-anchor">`), making it impossible for themes to customize the rendered output.
+
+**Alternatives considered**:
+- **Template partials for goldmark output**: Pre-render Go `html/template` partials and inject the HTML strings into goldmark renderers. Would couple the renderer package to the template package and require passing a template executor through the goldmark pipeline.
+- **CSS-only customization**: Keep HTML structure but expose CSS custom properties. Limits customization to styling — themes can't change structure, add icons, or alter behavior.
+
+**Why web components**: Goldmark stays concerned with structure (emitting semantic custom elements), while themes control presentation via overridable JS files. Web components are a web standard, require no build tools, and can be overridden per-theme by providing a replacement `.mjs` file.
+
+**Key design decisions**:
+- **Light DOM for admonitions**: Theme CSS must apply to inner content (paragraphs, code blocks, lists). Shadow DOM would require extensive `::part()` exposure.
+- **Shadow DOM for heading anchors and color chips**: Self-contained elements with no inner content from markdown. Encapsulation prevents style leakage.
+- **`gmd-` prefix**: Namespaces all custom elements to avoid collisions. Applied retroactively to `<color-chip>` → `<gmd-color-chip>`.
+
 ## Deferred / Discarded Ideas
 
 | Idea | Status | Reason |

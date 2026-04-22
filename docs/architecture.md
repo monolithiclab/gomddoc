@@ -129,9 +129,9 @@ first, then MarkdownRenderer (so HTML is the default for `Accept: */*`), then Pa
 
 Three custom goldmark extensions operate at the AST level during parsing and rendering:
 
-1. **Heading Anchors** (`HeadingAnchorExtension`) — Custom `NodeRenderer` for `ast.KindHeading` that appends `<a href="#id" class="heading-anchor" aria-hidden="true">#</a>` to headings with auto-generated IDs. Gated by `heading_anchors` feature toggle.
-2. **Admonitions** (`AdmonitionExtension`) — AST transformer that detects `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` patterns in blockquotes and replaces them with `AdmonitionNode` custom AST nodes, rendered as `<div class="admonition admonition-{type}">` elements. Gated by `admonitions` feature toggle.
-3. **Color Chips** (`ColorChipExtension`) — AST transformer that detects hex color codes in `ast.CodeSpan` nodes and replaces them with `ColorChipNode` custom AST nodes, rendered as `<color-chip>#HEX</color-chip>` web component elements. Gated by `color_chips` feature toggle.
+1. **Heading Anchors** (`HeadingAnchorExtension`) — Custom `NodeRenderer` for `ast.KindHeading` that appends `<gmd-heading-anchor href="#id">` web component to headings with auto-generated IDs. Gated by `heading_anchors` feature toggle.
+2. **Admonitions** (`AdmonitionExtension`) — AST transformer that detects `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` patterns in blockquotes and replaces them with `AdmonitionNode` custom AST nodes, rendered as `<gmd-admonition type="..." title="...">` web component elements. Gated by `admonitions` feature toggle.
+3. **Color Chips** (`ColorChipExtension`) — AST transformer that detects hex color codes in `ast.CodeSpan` nodes and replaces them with `ColorChipNode` custom AST nodes, rendered as `<gmd-color-chip>#HEX</gmd-color-chip>` web component elements. Gated by `color_chips` feature toggle.
 
 Feature flags are passed to extensions via two channels: the parser context key (for AST transformers) and a document attribute (for node renderers). This enables per-page feature overrides via frontmatter. All extensions are always registered on the goldmark instance — disabled extensions simply skip transformation, leaving the original AST nodes to render with goldmark's defaults.
 
@@ -446,23 +446,19 @@ Theme CSS references variables with fallbacks: `var(--theme-bg, #ffffff)`. Cache
 site `.gomddoc/static/` > theme `static/` > `assets/shared/static/`. FNV-64a ETags, immutable cache headers,
 dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output directory.
 
-### 14. Color Chip Web Component
+### 14. Web Components
 
-**Responsibility:** Render inline hex color codes as interactive color swatches
+**Responsibility:** Client-side rendering of interactive elements produced by goldmark extensions
 
-**Location:** `cmd/gomddoc/assets/shared/color-chip.mjs` (shared across all themes via `inlineJSAsset`)
+**Location:** `cmd/gomddoc/assets/shared/gmd-*.mjs` (shared across all themes via `inlineJSAsset`)
 
-**Features:**
-- Shadow DOM encapsulation — no style leakage between themes
-- Inline swatch rendering from 3-digit or 6-digit hex codes
-- Click-to-copy with "Copied!" feedback (1.5s timeout)
-- Accessible: `role="img"`, `aria-label`, exposed `::part(swatch)` and `::part(label)` for styling
-- Inherits theme colors via CSS custom properties
-- Controlled by `color_chips` feature toggle (global) and per-page frontmatter override
+**Components:**
 
-**Pipeline integration:** The `ColorChipExtension` goldmark extension replaces `ast.CodeSpan` nodes
-containing hex color codes with `ColorChipNode` custom AST nodes during parsing, which render as
-`<color-chip>#HEX</color-chip>`. Themes load the component via `{{ inlineJSAsset "color-chip.mjs" }}`.
+1. **`<gmd-color-chip>`** — Shadow DOM. Renders inline hex color swatches with click-to-copy. Controlled by `color_chips` feature toggle.
+2. **`<gmd-admonition>`** — Light DOM. Renders styled admonition blocks (note, tip, warning, etc.) from type/title attributes. Adds CSS classes and title element. Controlled by `admonitions` feature toggle.
+3. **`<gmd-heading-anchor>`** — Shadow DOM. Renders heading anchor links (`#`) revealed on hover. Controlled by `heading_anchors` feature toggle.
+
+**Convention:** All custom elements use the `gmd-` prefix. Themes override behavior by providing their own `.mjs` file in theme assets.
 
 ## Data Flow
 
@@ -729,9 +725,9 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Navigation Tree**: Auto-generated sidebar from directory structure (`NavNode` tree)
 - **Metadata Index**: Aggregated frontmatter data across all pages for tag-based discovery
 - **Static Site Generation**: `gomddoc build` output for deployment to static hosts
-- **Color Chip**: `<color-chip>` web component that renders hex color codes as interactive swatches
+- **Web Components**: `<gmd-*>` custom elements that render interactive content produced by goldmark extensions (color chips, admonitions, heading anchors). Shadow DOM or light DOM depending on the component.
 - **Feature Toggle**: A named boolean flag (`map[string]bool`) controlling optional capabilities (dark mode, TOC, color chips, etc.). Site-level defaults merged with per-page frontmatter overrides. Default-to-true semantics.
-- **Goldmark Extensions**: Custom goldmark `Extender` implementations (heading anchors, admonitions, color chips) that operate at the AST level during parsing and rendering, gated by feature toggles
+- **Goldmark Extensions**: Custom goldmark `Extender` implementations (heading anchors, admonitions, color chips) that operate at the AST level during parsing and rendering, emitting `<gmd-*>` web component elements, gated by feature toggles
 - **Theme**: A package with layouts, partials, and optional static assets that defines visual presentation
 - **Theme Variables**: CSS custom properties (`--theme-*`) injected from site config for color/typography customization
 - **Page Type**: Layout variant selected via frontmatter `layout` field (e.g., `page`, `api`, `changelog`)
