@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -59,8 +60,11 @@ func newServeHTTP(config *Config) (http.HandlerFunc, error) {
 		filename := r.URL.Path
 		if r.URL.Path == "/" {
 			filename = config.DefaultIndex
+		} else {
+			// Clean the path first, then remove leading slash to make it relative
+			filename = path.Clean(filename)
+			filename = strings.TrimPrefix(filename, "/")
 		}
-		filename = path.Clean(filename)
 		slog.Info("Loading markdown", slog.String("filename", filename))
 
 		md, err := root.ReadFile(filename)
