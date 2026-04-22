@@ -9,6 +9,8 @@
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   {{ $url := canonicalURL .Page.Path }}{{ if $url }}
   <link rel="canonical" href="{{ $url }}">{{ end }}
+  {{ $feedURL := canonicalURL "/feed.xml" }}{{ if $feedURL }}
+  <link rel="alternate" type="application/atom+xml" title="{{ .Site.Meta.Title }}" href="{{ $feedURL }}">{{ end }}
 
   <!-- Open Graph -->{{ if $url }}
   <meta property="og:url" content="{{ $url }}">{{ end }}

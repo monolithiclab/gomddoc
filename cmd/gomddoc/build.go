@@ -369,6 +369,16 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 			return fmt.Errorf("write sitemap.xml: %w", err)
 		}
 		slog.Debug("Generated", slog.String("file", "sitemap.xml"))
+
+		feedData, err := server.GenerateFeed(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, siteConfig.Meta.Title)
+		if err != nil {
+			return fmt.Errorf("generate feed: %w", err)
+		}
+
+		if err := b.writeOutputFile("feed.xml", feedData); err != nil {
+			return fmt.Errorf("write feed.xml: %w", err)
+		}
+		slog.Debug("Generated", slog.String("file", "feed.xml"))
 	}
 
 	return nil

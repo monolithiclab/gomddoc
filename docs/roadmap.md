@@ -147,8 +147,9 @@ _Enhances competitiveness and closes remaining gaps._
 - [ ] **Redirect support**: Frontmatter `redirect_from: [/old-url]` and/or `_redirects` file.
       In `serve` mode, 301 responses. In `build` mode, generate redirect HTML or `_redirects`
       file for static hosts. Medium complexity.
-- [ ] **RSS/Atom feed**: Generate `/feed.xml` listing recently modified pages. Minor SEO impact
-      but aids content discoverability. Medium complexity.
+- [x] **Atom feed**: Generate `/feed.xml` (Atom format) listing the 20 most recently modified
+      pages. Served dynamically in `serve` mode and generated during `build`. Requires
+      `meta.domain`. Excludes `robots: noindex` pages. Autodiscovery `<link>` in all themes.
 - [ ] **Preconnect/preload resource hints**: Add `<link rel="preconnect">` for external domains
       (Google Fonts, KaTeX/Mermaid CDNs) and `<link rel="preload">` for critical resources in
       theme `<head>`. Improves LCP. Low complexity.
