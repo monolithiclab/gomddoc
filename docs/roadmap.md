@@ -1,117 +1,117 @@
 ---
-title: "Gomddoc Evolution Roadmap"
-description: "Strategic roadmap for the evolution of gomddoc from a server to a documentation platform."
+title: "Gomddoc Roadmap"
+description: "Strategic roadmap for gomddoc evolution."
 author: "nicolasm"
 ---
 
-# Gomddoc Evolution Roadmap
+# Gomddoc Roadmap
 
-## Overview
+## Vision
 
-Gomddoc currently exists as a production-ready HTTP server with clean, interface-driven architecture. It serves
-Markdown files as HTML through a MIME-type based rendering system with proper content negotiation, security headers,
-HTTP method filtering, and extensible design patterns. The codebase achieves ~78% test coverage with all identified
-security and correctness issues resolved.
+Transform gomddoc from a documentation server into the best git-native documentation viewer and static site
+generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 
-The vision transforms this foundation into a comprehensive documentation viewer and static site generator while
-preserving the architectural strengths that make the current implementation successful. This evolution prioritizes
-the "Git-Native" identity of the tool, focusing on reading and rendering content directly from repositories rather
-than building a heavy database-backed CMS.
+- **Read-heavy focus**: Search, speed, and rendering quality over write features
+- **Stateless**: No persistent storage beyond Git repos
+- **Interface-driven**: All major components implement well-defined interfaces
+- **Performance-first**: Built for speed with intelligent caching
+- **Security by design**: Path traversal protection, content sanitization, secure defaults
 
-## Current State: Phase 3 Complete (Stability & Foundation)
+## Current State (Phase 3 Complete)
 
-The existing architecture implements five core layers working in concert (Provider, Renderer, Registry, Handler,
-Template). Recent improvements have solidified the foundation:
+The foundation is production-ready with ~78% test coverage:
 
-- **Configuration**: A robust reflection-based configuration system handles environment variables, CLI flags, and
-  YAML config files with proper validation and correct prefix nesting (`GOMDDOC_SITE_*`).
-- **Authentication**: A secure, explicit SSH key mechanism supports private Git repositories with host key
-  verification via known_hosts (fail closed, no TOFU fallback).
-- **Security**: Path traversal protection, hidden file blocking, HTTP method filtering (GET/HEAD only), clone
-  timeout enforcement, file size limits, and comprehensive security headers.
-- **Quality**: All HIGH and MEDIUM code review issues resolved. Modern Go 1.26 patterns throughout
-  (`errors.Is`, `path` for fs.FS paths, buffer pool capping, proper resource cleanup).
-- **Documentation**: Comprehensive user guides, architectural specs, and code review documentation.
+- **CLI**: Kong-based subcommand architecture (`gomddoc serve`), version injection via ldflags, exhaustive
+  `--help` with env var discovery.
+- **Configuration**: Reflection-based env var walking, CLI flags, YAML config files with proper validation
+  and correct prefix nesting (`GOMDDOC_SITE_*`). Priority: flags > env > file > defaults.
+- **Providers**: Filesystem (os.DirFS with path traversal protection) and Git (go-git, in-memory clone,
+  SSH auth with known_hosts, fail-closed).
+- **Rendering**: Markdown (goldmark, GFM, syntax highlighting, admonitions, color chips, TOC, heading anchors,
+  YAML frontmatter), passthrough for all other MIME types via `*/*` wildcard.
+- **HTTP**: Content negotiation, gzip compression, security headers, ETag, request ID tracking, graceful shutdown.
+- **Monitoring**: Prometheus metrics (`/metrics`), health probes (`/health/live`, `/health/ready`).
+- **Security**: Hidden file blocking, method filtering (GET/HEAD), clone timeout, file size limits.
+- **Edit links**: Configurable `edit_url` in site config with "Edit this page" footer links.
+- **Documentation**: User guides (`docs/guide/`), architecture reference (`docs/architecture.md`).
 
-The system is stable, secure, and ready for feature expansion.
+See `docs/architecture.md` for detailed architecture and `docs/guide/` for user documentation.
 
-## Strategic Pivot: "The Best Git-Backed Viewer"
-
-Rather than evolving into a traditional database-backed CMS, `gomddoc` will double down on its unique strength:
-being a stateless, git-native documentation viewer. This means:
-
-1. **No Databases:** We de-prioritize SQL/NoSQL backends. The "database" is Git.
-2. **Read-Heavy Focus:** We focus on search, speed, and rendering quality over "write" features like draft
-   management.
-3. **Scalability via Disk:** We solve memory constraints for large repos using disk-based git storage, not
-   external databases.
-
-## Refined Roadmap
-
-### Phase 4: Performance & Scaling (Git-Centric)
+## Phase 4: Performance and Scaling
 
 *Current Git provider is in-memory only, limiting repo size.*
 
-- [ ] **Disk-Based Git Storage**: Implement `filesystem.Storage` for the Git provider to support large monorepos
+- [ ] **Disk-based Git storage**: Implement `filesystem.Storage` for the Git provider to support large monorepos
   without OOM errors.
-- [ ] **HTTP Caching**: Implement `If-Modified-Since` / `ETag` support based on Git commit hashes to reduce
-  bandwidth.
-- [ ] **Partial Clones**: Investigate `git clone --filter=blob:none` when upstream library support matures.
+- [ ] **HTTP caching**: `If-Modified-Since` / `ETag` based on Git commit hashes to reduce bandwidth.
+- [ ] **Partial clones**: `git clone --filter=blob:none` when upstream library support matures.
 
-### Phase 5: Search and Discovery
+## Phase 5: Search and Discovery
 
 *Discovery is critical for documentation.*
 
-- [ ] **Full-Text Search**: Integrate `bleve` or a client-side solution (like Pagefind/Lunr) to index content.
-- [ ] **Navigation**: Auto-generate sidebar navigation from directory structure.
-- [ ] **Metadata Indexing**: Parse frontmatter to allow filtering by tags or categories.
+- [ ] **Full-text search**: Bleve or client-side solution (Pagefind/Lunr) for content indexing.
+- [ ] **Auto-navigation**: Generate sidebar navigation from directory structure.
+- [ ] **Metadata indexing**: Parse frontmatter for filtering by tags/categories.
 
-### Phase 6: Renderer Enhancement
+## Phase 6: Renderer Enhancement
 
 *Expand support for technical documentation formats.*
 
-- [ ] **AsciiDoc Support**: Add a renderer for `.adoc` files (popular in technical writing).
-- [ ] **OpenAPI Renderer**: Render `swagger.yaml` / `openapi.json` files as interactive API docs.
-- [ ] **Rich Markdown**: Add native support for Mermaid diagrams, MathJax/KaTeX, and syntax highlighting.
+- [ ] **AsciiDoc support**: Renderer for `.adoc` files (popular in technical writing).
+- [ ] **OpenAPI renderer**: Render `swagger.yaml` / `openapi.json` as interactive API docs.
+- [ ] **Rich Markdown**: Native Mermaid diagrams, MathJax/KaTeX (currently client-side CDN only).
 
-### Phase 7: Static Site Generation (SSG)
+## Phase 7: Static Site Generation
 
 *Bridge the gap between dynamic serving and static hosting.*
 
-- [ ] **Build Command**: Add `gomddoc build` to crawl the content tree and output static HTML/CSS/JS.
-- [ ] **Asset Optimization**: Minify assets during the build process.
-- [ ] **S3/Netlify Compat**: Ensure output structure is compatible with common static hosts.
+- [ ] **`gomddoc build` command**: Crawl content tree, output static HTML/CSS/JS.
+- [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
+- [ ] **Static host compatibility**: Output structure compatible with S3, Netlify, Cloudflare Pages.
 
-### Phase 8: User Experience & Theming
+## Phase 8: User Experience and Theming
 
 *Make the default experience polished and professional.*
 
-- [ ] **Theme Inheritance**: Allow custom themes to override specific partials (e.g., just the footer) without
-  copying the whole layout.
-- [ ] **UI Polish**: Add "Copy to Clipboard" buttons for code blocks.
-- [ ] **Dark Mode**: Native toggle for light/dark themes.
+- [ ] **Theme inheritance**: Override specific partials without copying whole layout.
+- [ ] **UI polish**: Copy-to-clipboard for code blocks.
+- [ ] **Dark mode**: Native light/dark toggle.
 
-### Phase 9: Enterprise Integrations
+## Phase 9: Enterprise Features
 
-- [ ] **S3 Provider**: Support serving content directly from S3 buckets (for non-git use cases).
-- [ ] **Authentication**: Add OIDC/OAuth middleware to put documentation behind a login (e.g., "Internal Docs
-  Only").
-- [ ] **Observability**: Add Prometheus metrics for request latency and cache hit rates.
+- [ ] **S3 provider**: Serve content directly from S3 buckets (for non-git use cases).
+- [ ] **Authentication**: OIDC/OAuth middleware for private documentation.
+- [ ] **Branch switching**: UI dropdown to switch between Git branches/tags.
 
-### Phase 10: Content Management (Git-Workflow)
+## Phase 10: Git Workflow Integration
 
-*Instead of building a UI for editing, improve the Git workflow.*
+- [ ] **Webhooks**: Endpoint to trigger `git fetch` on push events (cache invalidation).
+- [ ] **PR preview**: Serve content from PR branches for review.
 
-- [ ] **Branch Switching**: UI dropdown to switch between Git branches/tags view.
-- [ ] **Edit Links**: "Edit this page on GitHub/GitLab" buttons.
-- [ ] **Webhooks**: Endpoint to trigger a `git fetch` (cache invalidation) on push events.
+## Future CLI Commands
+
+| Command | Purpose |
+|---------|---------|
+| `gomddoc init` | Scaffold a `.gomddoc/` directory with default config |
+| `gomddoc build` | Static site generation |
+| `gomddoc validate` | Validate config and check for broken links |
 
 ## Implementation Strategy
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate Focus (Phase 4 & 5):** The priority is making the tool viable for large repositories (Disk Storage)
-and usable for end-users (Search).
+**Immediate focus (Phase 4 & 5):** Making the tool viable for large repositories (disk storage) and usable for
+end-users (search).
 
-**Deferred:** Database providers (PostgreSQL/SQLite) are removed from the immediate roadmap to keep the application
-stateless and simple. Write-based CMS features are deprioritized in favor of a robust Git-based read-only workflow.
+## Deferred (Not Planned)
+
+These features were considered but deprioritized to keep gomddoc focused:
+
+- Database providers (PostgreSQL/SQLite) — Git is the database
+- REST/GraphQL APIs — gomddoc is a viewer, not a headless CMS
+- Editorial workflows (drafts, reviews, scheduling) — use Git branches
+- Content versioning/revision history — use Git history
+- i18n/multi-language — out of scope for now
+- VS Code extension
+- Plugin architecture / dynamic renderer loading
