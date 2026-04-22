@@ -21,7 +21,7 @@ func TestColorChips(t *testing.T) {
 			name:  "6-digit hex in backticks",
 			input: "The brand color is `#FF5733` and it looks great.",
 			wantContains: []string{
-				`<color-chip>#FF5733</color-chip>`,
+				`<gmd-color-chip>#FF5733</gmd-color-chip>`,
 			},
 			wantNotContain: []string{"<code>#FF5733</code>"},
 		},
@@ -29,7 +29,7 @@ func TestColorChips(t *testing.T) {
 			name:  "3-digit hex in backticks",
 			input: "Short form: `#f0f`",
 			wantContains: []string{
-				`<color-chip>#f0f</color-chip>`,
+				`<gmd-color-chip>#f0f</gmd-color-chip>`,
 			},
 			wantNotContain: []string{"<code>#f0f</code>"},
 		},
@@ -37,68 +37,68 @@ func TestColorChips(t *testing.T) {
 			name:  "lowercase 6-digit hex",
 			input: "Color: `#aabbcc`",
 			wantContains: []string{
-				`<color-chip>#aabbcc</color-chip>`,
+				`<gmd-color-chip>#aabbcc</gmd-color-chip>`,
 			},
 		},
 		{
 			name:  "multiple hex colors in same paragraph",
 			input: "Mix `#FF0000` with `#00FF00`.",
 			wantContains: []string{
-				`<color-chip>#FF0000</color-chip>`,
-				`<color-chip>#00FF00</color-chip>`,
+				`<gmd-color-chip>#FF0000</gmd-color-chip>`,
+				`<gmd-color-chip>#00FF00</gmd-color-chip>`,
 			},
 		},
 		{
 			name:  "hex colors in list items",
 			input: "- Primary: `#3366FF`\n- Secondary: `#FF6633`",
 			wantContains: []string{
-				`<color-chip>#3366FF</color-chip>`,
-				`<color-chip>#FF6633</color-chip>`,
+				`<gmd-color-chip>#3366FF</gmd-color-chip>`,
+				`<gmd-color-chip>#FF6633</gmd-color-chip>`,
 			},
 		},
 		{
 			name:           "backtick code with extra text not transformed",
 			input:          "Use `color: #FF5733` in your CSS.",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 			wantContains:   []string{"#FF5733"},
 		},
 		{
 			name:           "bare hex in text not transformed",
 			input:          "The color #FF5733 looks good.",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 		},
 		{
 			name:           "hex in fenced code block not transformed",
 			input:          "```css\ncolor: #FF5733;\n```",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 		},
 		{
 			name:           "markdown link fragment not transformed",
 			input:          "See [section](#overview) for details.",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 		},
 		{
 			name:           "invalid hex too short not transformed",
 			input:          "Code: `#ab`",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 			wantContains:   []string{"<code>#ab</code>"},
 		},
 		{
 			name:           "invalid hex too long not transformed",
 			input:          "Code: `#1234567`",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 			wantContains:   []string{"<code>#1234567</code>"},
 		},
 		{
 			name:           "code with non-hex chars not transformed",
 			input:          "Code: `#GGHHII`",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 			wantContains:   []string{"<code>#GGHHII</code>"},
 		},
 		{
 			name:           "empty content",
 			input:          "",
-			wantNotContain: []string{"color-chip"},
+			wantNotContain: []string{"gmd-color-chip"},
 		},
 	}
 
@@ -141,7 +141,7 @@ func TestColorChips_Disabled(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if strings.Contains(string(result.Content), "color-chip") {
+		if strings.Contains(string(result.Content), "gmd-color-chip") {
 			t.Error("color chips should not appear when globally disabled")
 		}
 	})
@@ -155,7 +155,7 @@ func TestColorChips_Disabled(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if strings.Contains(string(result.Content), "color-chip") {
+		if strings.Contains(string(result.Content), "gmd-color-chip") {
 			t.Error("color chips should not appear when page disables them")
 		}
 	})
@@ -169,7 +169,7 @@ func TestColorChips_Disabled(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if !strings.Contains(string(result.Content), "color-chip") {
+		if !strings.Contains(string(result.Content), "gmd-color-chip") {
 			t.Error("color chips should appear when page enables them")
 		}
 	})

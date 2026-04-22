@@ -1,8 +1,8 @@
 /**
- * <color-chip> Web Component
+ * <gmd-color-chip> Web Component
  *
  * Renders inline color swatches from hex codes.
- * Usage: <color-chip>#FF5733</color-chip>
+ * Usage: <gmd-color-chip>#FF5733</gmd-color-chip>
  *
  * Features:
  *   - Shadow DOM encapsulation
@@ -54,7 +54,7 @@ template.innerHTML = `
   </span>
 `;
 
-class ColorChip extends HTMLElement {
+class GmdColorChip extends HTMLElement {
   static get observedAttributes() {
     return ["value"];
   }
@@ -113,4 +113,4 @@ class ColorChip extends HTMLElement {
   };
 }
 
-customElements.define("color-chip", ColorChip);
+customElements.define("gmd-color-chip", GmdColorChip);

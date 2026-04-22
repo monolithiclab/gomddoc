@@ -48,7 +48,7 @@
         <script>document.addEventListener("DOMContentLoaded",function(){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}]})});</script>
         {{- end }}
         {{- if .Feature "color_chips" }}
-        <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
+        <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
         {{- end }}
         {{- if .Feature "search" }}
         <script type="module">{{ inlineJSAsset "search.mjs" }}</script>

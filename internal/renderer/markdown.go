@@ -59,7 +59,7 @@ type MarkdownRenderer struct {
 //   - highlighting: Syntax highlighting via Chroma with the specified theme
 //   - HeadingAnchorExtension: Appends anchor links to headings with IDs
 //   - AdmonitionExtension: Transforms [!TYPE] blockquotes to admonition divs
-//   - ColorChipExtension: Transforms hex color code spans to <color-chip> elements
+//   - ColorChipExtension: Transforms hex color code spans to <gmd-color-chip> elements
 //   - parser.WithAutoHeadingID: Automatic ID generation for headings
 //   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
 func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {

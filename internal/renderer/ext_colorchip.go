@@ -16,7 +16,7 @@ import (
 // KindColorChip is the AST node kind for color chip inline elements.
 var KindColorChip = ast.NewNodeKind("ColorChip")
 
-// ColorChipNode represents a hex color code rendered as a <color-chip> element.
+// ColorChipNode represents a hex color code rendered as a <gmd-color-chip> element.
 // It replaces a code span whose sole content is a hex color code.
 type ColorChipNode struct {
 	ast.BaseInline
@@ -38,9 +38,9 @@ func (n *ColorChipNode) Dump(source []byte, level int) {
 var hexColorPattern = regexp.MustCompile(`^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})$`)
 
 // ColorChipExtension is a goldmark extension that transforms backtick-wrapped
-// hex color codes into <color-chip> custom elements.
+// hex color codes into <gmd-color-chip> custom elements.
 //
-// It transforms code spans like `#FF5733` into <color-chip>#FF5733</color-chip>.
+// It transforms code spans like `#FF5733` into <gmd-color-chip>#FF5733</gmd-color-chip>.
 // Only code spans containing exactly a hex color code are transformed.
 type ColorChipExtension struct{}
 
@@ -114,15 +114,15 @@ func (r *colorChipRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegistere
 	reg.Register(KindColorChip, r.renderColorChip)
 }
 
-// renderColorChip renders a ColorChipNode as a <color-chip> custom element.
+// renderColorChip renders a ColorChipNode as a <gmd-color-chip> custom element.
 func (r *colorChipRenderer) renderColorChip(
 	w util.BufWriter, source []byte, node ast.Node, entering bool,
 ) (ast.WalkStatus, error) {
 	if entering {
 		n := node.(*ColorChipNode)
-		_, _ = w.WriteString("<color-chip>")
+		_, _ = w.WriteString("<gmd-color-chip>")
 		_, _ = w.WriteString(n.HexColor)
-		_, _ = w.WriteString("</color-chip>")
+		_, _ = w.WriteString("</gmd-color-chip>")
 	}
 	return ast.WalkContinue, nil
 }
