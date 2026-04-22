@@ -220,7 +220,7 @@
       color: var(--color-primary);
     }
 
-    #theme-toggle {
+    .header-controls button {
       background: none;
       border: 1px solid var(--color-border);
       border-radius: 6px;
@@ -230,9 +230,12 @@
       line-height: 1;
       transition: all 0.2s;
       color: var(--color-text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    #theme-toggle:hover {
+    .header-controls button:hover {
       background-color: var(--color-bg-secondary);
       border-color: var(--color-border-hover);
     }
@@ -983,6 +986,8 @@
       transition: all 0.2s;
       color: var(--color-text);
       margin-right: 0.5rem;
+      align-items: center;
+      justify-content: center;
     }
 
     #nav-toggle:hover {
