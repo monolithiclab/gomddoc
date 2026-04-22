@@ -189,7 +189,7 @@ func (b *BuildCmd) guardOutputDir() error {
 
 // isDirEmpty reports whether directory at path contains no entries.
 func isDirEmpty(path string) (bool, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is output dir controlled by user via CLI
 	if err != nil {
 		return false, err
 	}
