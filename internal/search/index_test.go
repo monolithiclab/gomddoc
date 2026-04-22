@@ -223,19 +223,18 @@ func TestBuildIndex(t *testing.T) {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
 
-	if idx.docCount != 3 {
-		t.Errorf("docCount = %d, want 3", idx.docCount)
+	// Verify behavioral expectations through Search rather than internal fields
+	for _, term := range []string{"welcome", "started", "api"} {
+		results := idx.Search(term, 10)
+		if len(results) == 0 {
+			t.Errorf("Search(%q) returned no results, want at least one", term)
+		}
 	}
 
-	// Verify inverted index contains expected terms
-	if _, ok := idx.inverted["welcome"]; !ok {
-		t.Error("expected 'welcome' in inverted index")
-	}
-	if _, ok := idx.inverted["started"]; !ok {
-		t.Error("expected 'started' in inverted index")
-	}
-	if _, ok := idx.inverted["api"]; !ok {
-		t.Error("expected 'api' in inverted index")
+	// Verify all 3 markdown files were indexed (not png or hidden)
+	all := idx.Search("the", 10) // common word appearing in all docs
+	if len(all) != 3 {
+		t.Errorf("Search(\"the\") returned %d results, want 3", len(all))
 	}
 }
 
@@ -253,8 +252,16 @@ func TestBuildIndexSkipsHidden(t *testing.T) {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
 
-	if idx.docCount != 1 {
-		t.Errorf("docCount = %d, want 1 (only visible.md)", idx.docCount)
+	// "visible" only appears in visible.md; hidden files should not be indexed
+	results := idx.Search("visible", 10)
+	if len(results) != 1 {
+		t.Errorf("Search(\"visible\") returned %d results, want 1 (only visible.md)", len(results))
+	}
+
+	// Hidden content should not appear
+	hidden := idx.Search("hidden", 10)
+	if len(hidden) != 0 {
+		t.Errorf("Search(\"hidden\") returned %d results, want 0", len(hidden))
 	}
 }
 

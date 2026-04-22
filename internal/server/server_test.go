@@ -168,14 +168,19 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 		startErr <- server.Start(context.Background())
 	}()
 
-	// Give server time to start
-	time.Sleep(50 * time.Millisecond)
+	// Wait for server to accept connections
+	addr := "localhost:" + strconv.Itoa(port)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			break
+		}
+	}
 
 	// Test shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	shutdownErr := server.Shutdown(ctx)
+	shutdownErr := server.Shutdown(context.Background())
 	if shutdownErr != nil {
 		t.Errorf("Shutdown failed: %v", shutdownErr)
 	}

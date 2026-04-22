@@ -9,9 +9,9 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
+	registryutil "github.com/monolithiclab/gomddoc/internal/testutil/registry"
 )
 
 func TestWriteOutputFile(t *testing.T) {
@@ -92,16 +92,6 @@ func newTestTemplateRenderer(t *testing.T) (*tmpl.HTMLRenderer, *config.SiteConf
 	return templateRenderer, &siteConfig
 }
 
-// newTestRegistry creates a renderer registry with the default markdown,
-// markdown passthrough, and passthrough renderers, suitable for unit tests.
-func newTestRegistry() renderer.RendererRegistry {
-	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownPassthroughRenderer())
-	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
-	registry.Register(renderer.NewPassthroughRenderer())
-	return registry
-}
-
 func TestBuildFile(t *testing.T) {
 	outDir := t.TempDir()
 	b := &BuildCmd{Output: outDir}
@@ -114,7 +104,7 @@ func TestBuildFile(t *testing.T) {
 	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	enricherReg := newTestEnricherRegistry()
+	enricherReg := registryutil.NewEnricherRegistry()
 	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
@@ -149,7 +139,7 @@ func TestBuildFile_README_BecomesIndex(t *testing.T) {
 	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	enricherReg := newTestEnricherRegistry()
+	enricherReg := registryutil.NewEnricherRegistry()
 	// No index.md exists, so README.md should produce only index.html
 	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
@@ -182,7 +172,7 @@ func TestBuildFile_README_WithIndexMD(t *testing.T) {
 	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	enricherReg := newTestEnricherRegistry()
+	enricherReg := registryutil.NewEnricherRegistry()
 	// Simulate index.md existing in same directory
 	dirsWithIndexMD := map[string]bool{".": true}
 	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, dirsWithIndexMD, stats)
@@ -217,7 +207,7 @@ func TestBuildFile_SubdirREADME(t *testing.T) {
 	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	enricherReg := newTestEnricherRegistry()
+	enricherReg := registryutil.NewEnricherRegistry()
 	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
@@ -242,10 +232,10 @@ func TestWalkAndBuild(t *testing.T) {
 		".hidden.md": &fstest.MapFile{Data: []byte("# Hidden")},
 	}
 
-	registry := newTestRegistry()
+	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, newTestEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -284,10 +274,10 @@ func TestWalkAndBuild_MixedContent(t *testing.T) {
 		".gomddoc/cfg.yml": &fstest.MapFile{Data: []byte("theme: default")},
 	}
 
-	registry := newTestRegistry()
+	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, newTestEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -317,10 +307,10 @@ func TestWalkAndBuild_IndexMDAndREADME(t *testing.T) {
 		"index.md":  &fstest.MapFile{Data: []byte("# Home")},
 	}
 
-	registry := newTestRegistry()
+	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, newTestEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -340,12 +330,6 @@ func TestWalkAndBuild_IndexMDAndREADME(t *testing.T) {
 	if !strings.Contains(readmeHTML, "README") {
 		t.Errorf("Expected 'README' in README/index.html, got:\n%s", readmeHTML)
 	}
-}
-
-func newTestEnricherRegistry() enricher.EnricherRegistry {
-	reg := enricher.NewDefaultEnricherRegistry()
-	reg.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{}))
-	return reg
 }
 
 func TestBuildCmd_Run(t *testing.T) {
@@ -503,7 +487,7 @@ func TestBuildFile_WithFrontmatterTitle(t *testing.T) {
 
 	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
-	enricherReg := newTestEnricherRegistry()
+	enricherReg := registryutil.NewEnricherRegistry()
 
 	err := b.buildFile(context.Background(), contentRoot, "titled.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
@@ -605,7 +589,7 @@ func TestBuildFile_ReadError(t *testing.T) {
 	contentRoot := fstest.MapFS{} // no files
 	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
-	enricherReg := newTestEnricherRegistry()
+	enricherReg := registryutil.NewEnricherRegistry()
 
 	err := b.buildFile(context.Background(), contentRoot, "nonexistent.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err == nil {
@@ -625,9 +609,9 @@ func TestWalkAndBuild_HiddenDir(t *testing.T) {
 		"visible.md":  &fstest.MapFile{Data: []byte("# Visible")},
 	}
 
-	registry := newTestRegistry()
+	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
-	stats, err := b.walkAndBuild(contentRoot, registry, newTestEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -757,10 +741,10 @@ func TestWalkAndBuild_WriteError(t *testing.T) {
 		"page.md": &fstest.MapFile{Data: []byte("# Page")},
 	}
 
-	registry := newTestRegistry()
+	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	_, err := b.walkAndBuild(contentRoot, registry, newTestEnricherRegistry(), templateRenderer, siteConfig)
+	_, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
 	if err == nil {
 		t.Error("walkAndBuild should fail when output dir is read-only")
 	}
@@ -773,10 +757,10 @@ func TestWalkAndBuild_EmptyFS(t *testing.T) {
 	b := &BuildCmd{Output: outDir}
 
 	contentRoot := fstest.MapFS{}
-	registry := newTestRegistry()
+	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, newTestEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}

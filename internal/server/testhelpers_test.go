@@ -8,6 +8,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/testutil/provider"
+	registryutil "github.com/monolithiclab/gomddoc/internal/testutil/registry"
 )
 
 // Re-export MemoryProvider from testutil for backward compatibility in server tests
@@ -37,15 +38,9 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 }
 
 func setupTestRegistry() renderer.RendererRegistry {
-	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownPassthroughRenderer())
-	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
-	registry.Register(renderer.NewPassthroughRenderer())
-	return registry
+	return registryutil.NewRendererRegistry()
 }
 
 func setupTestEnricherRegistry() enricher.EnricherRegistry {
-	reg := enricher.NewDefaultEnricherRegistry()
-	reg.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{}))
-	return reg
+	return registryutil.NewEnricherRegistry()
 }

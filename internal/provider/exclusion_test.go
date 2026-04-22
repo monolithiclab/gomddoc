@@ -1,6 +1,9 @@
 package provider
 
-import "testing"
+import (
+	"io/fs"
+	"testing"
+)
 
 func TestIsHiddenPath(t *testing.T) {
 	t.Parallel()
@@ -97,6 +100,41 @@ func TestIsExcludedPath(t *testing.T) {
 			got := IsExcludedPath(tt.path, tt.patterns)
 			if got != tt.excluded {
 				t.Errorf("IsExcludedPath(%q, %v) = %v, want %v", tt.path, tt.patterns, got, tt.excluded)
+			}
+		})
+	}
+}
+
+func TestSkipWalkEntry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		path      string
+		entryName string
+		isDir     bool
+		patterns  []string
+		wantSkip  bool
+		wantErr   error
+	}{
+		{"root dot entry", ".", ".", false, nil, false, nil},
+		{"regular file", "docs/guide.md", "guide.md", false, nil, false, nil},
+		{"regular dir", "docs", "docs", true, nil, false, nil},
+		{"hidden file skipped", ".env", ".env", false, nil, true, nil},
+		{"hidden dir skipped with SkipDir", ".git", ".git", true, nil, true, fs.SkipDir},
+		{"excluded file skipped", "drafts/secret.md", "secret.md", false, []string{"drafts/"}, true, nil},
+		{"excluded dir skipped with SkipDir", "drafts", "drafts", true, []string{"drafts/"}, true, fs.SkipDir},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			skip, err := SkipWalkEntry(tt.path, tt.entryName, tt.isDir, tt.patterns)
+			if skip != tt.wantSkip {
+				t.Errorf("SkipWalkEntry(%q, %q, %v) skip = %v, want %v", tt.path, tt.entryName, tt.isDir, skip, tt.wantSkip)
+			}
+			if err != tt.wantErr {
+				t.Errorf("SkipWalkEntry(%q, %q, %v) err = %v, want %v", tt.path, tt.entryName, tt.isDir, err, tt.wantErr)
 			}
 		})
 	}

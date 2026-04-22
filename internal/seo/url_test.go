@@ -3,6 +3,8 @@ package seo
 import "testing"
 
 func TestPageURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		domain       string
@@ -98,6 +100,7 @@ func TestPageURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := PageURL(tt.domain, tt.pagePath, tt.defaultIndex)
 			if got != tt.want {
 				t.Errorf("PageURL(%q, %q, %q) = %q, want %q",
@@ -108,6 +111,8 @@ func TestPageURL(t *testing.T) {
 }
 
 func TestNormalizeDomain(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		domain string
 		want   string
@@ -120,6 +125,7 @@ func TestNormalizeDomain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.domain, func(t *testing.T) {
+			t.Parallel()
 			got := normalizeDomain(tt.domain)
 			if got != tt.want {
 				t.Errorf("normalizeDomain(%q) = %q, want %q", tt.domain, got, tt.want)
@@ -129,6 +135,8 @@ func TestNormalizeDomain(t *testing.T) {
 }
 
 func TestNormalizePagePath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		pagePath     string
@@ -146,6 +154,7 @@ func TestNormalizePagePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := normalizePagePath(tt.pagePath, tt.defaultIndex)
 			if got != tt.want {
 				t.Errorf("normalizePagePath(%q, %q) = %q, want %q",
