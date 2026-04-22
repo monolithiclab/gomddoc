@@ -186,7 +186,7 @@ type Renderer interface {
 
 **Features:**
 - Embedded themes via `embed.FS` with overlay filesystem for customization
-- Production mode: `CachedTemplateStore` (sync.Map cache)
+- Production mode: `CachedTemplateStore` (sync.Map cache) with `singleflight` to coalesce concurrent cache-miss parses
 - Dev mode: `PassthroughTemplateStore` (always re-parse)
 - Buffer pool with 64KB cap to prevent memory bloat
 - File handle validation at startup

@@ -4,6 +4,8 @@ import (
 	"context"
 	"html/template"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 
@@ -1505,5 +1507,65 @@ func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
 	// Should return empty slice (length 0)
 	if string(result) != "0" {
 		t.Errorf("Expected 0 breadcrumbs without generator, got %q", string(result))
+	}
+}
+
+// countingCache wraps CachedTemplateStore and counts Set calls to detect
+// how many times a template was actually parsed vs served from cache.
+type countingCache struct {
+	CachedTemplateStore
+	setCalls atomic.Int64
+}
+
+func (c *countingCache) Set(key string, tmpl *template.Template) {
+	c.setCalls.Add(1)
+	c.CachedTemplateStore.Set(key, tmpl)
+}
+
+func TestRender_SingleflightCoalescesConcurrentParsing(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`<h1>{{.Site.Meta.Title}}</h1>`),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test"
+	cache := &countingCache{}
+	renderer := NewHTMLRenderer(&siteConfig, testFS, WithCache(cache))
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/"},
+	}
+
+	// Launch many concurrent renders on a cold cache
+	const numGoroutines = 50
+	var wg sync.WaitGroup
+	errs := make([]error, numGoroutines)
+
+	wg.Add(numGoroutines)
+	for i := range numGoroutines {
+		go func(idx int) {
+			defer wg.Done()
+			_, errs[idx] = renderer.Render(context.Background(), "default.html.tmpl", ctx)
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: Render failed: %v", i, err)
+		}
+	}
+
+	// Without singleflight, all 50 goroutines would parse and call Set.
+	// With singleflight, only 1 should parse and call Set.
+	sets := cache.setCalls.Load()
+	if sets != 1 {
+		t.Errorf("expected exactly 1 cache Set (singleflight coalescing), got %d", sets)
 	}
 }

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/seo"
@@ -67,6 +69,7 @@ type HTMLRenderer struct {
 	assetsFS      fs.FS
 	siteConfig    *config.SiteConfig   // For theme name (NOT full Config - security)
 	cache         TemplateCache        // Injected dependency (strategy pattern)
+	parseGroup    singleflight.Group   // Coalesces concurrent cache-miss parses
 	breadcrumbGen breadcrumb.Generator // Optional breadcrumb generator
 	themeVars     themeVarsCache       // Cached CSS custom properties from theme config
 }
@@ -140,14 +143,25 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 		default:
 		}
 
-		// Cache miss or dev mode - parse template (layout + partials)
-		tmpl, err = h.parseTemplate(templateName)
-		if err != nil {
-			return nil, fmt.Errorf("parse template: %w", err)
+		// Cache miss — use singleflight to coalesce concurrent parses
+		// for the same template. Without this, N concurrent requests on a
+		// cold cache all trigger independent parseTemplate calls.
+		v, sfErr, _ := h.parseGroup.Do(cacheKey, func() (any, error) {
+			// Double-check cache: another flight may have populated it
+			if cached := h.cache.Get(cacheKey); cached != nil {
+				return cached, nil
+			}
+			parsed, parseErr := h.parseTemplate(templateName)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			h.cache.Set(cacheKey, parsed)
+			return parsed, nil
+		})
+		if sfErr != nil {
+			return nil, fmt.Errorf("parse template: %w", sfErr)
 		}
-
-		// Store in cache (no-op if PassthroughTemplateStore)
-		h.cache.Set(cacheKey, tmpl)
+		tmpl = v.(*template.Template)
 	}
 
 	// Execute template with pooled buffer to reduce GC pressure
