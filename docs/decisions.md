@@ -278,6 +278,27 @@ mode compatibility — no per-theme CSS needed. Follows the `color-chip.mjs` pre
 
 **Build mode:** Option B (Pagefind) deferred as optional post-build step.
 
+## MCP Server (Phase 10)
+
+**Chosen**: Official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk` v1.4.x) with thin adapter architecture
+
+**Alternatives considered**:
+- **mcp-go** (`github.com/mark3labs/mcp-go`): Larger community (8.5k stars) but v0.46.0 (unstable semver), functional options pattern, manual schema builders
+- **Custom JSON-RPC implementation**: No deps but high effort to track MCP spec changes
+- **HTTP-only API**: Simpler but MCP is purpose-built for AI tool use with auto-discovery
+
+**Why official SDK**: Semver stable (v1.4.x), auto-generates JSON Schema from Go struct tags (matches gomddoc conventions), maintained by Anthropic + Google, will track spec authoritatively. Struct-based options align with gomddoc's Options struct pattern.
+
+**Key design decisions**:
+- **Thin adapter**: MCP package calls existing `Provider.ReadFile()`, `MetaIndex.AllPages()`, `SearchIndex.Search()`, and `navigation.Generator.Generate()` — no new parsing or indexing
+- **`docs://` URI scheme**: Semantic resource identification separate from HTTP URLs
+- **Section extraction without goldmark**: Line-based heading parser keeps MCP package lightweight with no dependency on the rendering pipeline
+- **All tools `readOnlyHint: true`**: Trust signal for MCP clients to enable auto-approval
+- **Dual transport**: stdio for local clients (Claude Desktop, Cursor), Streamable HTTP for remote access
+
+**Discarded: MCP for static sites (Phase 10c)**:
+Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` output, plus a build-time `_mcp/manifest.json` manifest. Dropped because `gomddoc mcp` already works with any content directory — running it against the source markdown provides richer metadata (frontmatter, tags) than post-build HTML. The manifest adds build complexity for a use case already covered by the existing command.
+
 ## Deferred / Discarded Ideas
 
 | Idea | Status | Reason |

@@ -1,6 +1,52 @@
+---
+title: "Deployment"
+description: "Deploy gomddoc as a live server or build static sites for any hosting platform."
+author: "nicolasm"
+tags: ["deployment", "docker", "kubernetes"]
+---
+
 # Deployment
 
-gomddoc supports two deployment models: **dynamic serving** via `gomddoc serve` (container-based) and **static site generation** via `gomddoc build` (deploy to any static host).
+gomddoc supports two deployment models: **dynamic serving** via `gomddoc serve` and **static site
+generation** via `gomddoc build` (deploy to any static host).
+
+## Live Server
+
+The `serve` command starts a production HTTP server with full control over port, caching, and
+authentication. Point it at a local directory and your markdown is rendered as styled HTML with an
+auto-generated navigation sidebar, table of contents, breadcrumbs, and a search modal accessible
+via Ctrl+K (Cmd+K on macOS).
+
+```bash
+gomddoc serve
+```
+
+Open your browser to `http://localhost:8080` to see your documentation site.
+
+Serve a specific directory on a different port:
+
+```bash
+gomddoc serve ./my-docs -p :3000
+```
+
+### Serving from Git
+
+You can serve documentation directly from a public repository without cloning it manually. The
+repository is cloned lazily on the first request — a shallow clone that minimizes bandwidth and
+memory:
+
+```bash
+gomddoc serve "git+https://github.com/monolithiclab/gomddoc.git"
+```
+
+For private repositories, provide an SSH key:
+
+```bash
+gomddoc serve "git+ssh://git@github.com/org/private-docs.git" --git-key-file ~/.ssh/id_ed25519
+```
+
+See [Content Sources](03-content-sources.md) for more details on Git-based serving, including
+disk-based storage and SSH configuration.
 
 ## Static Site Deployment
 

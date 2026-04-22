@@ -150,10 +150,6 @@ _Enhances competitiveness and closes remaining gaps._
 - [ ] **HTML `lang` attribute**: Add `lang` attribute to `<html>` tag (e.g., `<html lang="en">`).
       Configurable via `language` field in `SiteConfig`, default `"en"`. Lighthouse flags its
       absence. Low complexity.
-- [ ] **Related pages via tags**: Display "Related pages" section at page bottom, populated from
-      shared frontmatter tags. Enricher already computes `RelatedDocs` via `ByTag()` — expose
-      via template function or enrich into `PageContext`. Strong internal linking signal. Medium
-      complexity (enricher done, needs template integration).
 - [ ] **404 page with navigation**: Custom 404 page including site navigation and suggested pages.
       In `build` mode, output `404.html` (convention for Netlify, GitHub Pages, Cloudflare Pages).
       Low complexity.
@@ -176,6 +172,42 @@ _Enhances competitiveness and closes remaining gaps._
       provider. Medium complexity.
 - [ ] **`<link rel="next/prev">`**: Sequential page links derived from navigation order. Minor
       crawl efficiency signal. Low complexity.
+
+## Tag Components
+
+_Make tags a first-class navigation and discovery mechanism. Tags already exist in frontmatter and
+the metadata index — these items surface them in the UI and search engine._
+
+- [ ] **Clickable tag chips in page rendering**: Render frontmatter `tags` as clickable chips
+      (styled inline elements) on each page. Each chip links to a tag listing page. Position
+      configurable via theme template (typically below the page title or in a sidebar metadata
+      section). All 8 built-in themes must include the tag chips. Low-medium complexity.
+- [ ] **Tag listing page (`/tags/{tag}`)**: Server-rendered HTML page listing all pages tagged
+      with a given tag. Reuses the existing `MetaIndex.ByTag()` lookup. Each result shows title,
+      description, and path as a clickable link. Shares the site's theme and navigation chrome.
+      In `build` mode, generate a static HTML page per tag under `tags/`. Medium complexity.
+- [ ] **Tag index page (`/tags/`)**: Overview page listing all tags with document counts. Each
+      tag links to its listing page. Serves as a discovery entry point. Generated statically in
+      `build` mode. Low complexity.
+- [ ] **Search by tag (`tag:` prefix)**: Extend the search engine to support `tag:XXX` syntax.
+      When a query term starts with `tag:`, match it against the metadata index tags instead of
+      the full-text index. Can be combined with free-text terms (e.g., `tag:deployment kubernetes`
+      searches for "kubernetes" in pages tagged "deployment"). Update the search modal UI to
+      display tag suggestions. Medium complexity.
+- [ ] **Related pages via tags**: Display a "Related pages" section at the bottom of each page,
+      populated from shared frontmatter tags. The enricher already computes `RelatedDocs` via
+      `ByTag()` — expose via template and render in all themes. Medium complexity (enricher done,
+      needs template integration). _Moved from Phase 9c._
+
+## Page Navigation (Next/Previous)
+
+- [ ] **Next/previous links at page bottom**: Display "Previous" and "Next" links at the bottom
+      of each page for sequential reading. By default, derive order from the navigation tree
+      (depth-first traversal matches sidebar order). Allow frontmatter overrides via `prev` and
+      `next` fields pointing to relative paths (e.g., `next: 02-configuration.md`). A frontmatter
+      value of `false` suppresses the link for that direction. Render in all 8 built-in themes as
+      a two-column footer with page titles. Works in both `serve` and `build` modes. Medium
+      complexity (navigation flattening + template integration).
 
 ## Phase 10: MCP Interface — AI-Native Documentation Access
 
@@ -232,19 +264,48 @@ _Streamable HTTP transport for remote MCP access._
       server behind the auth RouteGroup. Add `MCPHandler http.Handler` to `HTTPServerConfig`.
       Protected by the same authentication middleware as other endpoints.
 
-### 10c: MCP for Static Sites
 
-_MCP capabilities for `gomddoc build` output, enabling AI access to pre-built documentation._
+## Distribution and Packaging
 
-- [ ] **`gomddoc mcp --built-dir`**: Serve MCP from a `gomddoc build` output directory.
-      Uses filesystem provider over the built output. Metadata index built from rendered HTML
-      or a pre-generated `metadata.json` manifest.
-- [ ] **Build-time manifest**: `gomddoc build` generates `_mcp/manifest.json` containing all
-      page metadata, tags, TOC structures, and relationships. Enables lightweight MCP serving
-      without re-parsing content.
+_Make gomddoc easy to install across platforms and deployment targets. Currently gomddoc is built
+from source via `make build` — these items add standard distribution channels._
+
+- [ ] **`go install` support**: Ensure `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest`
+      works cleanly. Requires the module path to be publicly resolvable and the `embed` directive
+      to work with `go install` (assets must be in the module, not generated). Verify version
+      injection via `-ldflags` still works. May need a thin `main.go` wrapper if the `assets/`
+      embed causes issues with `go install`. Low complexity.
+- [ ] **Official Docker image**: Publish a multi-arch (`linux/amd64`, `linux/arm64`) Docker image
+      to GitHub Container Registry (`ghcr.io/monolithiclab/gomddoc`). Multi-stage build with
+      `gcr.io/distroless/static-debian12` as the runtime image (~5MB). Tags: `latest`, semver
+      (`v1.2.3`), major (`v1`). Include a `HEALTHCHECK` instruction pointing at `/health/live`.
+      Document `docker run` examples for serve, build, and mcp subcommands. Medium complexity.
+- [ ] **Homebrew tap**: Create a `homebrew-tap` repository with a formula that downloads the
+      pre-built binary from GitHub Releases. Formula should include a `test` block that runs
+      `gomddoc --version`. Consider whether to start with a tap (`brew tap monolithiclab/tap && brew
+      install gomddoc`) or aim for Homebrew core inclusion later. Low complexity once releases
+      exist.
+- [ ] **GitHub Releases with GoReleaser**: Set up GoReleaser to produce cross-platform binaries
+      (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) on tagged releases.
+      Generate checksums and a changelog from conventional commits. GoReleaser can also drive the
+      Homebrew formula and Docker image builds. Medium complexity.
+- [ ] **CI pipeline (GitHub Actions)**: Automated build, test, and lint on push/PR. Run `make ci`
+      with coverage threshold enforcement (87%+). Gate merges on passing CI. Prerequisite for
+      automated releases and benchmark tracking. Medium complexity.
+- [ ] **Install script**: One-liner `curl | sh` install script that detects OS/arch, downloads the
+      correct binary from GitHub Releases, and places it in `/usr/local/bin` (or `$HOME/.local/bin`).
+      Common pattern for CLI tools. Low complexity.
 
 ## Phase 11: Enterprise Features
 
+- [ ] **TLS with automatic certificates**: Built-in HTTPS via `golang.org/x/crypto/acme/autocert`.
+      `--tls-auto` flag enables Let's Encrypt automatic certificate provisioning and renewal with
+      no manual cert management. Certificates cached to disk (`--tls-cache-dir`, default
+      `~/.cache/gomddoc/certs`). Requires port 443 and a publicly reachable domain. Serves HTTP
+      on port 80 only for ACME challenges and HTTPS redirects. For self-managed certificates,
+      `--tls-cert` and `--tls-key` flags accept PEM file paths. Both modes call
+      `http.Server.ListenAndServeTLS` — no reverse proxy required for simple deployments. Medium
+      complexity.
 - [ ] **S3 provider**: Serve content directly from S3 buckets (for non-git use cases).
 - [ ] **Authentication**: OIDC/OAuth middleware for private documentation.
 - [ ] **Branch switching**: UI dropdown to switch between Git branches/tags.
@@ -292,6 +353,7 @@ _Enable community theme sharing via a GitHub-based registry._
 | `gomddoc preview`       | Quick local preview with auto-open browser           | Done    |
 | `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Done    |
 | `gomddoc mcp`            | MCP server for AI-native documentation access        | Done    |
+| `gomddoc info`           | Show version, config file location, environment vars | Done    |
 | `gomddoc validate`      | Validate config and check for broken links           | Planned |
 | `gomddoc theme list`    | List available themes from the marketplace           | Planned |
 | `gomddoc theme search`  | Search themes by name, category, or keyword          | Planned |

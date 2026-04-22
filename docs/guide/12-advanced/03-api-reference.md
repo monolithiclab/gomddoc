@@ -163,7 +163,7 @@ Serves theme static assets (CSS, JS, fonts). Only available in `build` mode — 
 ## MCP Server (Model Context Protocol)
 
 gomddoc includes a built-in MCP server for AI-native documentation access. Start it with
-`gomddoc mcp [dir]` (stdio transport). See the [MCP Server guide](04-mcp.md) for setup instructions.
+`gomddoc mcp [dir]` (stdio transport). See the [MCP Server guide](../04-mcp.md) for setup instructions.
 
 ### MCP Tools
 

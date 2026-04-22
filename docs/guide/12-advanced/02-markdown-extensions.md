@@ -1,3 +1,10 @@
+---
+title: "Markdown Extensions"
+description: "Markdown extensions supported by gomddoc: GFM, frontmatter, admonitions, KaTeX math, Mermaid diagrams, and color chips."
+author: "nicolasm"
+tags: ["markdown", "extensions"]
+---
+
 # Markdown Extensions
 
 gomddoc supports several Markdown extensions beyond standard CommonMark, powered by goldmark and client-side rendering libraries.

@@ -95,6 +95,30 @@ gomddoc init [DIR] [flags]
 
 Creates `.gomddoc/config.yml` with the site title derived from the directory name.
 
+### `mcp`
+
+Start an MCP server for AI model integration (stdio transport). See [MCP Server](04-mcp.md) for
+full documentation.
+
+```bash
+gomddoc mcp [DIR] [flags]
+```
+
+| Flag/Arg | Env Var | Default | Description |
+|----------|---------|---------|-------------|
+| `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Markdown directory or Git URL |
+| `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
+
+### `info`
+
+Show version, config file location, and all environment variables with their types and defaults.
+
+```bash
+gomddoc info
+```
+
+Run `gomddoc info` for a complete list of all `GOMDDOC_*` environment variables.
+
 ---
 
 ## Site Configuration (`SITE`)
@@ -192,6 +216,47 @@ Sets the Chroma syntax highlighting theme for code blocks. See [Chroma styles](h
 *   **YAML:** `highlighting.theme`
 *   **Env Var:** `GOMDDOC_SITE_HIGHLIGHTING_THEME`
 *   **Default:** `github`
+
+---
+
+## Frontmatter & Page-Level Overrides
+
+Individual markdown pages can override certain site-level settings through YAML frontmatter. When
+a frontmatter field is present on a page, it takes precedence over the corresponding config file
+or environment variable setting — but only for that page.
+
+### Override Fields
+
+| Frontmatter Field | Overrides | Effect |
+|-------------------|-----------|--------|
+| `title` | — | Sets the page title in `<title>`, Open Graph `og:title`, search results, and the tags API |
+| `description` | `meta.description` | Page-level `<meta name="description">` and `og:description` (falls back to site description) |
+| `og_type` | — | Controls `<meta property="og:type">` for this page (default: `article`) |
+| `color_chips` | `color_chips` | Enables or disables color chip rendering on this page, overriding the global setting |
+| `tags` | — | Page tags for the metadata index, queryable via `/api/tags` and the MCP `find_related` tool |
+| `date` | — | Publication date included in tags API responses |
+
+### How Overrides Work
+
+The `color_chips` field is the clearest example of the override pattern. If your site config sets
+`color_chips: false` to disable color chips globally, a page with `color_chips: true` in its
+frontmatter will still render color chips. The reverse also works — disable chips on a single
+technical page while keeping them on everywhere else.
+
+The `description` field falls back through two levels: page frontmatter first, then
+`meta.description` from the config file. If neither is set, the description meta tag is omitted.
+This means you can set a site-wide default description and override it on pages where a more
+specific summary makes sense.
+
+### Custom Frontmatter Fields
+
+Any frontmatter field not in the table above is stored in the page's metadata map. These custom
+fields are accessible in templates via `{{ index .Page.Meta "field_name" }}` and appear in tags
+API responses. They do not affect rendering behavior but are useful for adding structured metadata
+to pages.
+
+See [Markdown Extensions](12-advanced/02-markdown-extensions.md) for the full frontmatter syntax and
+field reference.
 
 ---
 

@@ -48,29 +48,61 @@ Compression requires no configuration and is always enabled. It uses a `sync.Poo
 
 ## Content Negotiation (Accept Header)
 
-gomddoc uses the HTTP `Accept` header to determine the output format for each request. This enables
-the same URL to serve different representations depending on what the client wants.
+gomddoc uses the HTTP `Accept` header to determine the output format for each request. This
+enables the same URL to serve different representations depending on what the client wants — a
+pattern known as server-driven content negotiation (RFC 7231 §5.3).
 
-**Default behavior** (browser requests, `Accept: */*`): Markdown files are rendered as HTML.
+### How It Works
 
-**Raw markdown** (`Accept: text/markdown`): Returns the raw markdown content with YAML frontmatter
-stripped. Useful for LLMs, API consumers, and scripts that prefer markdown over rendered HTML.
+When a request arrives for a markdown file, gomddoc inspects the `Accept` header and selects the
+best matching renderer. The decision follows standard HTTP quality-value semantics (`q=` weights),
+with the most specific media type preferred over wildcards.
+
+| Accept Header | Response Format | Content-Type |
+|---------------|----------------|--------------|
+| `*/*` (default, browsers) | Fully rendered HTML with theme, navigation, and TOC | `text/html` |
+| `text/html` | Fully rendered HTML | `text/html` |
+| `text/markdown` | Raw markdown with YAML frontmatter stripped | `text/markdown` |
+| Other (e.g., `application/json`) | `406 Not Acceptable` | — |
+
+Non-markdown files (CSS, JavaScript, images, PDFs) are always served as-is with their detected
+MIME type, regardless of the `Accept` header. Content negotiation only applies to markdown content.
+
+### Requesting Raw Markdown
+
+The `text/markdown` output format returns the page content as clean markdown with YAML frontmatter
+removed. This is useful for:
+
+- **AI models and LLMs** — token-efficient access to documentation content without HTML markup
+- **API consumers** — scripts and tools that process markdown directly
+- **Content pipelines** — downstream systems that need the source markdown for further processing
 
 ```bash
 # Get rendered HTML (default)
 curl http://localhost:8080/docs/guide.md
 
-# Get raw markdown
+# Get raw markdown (frontmatter stripped)
 curl -H "Accept: text/markdown" http://localhost:8080/docs/guide.md
 
-# 406 Not Acceptable — no renderer produces JSON for markdown input
+# Explicitly request HTML
+curl -H "Accept: text/html" http://localhost:8080/docs/guide.md
+```
+
+### Error Handling
+
+When the server cannot produce any of the media types listed in the `Accept` header, it returns
+`406 Not Acceptable` with a plain-text body listing the available output formats. This tells the
+client exactly which formats are supported so it can retry with a valid type:
+
+```bash
+# Returns 406 — no renderer produces JSON for markdown input
 curl -H "Accept: application/json" http://localhost:8080/docs/guide.md
 ```
 
-**Non-markdown files** (CSS, images, etc.): Always served as-is with their detected MIME type,
-regardless of the Accept header.
+### Integration with the MCP Server
 
-**406 Not Acceptable**: When the server cannot produce any of the requested output types, it returns
-406 with a list of available output types in the response body.
+The MCP server's `read_page` tool uses the same content pipeline but always returns markdown
+(equivalent to `Accept: text/markdown`). If you are building integrations for AI models, the
+MCP server is the preferred access method — see [MCP Server](../04-mcp.md) for details.
 
 No configuration is required. Content negotiation is always enabled.

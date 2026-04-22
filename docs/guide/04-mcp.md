@@ -8,34 +8,43 @@ tags: ["mcp", "ai", "tools"]
 # MCP Server
 
 gomddoc includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server
-that exposes your documentation to AI models. Claude, GPT, Copilot, and other MCP-compatible clients
-can directly search, read, navigate, and query your docs without scraping HTML.
+that exposes your documentation to AI models. Instead of copy-pasting content into chat windows or
+pointing models at URLs they cannot fetch, MCP gives them direct, structured access to your docs
+through a standard protocol.
 
-## What is MCP?
+Claude, GPT, Copilot, and any MCP-compatible client can search your documentation, read specific
+pages or sections, browse the navigation tree, and discover related content — all programmatically,
+with no scraping or browser automation.
 
-The Model Context Protocol is an open standard for connecting AI models to external data sources and
-tools. Instead of copy-pasting documentation into a chat window, MCP lets AI models programmatically
-access your content through a structured interface.
+## How It Works
 
-gomddoc's MCP server is a thin adapter over the same internals used by the HTTP server — the same
-provider, metadata index, search index, and navigation system. No new parsing or indexing is needed.
+The MCP server is a thin adapter over the same internals used by the HTTP server. When you run
+`gomddoc mcp`, it builds the metadata index and search index from your markdown files, then
+exposes them via the MCP protocol over standard input/output. There is no new parsing or indexing
+logic — the MCP server calls the same `Provider`, `MetaIndex`, `SearchIndex`, and `Navigation`
+components that power `gomddoc serve`.
+
+This means your AI tools see the exact same content, search results, and navigation structure as
+your human readers. Frontmatter metadata (titles, descriptions, tags) is used to enrich tool
+responses, and the full-text search uses the same TF-IDF ranking with title and description boosts.
 
 ## Quick Start
 
-### stdio Transport (Local)
+### Running the MCP Server
 
-Run the MCP server over stdin/stdout for local AI clients:
+Start the server over stdin/stdout, pointing it at your documentation directory:
 
 ```bash
 gomddoc mcp ./docs
 ```
 
-This starts an MCP server that reads documentation from `./docs` and speaks the MCP protocol over
-stdio. The server runs until interrupted (Ctrl+C).
+The server speaks MCP JSON-RPC over stdio and runs until you interrupt it with Ctrl+C. This is the
+transport used by local AI clients — the client launches gomddoc as a subprocess and communicates
+through its stdin/stdout streams.
 
-### Configure Claude Desktop
+### Configuring Claude Desktop
 
-Add gomddoc to your `claude_desktop_config.json`:
+Add gomddoc to your Claude Desktop configuration file (`claude_desktop_config.json`):
 
 ```json
 {
@@ -48,11 +57,13 @@ Add gomddoc to your `claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop. Your documentation tools will appear in the tool list.
+After restarting Claude Desktop, your documentation tools will appear in the tool list. You can
+then ask Claude to search your docs, read specific pages, or explain concepts using your
+documentation as source material.
 
-### Configure Cursor / Windsurf
+### Configuring Cursor / Windsurf
 
-For Cursor, add to `.cursor/mcp.json` in your project:
+For Cursor, add a `.cursor/mcp.json` file in your project root:
 
 ```json
 {
@@ -65,7 +76,9 @@ For Cursor, add to `.cursor/mcp.json` in your project:
 }
 ```
 
-### Configure Claude Code
+This gives Cursor's AI assistant direct access to your project documentation while you code.
+
+### Configuring Claude Code
 
 Add to your `.mcp.json` or project settings:
 
@@ -82,7 +95,9 @@ Add to your `.mcp.json` or project settings:
 
 ### Serving from a Git Repository
 
-gomddoc MCP works with remote Git repositories, just like `gomddoc serve`:
+The MCP server supports the same content sources as `gomddoc serve`, including remote Git
+repositories. This is useful for giving AI models access to documentation that lives in a separate
+repository:
 
 ```bash
 gomddoc mcp https://github.com/org/docs.git
@@ -96,103 +111,110 @@ gomddoc mcp git@github.com:org/docs.git --git-key-file ~/.ssh/id_ed25519
 
 ## Available Tools
 
-All tools are read-only and idempotent — safe for AI auto-approval.
+gomddoc exposes six tools through the MCP protocol. All tools are annotated as read-only and
+idempotent, which signals to MCP clients that they are safe for automatic approval — the AI model
+does not need to ask permission before using them.
 
 ### search_docs
 
-Full-text search across all documentation pages. Returns ranked results with snippets.
+Full-text search across all documentation pages, using the same TF-IDF ranking engine as the
+web search UI. Returns ranked results with contextual snippets, titles, and relevance scores.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | Yes | Search query text |
-| `limit` | int | No | Maximum results (default: 20, max: 100) |
+| `limit` | int | No | Maximum results to return (default: 20, max: 100) |
 
-**Example prompt:** "Search the docs for how to configure themes"
+Queries use AND semantics — all terms must appear in a document for it to match. Title matches
+are boosted 3x and description matches 1.5x over body content.
 
 ### read_page
 
-Read a documentation page with metadata. Returns clean markdown with frontmatter stripped and
-metadata (title, description, tags) prepended.
+Reads a documentation page and returns its content as clean markdown with YAML frontmatter stripped.
+When metadata is available from the index, a structured header block (title, description, tags) is
+prepended so the model has full context about the page.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | Yes | Page file path (e.g., `guide/configuration.md`) |
 
-**Example prompt:** "Read the deployment guide"
-
 ### read_section
 
-Read a specific section of a page by heading anchor ID. Returns markdown from the heading to the
-next heading at the same or higher level. This enables targeted retrieval without loading entire
-documents.
+Reads a specific section of a page by heading anchor ID. This is the key differentiator — instead of
+loading an entire document, the model can request just the content under a particular heading. The
+tool returns everything from the matched heading to the next heading at the same or higher level
+(or the end of the file).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | Yes | Page file path |
 | `heading_id` | string | Yes | Heading anchor ID (e.g., `installation`) |
 
-The heading ID follows the same slugification as HTML anchors: lowercase, non-alphanumeric
-characters replaced with hyphens, consecutive hyphens collapsed.
-
-**Example prompt:** "Read just the Installation section from the quickstart guide"
+Heading IDs follow the same slugification as HTML anchors: text is lowercased, non-alphanumeric
+characters are replaced with hyphens, consecutive hyphens are collapsed, and leading/trailing
+hyphens are trimmed. For example, "Getting Started" becomes `getting-started`.
 
 ### list_pages
 
-List documentation pages with metadata. Optionally filter by tag.
+Lists all documentation pages with their metadata, or filters by tag. This gives the model an
+overview of what documentation is available before it decides which pages to read.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tag` | string | No | Filter by tag |
-| `limit` | int | No | Maximum pages (default: 50, max: 200) |
-
-**Example prompt:** "List all pages tagged with 'deployment'"
+| `tag` | string | No | Filter pages by tag |
+| `limit` | int | No | Maximum pages to return (default: 50, max: 200) |
 
 ### get_table_of_contents
 
-Get the site-wide navigation tree showing all pages organized by directory.
+Returns the site-wide navigation tree showing all pages organized by directory. This is the same
+tree that powers the navigation sidebar in the web UI. Optionally, pass a path to get a subtree
+rooted at a specific directory.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | No | Subtree root path (default: entire site) |
 
-**Example prompt:** "Show me the table of contents for this documentation"
-
 ### find_related
 
-Find documentation pages related to a given page based on shared tags.
+Finds documentation pages related to a given page based on shared frontmatter tags. This helps
+the model discover connections between topics and suggest additional reading to users.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | Yes | Page path to find related documents for |
 
-**Example prompt:** "What pages are related to the configuration guide?"
-
 ## Available Resources
 
-Resources use the `docs://` URI scheme for semantic identification.
+In addition to tools, the MCP server exposes four resources using the `docs://` URI scheme.
+Resources are data sources that MCP clients can read directly, without invoking a tool.
 
 ### Static Resources
 
 | URI | Description |
 |-----|-------------|
 | `docs://site/index` | JSON array of all pages with path, title, description, and tags |
-| `docs://site/tags` | JSON array of all unique tags |
+| `docs://site/tags` | JSON array of all unique tags used across the documentation |
 
 ### Resource Templates
 
 | URI Template | Description |
 |-------------|-------------|
-| `docs://site/page/{+path}` | Read a page by path (clean markdown, frontmatter stripped) |
-| `docs://site/tag/{tag}` | JSON array of pages with a specific tag |
+| `docs://site/page/{+path}` | Read a page by path — returns clean markdown with frontmatter stripped |
+| `docs://site/tag/{tag}` | JSON array of pages tagged with a specific tag |
+
+The `{+path}` syntax uses RFC 6570 reserved expansion, which means paths with forward slashes
+(like `guide/configuration.md`) are preserved as-is in the URI.
 
 ## Available Prompts
 
-Prompt templates provide pre-built interaction patterns.
+Prompt templates provide pre-built interaction patterns that MCP clients can offer to users. Each
+prompt searches the documentation for relevant content and constructs a message that guides the
+model to use your docs as source material.
 
 ### explain_concept
 
-Searches the documentation for relevant content and asks the model to explain a concept using the
-docs as source material.
+Searches for documentation related to a concept and asks the model to explain it, citing specific
+sections and providing examples from the docs.
 
 | Argument | Required | Description |
 |----------|----------|-------------|
@@ -200,7 +222,8 @@ docs as source material.
 
 ### troubleshoot
 
-Searches for relevant documentation and guides the model through step-by-step troubleshooting.
+Searches for documentation related to an issue (and optionally an error message) and asks the model
+to provide step-by-step troubleshooting guidance based on what it finds.
 
 | Argument | Required | Description |
 |----------|----------|-------------|
@@ -209,8 +232,8 @@ Searches for relevant documentation and guides the model through step-by-step tr
 
 ### summarize_page
 
-Reads a documentation page and asks the model for a concise summary with key topics and actionable
-takeaways.
+Reads a documentation page and asks the model for a concise summary including key topics, important
+concepts, and actionable takeaways.
 
 | Argument | Required | Description |
 |----------|----------|-------------|
@@ -227,32 +250,29 @@ Arguments:
   [<dir>]    Markdown directory or Git URL (default: ".")
 
 Flags:
-  --git-key-file=STRING    Path to SSH private key file for Git authentication ($GOMDDOC_SERVER_GIT_SSH_KEY)
+  --git-key-file=STRING    Path to SSH private key file for Git authentication
 ```
 
-## Architecture
+The `GOMDDOC_SERVER_DIR` and `GOMDDOC_SERVER_GIT_SSH_KEY` environment variables also apply to the
+MCP subcommand. Run `gomddoc info` for the full list of environment variables.
 
-The MCP server reuses gomddoc's existing internals as a thin adapter:
+## Tips for Effective Use
 
-```
-MCP Client (Claude, Cursor, etc.)
-    ↕ JSON-RPC (stdio or Streamable HTTP)
-internal/mcp/server.go
-    ↓ adapts to existing interfaces
-Provider → Metadata Index → Search Index → Navigation
-```
+When using gomddoc's MCP server with an AI model, a few strategies help get the most out of the
+integration:
 
-No new parsing, rendering, or indexing logic is introduced. The MCP package calls the same
-`Provider.ReadFile()`, `MetaIndex.AllPages()`, `SearchIndex.Search()`, and
-`navigation.Generator.Generate()` methods used by the HTTP server.
+**Start with the table of contents.** Before asking about specific topics, use `get_table_of_contents`
+to understand how the documentation is organized. This gives the model a map of available content
+and helps it make better decisions about which pages to read.
 
-## Tips for AI Users
+**Use section-level reads for large pages.** The `read_section` tool returns just the content under a
+specific heading, which saves context window space compared to reading entire pages. This is
+especially valuable for long reference documents where only one section is relevant.
 
-- **Start with the TOC.** Use `get_table_of_contents` to understand the documentation structure
-  before diving into specific pages.
-- **Use section-level reads.** `read_section` returns just the content under a specific heading,
-  saving tokens compared to reading entire pages.
-- **Search before reading.** `search_docs` uses TF-IDF ranking with title boosts — it will surface
-  the most relevant pages for your query.
-- **Discover via tags.** Use `list_pages` with a tag filter to find all pages on a topic, then
-  `find_related` to explore connections between documents.
+**Search before reading.** The `search_docs` tool uses TF-IDF ranking with title boosts, so it
+surfaces the most relevant pages for a query. Searching first and then reading the top results
+is more efficient than guessing which page to read.
+
+**Explore connections via tags.** Use `list_pages` with a tag filter to find all pages on a topic,
+then `find_related` to discover pages that share tags with a document you have already read. This
+helps the model build a broader understanding of a subject across multiple pages.
