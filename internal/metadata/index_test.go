@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -12,6 +13,8 @@ import (
 )
 
 func TestExtractFrontmatter(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		content string
@@ -73,6 +76,7 @@ func TestExtractFrontmatter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := extractFrontmatter([]byte(tt.content))
 			if tt.wantErr {
 				if err == nil {
@@ -102,6 +106,8 @@ func TestExtractFrontmatter(t *testing.T) {
 }
 
 func TestBuildIndex(t *testing.T) {
+	t.Parallel()
+
 	testFS := fstest.MapFS{
 		"readme.md": {
 			Data: []byte("---\ntitle: Home\ntags:\n  - Go\n  - Docs\ndate: 2025-01-15\ndescription: The homepage\ncategory: main\n---\n# Home"),
@@ -132,6 +138,7 @@ func TestBuildIndex(t *testing.T) {
 	}
 
 	t.Run("AllPages count", func(t *testing.T) {
+		t.Parallel()
 		pages := idx.AllPages()
 		// readme.md, guide/intro.md (no-frontmatter.md, image.png, hidden, dotfile, empty are skipped)
 		if got := len(pages); got != 2 {
@@ -140,6 +147,7 @@ func TestBuildIndex(t *testing.T) {
 	})
 
 	t.Run("AllTags sorted", func(t *testing.T) {
+		t.Parallel()
 		tags := idx.AllTags()
 		expected := []string{"docs", "go", "tutorial"}
 		if len(tags) != len(expected) {
@@ -153,6 +161,7 @@ func TestBuildIndex(t *testing.T) {
 	})
 
 	t.Run("ByTag returns correct pages", func(t *testing.T) {
+		t.Parallel()
 		goPages := idx.ByTag("go")
 		if len(goPages) != 2 {
 			t.Fatalf("expected 2 pages with tag 'go', got %d", len(goPages))
@@ -160,6 +169,7 @@ func TestBuildIndex(t *testing.T) {
 	})
 
 	t.Run("ByTag case insensitive", func(t *testing.T) {
+		t.Parallel()
 		goPages := idx.ByTag("GO")
 		if len(goPages) != 2 {
 			t.Fatalf("expected 2 pages with tag 'GO' (case insensitive), got %d", len(goPages))
@@ -167,6 +177,7 @@ func TestBuildIndex(t *testing.T) {
 	})
 
 	t.Run("ByTag nonexistent", func(t *testing.T) {
+		t.Parallel()
 		pages := idx.ByTag("nonexistent")
 		if pages != nil {
 			t.Fatalf("expected nil for nonexistent tag, got %v", pages)
@@ -174,6 +185,7 @@ func TestBuildIndex(t *testing.T) {
 	})
 
 	t.Run("page metadata extracted", func(t *testing.T) {
+		t.Parallel()
 		pages := idx.AllPages()
 		var homePage *PageInfo
 		for i := range pages {
@@ -201,6 +213,7 @@ func TestBuildIndex(t *testing.T) {
 	})
 
 	t.Run("tags normalized to lowercase", func(t *testing.T) {
+		t.Parallel()
 		pages := idx.AllPages()
 		for _, page := range pages {
 			for _, tag := range page.Tags {
@@ -213,6 +226,8 @@ func TestBuildIndex(t *testing.T) {
 }
 
 func TestBuildIndex_EmptyFS(t *testing.T) {
+	t.Parallel()
+
 	testFS := fstest.MapFS{}
 	idx, err := BuildIndex(context.Background(), testFS, nil)
 	if err != nil {
@@ -227,6 +242,8 @@ func TestBuildIndex_EmptyFS(t *testing.T) {
 }
 
 func TestAllPages_ReturnsCopy(t *testing.T) {
+	t.Parallel()
+
 	testFS := fstest.MapFS{
 		"test.md": {Data: []byte("---\ntitle: Test\n---\n")},
 	}
@@ -244,6 +261,8 @@ func TestAllPages_ReturnsCopy(t *testing.T) {
 }
 
 func TestBuildIndex_CancelledContext(t *testing.T) {
+	t.Parallel()
+
 	testFS := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: A\n---\n")},
 		"b.md": {Data: []byte("---\ntitle: B\n---\n")},
@@ -253,15 +272,17 @@ func TestBuildIndex_CancelledContext(t *testing.T) {
 	cancel() // cancel immediately
 
 	_, err := BuildIndex(ctx, testFS, nil)
-	if err == nil {
-		// A cancelled context may or may not produce an error depending on
-		// timing; the goroutines check gctx.Err() but may have already
-		// completed. We accept both outcomes.
-		t.Log("BuildIndex succeeded with cancelled context (goroutines completed before checking)")
+	// A cancelled context may or may not produce an error depending on
+	// timing; the goroutines may complete before checking ctx.Err().
+	// When an error is returned, it must wrap context.Canceled.
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got: %v", err)
 	}
 }
 
 func TestBuildIndex_ManyFiles(t *testing.T) {
+	t.Parallel()
+
 	// Verify concurrent indexing works correctly with many files.
 	testFS := fstest.MapFS{}
 	const n = 50

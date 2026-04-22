@@ -7,49 +7,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
-	"github.com/monolithiclab/gomddoc/internal/text"
 )
-
-func TestStripFrontmatter(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "no frontmatter",
-			input: "# Hello\n\nSome content",
-			want:  "# Hello\n\nSome content",
-		},
-		{
-			name:  "with frontmatter",
-			input: "---\ntitle: Test\n---\n# Hello\n\nContent",
-			want:  "# Hello\n\nContent",
-		},
-		{
-			name:  "unclosed frontmatter",
-			input: "---\ntitle: Test\nNo closing",
-			want:  "---\ntitle: Test\nNo closing",
-		},
-		{
-			name:  "empty body after frontmatter",
-			input: "---\ntitle: Test\n---\n",
-			want:  "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := string(text.StripFrontmatter([]byte(tt.input)))
-			if got != tt.want {
-				t.Errorf("text.StripFrontmatter() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
 
 func TestStripMarkdown(t *testing.T) {
 	t.Parallel()

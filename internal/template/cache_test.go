@@ -88,6 +88,8 @@ func TestCachedTemplateStore_Clear(t *testing.T) {
 }
 
 func TestCachedTemplateStore_Concurrent(t *testing.T) {
+	t.Parallel()
+
 	cache := &CachedTemplateStore{}
 
 	// Test concurrent access

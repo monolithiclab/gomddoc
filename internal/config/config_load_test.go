@@ -47,7 +47,7 @@ meta:
 func TestNewFromServeArgs_EnvOverrides(t *testing.T) {
 	t.Setenv("GOMDDOC_SITE_META_TITLE", "Env Title")
 
-	cfg, err := NewFromServeArgs(".", ":9999", false, "")
+	cfg, err := NewFromServeArgs(t.TempDir(), ":9999", false, "")
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestNewFromServeArgs_DynamicDefaults(t *testing.T) {
 func TestNewFromServeArgs_DevMode(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := NewFromServeArgs(".", ":8080", true, "")
+	cfg, err := NewFromServeArgs(t.TempDir(), ":8080", true, "")
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestNewFromServeArgs_DevMode(t *testing.T) {
 func TestNewFromServeArgs_GitSSHKey(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := NewFromServeArgs(".", ":8080", false, "/path/to/key")
+	cfg, err := NewFromServeArgs(t.TempDir(), ":8080", false, "/path/to/key")
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}
