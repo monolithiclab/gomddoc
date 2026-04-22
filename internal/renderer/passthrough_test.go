@@ -53,14 +53,18 @@ func TestPassthroughRenderer_Render(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			renderer := NewPassthroughRenderer()
-			output, _, err := renderer.Render(context.Background(), tt.input)
+			result, err := renderer.Render(context.Background(), tt.input)
 
 			if err != nil {
 				t.Fatalf("Render() error = %v, want nil", err)
 			}
 
-			if !bytes.Equal(output, tt.input) {
-				t.Errorf("Render() output = %v, want %v", output, tt.input)
+			if !bytes.Equal(result.Content, tt.input) {
+				t.Errorf("Render() output = %v, want %v", result.Content, tt.input)
+			}
+
+			if result.Metadata != nil {
+				t.Error("Render() metadata should be nil for passthrough")
 			}
 		})
 	}
@@ -71,7 +75,7 @@ func TestPassthroughRenderer_ContextCancellation(t *testing.T) {
 
 	renderer := NewPassthroughRenderer()
 	testContextCancellation(t, func(ctx context.Context) error {
-		_, _, err := renderer.Render(ctx, []byte("test content"))
+		_, err := renderer.Render(ctx, []byte("test content"))
 		return err
 	})
 }
@@ -87,15 +91,15 @@ func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
 	for i := range concurrency {
 		go func(n int) {
 			input := []byte("Content " + string(rune('A'+(n%26))))
-			output, mimeType, err := renderer.Render(ctx, input)
+			result, err := renderer.Render(ctx, input)
 			if err != nil {
 				t.Errorf("Concurrent render failed: %v", err)
 			}
-			if mimeType != "" {
-				t.Errorf("Concurrent render returned mimeType %q, want empty", mimeType)
+			if result.MimeType != "" {
+				t.Errorf("Concurrent render returned mimeType %q, want empty", result.MimeType)
 			}
-			if !bytes.Equal(output, input) {
-				t.Errorf("Concurrent render modified content: got %v, want %v", output, input)
+			if !bytes.Equal(result.Content, input) {
+				t.Errorf("Concurrent render modified content: got %v, want %v", result.Content, input)
 			}
 			done <- true
 		}(i)
@@ -110,17 +114,17 @@ func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
 func TestPassthroughRenderer_NilInput(t *testing.T) {
 	renderer := NewPassthroughRenderer()
 
-	output, mimeType, err := renderer.Render(context.Background(), nil)
+	result, err := renderer.Render(context.Background(), nil)
 
 	if err != nil {
 		t.Fatalf("Render() error = %v, want nil", err)
 	}
 
-	if mimeType != "" {
-		t.Errorf("Render() mimeType = %q, want empty", mimeType)
+	if result.MimeType != "" {
+		t.Errorf("Render() mimeType = %q, want empty", result.MimeType)
 	}
 
-	if output != nil {
-		t.Errorf("Render() output = %v, want nil", output)
+	if result.Content != nil {
+		t.Errorf("Render() output = %v, want nil", result.Content)
 	}
 }

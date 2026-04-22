@@ -4,7 +4,12 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -56,7 +61,7 @@ func (pa *providerAdapter) IsDir(path string) bool {
 // Flow:
 //  1. Read file from provider (gets content + input MIME type)
 //  2. Get renderer for input MIME type
-//  3. Render content (transforms to output MIME type)
+//  3. Render content (transforms to output MIME type + metadata)
 //  4. Content negotiation on output MIME type with Accept header
 //  5. Serve as HTML (wrapped in template) or raw (passthrough)
 func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
@@ -75,15 +80,15 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Render content to get output MIME type
-	output, outputMimeType, err := contentRenderer.Render(r.Context(), content)
+	// 3. Render content to get output MIME type and metadata
+	renderResult, err := contentRenderer.Render(r.Context(), content)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return
 	}
 
 	// 4. Determine final MIME type
-	finalMimeType := outputMimeType
+	finalMimeType := renderResult.MimeType
 	if finalMimeType == "" {
 		finalMimeType = mimeType // Preserve full MIME type from provider (passthrough)
 	}
@@ -110,19 +115,30 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 
 	// 6. Serve based on output MIME type
 	if finalNormalized == "text/html" {
-		h.serveHTML(w, r, output)
+		h.serveHTML(w, r, renderResult.Content, renderResult.Metadata)
 	} else {
-		h.serveRaw(w, output, finalMimeType)
+		h.serveRaw(w, renderResult.Content, finalMimeType)
 	}
 }
 
 // serveHTML wraps HTML content in the site template and serves it.
-func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte) {
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, metadata map[string]interface{}) {
+	// Initialize metadata if nil
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+
+	// Default title logic
+	if _, ok := metadata["title"]; !ok {
+		metadata["title"] = deriveTitle(r.URL.Path)
+	}
+
 	context := &tmpl.TemplateContext{
 		Site: h.siteConfig,
 		Page: tmpl.PageContext{
 			Content:     template.HTML(htmlContent), // #nosec G203
 			Breadcrumbs: h.breadcrumbGen.Generate(r.URL.Path),
+			Meta:        metadata,
 		},
 	}
 
@@ -140,6 +156,26 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	if writeErr != nil {
 		slog.Error("Cannot write response", slog.Any("error", writeErr))
 	}
+}
+
+// deriveTitle derives a title from the file path.
+// Example: "/docs/my-page.md" -> "My Page"
+func deriveTitle(reqPath string) string {
+	base := filepath.Base(reqPath)
+	if base == "." || base == "/" {
+		return "Home"
+	}
+
+	// Remove extension
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+
+	// Replace hyphens/underscores with spaces
+	name = strings.ReplaceAll(name, "-", " ")
+	name = strings.ReplaceAll(name, "_", " ")
+
+	// Capitalize Title Case
+	return cases.Title(language.English).String(name)
 }
 
 // serveRaw serves content directly without template wrapping (passthrough).

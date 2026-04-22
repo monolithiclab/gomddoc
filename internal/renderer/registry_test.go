@@ -17,8 +17,12 @@ func (m *mockRenderer) SupportedMimeTypes() []string {
 	return m.supportedMime
 }
 
-func (m *mockRenderer) Render(ctx context.Context, content []byte) ([]byte, string, error) {
-	return content, "", nil
+func (m *mockRenderer) Render(ctx context.Context, content []byte) (*RenderResult, error) {
+	return &RenderResult{
+		Content:  content,
+		MimeType: "",
+		Metadata: nil,
+	}, nil
 }
 
 func TestDefaultRegistry_Register(t *testing.T) {

@@ -33,6 +33,7 @@ type TemplateContext struct {
 type PageContext struct {
 	Content     template.HTML
 	Breadcrumbs []breadcrumb.Breadcrumb // Ordered slice of breadcrumbs
+	Meta        map[string]interface{}  // Extracted metadata (e.g., front matter)
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects

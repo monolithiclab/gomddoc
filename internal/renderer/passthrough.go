@@ -28,12 +28,16 @@ func (p *PassthroughRenderer) SupportedMimeTypes() []string {
 // The empty output MIME type signals to the handler to use the provider's
 // detected MIME type for the HTTP response, enabling proper content type
 // headers for binary files, images, etc.
-func (p *PassthroughRenderer) Render(ctx context.Context, content []byte) ([]byte, string, error) {
+func (p *PassthroughRenderer) Render(ctx context.Context, content []byte) (*RenderResult, error) {
 	// Check context before processing
 	if err := ctx.Err(); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	// Return content unchanged with empty MIME type (passthrough)
-	return content, "", nil
+	return &RenderResult{
+		Content:  content,
+		MimeType: "",
+		Metadata: nil,
+	}, nil
 }

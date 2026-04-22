@@ -40,6 +40,7 @@ The template engine (Go `html/template`) receives a context object with:
 *   **`.Page`**: Current page data.
     *   `.Page.Content`: The rendered HTML content (safe HTML).
     *   `.Page.Breadcrumbs`: Map of paths to labels for navigation.
+    *   `.Page.Meta`: Map of Front Matter metadata (e.g., `{{ .Page.Meta.title }}`, `{{ .Page.Meta.tags }}`).
 
 ### Example Layout
 

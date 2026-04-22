@@ -2,6 +2,20 @@ package renderer
 
 import "context"
 
+// RenderResult holds the output of a content rendering operation.
+type RenderResult struct {
+	// Content is the transformed content bytes.
+	Content []byte
+
+	// MimeType is the MIME type of the output content.
+	// Empty string means the input MIME type should be preserved (passthrough).
+	MimeType string
+
+	// Metadata is key-value pairs extracted from the content (e.g., front matter).
+	// This can be used by templates for title, description, tags, etc.
+	Metadata map[string]interface{}
+}
+
 // ContentRenderer transforms content from input MIME type to output MIME type.
 // Renderers are stateless and can be used concurrently.
 //
@@ -27,16 +41,12 @@ type ContentRenderer interface {
 	//   - content: Input content bytes to process
 	//
 	// Returns:
-	//   - output: Transformed content bytes
-	//   - outputMimeType: MIME type of the output (empty string means use input type)
+	//   - result: The rendering result containing content, MIME type, and metadata
 	//   - error: Processing error, including context cancellation
 	//
 	// The renderer should check ctx.Err() before expensive operations to support
 	// request cancellation and timeouts.
-	//
-	// Empty outputMimeType indicates passthrough - the handler will use the
-	// provider's detected MIME type for the HTTP response.
-	Render(ctx context.Context, content []byte) ([]byte, string, error)
+	Render(ctx context.Context, content []byte) (*RenderResult, error)
 }
 
 // RendererRegistry manages MIME type to renderer mappings.
