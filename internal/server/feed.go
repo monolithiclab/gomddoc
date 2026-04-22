@@ -157,17 +157,7 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 	// Build Atom entries.
 	entries := make([]atomEntry, 0, len(candidates))
 	for _, c := range candidates {
-		// Use clean path if resolver is available
-		pagePath := c.page.Path
-		if resolver != nil {
-			// Strip leading slash for resolver lookup
-			lookupPath := strings.TrimPrefix(c.page.Path, "/")
-			if clean, found := resolver.CleanPath(lookupPath); found {
-				pagePath = "/" + clean
-			} else {
-				pagePath = c.page.Path
-			}
-		}
+		pagePath := resolvedPagePath(c.page.Path, defaultIndex, resolver)
 
 		loc := seo.PageURL(domain, pagePath, defaultIndex)
 		if loc == "" {

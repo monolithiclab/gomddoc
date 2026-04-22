@@ -176,4 +176,15 @@ func TestGenerateSitemap_WithResolver(t *testing.T) {
 	if strings.Contains(body, "https://docs.example.com/docs/guide.md") {
 		t.Error("should not contain .md URL when resolver provides clean path")
 	}
+
+	// Default index files should resolve to directory URL, not extensionless
+	if strings.Contains(body, "https://docs.example.com/README") {
+		t.Error("root README.md should map to / not /README")
+	}
+	if strings.Contains(body, "https://docs.example.com/docs/README") {
+		t.Error("docs/README.md should map to /docs/ not /docs/README")
+	}
+	if !strings.Contains(body, "https://docs.example.com/") {
+		t.Error("should contain root URL from README.md")
+	}
 }

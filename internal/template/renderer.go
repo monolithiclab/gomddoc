@@ -452,7 +452,8 @@ func (h *HTMLRenderer) contentURL(filePath string) string {
 	// Normalize: strip leading slash for resolver lookup
 	p := strings.TrimPrefix(filePath, "/")
 
-	// Strip default index file before resolver (e.g., "docs/README.md" -> "docs/")
+	// Default index files map to their directory path, not an extensionless path.
+	// The resolver would produce "docs/README" but the correct URL is "docs/".
 	if path.Base(p) == h.siteConfig.DefaultIndex {
 		p = path.Dir(p)
 		if p == "." {

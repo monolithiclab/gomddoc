@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 
@@ -104,17 +105,7 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 			continue
 		}
 
-		// Use clean path if resolver is available
-		pagePath := page.Path
-		if resolver != nil {
-			// Strip leading slash for resolver lookup
-			lookupPath := strings.TrimPrefix(page.Path, "/")
-			if clean, found := resolver.CleanPath(lookupPath); found {
-				pagePath = "/" + clean
-			} else {
-				pagePath = page.Path
-			}
-		}
+		pagePath := resolvedPagePath(page.Path, defaultIndex, resolver)
 
 		loc := seo.PageURL(domain, pagePath, defaultIndex)
 		if loc != "" {
@@ -142,4 +133,26 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 	out = append(out, body...)
 	out = append(out, '\n')
 	return out, nil
+}
+
+// resolvedPagePath returns the URL path for a page, using the resolver for
+// extensionless paths when available. Default index files are excluded from
+// resolver lookup — their URL is the directory path, handled by seo.PageURL.
+func resolvedPagePath(pagePath, defaultIndex string, resolver *resolve.PathResolver) string {
+	if resolver == nil {
+		return pagePath
+	}
+	lookupPath := strings.TrimPrefix(pagePath, "/")
+	if IsDefaultIndex(lookupPath, defaultIndex) {
+		return pagePath
+	}
+	if clean, found := resolver.CleanPath(lookupPath); found {
+		return "/" + clean
+	}
+	return pagePath
+}
+
+// IsDefaultIndex reports whether filePath's basename matches defaultIndex.
+func IsDefaultIndex(filePath, defaultIndex string) bool {
+	return defaultIndex != "" && strings.EqualFold(path.Base(filePath), defaultIndex)
 }

@@ -129,7 +129,7 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate extension redirect files (e.g. guide.html -> guide/)
-	if err := b.generateExtensionRedirects(pipeline.Resolver); err != nil {
+	if err := b.generateExtensionRedirects(pipeline.Resolver, cfg.Site.DefaultIndex); err != nil {
 		return fmt.Errorf("generate extension redirects: %w", err)
 	}
 
@@ -339,7 +339,7 @@ func (b *BuildCmd) buildFile(
 		htmlPath = prettyOutputPath(filePath, siteConfig.DefaultIndex, dirsWithIndexMD)
 	} else {
 		htmlPath = strings.TrimSuffix(filePath, path.Ext(filePath)) + ".html"
-		if b.isDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
+		if server.IsDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
 			htmlPath = path.Join(path.Dir(filePath), "index.html")
 		}
 	}
@@ -484,12 +484,17 @@ func prettyOutputPath(filePath, defaultIndex string, dirsWithIndexMD map[string]
 
 // generateExtensionRedirects generates HTML redirect files so old extension-based
 // URLs still work on static hosts (e.g. guide.html -> guide/).
-func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver) error {
+// Default index files (e.g., README.md) are skipped — their URL is the
+// directory path, not the extensionless form.
+func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, defaultIndex string) error {
 	if resolver == nil || resolver.IsEmpty() {
 		return nil
 	}
 
 	for realPath, cleanPath := range resolver.AllMappings() {
+		if server.IsDefaultIndex(realPath, defaultIndex) {
+			continue
+		}
 		html := server.GenerateRedirectHTML("/" + cleanPath)
 		if err := b.writeOutputFile(realPath, html); err != nil {
 			return fmt.Errorf("write extension redirect %s: %w", realPath, err)
@@ -501,13 +506,6 @@ func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver) er
 	}
 
 	return nil
-}
-
-// isDefaultIndex reports whether filePath's basename matches the configured
-// DefaultIndex filename (case-insensitive). For example, "docs/README.md"
-// matches DefaultIndex "README.md".
-func (b *BuildCmd) isDefaultIndex(filePath, defaultIndex string) bool {
-	return strings.EqualFold(path.Base(filePath), defaultIndex)
 }
 
 // writeOutputFile writes content to a file in the output directory, creating parent directories as needed.
