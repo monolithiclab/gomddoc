@@ -1,0 +1,20 @@
+language_name: English
+toc_title: "On this page"
+edit_page: "Edit this page"
+go_to_homepage: "Go to homepage"
+search_placeholder: "Search documentation..."
+search_no_results: "No results found"
+search_navigate: Navigate
+search_open: Open
+search_close: Close
+copy: Copy
+copied: "Copied!"
+aria_toggle_nav: "Toggle navigation"
+aria_site_nav: "Site navigation"
+aria_search: "Search documentation"
+aria_toc: "Table of contents"
+aria_toggle_toc: "Toggle table of contents"
+aria_toggle_theme: "Toggle dark mode"
+aria_breadcrumb: Breadcrumb
+aria_copy_code: "Copy code to clipboard"
+search_shortcut: "Search (Ctrl+K)"
