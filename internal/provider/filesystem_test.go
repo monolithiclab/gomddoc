@@ -60,16 +60,16 @@ func TestNewFilesystemProvider(t *testing.T) {
 }
 
 func TestFilesystemProvider_ReadFile(t *testing.T) {
-	// Create test file
-	testContent := "# Test Content"
-	testFile := "test_provider.md"
+	// Create test file using .txt extension which has built-in MIME type
+	testContent := "Test Content"
+	testFile := "test_provider.txt"
 	err := os.WriteFile(testFile, []byte(testContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 	defer os.Remove(testFile)
 
-	provider, err := NewFilesystemProvider(".", "README.md", false)
+	provider, err := NewFilesystemProvider(".", "README.txt", false)
 	if err != nil {
 		t.Fatalf("Failed to create filesystem provider: %v", err)
 	}
@@ -87,19 +87,19 @@ func TestFilesystemProvider_ReadFile(t *testing.T) {
 			name:         "read existing file",
 			path:         testFile,
 			wantContent:  testContent,
-			wantMimeType: "text/markdown; charset=utf-8",
+			wantMimeType: "text/plain; charset=utf-8",
 			wantErr:      false,
 		},
 		{
 			name:         "read with leading slash",
 			path:         "/" + testFile,
 			wantContent:  testContent,
-			wantMimeType: "text/markdown; charset=utf-8",
+			wantMimeType: "text/plain; charset=utf-8",
 			wantErr:      false,
 		},
 		{
 			name:    "read nonexistent file",
-			path:    "nonexistent.md",
+			path:    "nonexistent.txt",
 			wantErr: true,
 			checkErr: func(err error) bool {
 				return errors.Is(err, ErrNotFound)
@@ -146,11 +146,11 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 	}
 	defer os.RemoveAll(testDir)
 
-	// Create README.md in test directory
-	readmeContent := "# Directory README"
-	err = os.WriteFile(testDir+"/README.md", []byte(readmeContent), 0644)
+	// Create README.txt in test directory (using .txt for built-in MIME type)
+	readmeContent := "Directory README"
+	err = os.WriteFile(testDir+"/README.txt", []byte(readmeContent), 0644)
 	if err != nil {
-		t.Fatalf("Failed to create README.md: %v", err)
+		t.Fatalf("Failed to create README.txt: %v", err)
 	}
 
 	// Create subdirectory without README
@@ -160,8 +160,8 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 		t.Fatalf("Failed to create empty directory: %v", err)
 	}
 
-	t.Run("directory with README.md (dirIndex=false)", func(t *testing.T) {
-		provider, err := NewFilesystemProvider(".", "README.md", false)
+	t.Run("directory with README.txt (dirIndex=false)", func(t *testing.T) {
+		provider, err := NewFilesystemProvider(".", "README.txt", false)
 		if err != nil {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
@@ -176,13 +176,13 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 			t.Errorf("ReadFile() content = %q, want %q", string(content), readmeContent)
 		}
 
-		if mimeType != "text/markdown; charset=utf-8" {
-			t.Errorf("ReadFile() mimeType = %q, want text/markdown; charset=utf-8", mimeType)
+		if mimeType != "text/plain; charset=utf-8" {
+			t.Errorf("ReadFile() mimeType = %q, want text/plain; charset=utf-8", mimeType)
 		}
 	})
 
-	t.Run("directory without README.md (dirIndex=false)", func(t *testing.T) {
-		provider, err := NewFilesystemProvider(".", "README.md", false)
+	t.Run("directory without README.txt (dirIndex=false)", func(t *testing.T) {
+		provider, err := NewFilesystemProvider(".", "README.txt", false)
 		if err != nil {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
@@ -198,8 +198,8 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 		}
 	})
 
-	t.Run("directory without README.md (dirIndex=true)", func(t *testing.T) {
-		provider, err := NewFilesystemProvider(".", "README.md", true)
+	t.Run("directory without README.txt (dirIndex=true)", func(t *testing.T) {
+		provider, err := NewFilesystemProvider(".", "README.txt", true)
 		if err != nil {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
@@ -224,7 +224,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 	t.Run("directory with files (dirIndex=true)", func(t *testing.T) {
 		// Create some files in the empty directory
 		testFile1 := emptyDir + "/file1.txt"
-		testFile2 := emptyDir + "/file2.md"
+		testFile2 := emptyDir + "/file2.html"
 		err = os.WriteFile(testFile1, []byte("test"), 0644)
 		if err != nil {
 			t.Fatalf("Failed to create test file: %v", err)
@@ -234,7 +234,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 			t.Fatalf("Failed to create test file: %v", err)
 		}
 
-		provider, err := NewFilesystemProvider(".", "README.md", true)
+		provider, err := NewFilesystemProvider(".", "README.txt", true)
 		if err != nil {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
@@ -254,22 +254,22 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 		if !strings.Contains(contentStr, "file1.txt") {
 			t.Error("ReadFile() directory listing should contain file1.txt")
 		}
-		if !strings.Contains(contentStr, "file2.md") {
-			t.Error("ReadFile() directory listing should contain file2.md")
+		if !strings.Contains(contentStr, "file2.html") {
+			t.Error("ReadFile() directory listing should contain file2.html")
 		}
 	})
 }
 
 func TestFilesystemProvider_PathCleaning(t *testing.T) {
-	// Create test file
-	testFile := "path_test.md"
-	err := os.WriteFile(testFile, []byte("# Path Test"), 0644)
+	// Create test file using .txt extension which has built-in MIME type
+	testFile := "path_test.txt"
+	err := os.WriteFile(testFile, []byte("Path Test"), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 	defer os.Remove(testFile)
 
-	provider, err := NewFilesystemProvider(".", "README.md", false)
+	provider, err := NewFilesystemProvider(".", "README.txt", false)
 	if err != nil {
 		t.Fatalf("Failed to create filesystem provider: %v", err)
 	}
@@ -294,26 +294,21 @@ func TestFilesystemProvider_PathCleaning(t *testing.T) {
 			if !strings.Contains(string(content), "Path Test") {
 				t.Error("ReadFile() should read the correct file content")
 			}
-			if mimeType != "text/markdown; charset=utf-8" {
-				t.Errorf("ReadFile() mimeType = %q, want text/markdown; charset=utf-8", mimeType)
+			if mimeType != "text/plain; charset=utf-8" {
+				t.Errorf("ReadFile() mimeType = %q, want text/plain; charset=utf-8", mimeType)
 			}
 		})
 	}
 }
 
 func TestFilesystemProvider_MimeTypeDetection(t *testing.T) {
+	// Tests use only built-in MIME types (no custom registration required)
 	tests := []struct {
 		name         string
 		filename     string
 		content      string
 		wantMimeType string
 	}{
-		{
-			name:         "markdown file",
-			filename:     "test.md",
-			content:      "# Test",
-			wantMimeType: "text/markdown; charset=utf-8",
-		},
 		{
 			name:         "html file",
 			filename:     "test.html",
@@ -333,6 +328,18 @@ func TestFilesystemProvider_MimeTypeDetection(t *testing.T) {
 			wantMimeType: "application/json",
 		},
 		{
+			name:         "css file",
+			filename:     "test.css",
+			content:      "body {}",
+			wantMimeType: "text/css; charset=utf-8",
+		},
+		{
+			name:         "javascript file",
+			filename:     "test.js",
+			content:      "console.log()",
+			wantMimeType: "text/javascript; charset=utf-8",
+		},
+		{
 			name:         "unknown extension",
 			filename:     "test.unknown",
 			content:      "data",
@@ -346,7 +353,7 @@ func TestFilesystemProvider_MimeTypeDetection(t *testing.T) {
 		},
 	}
 
-	provider, err := NewFilesystemProvider(".", "README.md", false)
+	provider, err := NewFilesystemProvider(".", "README.txt", false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -374,15 +381,15 @@ func TestFilesystemProvider_MimeTypeDetection(t *testing.T) {
 }
 
 func TestFilesystemProvider_Stat(t *testing.T) {
-	// Create test file
-	testFile := "stat_test.md"
+	// Create test file using .txt extension
+	testFile := "stat_test.txt"
 	err := os.WriteFile(testFile, []byte("test"), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 	defer os.Remove(testFile)
 
-	provider, err := NewFilesystemProvider(".", "README.md", false)
+	provider, err := NewFilesystemProvider(".", "README.txt", false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -406,7 +413,7 @@ func TestFilesystemProvider_Stat(t *testing.T) {
 		},
 		{
 			name:    "nonexistent file",
-			path:    "nonexistent.md",
+			path:    "nonexistent.txt",
 			wantErr: true,
 			checkErr: func(err error) bool {
 				return errors.Is(err, ErrNotFound)
@@ -446,14 +453,14 @@ func TestFilesystemProvider_Stat(t *testing.T) {
 }
 
 func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
-	provider, err := NewFilesystemProvider(".", "README.md", false)
+	provider, err := NewFilesystemProvider(".", "README.txt", false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
 	defer provider.Close()
 
 	t.Run("ReadFile wraps ErrNotFound", func(t *testing.T) {
-		_, _, err := provider.ReadFile("nonexistent.md")
+		_, _, err := provider.ReadFile("nonexistent.txt")
 		if err == nil {
 			t.Fatal("ReadFile() error = nil, want error")
 		}
@@ -483,7 +490,7 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 	})
 
 	t.Run("Stat wraps ErrNotFound", func(t *testing.T) {
-		_, err := provider.Stat("nonexistent.md")
+		_, err := provider.Stat("nonexistent.txt")
 		if err == nil {
 			t.Fatal("Stat() error = nil, want error")
 		}
@@ -494,7 +501,7 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 	})
 
 	t.Run("PathError contains operation and path info", func(t *testing.T) {
-		_, _, err := provider.ReadFile("nonexistent.md")
+		_, _, err := provider.ReadFile("nonexistent.txt")
 		if err == nil {
 			t.Fatal("ReadFile() error = nil, want error")
 		}
@@ -508,13 +515,13 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 			t.Errorf("PathError.Op = %q, want %q", pathErr.Op, "read")
 		}
 
-		if pathErr.Path != "nonexistent.md" {
-			t.Errorf("PathError.Path = %q, want %q", pathErr.Path, "nonexistent.md")
+		if pathErr.Path != "nonexistent.txt" {
+			t.Errorf("PathError.Path = %q, want %q", pathErr.Path, "nonexistent.txt")
 		}
 
 		// Verify Error() method returns formatted string
 		errStr := pathErr.Error()
-		if !strings.Contains(errStr, "read") || !strings.Contains(errStr, "nonexistent.md") {
+		if !strings.Contains(errStr, "read") || !strings.Contains(errStr, "nonexistent.txt") {
 			t.Errorf("PathError.Error() = %q, should contain op and path", errStr)
 		}
 	})

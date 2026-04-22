@@ -16,8 +16,8 @@ func init() {
 	//
 	// Co-located with MarkdownRenderer as it owns this mapping.
 	// Errors are ignored as these are standard MIME types that should always succeed.
-	_ = mime.AddExtensionType(".md", "text/markdown")
-	_ = mime.AddExtensionType(".markdown", "text/markdown")
+	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
+	_ = mime.AddExtensionType(".markdown", "text/markdown; charset=utf-8")
 }
 
 // MarkdownRenderer transforms markdown content to HTML.
