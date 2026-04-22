@@ -9,8 +9,7 @@ import (
 	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // Renderer defines the interface for template rendering
@@ -117,10 +116,9 @@ func basename(s string) string {
 	return strings.TrimSuffix(s, path.Ext(s))
 }
 
-// titleCase properly handles Unicode capitalization
+// titleCase is a convenience wrapper around text.TitleCase
 func titleCase(s string) string {
-	caser := cases.Title(language.AmericanEnglish)
-	return caser.String(s)
+	return text.TitleCase(s)
 }
 
 // HTMLRenderer implements Renderer for HTML templates
