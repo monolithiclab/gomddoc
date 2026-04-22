@@ -161,6 +161,7 @@ func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
 type ServerSetupOptions struct {
 	Dir       string
 	Port      string
+	AdminPort string
 	Domain    string
 	DevMode   bool
 	DirIndex  bool
@@ -172,9 +173,10 @@ type ServerSetupOptions struct {
 
 // setupResult holds the assembled server, config, and cleanup function.
 type setupResult struct {
-	httpServer *server.HTTPServer
-	cfg        *config.Config
-	cleanup    func()
+	httpServer  *server.HTTPServer
+	adminServer *server.AdminServer // nil when admin port not set or same as main port
+	cfg         *config.Config
+	cleanup     func()
 }
 
 // setupServer creates the provider, pipeline, and HTTP server from options.
@@ -191,6 +193,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 	}
 
 	cfg.Server.Pprof = opts.Pprof
+	cfg.Server.AdminPort = opts.AdminPort
 
 	if opts.DirIndex {
 		cfg.Site.DirIndex = true
@@ -256,9 +259,23 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 
 	httpServer := server.NewHTTPServer(serverConfig)
 
+	var adminServer *server.AdminServer
+	if cfg.Server.AdminPort != "" && cfg.Server.AdminPort != cfg.Server.Port {
+		adminServer = server.NewAdminServer(server.AdminServerConfig{
+			Addr:     cfg.Server.AdminPort,
+			Provider: prov,
+			Pprof:    cfg.Server.Pprof,
+		})
+	}
+
+	if cfg.Server.AdminPort == "" && !cfg.Server.DevMode {
+		slog.Warn("admin endpoints on main port — use --admin-port for production")
+	}
+
 	return &setupResult{
-		httpServer: httpServer,
-		cfg:        cfg,
+		httpServer:  httpServer,
+		adminServer: adminServer,
+		cfg:         cfg,
 		cleanup: func() {
 			if closeErr := prov.Close(); closeErr != nil {
 				slog.Error("Failed to close provider", slog.Any("error", closeErr))
@@ -267,9 +284,9 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 	}, nil
 }
 
-// runUntilCancelled starts the HTTP server and blocks until the context is cancelled,
-// then performs a graceful shutdown. Used by serve and preview commands.
-func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer) error {
+// runUntilCancelled starts the HTTP server (and optional admin server) and blocks
+// until the context is cancelled, then performs a graceful shutdown.
+func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer, adminServer *server.AdminServer) error {
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -280,6 +297,17 @@ func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer) error
 		<-gCtx.Done()
 		return httpServer.Shutdown(context.Background())
 	})
+
+	if adminServer != nil {
+		g.Go(func() error {
+			return adminServer.Start(gCtx)
+		})
+
+		g.Go(func() error {
+			<-gCtx.Done()
+			return adminServer.Shutdown(context.Background())
+		})
+	}
 
 	return g.Wait()
 }

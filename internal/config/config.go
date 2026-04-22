@@ -53,6 +53,7 @@ type Config struct {
 // ServerConfig holds server-side settings
 type ServerConfig struct {
 	Port      string     `env:"PORT"`
+	AdminPort string     `env:"ADMIN_PORT"`
 	DevMode   bool       `env:"DEV_MODE"`
 	Dir       string     `env:"DIR"`
 	GitSSHKey string     `env:"GIT_SSH_KEY"`

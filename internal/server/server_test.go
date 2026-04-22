@@ -519,3 +519,93 @@ func TestMCPEndpoint_BodySizeLimited(t *testing.T) {
 		t.Errorf("POST /_mcp/ with oversized body: status = %d, want %d", w.Code, http.StatusRequestEntityTooLarge)
 	}
 }
+
+func TestHTTPServer_AdminPortSeparation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		adminPort  string
+		port       string
+		pprof      bool
+		path       string
+		wantStatus int
+	}{
+		{
+			name:       "admin port set — /metrics returns 404 on main",
+			adminPort:  ":9090",
+			port:       ":8080",
+			path:       "/metrics",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "admin port set — /debug/pprof/ returns 404 on main",
+			adminPort:  ":9090",
+			port:       ":8080",
+			pprof:      true,
+			path:       "/debug/pprof/",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "same port — /metrics stays on main",
+			adminPort:  ":8080",
+			port:       ":8080",
+			path:       "/metrics",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "same port — /debug/pprof/ stays on main",
+			adminPort:  ":8080",
+			port:       ":8080",
+			pprof:      true,
+			path:       "/debug/pprof/",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "no admin port — /metrics stays on main",
+			adminPort:  "",
+			port:       ":8080",
+			path:       "/metrics",
+			wantStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{
+				Server: config.ServerConfig{
+					Port:      tt.port,
+					AdminPort: tt.adminPort,
+					Dir:       ".",
+					Pprof:     tt.pprof,
+					HTTP: config.HTTPConfig{
+						ShutdownTimeout:   1 * time.Second,
+						ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+						WriteTimeout:      config.DefaultWriteTimeout,
+						IdleTimeout:       config.DefaultIdleTimeout,
+						MaxHeaderMB:       config.DefaultMaxHeaderMB,
+					},
+				},
+				Site: config.NewSiteConfig("."),
+			}
+
+			srv := NewHTTPServer(HTTPServerConfig{
+				Config:           cfg,
+				Provider:         newMemoryProvider(fstest.MapFS{}, "README.md", false),
+				Registry:         setupTestRegistry(),
+				EnricherRegistry: setupTestEnricherRegistry(),
+				TemplateRenderer: setupTestRenderer(),
+			})
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			w := httptest.NewRecorder()
+			srv.server.Handler.ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("GET %s status = %d, want %d", tt.path, w.Code, tt.wantStatus)
+			}
+		})
+	}
+}

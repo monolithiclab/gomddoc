@@ -20,6 +20,7 @@ import (
 type ServeCmd struct {
 	Dir           string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory or Git URL."`
 	Port          string `name:"port" short:"p" default:":8080" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port). Use ':auto' for automatic port assignment."`
+	AdminPort     string `name:"admin-port" default:"" env:"GOMDDOC_SERVER_ADMIN_PORT" help:"Listen address for admin endpoints (metrics, pprof, health)."`
 	Domain        string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
 	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
 	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
@@ -66,6 +67,7 @@ func (s *ServeCmd) setup() (*setupResult, error) {
 	return setupServer(ServerSetupOptions{
 		Dir:       s.Dir,
 		Port:      s.Port,
+		AdminPort: s.AdminPort,
 		Domain:    s.Domain,
 		GitSSHKey: s.GitSSHKey,
 		Pprof:     s.Pprof,
@@ -85,7 +87,7 @@ func (s *ServeCmd) Run() error {
 	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	return runUntilCancelled(sigCtx, result.httpServer)
+	return runUntilCancelled(sigCtx, result.httpServer, result.adminServer)
 }
 
 // loadAuthStore parses an htpasswd file into a CredentialStore.

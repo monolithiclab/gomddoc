@@ -91,7 +91,12 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		auth = NewGroup(mux, "", NewBasicAuthMiddleware(opts.AuthStore, "gomddoc"))
 	}
 
-	auth.Handle("/metrics", promhttp.Handler())
+	// Determine if admin endpoints should be on main mux or separate admin server
+	adminOnMain := cfg.Server.AdminPort == "" || cfg.Server.AdminPort == cfg.Server.Port
+
+	if adminOnMain {
+		auth.Handle("/metrics", promhttp.Handler())
+	}
 
 	// API sub-group
 	api := auth.Subgroup("/api")
@@ -117,7 +122,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		auth.Handle("GET /feed.xml", feedHandler)
 	}
 
-	if cfg.Server.Pprof {
+	if cfg.Server.Pprof && adminOnMain {
 		slog.Warn("pprof profiling enabled — do not use in production")
 		debug := auth.Subgroup("/debug/pprof")
 		debug.HandleFunc("GET /", pprof.Index)

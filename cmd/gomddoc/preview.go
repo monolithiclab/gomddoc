@@ -51,5 +51,5 @@ func (p *PreviewCmd) Run() error {
 	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	return runUntilCancelled(sigCtx, result.httpServer)
+	return runUntilCancelled(sigCtx, result.httpServer, result.adminServer)
 }

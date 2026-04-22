@@ -51,7 +51,7 @@ func TestRunUntilCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err = runUntilCancelled(ctx, httpServer)
+	err = runUntilCancelled(ctx, httpServer, nil)
 	// The server should shut down cleanly — no error expected.
 	if err != nil {
 		t.Logf("runUntilCancelled returned: %v (may be acceptable)", err)
