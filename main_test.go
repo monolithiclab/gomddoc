@@ -578,7 +578,7 @@ func TestWriteErrorScenarios(t *testing.T) {
 
 	fw := &failingWriter{
 		ResponseRecorder: httptest.NewRecorder(),
-		failOnWrite:     true,
+		failOnWrite:      true,
 	}
 
 	// Override Write method to simulate write failure

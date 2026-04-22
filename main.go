@@ -7,8 +7,10 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"context"
+	"embed"
 	"errors"
 	"flag"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,11 +21,25 @@ import (
 	"time"
 )
 
+//go:embed assets
+var assets embed.FS
+
 type Config struct {
 	DefaultIndex    string
 	Dir             string
 	Port            string
 	ShutdownTimeout time.Duration
+}
+
+type ThemeOptions struct {
+	BaseURL string
+}
+
+type TemplateContext struct {
+	Title       string
+	Description string
+	Content     template.HTML
+	Theme       ThemeOptions
 }
 
 func mdToHTML(md []byte) []byte {
@@ -97,15 +113,29 @@ func newServeHTTP(config *Config) (http.HandlerFunc, error) {
 			return
 		}
 
-		html := mdToHTML(md)
+		context := &TemplateContext{
+			Title:   "Prose",
+			Content: template.HTML(string(mdToHTML(md))),
+			Theme: ThemeOptions{
+				BaseURL: "/assets/themes/default",
+			},
+		}
+
+		assets := os.DirFS(".")
+		t, err := template.New("layout.html.tmpl").ParseFS(assets, "assets/themes/default/layout.html.tmpl")
+		if err != nil {
+			slog.Error("Cannot parse template", slog.Any("error", err))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
 		// Set proper headers before writing response
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "public, max-age=300") // 5 minute cache
 		w.WriteHeader(http.StatusOK)
-		_, err = w.Write(html)
+		err = t.Execute(w, context)
 		if err != nil {
-			slog.Error("Cannot write response", slog.Any("error", err))
+			slog.Error("Cannot process template", slog.Any("error", err))
 		}
 	}, nil
 }
