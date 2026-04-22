@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"os/signal"
 	"syscall"
 
@@ -20,7 +22,7 @@ type MCPCmd struct {
 func (m *MCPCmd) Run() error {
 	cfg, err := config.NewFromDir(m.Dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	var gitCfg provider.GitProviderConfig
@@ -30,9 +32,13 @@ func (m *MCPCmd) Run() error {
 
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, gitCfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("create provider: %w", err)
 	}
-	defer prov.Close()
+	defer func() {
+		if closeErr := prov.Close(); closeErr != nil {
+			slog.Error("Failed to close provider", slog.Any("error", closeErr))
+		}
+	}()
 
 	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
 		EnableCache:      true,
@@ -41,7 +47,7 @@ func (m *MCPCmd) Run() error {
 		EnableSearch:     true,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("setup pipeline: %w", err)
 	}
 
 	mcpServer := mcp.NewServer(mcp.ServerDeps{
@@ -57,5 +63,8 @@ func (m *MCPCmd) Run() error {
 	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	return mcpServer.Run(sigCtx)
+	if err := mcpServer.Run(sigCtx); err != nil {
+		return fmt.Errorf("run MCP server: %w", err)
+	}
+	return nil
 }

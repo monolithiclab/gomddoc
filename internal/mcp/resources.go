@@ -110,9 +110,6 @@ func (s *MCPServer) handleTagResource(_ context.Context, req *mcp.ReadResourceRe
 	}
 
 	pages := s.deps.MetaIndex.ByTag(tag)
-	if pages == nil {
-		pages = s.deps.MetaIndex.ByTag(tag) // already handles case-insensitivity
-	}
 	data, err := json.Marshal(pages)
 	if err != nil {
 		return nil, err
