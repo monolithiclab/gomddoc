@@ -9,6 +9,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	registryutil "github.com/monolithiclab/gomddoc/internal/testutil/registry"
@@ -105,7 +106,7 @@ func TestBuildFile(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
 	enricherReg := registryutil.NewEnricherRegistry()
-	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
+	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestBuildFile_README_BecomesIndex(t *testing.T) {
 
 	enricherReg := registryutil.NewEnricherRegistry()
 	// No index.md exists, so README.md should produce only index.html
-	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
+	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -175,7 +176,7 @@ func TestBuildFile_README_WithIndexMD(t *testing.T) {
 	enricherReg := registryutil.NewEnricherRegistry()
 	// Simulate index.md existing in same directory
 	dirsWithIndexMD := map[string]bool{".": true}
-	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, dirsWithIndexMD, stats)
+	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, dirsWithIndexMD, stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -208,7 +209,7 @@ func TestBuildFile_SubdirREADME(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
 	enricherReg := registryutil.NewEnricherRegistry()
-	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
+	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -235,7 +236,7 @@ func TestWalkAndBuild(t *testing.T) {
 	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -277,7 +278,7 @@ func TestWalkAndBuild_MixedContent(t *testing.T) {
 	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -310,7 +311,7 @@ func TestWalkAndBuild_IndexMDAndREADME(t *testing.T) {
 	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -489,7 +490,7 @@ func TestBuildFile_WithFrontmatterTitle(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	enricherReg := registryutil.NewEnricherRegistry()
 
-	err := b.buildFile(context.Background(), contentRoot, "titled.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
+	err := b.buildFile(context.Background(), contentRoot, "titled.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -591,7 +592,7 @@ func TestBuildFile_ReadError(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	enricherReg := registryutil.NewEnricherRegistry()
 
-	err := b.buildFile(context.Background(), contentRoot, "nonexistent.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
+	err := b.buildFile(context.Background(), contentRoot, "nonexistent.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
 	if err == nil {
 		t.Error("buildFile should fail for missing file")
 	}
@@ -611,7 +612,7 @@ func TestWalkAndBuild_HiddenDir(t *testing.T) {
 
 	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
-	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -744,7 +745,7 @@ func TestWalkAndBuild_WriteError(t *testing.T) {
 	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	_, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
+	_, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig, testBundle(t), nil)
 	if err == nil {
 		t.Error("walkAndBuild should fail when output dir is read-only")
 	}
@@ -760,7 +761,7 @@ func TestWalkAndBuild_EmptyFS(t *testing.T) {
 	registry := registryutil.NewRendererRegistry()
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig)
+	stats, err := b.walkAndBuild(contentRoot, registry, registryutil.NewEnricherRegistry(), templateRenderer, siteConfig, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
@@ -873,6 +874,16 @@ func TestGuardOutputDir_SentinelRemovesContent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(output, "stale.html")); !os.IsNotExist(err) {
 		t.Error("stale.html should have been removed")
 	}
+}
+
+// testBundle creates a locale bundle for tests using embedded assets.
+func testBundle(t *testing.T) *locale.Bundle {
+	t.Helper()
+	bundle, err := locale.LoadBundle("en-US", embeddedAssets, "locales")
+	if err != nil {
+		t.Fatalf("failed to load test bundle: %v", err)
+	}
+	return bundle
 }
 
 // writeTestFile creates a file with the given content, creating parent directories as needed.

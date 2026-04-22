@@ -19,8 +19,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -104,9 +106,36 @@ func (b *BuildCmd) Run() error {
 		return fmt.Errorf("build root fs: %w", err)
 	}
 
+	// Load locale bundle for i18n support
+	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
+	bundle, err := locale.LoadBundle(cfg.Site.Language, assetsFS, "locales")
+	if err != nil {
+		return fmt.Errorf("load locale bundle: %w", err)
+	}
+	if err := bundle.MergeFrom(contentRoot, config.ConfigDirName+"/locales"); err != nil {
+		slog.Warn("Failed to merge site locale overrides", slog.Any("error", err))
+	}
+
+	// Detect languages and build language info for multi-language sites
+	detectedLangs := locale.DetectLanguages(contentRoot)
+	var languageInfos []tmpl.LanguageInfo
+	if len(detectedLangs) > 0 {
+		languageInfos = make([]tmpl.LanguageInfo, 0, len(detectedLangs)+1)
+		languageInfos = append(languageInfos, tmpl.LanguageInfo{
+			Code: cfg.Site.Language,
+			Name: bundle.LanguageName(cfg.Site.Language),
+		})
+		for _, lang := range detectedLangs {
+			languageInfos = append(languageInfos, tmpl.LanguageInfo{
+				Code: lang,
+				Name: bundle.LanguageName(lang),
+			})
+		}
+	}
+
 	slog.Info("Building static site", slog.String("source", b.Dir), slog.String("output", b.Output))
 
-	stats, err := b.walkAndBuild(contentRoot, pipeline.Registry, pipeline.EnricherRegistry, pipeline.TemplateRenderer, &cfg.Site)
+	stats, err := b.walkAndBuild(contentRoot, pipeline.Registry, pipeline.EnricherRegistry, pipeline.TemplateRenderer, &cfg.Site, bundle, languageInfos)
 	if err != nil {
 		return err
 	}
@@ -134,7 +163,7 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate 404.html for static host compatibility (Netlify, GitHub Pages, Cloudflare Pages)
-	errorContent, err := b.renderErrorPage(http.StatusNotFound, pipeline.TemplateRenderer, &cfg.Site)
+	errorContent, err := b.renderErrorPage(http.StatusNotFound, pipeline.TemplateRenderer, &cfg.Site, bundle)
 	if err != nil {
 		return fmt.Errorf("render 404 page: %w", err)
 	}
@@ -212,6 +241,8 @@ func (b *BuildCmd) walkAndBuild(
 	enricherRegistry enricher.EnricherRegistry,
 	templateRenderer *tmpl.HTMLRenderer,
 	siteConfig *config.SiteConfig,
+	bundle *locale.Bundle,
+	languageInfos []tmpl.LanguageInfo,
 ) (*buildStats, error) {
 	stats := &buildStats{}
 
@@ -263,7 +294,7 @@ func (b *BuildCmd) walkAndBuild(
 				// No HTML renderer for this type → copy as-is
 				return b.copyFile(contentRoot, fp, stats)
 			}
-			return b.buildFile(ctx, contentRoot, fp, contentRenderer, enricherRegistry, normalized, templateRenderer, siteConfig, dirsWithIndexMD, stats)
+			return b.buildFile(ctx, contentRoot, fp, contentRenderer, enricherRegistry, normalized, templateRenderer, siteConfig, dirsWithIndexMD, stats, bundle, languageInfos)
 		})
 	}
 
@@ -286,6 +317,8 @@ func (b *BuildCmd) buildFile(
 	siteConfig *config.SiteConfig,
 	dirsWithIndexMD map[string]bool,
 	stats *buildStats,
+	bundle *locale.Bundle,
+	languageInfos []tmpl.LanguageInfo,
 ) error {
 	content, err := fs.ReadFile(contentRoot, filePath)
 	if err != nil {
@@ -311,6 +344,26 @@ func (b *BuildCmd) buildFile(
 		metadata["title"] = text.DeriveTitle("/" + filePath)
 	}
 
+	// Determine language from file path or fall back to site default
+	lang, _ := locale.ExtractLangFromPath("/" + filePath)
+	if lang == "" {
+		lang = siteConfig.Language
+	}
+
+	// Build per-page language infos with active flag
+	var pageLanguageInfos []tmpl.LanguageInfo
+	if len(languageInfos) > 0 {
+		pageLanguageInfos = make([]tmpl.LanguageInfo, len(languageInfos))
+		copy(pageLanguageInfos, languageInfos)
+		for i := range pageLanguageInfos {
+			pageLanguageInfos[i].Active = pageLanguageInfos[i].Code == lang
+		}
+	}
+
+	tFunc := func(key string) string {
+		return bundle.T(lang, key)
+	}
+
 	templateCtx := &tmpl.TemplateContext{
 		Site: siteConfig,
 		Page: tmpl.PageContext{
@@ -324,6 +377,7 @@ func (b *BuildCmd) buildFile(
 			NextPage:   enrichment.NextPage,
 		},
 	}
+	templateCtx.WithI18n(lang, tFunc, pageLanguageInfos)
 
 	templateName := tmpl.ResolveLayout(templateRenderer, metadata)
 	rendered, err := templateRenderer.Render(ctx, templateName, templateCtx)
@@ -545,7 +599,7 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 }
 
 // renderErrorPage renders a 404 page through the template engine.
-func (b *BuildCmd) renderErrorPage(statusCode int, templateRenderer tmpl.Renderer, siteConfig *config.SiteConfig) ([]byte, error) {
+func (b *BuildCmd) renderErrorPage(statusCode int, templateRenderer tmpl.Renderer, siteConfig *config.SiteConfig, bundle *locale.Bundle) ([]byte, error) {
 	statusTitle := http.StatusText(statusCode)
 
 	errorMeta := map[string]any{
@@ -563,6 +617,12 @@ func (b *BuildCmd) renderErrorPage(statusCode int, templateRenderer tmpl.Rendere
 			Features: config.MergeFeatures(siteConfig.Theme.Features),
 		},
 	}
+
+	lang := siteConfig.Language
+	tFunc := func(key string) string {
+		return bundle.T(lang, key)
+	}
+	ctx.WithI18n(lang, tFunc, nil)
 
 	return templateRenderer.Render(context.Background(), "error.html.tmpl", ctx)
 }

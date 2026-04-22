@@ -32,6 +32,11 @@ type HandlerConfig struct {
 	RedirectFinder   RedirectFinder
 	URLRedirects     URLRedirectMap
 	Resolver         *resolve.PathResolver
+
+	// i18n support
+	Lang      string              // BCP 47 language for this handler
+	TFunc     func(string) string // translation function
+	Languages []tmpl.LanguageInfo // all available languages
 }
 
 // Handler holds dependencies for HTTP request handling
@@ -44,6 +49,11 @@ type Handler struct {
 	redirectFinder   RedirectFinder
 	urlRedirects     URLRedirectMap
 	resolver         *resolve.PathResolver
+
+	// i18n support
+	lang      string              // BCP 47 language for this handler
+	tFunc     func(string) string // translation function
+	languages []tmpl.LanguageInfo // all available languages
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
@@ -57,6 +67,9 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		redirectFinder:   cfg.RedirectFinder,
 		urlRedirects:     cfg.URLRedirects,
 		resolver:         cfg.Resolver,
+		lang:             cfg.Lang,
+		tFunc:            cfg.TFunc,
+		languages:        cfg.Languages,
 	}
 }
 
@@ -172,6 +185,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 			NextPage:   enrichment.NextPage,
 		},
 	}
+	context.WithI18n(h.lang, h.tFunc, h.languages)
 
 	templateName := tmpl.ResolveLayout(h.templateRenderer, metadata)
 	rendered, err := h.templateRenderer.Render(r.Context(), templateName, context)
@@ -246,6 +260,7 @@ func (h *Handler) renderErrorPage(r *http.Request, statusCode int, pagePath stri
 			Features: config.MergeFeatures(h.siteConfig.Theme.Features),
 		},
 	}
+	context.WithI18n(h.lang, h.tFunc, h.languages)
 
 	rendered, err := h.templateRenderer.Render(r.Context(), "error.html.tmpl", context)
 	if err != nil {
