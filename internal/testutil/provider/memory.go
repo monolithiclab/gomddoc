@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing/fstest"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
@@ -45,7 +45,7 @@ func (m *MemoryProvider) ReadFile(ctx context.Context, path string) ([]byte, str
 		indexPath += m.defaultIndex
 
 		if data, err := fs.ReadFile(m.fsys, indexPath); err == nil {
-			return data, common.DetectMIME(indexPath), nil
+			return data, negotiate.DetectMIME(indexPath), nil
 		}
 
 		if m.dirIndex {
@@ -66,7 +66,7 @@ func (m *MemoryProvider) ReadFile(ctx context.Context, path string) ([]byte, str
 		return nil, "", provider.ErrNotFound
 	}
 
-	return data, common.DetectMIME(path), nil
+	return data, negotiate.DetectMIME(path), nil
 }
 
 func (m *MemoryProvider) Stat(_ context.Context, path string) (fs.FileInfo, error) {

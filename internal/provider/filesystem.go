@@ -9,7 +9,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 )
 
 // FilesystemProvider implements Provider for local filesystem access
@@ -89,7 +89,7 @@ func (f *FilesystemProvider) ReadFile(_ context.Context, requestPath string) ([]
 	}
 
 	// Detect MIME type (returns full type with charset if registered)
-	mimeType := common.DetectMIME(requestPath)
+	mimeType := negotiate.DetectMIME(requestPath)
 
 	return content, mimeType, nil
 }

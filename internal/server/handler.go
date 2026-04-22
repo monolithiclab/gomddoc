@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
@@ -76,7 +75,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Content negotiation BEFORE rendering (2D lookup)
-	normalized := common.NormalizeMimeType(mimeType)
+	normalized := negotiate.NormalizeMimeType(mimeType)
 	acceptedTypes := negotiate.ParseAccept(r.Header.Get("Accept"))
 
 	contentRenderer, selectedOutput, err := h.registry.Get(normalized, acceptedTypes)
@@ -108,7 +107,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Serve based on selected output MIME type
-	outputNormalized := common.NormalizeMimeType(selectedOutput)
+	outputNormalized := negotiate.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
 		h.serveHTML(w, r, renderResult.Content, enrichment)
 	} else {

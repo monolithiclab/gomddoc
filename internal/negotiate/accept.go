@@ -14,6 +14,38 @@ type MediaType struct {
 	Q       float64 // Quality factor (0.0-1.0), defaults to 1.0
 }
 
+// Matches checks if this MediaType matches the given MIME type.
+//
+// Wildcard support:
+//   - "*/*" matches any MIME type
+//   - "text/*" matches "text/html", "text/plain", etc.
+//   - "text/html" matches only "text/html"
+//
+// The mimeType parameter should be normalized (no charset or other parameters).
+func (mt MediaType) Matches(mimeType string) bool {
+	before, after, ok := strings.Cut(mimeType, "/")
+	if !ok {
+		return false
+	}
+
+	// */* matches everything
+	if mt.Type == "*" {
+		return true
+	}
+
+	// Type must match
+	if mt.Type != before {
+		return false
+	}
+
+	// type/* matches any subtype
+	if mt.Subtype == "*" {
+		return true
+	}
+
+	// Exact match required
+	return mt.Subtype == after
+}
 func (mt MediaType) String() string {
 	return mt.Type + "/" + mt.Subtype
 }
@@ -91,37 +123,4 @@ func parseQValue(params string) float64 {
 		}
 	}
 	return 1.0
-}
-
-// Matches checks if this MediaType matches the given MIME type.
-//
-// Wildcard support:
-//   - "*/*" matches any MIME type
-//   - "text/*" matches "text/html", "text/plain", etc.
-//   - "text/html" matches only "text/html"
-//
-// The mimeType parameter should be normalized (no charset or other parameters).
-func (mt MediaType) Matches(mimeType string) bool {
-	before, after, ok := strings.Cut(mimeType, "/")
-	if !ok {
-		return false
-	}
-
-	// */* matches everything
-	if mt.Type == "*" {
-		return true
-	}
-
-	// Type must match
-	if mt.Type != before {
-		return false
-	}
-
-	// type/* matches any subtype
-	if mt.Subtype == "*" {
-		return true
-	}
-
-	// Exact match required
-	return mt.Subtype == after
 }

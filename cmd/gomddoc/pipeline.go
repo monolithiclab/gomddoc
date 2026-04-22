@@ -37,6 +37,7 @@ type Pipeline struct {
 	SearchIndex      *search.Index
 	RedirectFinder   server.RedirectFinder
 	StaticFS         fs.FS
+	Provider         provider.Provider
 }
 
 // setupPipeline assembles the shared rendering pipeline from config and provider.
@@ -72,10 +73,13 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		return nil, err
 	}
 
+	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
+
 	p := &Pipeline{
 		Registry:         registry,
 		TemplateRenderer: templateRenderer,
-		StaticFS:         assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name),
+		StaticFS:         staticFS,
+		Provider:         provider.NewOverlayProvider(prov, staticFS),
 	}
 
 	// Enricher options — navigation is optional (build doesn't use it).

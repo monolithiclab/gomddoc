@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
+	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/text"
 
 	"gopkg.in/yaml.v3"
@@ -270,7 +270,7 @@ func (c *Config) validateServer() error {
 	}
 
 	// Validate Dir (skip if Git URL)
-	if !common.IsGitURL(c.Server.Dir) {
+	if !provider.IsGitURL(c.Server.Dir) {
 		info, err := os.Stat(c.Server.Dir)
 		if err != nil {
 			return fmt.Errorf("directory validation failed: %w", err)

@@ -15,7 +15,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
@@ -160,8 +159,8 @@ func (b *BuildCmd) walkAndBuild(
 
 	for _, fp := range filePaths {
 		g.Go(func() error {
-			mimeType := common.DetectMIME(fp)
-			normalized := common.NormalizeMimeType(mimeType)
+			mimeType := negotiate.DetectMIME(fp)
+			normalized := negotiate.NormalizeMimeType(mimeType)
 
 			contentRenderer, _, err := registry.Get(normalized, htmlAccept)
 			if err != nil {

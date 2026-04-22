@@ -21,7 +21,7 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 	"github.com/go-git/go-git/v5/storage/memory"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 )
 
 // Default configuration values for GitProvider
@@ -424,7 +424,7 @@ func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]b
 		}
 	}
 
-	mimeType := common.DetectMIME(requestPath)
+	mimeType := negotiate.DetectMIME(requestPath)
 	return []byte(content), mimeType, nil
 }
 
@@ -450,7 +450,7 @@ func (g *GitProvider) handleDirectoryLocked(cleanPath, requestPath string) ([]by
 		if err != nil {
 			return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
 		}
-		mimeType := common.DetectMIME(g.defaultIndex)
+		mimeType := negotiate.DetectMIME(g.defaultIndex)
 		return []byte(content), mimeType, nil
 	}
 

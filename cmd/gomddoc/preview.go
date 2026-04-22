@@ -54,9 +54,9 @@ func (p *PreviewCmd) setup() (*previewSetupResult, error) {
 		return nil, err
 	}
 
-	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
+	serverConfig := server.HTTPServerConfig{
 		Config:           cfg,
-		Provider:         prov,
+		Provider:         pipeline.Provider,
 		Registry:         pipeline.Registry,
 		EnricherRegistry: pipeline.EnricherRegistry,
 		TemplateRenderer: pipeline.TemplateRenderer,
@@ -64,7 +64,9 @@ func (p *PreviewCmd) setup() (*previewSetupResult, error) {
 		SearchIndex:      pipeline.SearchIndex,
 		RedirectFinder:   pipeline.RedirectFinder,
 		StaticFS:         pipeline.StaticFS,
-	})
+	}
+
+	httpServer := server.NewHTTPServer(serverConfig)
 
 	return &previewSetupResult{
 		httpServer: httpServer,

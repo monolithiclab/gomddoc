@@ -3,7 +3,7 @@ package enricher
 import (
 	"sync"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 )
 
 // DefaultEnricherRegistry is a MIME-type-keyed registry of enrichers.
@@ -28,7 +28,7 @@ func (r *DefaultEnricherRegistry) Register(e Enricher) {
 	defer r.mu.Unlock()
 
 	for _, mimeType := range e.SupportedMimeTypes() {
-		r.enrichers[common.NormalizeMimeType(mimeType)] = e
+		r.enrichers[negotiate.NormalizeMimeType(mimeType)] = e
 	}
 }
 
@@ -38,7 +38,7 @@ func (r *DefaultEnricherRegistry) Get(mimeType string) Enricher {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	normalized := common.NormalizeMimeType(mimeType)
+	normalized := negotiate.NormalizeMimeType(mimeType)
 	if e, ok := r.enrichers[normalized]; ok {
 		return e
 	}

@@ -93,7 +93,7 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 
 	serverConfig := server.HTTPServerConfig{
 		Config:           cfg,
-		Provider:         prov,
+		Provider:         pipeline.Provider,
 		Registry:         pipeline.Registry,
 		EnricherRegistry: pipeline.EnricherRegistry,
 		TemplateRenderer: pipeline.TemplateRenderer,

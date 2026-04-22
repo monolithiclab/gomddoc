@@ -4,6 +4,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{ .Site.Meta.Description }}">
   <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
   {{ $url := canonicalURL .Page.Path }}{{ if $url }}
   <link rel="canonical" href="{{ $url }}">{{ end }}
 

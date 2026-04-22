@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/monolithiclab/gomddoc/internal/common"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 )
 
 // AssetsHandler serves static theme and shared assets from a layered filesystem.
@@ -50,7 +50,7 @@ func (h *AssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", common.DetectMIME(filePath))
+	w.Header().Set("Content-Type", negotiate.DetectMIME(filePath))
 
 	etag := generateETag(content)
 	w.Header().Set("ETag", etag)
