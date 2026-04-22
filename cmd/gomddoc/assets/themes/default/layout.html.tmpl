@@ -93,6 +93,15 @@
             padding-left: 0.5rem;
             margin-left: -0.6rem; /* visual compensation for border */
         }
+        #theme-toggle {
+            padding: 0.25rem 0.5rem;
+            margin: 0;
+            font-size: 1rem;
+            line-height: 1;
+            border: none;
+            background: none;
+            cursor: pointer;
+        }
         #toc-toggle {
             display: none;
             position: fixed;
@@ -177,6 +186,7 @@
                 </ul>
                 <ul>
                     <li><a href="/">Home</a></li>
+                    <li><button id="theme-toggle" class="outline contrast" aria-label="Toggle dark mode">🌙</button></li>
                 </ul>
             </nav>
             {{- $crumbs := breadcrumbs .Page.Path }}
@@ -287,6 +297,53 @@
                         });
                     });
                     pre.appendChild(btn);
+                });
+            })();
+        </script>
+
+        <script>
+            // Dark/Light mode toggle - wrapped in IIFE for encapsulation
+            (function() {
+                'use strict';
+                var toggle = document.getElementById('theme-toggle');
+                var html = document.documentElement;
+
+                // Determine initial theme from localStorage
+                var stored = localStorage.getItem('theme');
+                if (stored) {
+                    html.setAttribute('data-theme', stored);
+                }
+
+                // Update button icon based on current theme
+                function updateIcon() {
+                    var current = html.getAttribute('data-theme');
+                    if (!current) {
+                        // Auto-detect from system preference
+                        current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                    }
+                    toggle.textContent = current === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
+                }
+
+                updateIcon();
+
+                if (toggle) {
+                    toggle.addEventListener('click', function() {
+                        var current = html.getAttribute('data-theme');
+                        if (!current) {
+                            current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                        }
+                        var next = current === 'dark' ? 'light' : 'dark';
+                        html.setAttribute('data-theme', next);
+                        localStorage.setItem('theme', next);
+                        updateIcon();
+                    });
+                }
+
+                // Listen for system theme changes
+                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                    if (!localStorage.getItem('theme')) {
+                        updateIcon();
+                    }
                 });
             })();
         </script>
