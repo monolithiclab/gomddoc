@@ -1040,6 +1040,114 @@ func TestGenerateTOC_WithLevels(t *testing.T) {
 	}
 }
 
+func TestPartialOverrideResolution(t *testing.T) {
+	t.Parallel()
+
+	// Layout that calls two partials: head and footer
+	layout := `{{ template "head" . }}|{{ template "footer" . }}`
+	themeHead := `{{ define "head" }}theme-head{{ end }}`
+	themeFooter := `{{ define "footer" }}theme-footer{{ end }}`
+
+	tests := []struct {
+		name     string
+		fs       fstest.MapFS
+		theme    string
+		wantBody string
+	}{
+		{
+			name: "no site partials uses theme partials only",
+			fs: fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl":  {Data: []byte(layout)},
+				"assets/themes/default/partials/head.html.tmpl":    {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl":  {Data: []byte(themeFooter)},
+			},
+			theme:    "default",
+			wantBody: "theme-head|theme-footer",
+		},
+		{
+			name: "site partial overrides one theme partial",
+			fs: fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl":  {Data: []byte(layout)},
+				"assets/themes/default/partials/head.html.tmpl":    {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl":  {Data: []byte(themeFooter)},
+				"partials/head.html.tmpl":                          {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
+			},
+			theme:    "default",
+			wantBody: "site-head|theme-footer",
+		},
+		{
+			name: "site partial overrides all theme partials",
+			fs: fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl":  {Data: []byte(layout)},
+				"assets/themes/default/partials/head.html.tmpl":    {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl":  {Data: []byte(themeFooter)},
+				"partials/head.html.tmpl":                          {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
+				"partials/footer.html.tmpl":                        {Data: []byte(`{{ define "footer" }}site-footer{{ end }}`)},
+			},
+			theme:    "default",
+			wantBody: "site-head|site-footer",
+		},
+		{
+			name: "custom theme with site partial override",
+			fs: fstest.MapFS{
+				"assets/themes/mytheme/layouts/default.html.tmpl":  {Data: []byte(layout)},
+				"assets/themes/mytheme/partials/head.html.tmpl":    {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
+				"assets/themes/mytheme/partials/footer.html.tmpl":  {Data: []byte(`{{ define "footer" }}mytheme-footer{{ end }}`)},
+				"partials/head.html.tmpl":                          {Data: []byte(`{{ define "head" }}site-head{{ end }}`)},
+			},
+			theme:    "mytheme",
+			wantBody: "site-head|mytheme-footer",
+		},
+		{
+			name: "custom theme inherits default partials for missing definitions",
+			fs: fstest.MapFS{
+				"assets/themes/mytheme/layouts/default.html.tmpl":   {Data: []byte(layout)},
+				"assets/themes/mytheme/partials/head.html.tmpl":     {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
+				"assets/themes/default/partials/head.html.tmpl":     {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl":   {Data: []byte(themeFooter)},
+			},
+			theme:    "mytheme",
+			wantBody: "mytheme-head|theme-footer",
+		},
+		{
+			name: "site partial overrides default partial inherited by custom theme",
+			fs: fstest.MapFS{
+				"assets/themes/mytheme/layouts/default.html.tmpl":   {Data: []byte(layout)},
+				"assets/themes/mytheme/partials/head.html.tmpl":     {Data: []byte(`{{ define "head" }}mytheme-head{{ end }}`)},
+				"assets/themes/default/partials/head.html.tmpl":     {Data: []byte(themeHead)},
+				"assets/themes/default/partials/footer.html.tmpl":   {Data: []byte(themeFooter)},
+				"partials/footer.html.tmpl":                         {Data: []byte(`{{ define "footer" }}site-footer{{ end }}`)},
+			},
+			theme:    "mytheme",
+			wantBody: "mytheme-head|site-footer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			siteConfig := config.NewSiteConfig(".")
+			siteConfig.Theme.Name = tt.theme
+
+			r := NewHTMLRenderer(&siteConfig, tt.fs)
+			ctx := &TemplateContext{
+				Site: &siteConfig,
+				Page: PageContext{Path: "/"},
+			}
+
+			result, err := r.Render(context.Background(), "default.html.tmpl", ctx)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+
+			if got := string(result); got != tt.wantBody {
+				t.Errorf("got %q, want %q", got, tt.wantBody)
+			}
+		})
+	}
+}
+
 func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
 	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
 	testFS := fstest.MapFS{

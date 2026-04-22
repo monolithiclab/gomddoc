@@ -180,16 +180,55 @@ func (h *HTMLRenderer) parseTemplate(templateName string) (*template.Template, e
 // parseThemeTemplate parses a layout and its partials for a specific theme.
 // The layout is loaded from assets/themes/{theme}/layouts/{templateName}.
 // Any partials in assets/themes/{theme}/partials/*.html.tmpl are parsed alongside it.
+//
+// Partial resolution order (last parsed wins):
+//  1. Default theme partials (if theme != default) — baseline definitions
+//  2. Theme partials — theme-specific overrides
+//  3. Site-level partials at partials/*.html.tmpl — user overrides from .gomddoc/partials/
 func (h *HTMLRenderer) parseThemeTemplate(templateName, theme string) (*template.Template, error) {
-	layoutPath := fmt.Sprintf("assets/themes/%s/layouts/%s", theme, templateName)
-	partialsGlob := fmt.Sprintf("assets/themes/%s/partials/*.html.tmpl", theme)
+	layoutPath := path.Join("assets", "themes", theme, "layouts", templateName)
+	themePartialsGlob := path.Join("assets", "themes", theme, "partials", "*.html.tmpl")
 
-	patterns := []string{layoutPath}
-	if matches, _ := fs.Glob(h.assetsFS, partialsGlob); len(matches) > 0 {
-		patterns = append(patterns, partialsGlob)
+	// Start with layout only; partials are layered in priority order below.
+	tmpl, err := template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, layoutPath)
+	if err != nil {
+		return nil, err
 	}
 
-	return template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, patterns...)
+	// For non-default themes, load default theme partials as a baseline
+	// so the theme only needs to override the partials it changes.
+	if theme != config.DefaultThemeName {
+		defaultPartialsGlob := path.Join("assets", "themes", config.DefaultThemeName, "partials", "*.html.tmpl")
+		if _, err := h.parseGlob(tmpl, defaultPartialsGlob); err != nil {
+			return nil, fmt.Errorf("parse default theme partials: %w", err)
+		}
+	}
+
+	// Theme partials override default partials.
+	if _, err := h.parseGlob(tmpl, themePartialsGlob); err != nil {
+		return nil, fmt.Errorf("parse theme partials: %w", err)
+	}
+
+	// Site-level partials override everything. These live at partials/*.html.tmpl
+	// in the overlay FS, mapping to .gomddoc/partials/ on disk.
+	sitePartialsGlob := path.Join("partials", "*.html.tmpl")
+	if _, err := h.parseGlob(tmpl, sitePartialsGlob); err != nil {
+		return nil, fmt.Errorf("parse site partials: %w", err)
+	}
+
+	return tmpl, nil
+}
+
+// parseGlob parses files matching glob into tmpl if any matches exist.
+// Returns true if files were parsed, false if no matches found.
+func (h *HTMLRenderer) parseGlob(tmpl *template.Template, glob string) (bool, error) {
+	if matches, _ := fs.Glob(h.assetsFS, glob); len(matches) > 0 {
+		if _, err := tmpl.ParseFS(h.assetsFS, glob); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // funcMap returns the map of functions available in templates
