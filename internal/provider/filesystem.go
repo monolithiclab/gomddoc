@@ -67,3 +67,12 @@ func (f *FilesystemProvider) Stat(filename string) (fs.FileInfo, error) {
 func (f *FilesystemProvider) DefaultIndex() string {
 	return f.defaultIndex
 }
+
+// Close releases resources held by the provider
+// Currently os.Root doesn't require explicit cleanup, but this method
+// provides a hook for future implementations that may need resource cleanup
+func (f *FilesystemProvider) Close() error {
+	// No cleanup needed for os.Root currently
+	// Future providers (database, network) may need cleanup here
+	return nil
+}

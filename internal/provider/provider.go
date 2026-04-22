@@ -1,8 +1,12 @@
 package provider
 
-import "io/fs"
+import (
+	"io"
+	"io/fs"
+)
 
 // Provider defines the interface for content providers
+// Embeds io.Closer for proper resource cleanup
 type Provider interface {
 	// ReadFile reads a file at the given path
 	ReadFile(path string) ([]byte, error)
@@ -10,4 +14,6 @@ type Provider interface {
 	Stat(path string) (fs.FileInfo, error)
 	// DefaultIndex returns the default index file name
 	DefaultIndex() string
+	// Close releases resources held by the provider
+	io.Closer
 }

@@ -106,7 +106,16 @@ func main() {
 	if err := g.Wait(); err != nil {
 		slog.Error("Server error", slog.Any("error", err))
 		sigCancel()
+		// Cleanup provider before exit
+		if closeErr := provider.Close(); closeErr != nil {
+			slog.Error("Failed to close provider", slog.Any("error", closeErr))
+		}
 		os.Exit(1)
 	}
 	sigCancel()
+
+	// Cleanup provider on normal exit
+	if err := provider.Close(); err != nil {
+		slog.Error("Failed to close provider", slog.Any("error", err))
+	}
 }

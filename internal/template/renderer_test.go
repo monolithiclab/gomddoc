@@ -49,6 +49,10 @@ func (t *testFSProvider) DefaultIndex() string {
 	return t.defaultIndex
 }
 
+func (t *testFSProvider) Close() error {
+	return nil
+}
+
 func TestNewHTMLRenderer(t *testing.T) {
 	siteConfig := config.NewSiteConfig(".")
 	cache := NewTemplateCache(false)
