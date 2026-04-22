@@ -55,7 +55,9 @@ type sitemapURL struct {
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.once.Do(func() {
-		out, err := GenerateSitemap(r.Context(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver)
+		// Use Background context — generation is a one-time init that must not
+		// be tied to (and cancelled with) the first incoming request.
+		out, err := GenerateSitemap(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver)
 		if err == nil {
 			h.cached = out
 		}

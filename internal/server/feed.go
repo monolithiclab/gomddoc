@@ -48,7 +48,9 @@ func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov pro
 // ServeHTTP writes the Atom feed response.
 func (h *FeedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.once.Do(func() {
-		out, err := GenerateFeed(r.Context(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver)
+		// Use Background context — generation is a one-time init that must not
+		// be tied to (and cancelled with) the first incoming request.
+		out, err := GenerateFeed(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver)
 		if err == nil {
 			h.cached = out
 		}
