@@ -24,6 +24,7 @@ type CLI struct {
 	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
 	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
 	Init    InitCmd          `cmd:"" help:"Initialize a .gomddoc/ directory with default configuration."`
+	Preview PreviewCmd       `cmd:"" help:"Quick local preview with auto-port and browser open."`
 }
 
 // helpPrinter wraps Kong's default help to append environment variables for subcommands.

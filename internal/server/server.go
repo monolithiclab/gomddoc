@@ -83,8 +83,8 @@ func NewHTTPServer(
 	}
 }
 
-// listenURL returns a clickable URL for the server address.
-func listenURL(addr string) string {
+// ListenURL returns a clickable URL for the server address.
+func ListenURL(addr string) string {
 	host, port, _ := net.SplitHostPort(addr)
 	if host == "" {
 		host = "localhost"
@@ -95,7 +95,7 @@ func listenURL(addr string) string {
 // Start starts the HTTP server
 func (s *HTTPServer) Start(ctx context.Context) error {
 	slog.Info("Server started",
-		slog.String("url", listenURL(s.server.Addr)),
+		slog.String("url", ListenURL(s.server.Addr)),
 		slog.String("dir", s.config.Server.Dir),
 		slog.Bool("dev", s.config.Server.DevMode),
 	)

@@ -43,9 +43,19 @@ This creates `.gomddoc/config.yml` with sensible defaults (title derived from di
 gomddoc init --theme midnight
 ```
 
-### 3. Live Server (Local Folder)
+### 3. Quick Preview
 
-Serve the current directory:
+Preview your docs with zero friction — auto-finds a free port and opens your browser:
+
+```bash
+gomddoc preview
+```
+
+This starts the server in dev mode (no caching), auto-assigns a port starting from 8080, and opens your default browser. Use `--no-open` to skip the browser launch.
+
+### 4. Live Server (Local Folder)
+
+For production use, `serve` gives full control:
 
 ```bash
 gomddoc serve
@@ -59,7 +69,7 @@ Serve a specific directory on a different port:
 gomddoc serve -d ./my-docs -p :3000
 ```
 
-### 4. Serving from Git
+### 5. Serving from Git
 
 Serve directly from a public repository without cloning it manually (lazy clone on first request):
 
@@ -67,7 +77,7 @@ Serve directly from a public repository without cloning it manually (lazy clone 
 gomddoc serve -d "git+https://github.com/monolithiclab/gomddoc.git"
 ```
 
-### 5. Static Site Generation
+### 6. Static Site Generation
 
 Build a static site for deployment:
 

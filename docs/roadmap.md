@@ -161,21 +161,19 @@ _Expand format support for technical documentation._
 - [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
 - [ ] **Static host compatibility**: Output structure compatible with S3, Netlify, Cloudflare Pages.
 
-## Phase 7b: `gomddoc preview` — Quick Local Preview
+## Phase 7b: `gomddoc preview` — Quick Local Preview (Done)
 
 _A zero-friction subcommand for previewing documentation locally, distinct from the production-grade `serve`._
 
-- [ ] **`gomddoc preview [dir]`**: Serve a directory (defaults to `.`) with sensible defaults optimized for
+- [x] **`gomddoc preview [dir]`**: Serve a directory (defaults to `.`) with sensible defaults optimized for
       local authoring. Differences from `serve`:
-  - **Auto port**: Find an available port starting from 8080. No "address already in use" errors.
-  - **Auto open**: Launch the default browser and navigate to the local URL on startup (`--no-open` to disable).
-  - **Dev mode on**: Implies `--dev` (no caching, hot reload) without requiring the flag.
-  - **Directory index**: Enable `dir_index: true` by default so folders without a README show a file listing.
-  - **Minimal output**: Print only the URL and "Press Ctrl+C to stop" — no verbose startup logs.
-- [ ] **Port discovery**: Use `net.Listen(":0")` or scan from 8080 upward to find a free port.
-      Store the chosen port in a predictable location (e.g. `.gomddoc/.preview-port`) so tooling can find it.
-- [ ] **Browser open**: Use `open` (macOS), `xdg-open` (Linux), or `start` (Windows) to launch the browser.
-      Respect `$BROWSER` env var if set.
+  - **Auto port**: Find an available port starting from 8080 (`--port :auto`).
+  - **Auto open**: Launch the default browser on startup (`--no-open` to disable).
+  - **Dev mode on**: Implies `--dev` (no caching) without requiring the flag.
+  - **Minimal output**: Print only the URL and "Press Ctrl+C to stop".
+- [x] **Port discovery**: Sequential scan from 8080 via `net.Listen`. Port is resolved before server
+      creation so the startup log shows a working clickable URL.
+- [x] **Browser open**: Uses `open` (macOS), `xdg-open` (Linux), `start` (Windows). Respects `$BROWSER`.
 
 ## Phase 8: Theming Engine
 
@@ -319,7 +317,7 @@ _Enable community theme sharing via a GitHub-based registry._
 | ----------------------- | ---------------------------------------------------- | ------- |
 | `gomddoc serve`         | Production HTTP server for documentation             | Done    |
 | `gomddoc build`         | Static site generation                               | Done    |
-| `gomddoc preview`       | Quick local preview with auto-open browser           | Planned |
+| `gomddoc preview`       | Quick local preview with auto-open browser           | Done    |
 | `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Done    |
 | `gomddoc validate`      | Validate config and check for broken links           | Planned |
 | `gomddoc theme list`    | List available themes from the marketplace           | Planned |
