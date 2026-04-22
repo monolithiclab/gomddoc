@@ -8,6 +8,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/search"
 )
 
@@ -18,6 +19,7 @@ type ServerDeps struct {
 	SearchIndex     *search.Index
 	DefaultIndex    string
 	ExcludePatterns []string
+	Resolver        *resolve.PathResolver
 	SiteName        string
 	Version         string
 }

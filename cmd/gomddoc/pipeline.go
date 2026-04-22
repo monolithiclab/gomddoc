@@ -111,7 +111,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		}
 		enricherOpts.MetaIndex = metaIndex
 		p.MetaIndex = metaIndex
-		p.URLRedirects = server.BuildRedirectMap(metaIndex)
+		p.URLRedirects = server.BuildRedirectMap(metaIndex, p.Resolver)
 	}
 
 	if opts.EnableSearch && cfg.Site.Search.Index {
@@ -231,6 +231,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		SearchIndex:     pipeline.SearchIndex,
 		DefaultIndex:    cfg.Site.DefaultIndex,
 		ExcludePatterns: cfg.Site.Exclude,
+		Resolver:        pipeline.Resolver,
 		SiteName:        cfg.Site.Meta.Title,
 		Version:         version,
 	})

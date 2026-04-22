@@ -111,7 +111,7 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate redirect HTML files for redirect_from frontmatter
-	if err := b.generateRedirectFiles(prov, &cfg.Site); err != nil {
+	if err := b.generateRedirectFiles(prov, &cfg.Site, pipeline.Resolver); err != nil {
 		return fmt.Errorf("generate redirect files: %w", err)
 	}
 
@@ -403,7 +403,7 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 }
 
 // generateRedirectFiles builds redirect HTML files from redirect_from frontmatter.
-func (b *BuildCmd) generateRedirectFiles(prov provider.Provider, siteConfig *config.SiteConfig) error {
+func (b *BuildCmd) generateRedirectFiles(prov provider.Provider, siteConfig *config.SiteConfig, resolver *resolve.PathResolver) error {
 	contentRoot, err := prov.RootFS(context.Background())
 	if err != nil {
 		return fmt.Errorf("get content root for redirects: %w", err)
@@ -414,7 +414,7 @@ func (b *BuildCmd) generateRedirectFiles(prov provider.Provider, siteConfig *con
 		return fmt.Errorf("build metadata index for redirects: %w", err)
 	}
 
-	redirects := server.BuildRedirectMap(idx)
+	redirects := server.BuildRedirectMap(idx, resolver)
 	if len(redirects) == 0 {
 		return nil
 	}

@@ -18,7 +18,7 @@ func TestBuildRedirectMap_RedirectFrom(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx)
+	redirects := BuildRedirectMap(idx, nil)
 
 	if redirects == nil {
 		t.Fatal("expected non-nil redirect map")
@@ -53,7 +53,7 @@ func TestBuildRedirectMap_MultiplePages(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx)
+	redirects := BuildRedirectMap(idx, nil)
 
 	if redirects == nil {
 		t.Fatal("expected non-nil redirect map")
@@ -78,7 +78,7 @@ func TestBuildRedirectMap_Empty(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx)
+	redirects := BuildRedirectMap(idx, nil)
 
 	if redirects != nil {
 		t.Errorf("expected nil redirect map, got %v", redirects)
@@ -88,7 +88,7 @@ func TestBuildRedirectMap_Empty(t *testing.T) {
 func TestBuildRedirectMap_NilIndex(t *testing.T) {
 	t.Parallel()
 
-	redirects := BuildRedirectMap(nil)
+	redirects := BuildRedirectMap(nil, nil)
 	if redirects != nil {
 		t.Errorf("expected nil redirect map for nil index")
 	}
