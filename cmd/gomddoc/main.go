@@ -66,7 +66,8 @@ func startCmd() int {
 	}
 
 	// Initialize components
-	provider, err := provider.NewFilesystemProvider(cfg.Dir, cfg.DefaultIndex)
+	// TODO: dirIndex will be added to config in Step 11
+	provider, err := provider.NewFilesystemProvider(cfg.Dir, cfg.DefaultIndex, false)
 	if err != nil {
 		slog.Error("Cannot create filesystem provider", slog.Any("error", err))
 		os.Exit(1)

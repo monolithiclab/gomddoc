@@ -8,8 +8,10 @@ import (
 // Provider defines the interface for content providers
 // Embeds io.Closer for proper resource cleanup
 type Provider interface {
-	// ReadFile reads a file at the given path
-	ReadFile(path string) ([]byte, error)
+	// ReadFile reads a file at the given path and detects its MIME type
+	// Returns full MIME type with parameters (e.g., "text/html; charset=utf-8")
+	// For directories, may return README.md content or directory listing based on configuration
+	ReadFile(path string) (content []byte, mimeType string, err error)
 	// Stat returns a FileInfo describing the named file
 	Stat(path string) (fs.FileInfo, error)
 	// DefaultIndex returns the default index file name

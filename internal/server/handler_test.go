@@ -34,7 +34,7 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 func TestNewHandler(t *testing.T) {
 	// Create mock dependencies
 	siteConfig := config.NewSiteConfig(".")
-	prov, err := provider.NewFilesystemProvider(".", "README.md")
+	prov, err := provider.NewFilesystemProvider(".", "README.md", false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestHandlerServeMarkdown(t *testing.T) {
 
 	// Setup dependencies
 	siteConfig := config.NewSiteConfig(".")
-	prov, err := provider.NewFilesystemProvider(".", "README.test.md")
+	prov, err := provider.NewFilesystemProvider(".", "README.test.md", false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestHandlerServeMarkdown(t *testing.T) {
 func TestHandlerErrorResponses(t *testing.T) {
 	// Setup dependencies
 	siteConfig := config.NewSiteConfig(".")
-	prov, err := provider.NewFilesystemProvider(".", "README.test.md")
+	prov, err := provider.NewFilesystemProvider(".", "README.test.md", false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestHandlerCacheHeaders(t *testing.T) {
 
 	// Setup dependencies
 	siteConfig := config.NewSiteConfig(".")
-	prov, err := provider.NewFilesystemProvider(".", "README.test.md")
+	prov, err := provider.NewFilesystemProvider(".", "README.test.md", false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}

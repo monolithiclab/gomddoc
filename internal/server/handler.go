@@ -4,7 +4,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"os"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/processor"
@@ -34,7 +33,7 @@ func NewHandler(siteConfig *config.SiteConfig, provider provider.Provider, proce
 func (h *Handler) ServeMarkdown(w http.ResponseWriter, r *http.Request) {
 	// Read the file content
 	filename := r.URL.Path
-	md, err := h.provider.ReadFile(filename)
+	md, _, err := h.provider.ReadFile(filename)
 	if err != nil {
 		h.handleError(w, err, filename)
 		return
@@ -82,15 +81,20 @@ func (h *Handler) ServeMarkdown(w http.ResponseWriter, r *http.Request) {
 
 // handleError handles file reading errors and sends appropriate HTTP responses
 func (h *Handler) handleError(w http.ResponseWriter, err error, filename string) {
-	if os.IsNotExist(err) {
+	statusCode := classifyError(err)
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(statusCode)
+
+	switch statusCode {
+	case http.StatusNotFound:
 		slog.Info("File not found", slog.String("filename", filename))
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusNotFound)
 		h.writeErrorResponse(w, "File not found")
-	} else {
+	case http.StatusForbidden:
+		slog.Info("Access forbidden", slog.String("filename", filename), slog.Any("error", err))
+		h.writeErrorResponse(w, "Forbidden")
+	default:
 		slog.Error("Cannot read file", slog.String("filename", filename), slog.Any("error", err))
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusInternalServerError)
 		h.writeErrorResponse(w, "Internal server error")
 	}
 }

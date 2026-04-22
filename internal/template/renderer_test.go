@@ -29,10 +29,15 @@ func newTestFSProvider(fsys fs.FS, defaultIndex string) *testFSProvider {
 	}
 }
 
-func (t *testFSProvider) ReadFile(path string) ([]byte, error) {
+func (t *testFSProvider) ReadFile(path string) ([]byte, string, error) {
 	// Remove leading slash to make it relative for fs.FS
 	path = strings.TrimPrefix(path, "/")
-	return fs.ReadFile(t.fsys, path)
+	content, err := fs.ReadFile(t.fsys, path)
+	if err != nil {
+		return nil, "", err
+	}
+	// Return generic text/plain MIME type for tests
+	return content, "text/plain", nil
 }
 
 func (t *testFSProvider) Stat(path string) (fs.FileInfo, error) {

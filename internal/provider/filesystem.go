@@ -1,66 +1,160 @@
 package provider
 
 import (
+	"fmt"
 	"io/fs"
+	"mime"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
-// FilesystemProvider implements Provider for local filesystem access
-type FilesystemProvider struct {
-	root         *os.Root
-	defaultIndex string
+func init() {
+	// Register markdown MIME types with the standard library.
+	// This ensures mime.TypeByExtension() returns "text/markdown"
+	// for .md and .markdown files.
+	//
+	// Errors are ignored as these are standard MIME types that should always succeed.
+	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
+	_ = mime.AddExtensionType(".markdown", "text/markdown; charset=utf-8")
 }
 
-// NewFilesystemProvider creates a new filesystem provider with path traversal protection
-func NewFilesystemProvider(dir, defaultIndex string) (*FilesystemProvider, error) {
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return nil, err
+// FilesystemProvider implements Provider for local filesystem access
+type FilesystemProvider struct {
+	root         fs.StatFS
+	defaultIndex string
+	dirIndex     bool
+}
+
+// NewFilesystemProvider creates a new filesystem provider with path traversal protection.
+// The provider uses os.DirFS for secure filesystem access within the specified directory.
+//
+// Parameters:
+//   - dir: Root directory to serve files from
+//   - defaultIndex: Default index file name (e.g., "README.md")
+//   - dirIndex: Enable directory listing generation (false = secure by default)
+func NewFilesystemProvider(dir, defaultIndex string, dirIndex bool) (*FilesystemProvider, error) {
+	fsys := os.DirFS(dir)
+
+	// Type assertion to fs.StatFS (needed for Stat() method)
+	statFS, ok := fsys.(fs.StatFS)
+	if !ok {
+		return nil, fmt.Errorf("filesystem does not support Stat: %s", dir)
 	}
 
 	return &FilesystemProvider{
-		root:         root,
+		root:         statFS,
 		defaultIndex: defaultIndex,
+		dirIndex:     dirIndex,
 	}, nil
 }
 
-// ReadFile reads a file from the filesystem with path traversal protection
-func (f *FilesystemProvider) ReadFile(filename string) ([]byte, error) {
-	if filename == "/" {
-		filename = f.DefaultIndex()
+// ReadFile reads a file at the given path and returns its content with MIME type.
+//
+// Path handling:
+//   - Leading slashes are automatically stripped for fs.FS compatibility
+//   - Root path "/" is treated as "." (current directory)
+//
+// Directory handling:
+//  1. Try default index file first (always)
+//  2. If not found and dirIndex=false: Return ErrDirListingDisabled
+//  3. If not found and dirIndex=true: Generate markdown listing
+//
+// MIME type detection:
+//   - Uses mime.TypeByExtension() for file extension mapping
+//   - Returns "text/markdown" for README.md and directory listings
+//   - Defaults to "application/octet-stream" for unknown types
+func (f *FilesystemProvider) ReadFile(requestPath string) ([]byte, string, error) {
+	// Clean and normalize path
+	cleanPath := requestPath
+	if cleanPath == "/" {
+		cleanPath = "."
+	} else {
+		cleanPath = path.Clean(cleanPath)
+		cleanPath = strings.TrimPrefix(cleanPath, "/")
 	}
-	// Clean the path first, then remove leading slash to make it relative
-	filename = path.Clean(filename)
-	filename = strings.TrimPrefix(filename, "/")
 
-	stat, err := f.root.Stat(filename)
+	// Check if path is directory
+	info, err := fs.Stat(f.root, cleanPath)
 	if err != nil {
-		return nil, err
-	}
-	if stat.IsDir() {
-		filename = path.Join(filename, f.DefaultIndex())
-		_, err = f.root.Stat(filename)
-		if err != nil {
-			return nil, err
+		if os.IsNotExist(err) {
+			return nil, "", fmt.Errorf("%w: %s", ErrNotFound, requestPath)
 		}
+		return nil, "", fmt.Errorf("stat %s: %w", requestPath, err)
 	}
 
-	return f.root.ReadFile(filename)
+	if info.IsDir() {
+		return f.handleDirectory(cleanPath, requestPath)
+	}
+
+	// Read regular file
+	content, err := fs.ReadFile(f.root, cleanPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("read file %s: %w", requestPath, err)
+	}
+
+	// Detect MIME type (returns full type with charset if registered)
+	mimeType := mime.TypeByExtension(filepath.Ext(requestPath))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	return content, mimeType, nil
+}
+
+// handleDirectory processes directory requests with default index fallback and optional listing.
+func (f *FilesystemProvider) handleDirectory(cleanPath, requestPath string) ([]byte, string, error) {
+	// Try default index file first (always)
+	indexPath := filepath.Join(cleanPath, f.defaultIndex)
+	if cleanPath == "." {
+		indexPath = f.defaultIndex
+	}
+
+	if content, err := fs.ReadFile(f.root, indexPath); err == nil {
+		// Detect MIME type for the index file
+		mimeType := mime.TypeByExtension(filepath.Ext(f.defaultIndex))
+		if mimeType == "" {
+			mimeType = "text/markdown"
+		}
+		return content, mimeType, nil
+	}
+
+	// Directory listing disabled (secure by default)
+	if !f.dirIndex {
+		return nil, "", fmt.Errorf("%w: %s", ErrDirListingDisabled, requestPath)
+	}
+
+	// Generate directory listing
+	entries, err := fs.ReadDir(f.root, cleanPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("read directory %s: %w", requestPath, err)
+	}
+
+	content := GenerateMarkdownListing(requestPath, entries)
+	return content, "text/markdown; charset=utf-8", nil
 }
 
 // Stat returns a FileInfo describing the named file
-func (f *FilesystemProvider) Stat(filename string) (fs.FileInfo, error) {
-	if filename == "/" {
-		filename = "."
+func (f *FilesystemProvider) Stat(requestPath string) (fs.FileInfo, error) {
+	// Clean and normalize path
+	cleanPath := requestPath
+	if cleanPath == "/" {
+		cleanPath = "."
 	} else {
-		// Clean the path first, then remove leading slash to make it relative
-		filename = path.Clean(filename)
-		filename = strings.TrimPrefix(filename, "/")
+		cleanPath = path.Clean(cleanPath)
+		cleanPath = strings.TrimPrefix(cleanPath, "/")
 	}
 
-	return f.root.Stat(filename)
+	info, err := fs.Stat(f.root, cleanPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, requestPath)
+		}
+		return nil, fmt.Errorf("stat %s: %w", requestPath, err)
+	}
+
+	return info, nil
 }
 
 // DefaultIndex returns the configured default index file
@@ -69,10 +163,10 @@ func (f *FilesystemProvider) DefaultIndex() string {
 }
 
 // Close releases resources held by the provider
-// Currently os.Root doesn't require explicit cleanup, but this method
+// Currently os.DirFS doesn't require explicit cleanup, but this method
 // provides a hook for future implementations that may need resource cleanup
 func (f *FilesystemProvider) Close() error {
-	// No cleanup needed for os.Root currently
+	// No cleanup needed for os.DirFS currently
 	// Future providers (database, network) may need cleanup here
 	return nil
 }

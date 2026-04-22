@@ -23,7 +23,7 @@ func TestNewHTTPServer(t *testing.T) {
 	}
 
 	// Create dependencies
-	prov, err := provider.NewFilesystemProvider(cfg.Dir, cfg.DefaultIndex)
+	prov, err := provider.NewFilesystemProvider(cfg.Dir, cfg.DefaultIndex, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
