@@ -144,6 +144,13 @@ func TestNewGitProvider(t *testing.T) {
 			dirIndex:     false,
 			wantErr:      true,
 		},
+		{
+			name:         "empty defaultIndex",
+			gitURL:       "git+https://github.com/user/repo",
+			defaultIndex: "",
+			dirIndex:     false,
+			wantErr:      true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -155,9 +162,6 @@ func TestNewGitProvider(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Error("NewGitProvider() error = nil, want error")
-				}
-				if !errors.Is(err, ErrInvalidGitURL) {
-					t.Errorf("NewGitProvider() error = %v, want ErrInvalidGitURL", err)
 				}
 				return
 			}

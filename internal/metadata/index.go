@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -89,12 +90,17 @@ func BuildIndex(ctx context.Context, rootFS fs.FS) (*Index, error) {
 
 			content, readErr := fs.ReadFile(rootFS, p)
 			if readErr != nil {
-				return nil // skip unreadable files
+				slog.Debug("skipping unreadable file during index build", "path", p, "error", readErr)
+				return nil
 			}
 
 			fm, parseErr := extractFrontmatter(content)
-			if parseErr != nil || fm == nil {
-				return nil // skip files without valid frontmatter
+			if parseErr != nil {
+				slog.Debug("skipping file with malformed frontmatter", "path", p, "error", parseErr)
+				return nil
+			}
+			if fm == nil {
+				return nil // no frontmatter present
 			}
 
 			results[i] = parseResult{page: pageFromFrontmatter(p, fm), ok: true}

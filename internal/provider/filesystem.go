@@ -34,6 +34,10 @@ func NewFilesystemProvider(dir, defaultIndex string, dirIndex bool) (*Filesystem
 // NewFilesystemProviderFromFS creates a new filesystem provider from an existing fs.FS.
 // This is useful for testing with in-memory filesystems or using custom fs implementations.
 func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool) (*FilesystemProvider, error) {
+	if defaultIndex == "" {
+		return nil, fmt.Errorf("defaultIndex must not be empty")
+	}
+
 	// Type assertion to fs.StatFS (needed for Stat() method)
 	statFS, ok := fsys.(fs.StatFS)
 	if !ok {

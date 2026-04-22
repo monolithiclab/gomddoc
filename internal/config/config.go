@@ -154,12 +154,16 @@ func New() *Config {
 
 // NewSiteConfig creates a new SiteConfig with default values
 func NewSiteConfig(dir string) SiteConfig {
-	// Compute default title from directory basename
+	// Compute default title from directory basename.
+	// filepath.Base(".") returns ".", so resolve to absolute path first.
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		absDir = dir
 	}
 	basename := filepath.Base(absDir)
+	if basename == "." || basename == string(filepath.Separator) {
+		basename = "Documentation"
+	}
 	title := text.TitleCase(basename)
 
 	return SiteConfig{

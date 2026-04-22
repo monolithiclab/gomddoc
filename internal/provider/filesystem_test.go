@@ -34,6 +34,19 @@ func TestNewFilesystemProviderFromFS(t *testing.T) {
 	}
 }
 
+func TestNewFilesystemProviderFromFS_EmptyDefaultIndex(t *testing.T) {
+	t.Parallel()
+
+	mapFS := fstest.MapFS{}
+	_, err := NewFilesystemProviderFromFS(mapFS, "", false)
+	if err == nil {
+		t.Fatal("expected error for empty defaultIndex, got nil")
+	}
+	if !strings.Contains(err.Error(), "defaultIndex") {
+		t.Errorf("error should mention defaultIndex, got: %v", err)
+	}
+}
+
 func TestFilesystemProvider_ReadFile(t *testing.T) {
 	testContent := "Test Content"
 	mapFS := fstest.MapFS{

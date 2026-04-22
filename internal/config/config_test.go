@@ -1054,3 +1054,17 @@ func TestSiteConfig_LoadFromFile_ThemeVarsNil(t *testing.T) {
 		t.Errorf("Theme.Vars should be nil when not configured, got %v", sc.Theme.Vars)
 	}
 }
+
+func TestNewSiteConfig_DotDirectory(t *testing.T) {
+	t.Parallel()
+
+	sc := NewSiteConfig(".")
+	// filepath.Abs(".") resolves to the actual CWD, so the title should
+	// never be "." — it should be the TitleCase of the CWD basename.
+	if sc.Meta.Title == "." {
+		t.Error("NewSiteConfig(\".\") should not produce title \".\"")
+	}
+	if sc.Meta.Title == "" {
+		t.Error("NewSiteConfig(\".\") should produce a non-empty title")
+	}
+}
