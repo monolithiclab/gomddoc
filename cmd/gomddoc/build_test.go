@@ -55,7 +55,7 @@ func TestCopyFile(t *testing.T) {
 		"style.css": &fstest.MapFile{Data: []byte("body{}")},
 	}
 
-	err := b.copyFile(contentRoot, "style.css", stats)
+	err := b.copyFile(contentRoot, "style.css", "", stats)
 	if err != nil {
 		t.Fatalf("copyFile failed: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestBuildFile(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
 	enricherReg := registryutil.NewEnricherRegistry()
-	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
+	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, "", stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestBuildFile_README_BecomesIndex(t *testing.T) {
 
 	enricherReg := registryutil.NewEnricherRegistry()
 	// No index.md exists, so README.md should produce only index.html
-	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
+	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, "", stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestBuildFile_README_WithIndexMD(t *testing.T) {
 	enricherReg := registryutil.NewEnricherRegistry()
 	// Simulate index.md existing in same directory
 	dirsWithIndexMD := map[string]bool{".": true}
-	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, dirsWithIndexMD, stats, testBundle(t), nil)
+	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, dirsWithIndexMD, "", stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestBuildFile_SubdirREADME(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
 	enricherReg := registryutil.NewEnricherRegistry()
-	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
+	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, "", stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -490,7 +490,7 @@ func TestBuildFile_WithFrontmatterTitle(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	enricherReg := registryutil.NewEnricherRegistry()
 
-	err := b.buildFile(context.Background(), contentRoot, "titled.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
+	err := b.buildFile(context.Background(), contentRoot, "titled.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, "", stats, testBundle(t), nil)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -572,7 +572,7 @@ func TestCopyFile_MissingFile(t *testing.T) {
 	stats := &buildStats{}
 
 	contentRoot := fstest.MapFS{}
-	err := b.copyFile(contentRoot, "missing.css", stats)
+	err := b.copyFile(contentRoot, "missing.css", "", stats)
 	if err == nil {
 		t.Error("copyFile should fail for missing file")
 	}
@@ -592,7 +592,7 @@ func TestBuildFile_ReadError(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	enricherReg := registryutil.NewEnricherRegistry()
 
-	err := b.buildFile(context.Background(), contentRoot, "nonexistent.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats, testBundle(t), nil)
+	err := b.buildFile(context.Background(), contentRoot, "nonexistent.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, "", stats, testBundle(t), nil)
 	if err == nil {
 		t.Error("buildFile should fail for missing file")
 	}
