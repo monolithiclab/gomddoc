@@ -15,7 +15,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -23,7 +22,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
-	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -61,44 +59,30 @@ func (b *BuildCmd) Run() error {
 		}
 	}()
 
-	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownPassthroughRenderer())
-	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
-		HighlightTheme: cfg.Site.Highlighting.Theme,
-		ColorChips:     cfg.Site.ColorChips,
-	}))
-	registry.Register(renderer.NewPassthroughRenderer())
-
-	breadcrumbGen := breadcrumb.NewGenerator(func(path string) bool {
-		info, err := prov.Stat(context.Background(), path)
-		return err == nil && info.IsDir()
+	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
+		EnableCache:      true,
+		EnableNavigation: false, // build doesn't serve navigation
+		EnableMetadata:   false, // build doesn't serve tag API
 	})
+	if err != nil {
+		return fmt.Errorf("build pipeline: %w", err)
+	}
 
 	contentRoot, err := prov.RootFS(context.Background())
 	if err != nil {
 		return fmt.Errorf("build root fs: %w", err)
 	}
-	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
-
-	templateRenderer := tmpl.NewHTMLRenderer(&cfg.Site, assetsFS, tmpl.WithBreadcrumbGenerator(breadcrumbGen))
-	if err := templateRenderer.ValidateDefaultTheme(); err != nil {
-		return fmt.Errorf("build validate theme: %w", err)
-	}
-
-	enricherRegistry := enricher.NewDefaultEnricherRegistry()
-	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{}))
 
 	slog.Info("Building static site", slog.String("source", b.Dir), slog.String("output", b.Output))
 
-	stats, err := b.walkAndBuild(contentRoot, registry, enricherRegistry, templateRenderer, &cfg.Site)
+	stats, err := b.walkAndBuild(contentRoot, pipeline.Registry, pipeline.EnricherRegistry, pipeline.TemplateRenderer, &cfg.Site)
 	if err != nil {
 		return err
 	}
 
 	// Copy static assets to _assets/ directory in the output
-	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
-	if staticFS != nil {
-		if err := b.copyStaticAssets(staticFS, stats); err != nil {
+	if pipeline.StaticFS != nil {
+		if err := b.copyStaticAssets(pipeline.StaticFS, stats); err != nil {
 			return fmt.Errorf("copy static assets: %w", err)
 		}
 	}

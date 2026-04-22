@@ -1,0 +1,136 @@
+package main
+
+import (
+	"context"
+	"io/fs"
+	"log/slog"
+
+	"github.com/monolithiclab/gomddoc/internal/assets"
+	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
+	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/server"
+	"github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
+)
+
+// PipelineOptions configures which pipeline features to enable.
+type PipelineOptions struct {
+	EnableCache      bool // enable template caching (production mode)
+	EnableNavigation bool // enable navigation tree and redirect finder
+	EnableMetadata   bool // enable metadata index for tag API
+}
+
+// Pipeline holds the assembled rendering pipeline components.
+type Pipeline struct {
+	Registry         renderer.RendererRegistry
+	EnricherRegistry enricher.EnricherRegistry
+	TemplateRenderer *template.HTMLRenderer
+	MetaIndex        *metadata.Index
+	RedirectFinder   server.RedirectFinder
+	StaticFS         fs.FS
+}
+
+// setupPipeline assembles the shared rendering pipeline from config and provider.
+func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOptions) (*Pipeline, error) {
+	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownPassthroughRenderer())
+	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
+		HighlightTheme: cfg.Site.Highlighting.Theme,
+		ColorChips:     cfg.Site.ColorChips,
+	}))
+	registry.Register(renderer.NewPassthroughRenderer())
+
+	breadcrumbGen := breadcrumb.NewGenerator(func(path string) bool {
+		info, err := prov.Stat(context.Background(), path)
+		return err == nil && info.IsDir()
+	})
+
+	contentRoot, err := prov.RootFS(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
+
+	templateOpts := []template.RendererOption{
+		template.WithBreadcrumbGenerator(breadcrumbGen),
+	}
+	if opts.EnableCache {
+		templateOpts = append(templateOpts, template.WithCache(&template.CachedTemplateStore{}))
+	}
+	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS, templateOpts...)
+
+	if err := templateRenderer.ValidateDefaultTheme(); err != nil {
+		return nil, err
+	}
+
+	p := &Pipeline{
+		Registry:         registry,
+		TemplateRenderer: templateRenderer,
+		StaticFS:         assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name),
+	}
+
+	// Enricher options — navigation is optional (build doesn't use it).
+	enricherOpts := enricher.MarkdownEnricherOptions{}
+
+	if opts.EnableNavigation {
+		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex)
+		enricherOpts.NavBuilder = navBuilderAdapter(navGen)
+		p.RedirectFinder = redirectFinderAdapter(navGen)
+	}
+
+	if opts.EnableMetadata {
+		metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot)
+		if err != nil {
+			slog.Warn("Failed to build metadata index", slog.Any("error", err))
+		}
+		enricherOpts.MetaIndex = metaIndex
+		p.MetaIndex = metaIndex
+	}
+
+	enricherRegistry := enricher.NewDefaultEnricherRegistry()
+	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricherOpts))
+	p.EnricherRegistry = enricherRegistry
+
+	return p, nil
+}
+
+// redirectFinderAdapter wraps a navigation.Generator into a server.RedirectFinder,
+// finding the first page under a directory for redirect when no index exists.
+func redirectFinderAdapter(navGen *navigation.Generator) server.RedirectFinder {
+	return func(dirPath string) string {
+		tree := navGen.Generate(dirPath)
+		return navigation.FindFirstPage(tree)
+	}
+}
+
+// navBuilderAdapter wraps a navigation.Generator into an enricher.NavBuilder,
+// converting NavNode trees to enricher.NavItem slices.
+func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
+	return func(currentPath string) []enricher.NavItem {
+		root := navGen.Generate(currentPath)
+		if root == nil {
+			return nil
+		}
+		return convertNavNodes(root.Children)
+	}
+}
+
+// convertNavNodes converts navigation.NavNode children to enricher.NavItem slices.
+func convertNavNodes(nodes []*navigation.NavNode) []enricher.NavItem {
+	items := make([]enricher.NavItem, len(nodes))
+	for i, node := range nodes {
+		items[i] = enricher.NavItem{
+			Title:    node.Label,
+			Path:     node.Path,
+			IsDir:    node.IsDir,
+			Active:   node.IsActive,
+			Open:     node.IsOpen,
+			Children: convertNavNodes(node.Children),
+		}
+	}
+	return items
+}

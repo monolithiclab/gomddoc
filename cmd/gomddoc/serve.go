@@ -12,16 +12,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/enricher"
-	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
-	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/server"
-	"github.com/monolithiclab/gomddoc/internal/template"
-	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
-	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // ServeCmd holds all flags for the serve subcommand.
@@ -85,61 +78,24 @@ func (s *ServeCmd) Run() error {
 		}
 	}()
 
-	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownPassthroughRenderer())
-	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
-		HighlightTheme: cfg.Site.Highlighting.Theme,
-		ColorChips:     cfg.Site.ColorChips,
-	}))
-	registry.Register(renderer.NewPassthroughRenderer())
-
-	breadcrumbGen := breadcrumb.NewGenerator(func(path string) bool {
-		info, err := prov.Stat(context.Background(), path)
-		return err == nil && info.IsDir()
+	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
+		EnableCache:      !cfg.Server.DevMode,
+		EnableNavigation: true,
+		EnableMetadata:   true,
 	})
-
-	contentRoot, err := prov.RootFS(context.Background())
 	if err != nil {
 		return err
 	}
-	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
 
-	navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex)
-
-	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS,
-		template.WithBreadcrumbGenerator(breadcrumbGen),
-	)
-	if !cfg.Server.DevMode {
-		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
-	}
-
-	if err := templateRenderer.ValidateDefaultTheme(); err != nil {
-		return err
-	}
-
-	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot)
-	if err != nil {
-		slog.Warn("Failed to build metadata index", slog.Any("error", err))
-	}
-
-	enricherRegistry := enricher.NewDefaultEnricherRegistry()
-	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{
-		MetaIndex:  metaIndex,
-		NavBuilder: navBuilderAdapter(navGen),
-	}))
-
-	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
-
-	redirectFinder := redirectFinderAdapter(navGen)
 	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
 		Config:           cfg,
 		Provider:         prov,
-		Registry:         registry,
-		EnricherRegistry: enricherRegistry,
-		TemplateRenderer: templateRenderer,
-		MetaIndex:        metaIndex,
-		RedirectFinder:   redirectFinder,
-		StaticFS:         staticFS,
+		Registry:         pipeline.Registry,
+		EnricherRegistry: pipeline.EnricherRegistry,
+		TemplateRenderer: pipeline.TemplateRenderer,
+		MetaIndex:        pipeline.MetaIndex,
+		RedirectFinder:   pipeline.RedirectFinder,
+		StaticFS:         pipeline.StaticFS,
 	})
 
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -157,41 +113,4 @@ func (s *ServeCmd) Run() error {
 	})
 
 	return g.Wait()
-}
-
-// redirectFinderAdapter wraps a navigation.Generator into a server.RedirectFinder,
-// finding the first page under a directory for redirect when no index exists.
-func redirectFinderAdapter(navGen *navigation.Generator) server.RedirectFinder {
-	return func(dirPath string) string {
-		tree := navGen.Generate(dirPath)
-		return navigation.FindFirstPage(tree)
-	}
-}
-
-// navBuilderAdapter wraps a navigation.Generator into an enricher.NavBuilder,
-// converting NavNode trees to enricher.NavItem slices.
-func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
-	return func(currentPath string) []enricher.NavItem {
-		root := navGen.Generate(currentPath)
-		if root == nil {
-			return nil
-		}
-		return convertNavNodes(root.Children)
-	}
-}
-
-// convertNavNodes converts navigation.NavNode children to enricher.NavItem slices.
-func convertNavNodes(nodes []*navigation.NavNode) []enricher.NavItem {
-	items := make([]enricher.NavItem, len(nodes))
-	for i, node := range nodes {
-		items[i] = enricher.NavItem{
-			Title:    node.Label,
-			Path:     node.Path,
-			IsDir:    node.IsDir,
-			Active:   node.IsActive,
-			Open:     node.IsOpen,
-			Children: convertNavNodes(node.Children),
-		}
-	}
-	return items
 }

@@ -9,16 +9,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/enricher"
-	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
-	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/server"
-	"github.com/monolithiclab/gomddoc/internal/template"
-	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
-	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // PreviewCmd holds all flags for the preview subcommand.
@@ -50,58 +43,24 @@ func (p *PreviewCmd) Run() error {
 		}
 	}()
 
-	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownPassthroughRenderer())
-	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
-		HighlightTheme: cfg.Site.Highlighting.Theme,
-		ColorChips:     cfg.Site.ColorChips,
-	}))
-	registry.Register(renderer.NewPassthroughRenderer())
-
-	breadcrumbGen := breadcrumb.NewGenerator(func(path string) bool {
-		info, err := prov.Stat(context.Background(), path)
-		return err == nil && info.IsDir()
+	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
+		EnableCache:      false, // preview = dev mode, no caching
+		EnableNavigation: true,
+		EnableMetadata:   true,
 	})
-
-	contentRoot, err := prov.RootFS(context.Background())
 	if err != nil {
 		return err
 	}
-	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
 
-	navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex)
-
-	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS,
-		template.WithBreadcrumbGenerator(breadcrumbGen),
-	)
-
-	if err := templateRenderer.ValidateDefaultTheme(); err != nil {
-		return err
-	}
-
-	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot)
-	if err != nil {
-		slog.Warn("Failed to build metadata index", slog.Any("error", err))
-	}
-
-	enricherRegistry := enricher.NewDefaultEnricherRegistry()
-	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{
-		MetaIndex:  metaIndex,
-		NavBuilder: navBuilderAdapter(navGen),
-	}))
-
-	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
-
-	redirectFinder := redirectFinderAdapter(navGen)
 	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
 		Config:           cfg,
 		Provider:         prov,
-		Registry:         registry,
-		EnricherRegistry: enricherRegistry,
-		TemplateRenderer: templateRenderer,
-		MetaIndex:        metaIndex,
-		RedirectFinder:   redirectFinder,
-		StaticFS:         staticFS,
+		Registry:         pipeline.Registry,
+		EnricherRegistry: pipeline.EnricherRegistry,
+		TemplateRenderer: pipeline.TemplateRenderer,
+		MetaIndex:        pipeline.MetaIndex,
+		RedirectFinder:   pipeline.RedirectFinder,
+		StaticFS:         pipeline.StaticFS,
 	})
 
 	url := server.ListenURL(cfg.Server.Port)
