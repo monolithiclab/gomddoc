@@ -15,9 +15,13 @@ func TestNewHTTPServer(t *testing.T) {
 	// Create test config
 	siteConfig := config.NewSiteConfig(".")
 	cfg := &config.Config{
-		Dir:             ".",
-		Port:            ":8080",
-		ShutdownTimeout: 1 * time.Second,
+		Dir:               ".",
+		Port:              ":8080",
+		ShutdownTimeout:   1 * time.Second,
+		ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+		WriteTimeout:      config.DefaultWriteTimeout,
+		IdleTimeout:       config.DefaultIdleTimeout,
+		MaxHeaderMB:       config.DefaultMaxHeaderMB,
 		Server: &config.ServerConfig{
 			DefaultIndex: "README.test.md",
 			DirIndex:     false,
@@ -61,7 +65,20 @@ func TestNewHTTPServer(t *testing.T) {
 		t.Errorf("Expected server address ':8080', got %q", server.server.Addr)
 	}
 
-	if server.server.ReadHeaderTimeout != 5*time.Second {
-		t.Errorf("Expected read header timeout 5s, got %v", server.server.ReadHeaderTimeout)
+	if server.server.ReadHeaderTimeout != config.DefaultReadHeaderTimeout {
+		t.Errorf("Expected read header timeout %v, got %v", config.DefaultReadHeaderTimeout, server.server.ReadHeaderTimeout)
+	}
+
+	if server.server.WriteTimeout != config.DefaultWriteTimeout {
+		t.Errorf("Expected write timeout %v, got %v", config.DefaultWriteTimeout, server.server.WriteTimeout)
+	}
+
+	if server.server.IdleTimeout != config.DefaultIdleTimeout {
+		t.Errorf("Expected idle timeout %v, got %v", config.DefaultIdleTimeout, server.server.IdleTimeout)
+	}
+
+	expectedMaxHeaderBytes := config.DefaultMaxHeaderMB << 20
+	if server.server.MaxHeaderBytes != expectedMaxHeaderBytes {
+		t.Errorf("Expected max header bytes %v, got %v", expectedMaxHeaderBytes, server.server.MaxHeaderBytes)
 	}
 }

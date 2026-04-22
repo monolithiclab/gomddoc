@@ -3,8 +3,17 @@ package config
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
+)
+
+// Default values for HTTP server timeouts
+const (
+	DefaultReadHeaderTimeout = 5 * time.Second   // Time to read request headers
+	DefaultWriteTimeout      = 30 * time.Second  // Time to write response
+	DefaultIdleTimeout       = 120 * time.Second // Time to keep idle connections open
+	DefaultMaxHeaderMB       = 1                 // 1 MB max header size
 )
 
 // ServerConfig holds server-specific configuration
@@ -23,6 +32,12 @@ type Config struct {
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT"`
 	DevMode         bool          `env:"DEV_MODE"`
 
+	// HTTP server timeouts (defense against slow clients and resource exhaustion)
+	ReadHeaderTimeout time.Duration `env:"READ_HEADER_TIMEOUT"` // Time to read request headers
+	WriteTimeout      time.Duration `env:"WRITE_TIMEOUT"`       // Time to write response
+	IdleTimeout       time.Duration `env:"IDLE_TIMEOUT"`        // Time to keep idle connections open
+	MaxHeaderMB       int           `env:"MAX_HEADER_MB"`       // Maximum size of request headers in MB
+
 	// Server configuration
 	Server *ServerConfig `env:"SERVER"`
 
@@ -34,10 +49,14 @@ type Config struct {
 func New() *Config {
 	defaultDir := "."
 	return &Config{
-		Dir:             defaultDir,
-		Port:            ":8080",
-		ShutdownTimeout: 1 * time.Second,
-		DevMode:         false,
+		Dir:               defaultDir,
+		Port:              ":8080",
+		ShutdownTimeout:   1 * time.Second,
+		DevMode:           false,
+		ReadHeaderTimeout: DefaultReadHeaderTimeout,
+		WriteTimeout:      DefaultWriteTimeout,
+		IdleTimeout:       DefaultIdleTimeout,
+		MaxHeaderMB:       DefaultMaxHeaderMB,
 		Server: &ServerConfig{
 			DefaultIndex: "README.md",
 			DirIndex:     false, // Secure by default
@@ -61,11 +80,72 @@ func (c *Config) ParseFlags() {
 	flag.Parse()
 }
 
-// Validate validates the configuration values
+// Validate validates the configuration values.
+// For timeout values, invalid values trigger a warning and are reset to defaults
+// rather than causing validation failure.
 func (c *Config) Validate() error {
 	// Validate application config
 	if _, _, err := net.SplitHostPort(c.Port); err != nil {
 		return fmt.Errorf("invalid port flag: %w", err)
 	}
+
+	// Validate ReadHeaderTimeout (must be positive, max 60s)
+	if c.ReadHeaderTimeout <= 0 {
+		slog.Warn("ReadHeaderTimeout must be positive, using default",
+			slog.Duration("configured", c.ReadHeaderTimeout),
+			slog.Duration("default", DefaultReadHeaderTimeout))
+		c.ReadHeaderTimeout = DefaultReadHeaderTimeout
+	} else if c.ReadHeaderTimeout > 60*time.Second {
+		slog.Warn("ReadHeaderTimeout exceeds maximum (60s), using default",
+			slog.Duration("configured", c.ReadHeaderTimeout),
+			slog.Duration("default", DefaultReadHeaderTimeout))
+		c.ReadHeaderTimeout = DefaultReadHeaderTimeout
+	}
+
+	// Validate WriteTimeout (must be positive, max 5 minutes)
+	if c.WriteTimeout <= 0 {
+		slog.Warn("WriteTimeout must be positive, using default",
+			slog.Duration("configured", c.WriteTimeout),
+			slog.Duration("default", DefaultWriteTimeout))
+		c.WriteTimeout = DefaultWriteTimeout
+	} else if c.WriteTimeout > 5*time.Minute {
+		slog.Warn("WriteTimeout exceeds maximum (5m), using default",
+			slog.Duration("configured", c.WriteTimeout),
+			slog.Duration("default", DefaultWriteTimeout))
+		c.WriteTimeout = DefaultWriteTimeout
+	}
+
+	// Validate IdleTimeout (must be positive, max 10 minutes)
+	if c.IdleTimeout <= 0 {
+		slog.Warn("IdleTimeout must be positive, using default",
+			slog.Duration("configured", c.IdleTimeout),
+			slog.Duration("default", DefaultIdleTimeout))
+		c.IdleTimeout = DefaultIdleTimeout
+	} else if c.IdleTimeout > 10*time.Minute {
+		slog.Warn("IdleTimeout exceeds maximum (10m), using default",
+			slog.Duration("configured", c.IdleTimeout),
+			slog.Duration("default", DefaultIdleTimeout))
+		c.IdleTimeout = DefaultIdleTimeout
+	}
+
+	// Validate MaxHeaderMB (must be positive, max 10MB)
+	if c.MaxHeaderMB <= 0 {
+		slog.Warn("MaxHeaderMB must be positive, using default",
+			slog.Int("configured_mb", c.MaxHeaderMB),
+			slog.Int("default_mb", DefaultMaxHeaderMB))
+		c.MaxHeaderMB = DefaultMaxHeaderMB
+	} else if c.MaxHeaderMB > 10 {
+		slog.Warn("MaxHeaderMB exceeds maximum (10MB), using default",
+			slog.Int("configured_mb", c.MaxHeaderMB),
+			slog.Int("default_mb", DefaultMaxHeaderMB))
+		c.MaxHeaderMB = DefaultMaxHeaderMB
+	}
+
 	return nil
+}
+
+// MaxHeaderBytes returns the maximum header size in bytes.
+// This converts MaxHeaderMB (megabytes) to bytes for use with http.Server.
+func (c *Config) MaxHeaderBytes() int {
+	return c.MaxHeaderMB << 20
 }

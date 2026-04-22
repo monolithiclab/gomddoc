@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -47,7 +46,10 @@ func NewHTTPServer(
 	server := &http.Server{
 		Addr:              cfg.Port,
 		Handler:           h,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes(),
 	}
 
 	return &HTTPServer{

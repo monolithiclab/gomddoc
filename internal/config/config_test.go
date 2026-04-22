@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestNew(t *testing.T) {
@@ -33,6 +34,29 @@ func TestNew(t *testing.T) {
 	if config.ShutdownTimeout.Seconds() != 1 {
 		t.Errorf("Expected shutdown timeout 1s, got %v", config.ShutdownTimeout)
 	}
+
+	// Test HTTP server timeout defaults
+	if config.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+		t.Errorf("Expected ReadHeaderTimeout %v, got %v", DefaultReadHeaderTimeout, config.ReadHeaderTimeout)
+	}
+
+	if config.WriteTimeout != DefaultWriteTimeout {
+		t.Errorf("Expected WriteTimeout %v, got %v", DefaultWriteTimeout, config.WriteTimeout)
+	}
+
+	if config.IdleTimeout != DefaultIdleTimeout {
+		t.Errorf("Expected IdleTimeout %v, got %v", DefaultIdleTimeout, config.IdleTimeout)
+	}
+
+	if config.MaxHeaderMB != DefaultMaxHeaderMB {
+		t.Errorf("Expected MaxHeaderMB %v, got %v", DefaultMaxHeaderMB, config.MaxHeaderMB)
+	}
+
+	// Test MaxHeaderBytes() method converts MB to bytes
+	expectedBytes := DefaultMaxHeaderMB << 20
+	if config.MaxHeaderBytes() != expectedBytes {
+		t.Errorf("Expected MaxHeaderBytes() %v, got %v", expectedBytes, config.MaxHeaderBytes())
+	}
 }
 
 func TestParseFlags(t *testing.T) {
@@ -59,6 +83,186 @@ func TestValidate(t *testing.T) {
 	err := config.Validate()
 	if err != nil {
 		t.Errorf("Expected validation to pass, got error: %v", err)
+	}
+}
+
+func TestValidate_InvalidPort(t *testing.T) {
+	t.Parallel()
+	config := New()
+	config.Port = "invalid"
+	err := config.Validate()
+	if err == nil {
+		t.Error("Expected validation to fail for invalid port")
+	}
+}
+
+func TestValidate_TimeoutDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+		check  func(*testing.T, *Config)
+	}{
+		{
+			name: "negative ReadHeaderTimeout resets to default",
+			mutate: func(c *Config) {
+				c.ReadHeaderTimeout = -1
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+					t.Errorf("Expected ReadHeaderTimeout to be reset to %v, got %v",
+						DefaultReadHeaderTimeout, c.ReadHeaderTimeout)
+				}
+			},
+		},
+		{
+			name: "zero ReadHeaderTimeout resets to default",
+			mutate: func(c *Config) {
+				c.ReadHeaderTimeout = 0
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+					t.Errorf("Expected ReadHeaderTimeout to be reset to %v, got %v",
+						DefaultReadHeaderTimeout, c.ReadHeaderTimeout)
+				}
+			},
+		},
+		{
+			name: "excessive ReadHeaderTimeout resets to default",
+			mutate: func(c *Config) {
+				c.ReadHeaderTimeout = 120 * time.Second
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+					t.Errorf("Expected ReadHeaderTimeout to be reset to %v, got %v",
+						DefaultReadHeaderTimeout, c.ReadHeaderTimeout)
+				}
+			},
+		},
+		{
+			name: "negative WriteTimeout resets to default",
+			mutate: func(c *Config) {
+				c.WriteTimeout = -1
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.WriteTimeout != DefaultWriteTimeout {
+					t.Errorf("Expected WriteTimeout to be reset to %v, got %v",
+						DefaultWriteTimeout, c.WriteTimeout)
+				}
+			},
+		},
+		{
+			name: "excessive WriteTimeout resets to default",
+			mutate: func(c *Config) {
+				c.WriteTimeout = 10 * time.Minute
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.WriteTimeout != DefaultWriteTimeout {
+					t.Errorf("Expected WriteTimeout to be reset to %v, got %v",
+						DefaultWriteTimeout, c.WriteTimeout)
+				}
+			},
+		},
+		{
+			name: "negative IdleTimeout resets to default",
+			mutate: func(c *Config) {
+				c.IdleTimeout = -1
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.IdleTimeout != DefaultIdleTimeout {
+					t.Errorf("Expected IdleTimeout to be reset to %v, got %v",
+						DefaultIdleTimeout, c.IdleTimeout)
+				}
+			},
+		},
+		{
+			name: "excessive IdleTimeout resets to default",
+			mutate: func(c *Config) {
+				c.IdleTimeout = 15 * time.Minute
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.IdleTimeout != DefaultIdleTimeout {
+					t.Errorf("Expected IdleTimeout to be reset to %v, got %v",
+						DefaultIdleTimeout, c.IdleTimeout)
+				}
+			},
+		},
+		{
+			name: "negative MaxHeaderMB resets to default",
+			mutate: func(c *Config) {
+				c.MaxHeaderMB = -1
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.MaxHeaderMB != DefaultMaxHeaderMB {
+					t.Errorf("Expected MaxHeaderMB to be reset to %v, got %v",
+						DefaultMaxHeaderMB, c.MaxHeaderMB)
+				}
+			},
+		},
+		{
+			name: "zero MaxHeaderMB resets to default",
+			mutate: func(c *Config) {
+				c.MaxHeaderMB = 0
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.MaxHeaderMB != DefaultMaxHeaderMB {
+					t.Errorf("Expected MaxHeaderMB to be reset to %v, got %v",
+						DefaultMaxHeaderMB, c.MaxHeaderMB)
+				}
+			},
+		},
+		{
+			name: "excessive MaxHeaderMB resets to default",
+			mutate: func(c *Config) {
+				c.MaxHeaderMB = 20 // 20 MB exceeds max of 10
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.MaxHeaderMB != DefaultMaxHeaderMB {
+					t.Errorf("Expected MaxHeaderMB to be reset to %v, got %v",
+						DefaultMaxHeaderMB, c.MaxHeaderMB)
+				}
+			},
+		},
+		{
+			name: "valid custom timeouts are preserved",
+			mutate: func(c *Config) {
+				c.ReadHeaderTimeout = 10 * time.Second
+				c.WriteTimeout = 60 * time.Second
+				c.IdleTimeout = 180 * time.Second
+				c.MaxHeaderMB = 5 // 5 MB
+			},
+			check: func(t *testing.T, c *Config) {
+				if c.ReadHeaderTimeout != 10*time.Second {
+					t.Errorf("Expected ReadHeaderTimeout 10s, got %v", c.ReadHeaderTimeout)
+				}
+				if c.WriteTimeout != 60*time.Second {
+					t.Errorf("Expected WriteTimeout 60s, got %v", c.WriteTimeout)
+				}
+				if c.IdleTimeout != 180*time.Second {
+					t.Errorf("Expected IdleTimeout 180s, got %v", c.IdleTimeout)
+				}
+				if c.MaxHeaderMB != 5 {
+					t.Errorf("Expected MaxHeaderMB 5, got %v", c.MaxHeaderMB)
+				}
+				// Also verify bytes conversion
+				if c.MaxHeaderBytes() != 5<<20 {
+					t.Errorf("Expected MaxHeaderBytes() %v, got %v", 5<<20, c.MaxHeaderBytes())
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := New()
+			tt.mutate(cfg)
+			err := cfg.Validate()
+			if err != nil {
+				t.Fatalf("Unexpected validation error: %v", err)
+			}
+			tt.check(t, cfg)
+		})
 	}
 }
 
