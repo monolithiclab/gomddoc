@@ -3,16 +3,22 @@ package server
 import (
 	"encoding/xml"
 	"net/http"
+	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/seo"
 )
 
 // SitemapHandler serves an XML sitemap from the metadata index.
+// The sitemap is generated once on first request and cached, since
+// the metadata index is immutable after construction.
 type SitemapHandler struct {
 	index        *metadata.Index
 	domain       string
 	defaultIndex string
+
+	once   sync.Once
+	cached []byte
 }
 
 // NewSitemapHandler creates a new SitemapHandler.
@@ -38,15 +44,21 @@ type sitemapURL struct {
 
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	out, err := GenerateSitemap(h.index, h.domain, h.defaultIndex)
-	if err != nil {
+	h.once.Do(func() {
+		out, err := GenerateSitemap(h.index, h.domain, h.defaultIndex)
+		if err == nil {
+			h.cached = out
+		}
+	})
+
+	if h.cached == nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(out)
+	_, _ = w.Write(h.cached)
 }
 
 // GenerateSitemap produces the sitemap XML bytes for use in build mode.
