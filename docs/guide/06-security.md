@@ -9,16 +9,39 @@ author: "nicolasm"
 gomddoc is designed to be secure enough to be exposed to the internet, although running it behind a reverse proxy
 (like Nginx or Cloudflare) is recommended for TLS and DDoS protection.
 
-## 1. Path Traversal Protection
+## 1. HTTP Basic Authentication
+
+gomddoc supports HTTP Basic Authentication to restrict access to your documentation. Enable it via the `--basic-auth` flag or environment variable:
+
+```bash
+# Via CLI flag
+gomddoc serve --basic-auth admin:secretpassword
+
+# Via environment variable
+GOMDDOC_SERVER_BASIC_AUTH=admin:secretpassword gomddoc serve
+```
+
+When enabled:
+
+- All content requests require valid credentials. Unauthenticated requests receive `401 Unauthorized` with a `WWW-Authenticate` header prompting the browser to show a login dialog.
+- **Health endpoints (`/health/live`, `/health/ready`) bypass authentication** — they are registered outside the middleware chain so container orchestrators can probe without credentials.
+- Credentials are compared using constant-time comparison (via SHA-256 hashing + `crypto/subtle`) to prevent timing attacks.
+
+> [!WARNING]
+> Basic Auth transmits credentials in base64 (not encrypted). Always use it behind a TLS-terminating reverse proxy (nginx, Cloudflare, etc.) or over HTTPS to prevent credential interception.
+
+For production deployments requiring more advanced authentication (OAuth, SSO, JWT), use a reverse proxy that handles auth and forwards authenticated requests to gomddoc.
+
+## 2. Path Traversal Protection
 
 We use Go's `os.DirFS` (and the Git object tree for Git sources) to create a "jail" around the content directory.
 It is impossible for a user to request `../../etc/passwd`. The file system provider strictly limits access to the
-root directory specified by `-d`.
+root directory specified by the `DIR` argument.
 
 All request paths are normalized using forward slashes (`path.Clean`, not `filepath.Clean`) to comply with the
 `io/fs` specification and prevent OS-specific separator issues on Windows.
 
-## 2. Hidden File Blocking
+## 3. Hidden File Blocking
 
 gomddoc automatically blocks HTTP access to "hidden" files and directories (those starting with a dot `.`).
 
@@ -27,14 +50,14 @@ gomddoc automatically blocks HTTP access to "hidden" files and directories (thos
 
 This prevents accidental exposure of configuration files, secrets, or git history.
 
-## 3. HTTP Method Filtering
+## 4. HTTP Method Filtering
 
 The server only responds to **GET** and **HEAD** requests. All other methods (POST, PUT, DELETE, PATCH, etc.)
 receive a **405 Method Not Allowed** response with a proper `Allow: GET, HEAD` header.
 
 This is enforced via the `MethodFilter` middleware in the request chain, before any content is processed.
 
-## 4. Git Provider Isolation
+## 5. Git Provider Isolation
 
 When serving from a Git repository:
 
@@ -47,7 +70,7 @@ When serving from a Git repository:
 - **Clone timeout**: A 60-second timeout (configurable via `WithCloneTimeout`) is enforced using
   `git.CloneContext()` to prevent indefinite blocking against unresponsive hosts.
 
-## 5. SSH Host Key Verification
+## 6. SSH Host Key Verification
 
 When connecting to Git repositories over SSH:
 
@@ -61,7 +84,7 @@ To add a host to known_hosts before using gomddoc:
 ssh-keyscan github.com >> ~/.ssh/known_hosts
 ```
 
-## 6. HTTP Security Headers
+## 7. HTTP Security Headers
 
 The server adds standard security headers to every response:
 
@@ -73,7 +96,7 @@ The server adds standard security headers to every response:
 | `Permissions-Policy`         | `geolocation=(), microphone=(), camera=()` | Restricts browser features     |
 | `Strict-Transport-Security`  | `max-age=31536000; includeSubDomains`      | HSTS (only for HTTPS requests) |
 
-## 7. Timeouts
+## 8. Timeouts
 
 To protect against Slowloris attacks and resource exhaustion, the server has default timeouts:
 
@@ -87,13 +110,13 @@ To protect against Slowloris attacks and resource exhaustion, the server has def
 
 All timeouts are validated at startup. Invalid values are reset to defaults with a warning.
 
-## 8. Log Injection Prevention
+## 9. Log Injection Prevention
 
 User-controlled input (URL paths, environment variables) is sanitized before logging via the `text.SafeString`
 type, which implements `slog.LogValuer`. Control characters (newlines, carriage returns, null bytes) are replaced
 with their escape sequences to prevent log forging attacks.
 
-## 9. Template Security
+## 10. Template Security
 
 Only `SiteConfig` (metadata, theme) is exposed to templates — never the full `Config` with operational settings
 like ports, timeouts, or SSH keys. This prevents accidental leakage of server configuration through template

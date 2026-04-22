@@ -90,7 +90,7 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
 
 ### Template Functions
 
-Five custom functions are available in templates:
+Seven custom functions are available in templates:
 
 - **`breadcrumbs`**: Generates breadcrumb navigation from a path.
   ```html
@@ -118,9 +118,20 @@ Five custom functions are available in templates:
   {{ end }}
   ```
 
-- **`inlineAsset`**: Loads a JavaScript or CSS asset from the theme directory, falling back to the shared assets directory. Used for embedding shared components like the color chip web component.
+- **`canonicalURL`**: Returns the full canonical URL for a page (requires `meta.domain`). Returns empty string if domain is not configured.
+  ```html
+  {{ $canonical := canonicalURL .Page.Path }}
+  {{ if $canonical }}
+      <link rel="canonical" href="{{ $canonical }}">
+  {{ end }}
+  ```
+
+- **`pageURL`**: Alias for `canonicalURL`.
+
+- **`inlineAsset`**: Loads a JavaScript or CSS asset from the theme directory, falling back to the shared assets directory. Used for embedding shared components like the color chip web component and search modal.
   ```html
   <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>
+  <script type="module">{{ inlineAsset "search.mjs" }}</script>
   ```
 
 ### Example Layout
@@ -175,6 +186,8 @@ When creating a custom theme, ensure it supports these features for parity with 
 - **Navigation sidebar** via `{{ navigation .Page.Path }}`
 - **Table of contents** via `{{ toc .Page.TOC }}` with scroll highlighting
 - **Breadcrumbs** via `{{ breadcrumbs .Page.Path }}`
+- **Search button** with `id="search-toggle"` in the header
+- **Search modal** via `{{ inlineAsset "search.mjs" }}` — uses CSS custom properties for styling
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`
 - **Color chip web component** via `{{ inlineAsset "color-chip.mjs" }}`
 - **Copy-to-clipboard** on code blocks
@@ -182,4 +195,5 @@ When creating a custom theme, ensure it supports these features for parity with 
 - **Touch accessibility** with `@media (hover: none)` for copy buttons and heading anchors
 - **KaTeX** CSS and auto-render scripts for math rendering
 - **Mermaid** script for diagram rendering (theme-aware: dark/light)
+- **Canonical URLs and Open Graph tags** via `{{ canonicalURL .Page.Path }}` when domain is configured
 - **Responsive design** with mobile breakpoints

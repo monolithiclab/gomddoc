@@ -18,14 +18,50 @@ Documents can include YAML metadata at the top:
 ```markdown
 ---
 title: My Document
+description: A brief summary of this page
 author: Jane Doe
 tags: [go, markdown]
+date: 2026-03-25
+og_type: article
+color_chips: true
 ---
 
 # Content starts here
 ```
 
-Front matter fields like `title` are used by the template system for page titles and metadata.
+### Standard Fields
+
+gomddoc processes these frontmatter fields with special behavior:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Page title — used in `<title>`, Open Graph tags, search results, and the tags API |
+| `description` | string | Page description — used in `<meta name="description">`, Open Graph, and search results |
+| `tags` | array | Page tags — normalized to lowercase, queryable via `/api/tags` endpoint |
+| `date` | string | Publication date (`YYYY-MM-DD`) — included in tags API responses |
+| `og_type` | string | Open Graph type (defaults to `article`) — controls `<meta property="og:type">` |
+| `color_chips` | bool | Per-page override for color chip rendering (overrides global `color_chips` setting) |
+
+### Custom Fields
+
+Any other frontmatter fields are stored in the page's metadata map and accessible in templates via `{{ index .Page.Meta "field_name" }}`. They also appear in the tags API response under the `meta` object.
+
+```yaml
+---
+title: API Reference
+author: Jane Doe
+category: reference
+custom_field: custom_value
+---
+```
+
+Access in templates:
+
+```html
+{{ if index .Page.Meta "author" }}
+  <span>By {{ index .Page.Meta "author" }}</span>
+{{ end }}
+```
 
 ## Admonitions (Callout Blocks)
 

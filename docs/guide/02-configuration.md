@@ -6,70 +6,98 @@ author: "nicolasm"
 
 # Configuration
 
-gomddoc uses a structured configuration system divided into two main sections:
-1.  **Server (`SERVER`)**: Runtime settings (port, host, timeouts, content source). Configured via CLI flags or Environment Variables.
-2.  **Site (`SITE`)**: Content presentation (metadata, theme, behavior). Configured via `.gomddoc/config.yml` or Environment Variables.
+gomddoc uses a layered configuration system. Settings come from three sources, applied in order of increasing priority:
+
+1. **Defaults** — hardcoded sensible values
+2. **Config file** — `.gomddoc/config.yml` in your content directory
+3. **Environment variables** — `GOMDDOC_*` prefixed vars
+4. **CLI flags/arguments** — always win
+
+When the same setting is defined in multiple places, the highest-priority source wins.
 
 ---
 
-## 1. Runtime Configuration (`SERVER`)
+## CLI Reference
 
-These settings control the `gomddoc` process.
+### `serve`
 
-### Basic Options
+Production HTTP server.
 
-**Content Directory**
-Sets the source of your documentation. This can be a local path (e.g., `./docs`) or a Git URL.
-*   **CLI Flag:** `-d`
-*   **Env Var:** `GOMDDOC_SERVER_DIR`
-*   **Default:** `.` (Current directory)
+```bash
+gomddoc serve [DIR] [flags]
+```
 
-**Server Port**
-Sets the network address and port the server listens on. Use `:auto` to automatically find an available port starting from 8080 — useful when running multiple instances or in CI environments.
-*   **CLI Flag:** `-p`
-*   **Env Var:** `GOMDDOC_SERVER_PORT`
-*   **Default:** `:8080`
-*   **Special value:** `:auto` — scans for the first available port starting from 8080
+| Flag/Arg | Env Var | Default | Description |
+|----------|---------|---------|-------------|
+| `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory or Git URL |
+| `-p, --port` | `GOMDDOC_SERVER_PORT` | `:8080` | Listen address (`:auto` for auto-assign) |
+| `--dev` | `GOMDDOC_SERVER_DEV_MODE` | `false` | Dev mode (no caching, verbose logs) |
+| `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
+| `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
+| `--pprof` | `GOMDDOC_SERVER_PPROF` | `false` | Enable profiling endpoints |
+| `--basic-auth` | `GOMDDOC_SERVER_BASIC_AUTH` | | HTTP Basic Auth (`user:password`) |
 
-**Development Mode**
-Enables development features: activates hot-reloading for `.gomddoc/config.yml` and theme templates, and disables all response caching.
-*   **CLI Flag:** `-dev`
-*   **Env Var:** `GOMDDOC_SERVER_DEV_MODE`
-*   **Default:** `false`
+### `preview`
 
-**Git SSH Key**
-The absolute path to a private SSH key file used for authenticating with private Git repositories.
-*   **CLI Flag:** `--git-key-file`
-*   **Env Var:** `GOMDDOC_SERVER_GIT_SSH_KEY`
-*   **Default:** Empty (Anonymous access only)
+Quick preview with dev mode enabled by default.
 
-**Git Storage Directory**
-Directory for disk-based Git clone storage. When set, repositories are cloned to disk instead of memory, preventing OOM errors on large repos. Each repo URL gets a unique subdirectory.
-*   **CLI Flag:** `--git-storage-dir`
-*   **Env Var:** `GOMDDOC_SERVER_GIT_STORAGE_DIR`
-*   **Default:** Empty (in-memory storage)
+```bash
+gomddoc preview [DIR] [flags]
+```
 
-**pprof Profiling**
-Enables Go's built-in profiling endpoints at `/debug/pprof/` for CPU, memory, goroutine, and trace analysis. Do not enable in production — the endpoints bypass authentication and expose internal runtime details.
-*   **CLI Flag:** `--pprof`
-*   **Env Var:** `GOMDDOC_SERVER_PPROF`
-*   **Default:** `false`
+| Flag/Arg | Env Var | Default | Description |
+|----------|---------|---------|-------------|
+| `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory |
+| `-p, --port` | `GOMDDOC_SERVER_PORT` | `:auto` | Listen address (auto-assigns from 8080) |
+| `--open` | `GOMDDOC_PREVIEW_OPEN` | `false` | Auto-open browser on startup |
 
-### Network Tuning (`SERVER.HTTP`)
+Preview is identical to `serve --dev` but defaults to automatic port assignment.
 
-Advanced settings to tune the HTTP server timeouts and limits.
+### `build`
 
-| Env Variable | Description | Default | Max |
-| :--- | :--- | :--- | :--- |
-| `GOMDDOC_SERVER_HTTP_SHUTDOWN_TIMEOUT` | Graceful shutdown duration. | `1s` | `60s` |
-| `GOMDDOC_SERVER_HTTP_READ_HEADER_TIMEOUT` | Max time to read request headers. | `5s` | `60s` |
-| `GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT` | Max time to write response. | `30s` | `5m` |
-| `GOMDDOC_SERVER_HTTP_IDLE_TIMEOUT` | Keep-alive connection idle time. | `120s` | `10m` |
-| `GOMDDOC_SERVER_HTTP_MAX_HEADER_MB` | Max request header size (MB). | `1` | `10` |
+Generate a static site from markdown content.
+
+```bash
+gomddoc build [DIR] [flags]
+```
+
+| Flag/Arg | Env Var | Default | Description |
+|----------|---------|---------|-------------|
+| `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Markdown source directory or Git URL |
+| `-o, --output` | `GOMDDOC_BUILD_OUTPUT` | `build/site` | Output directory |
+
+**Build behavior:**
+- Markdown files are rendered to HTML through the full template pipeline
+- `README.md` files generate both `README.html` and `index.html` for clean URLs (unless `index.md` exists in the same directory)
+- Non-markdown files (images, CSS, JS) are copied as-is
+- Hidden files (starting with `.`) are skipped
+- `robots.txt` is always generated
+- `sitemap.xml` is generated when `meta.domain` is configured
+- Theme assets are copied to `_assets/` in the output directory
+
+Build statistics are reported on completion:
+```
+INFO Build complete markdown_files=42 copied_files=15 skipped_files=3 total_bytes=524288 elapsed=1.2s
+```
+
+### `init`
+
+Scaffold a `.gomddoc/config.yml` with sensible defaults.
+
+```bash
+gomddoc init [DIR] [flags]
+```
+
+| Flag/Arg | Env Var | Default | Description |
+|----------|---------|---------|-------------|
+| `DIR` (arg) | | `.` | Directory to initialize |
+| `-t, --theme` | | `default` | Theme to use in generated config |
+
+Creates `.gomddoc/config.yml` with the site title derived from the directory name.
 
 ---
 
-## 2. Site Configuration (`SITE`)
+## Site Configuration (`SITE`)
 
 These settings control how your documentation is presented and served. They are typically defined in a `.gomddoc/config.yml` file located at the root of your content directory.
 
@@ -124,7 +152,7 @@ A short summary of your site, used for the HTML `<meta name="description">` SEO 
 *   **Default:** Empty.
 
 **Domain**
-The primary domain name for your site (e.g., `docs.example.com`). Used for canonical URL generation, XML sitemap, robots.txt `Sitemap:` directive, and Open Graph `og:url` tags. When set, every page gets a `<link rel="canonical">` tag and a `/sitemap.xml` endpoint becomes available. May include a scheme (`https://docs.example.com`) or not (`docs.example.com` — defaults to `https://`).
+The primary domain name for your site (e.g., `docs.example.com`). Used for canonical URL generation, XML sitemap, robots.txt `Sitemap:` directive, and Open Graph `og:url` tags. When set, every page gets a `<link rel="canonical">` tag and a `/sitemap.xml` endpoint becomes available. Must not include a scheme or path — just the hostname.
 *   **YAML:** `meta.domain`
 *   **Env Var:** `GOMDDOC_SITE_META_DOMAIN`
 *   **Default:** Empty.
@@ -166,74 +194,17 @@ Sets the Chroma syntax highlighting theme for code blocks. See [Chroma styles](h
 
 ---
 
-## HTTP Caching Behavior
+## Network Tuning (`SERVER.HTTP`)
 
-gomddoc includes built-in HTTP caching support to reduce bandwidth and improve performance for repeat visitors.
+Advanced settings to tune the HTTP server timeouts and limits. These are only configurable via environment variables.
 
-### Cache-Control
-
-All successful responses include a `Cache-Control: public, max-age=300` header, allowing browsers and intermediate caches to store responses for 5 minutes before revalidating.
-
-### ETag / 304 Not Modified
-
-Every response includes an `ETag` header, a content-based fingerprint computed using the FNV-64a hash algorithm. The ETag is a weak validator (prefixed with `W/`) since the same content may be served with different transfer encodings (e.g., gzip).
-
-When a browser makes a subsequent request, it sends the cached ETag in the `If-None-Match` header. If the content has not changed, gomddoc responds with `304 Not Modified` and an empty body, saving bandwidth and processing time.
-
-This applies to all content types:
-- **Markdown pages**: The ETag is computed from the fully rendered HTML (after template wrapping), so any change to content, metadata, or templates produces a new ETag.
-- **Static assets** (CSS, JS, images): The ETag is computed from the raw file content.
-
-No configuration is required. ETag caching is always enabled.
-
----
-
-## Response Compression
-
-gomddoc automatically compresses HTTP responses using gzip when all of the following conditions are met:
-
-1. The client sends an `Accept-Encoding` header that includes `gzip`.
-2. The response body is **1 KB or larger**. Smaller responses are sent uncompressed because the compression overhead would outweigh the savings.
-3. The response content type is **not already compressed**. Binary formats such as images (`image/*`), video (`video/*`), audio (`audio/*`), and archive types (`application/zip`, `application/gzip`, etc.) are never re-compressed.
-
-When compression is active, the middleware:
-
-- Sets `Content-Encoding: gzip` on the response.
-- Removes the `Content-Length` header (the compressed size is not known in advance).
-- Always sets `Vary: Accept-Encoding` so that caches distinguish between compressed and uncompressed variants.
-
-Compression requires no configuration and is always enabled. It uses a `sync.Pool` of gzip writers internally to minimize memory allocations under load.
-
----
-
-## Content Negotiation (Accept Header)
-
-gomddoc uses the HTTP `Accept` header to determine the output format for each request. This enables
-the same URL to serve different representations depending on what the client wants.
-
-**Default behavior** (browser requests, `Accept: */*`): Markdown files are rendered as HTML.
-
-**Raw markdown** (`Accept: text/markdown`): Returns the raw markdown content with YAML frontmatter
-stripped. Useful for LLMs, API consumers, and scripts that prefer markdown over rendered HTML.
-
-```bash
-# Get rendered HTML (default)
-curl http://localhost:8080/docs/guide.md
-
-# Get raw markdown
-curl -H "Accept: text/markdown" http://localhost:8080/docs/guide.md
-
-# 406 Not Acceptable — no renderer produces JSON for markdown input
-curl -H "Accept: application/json" http://localhost:8080/docs/guide.md
-```
-
-**Non-markdown files** (CSS, images, etc.): Always served as-is with their detected MIME type,
-regardless of the Accept header.
-
-**406 Not Acceptable**: When the server cannot produce any of the requested output types, it returns
-406 with a list of available output types in the response body.
-
-No configuration is required. Content negotiation is always enabled.
+| Env Variable | Description | Default | Max |
+| :--- | :--- | :--- | :--- |
+| `GOMDDOC_SERVER_HTTP_SHUTDOWN_TIMEOUT` | Graceful shutdown duration. | `1s` | `60s` |
+| `GOMDDOC_SERVER_HTTP_READ_HEADER_TIMEOUT` | Max time to read request headers. | `5s` | `60s` |
+| `GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT` | Max time to write response. | `30s` | `5m` |
+| `GOMDDOC_SERVER_HTTP_IDLE_TIMEOUT` | Keep-alive connection idle time. | `120s` | `10m` |
+| `GOMDDOC_SERVER_HTTP_MAX_HEADER_MB` | Max request header size (MB). | `1` | `10` |
 
 ---
 
@@ -241,14 +212,13 @@ No configuration is required. Content negotiation is always enabled.
 
 When a setting is defined in multiple places, gomddoc follows this strict priority order (highest wins):
 
-1. **CLI Flags:** Always take precedence (`-d`, `-p`, `-dev`, `--git-key-file`).
-2. **Environment Variables (post-file):** Re-applied after config file to ensure Env > File.
-3. **Config File:** Values defined in `.gomddoc/config.yml`.
-4. **Environment Variables (pre-flag):** Applied before flags for initial overrides.
-5. **Defaults:** Hardcoded fallback values from `config.New()`.
+1. **CLI flags and arguments** — always take precedence (e.g., `-p :3000`, `./my-docs`)
+2. **Environment variables** — `GOMDDOC_*` prefixed (re-applied after config file to ensure env > file)
+3. **Config file** — values from `.gomddoc/config.yml`
+4. **Defaults** — hardcoded fallback values
 
-The full loading sequence in `config.Load()` is:
-Defaults → Env → Flags → Dynamic Defaults → Config File → Env (re-apply) → Validate.
+The full loading sequence in `config.NewFromServeArgs()` is:
+Defaults → CLI args → Dynamic defaults (e.g. title from dir name) → Config file → Env (re-apply) → Validate.
 
 ### Environment Variable Naming
 
@@ -257,6 +227,3 @@ Environment variables follow the struct nesting with underscores:
 - `GOMDDOC_SERVER_PORT` — Maps to `Config.Server.Port`
 - `GOMDDOC_SITE_DEFAULT_INDEX` — Maps to `Config.Site.DefaultIndex`
 - `GOMDDOC_SITE_META_TITLE` — Maps to `Config.Site.Meta.Title`
-
-The `SiteConfig.ApplyEnvOverrides()` method uses the prefix `GOMDDOC_SITE_` (not `GOMDDOC_`) when called
-standalone.

@@ -87,8 +87,23 @@ gomddoc build ./my-docs -o ./public
 
 This generates HTML files in `./public/` ready for S3, Netlify, or GitHub Pages.
 
+## CLI Commands
+
+gomddoc provides four commands:
+
+| Command | Purpose |
+|---------|---------|
+| `gomddoc serve [DIR]` | Production HTTP server with full control over port, caching, Git sources |
+| `gomddoc preview [DIR]` | Quick preview with auto-port, no caching, and optional browser auto-open |
+| `gomddoc build [DIR]` | Static site generation — renders all markdown to HTML files |
+| `gomddoc init [DIR]` | Scaffold a `.gomddoc/config.yml` with sensible defaults |
+
+All commands accept an optional `DIR` argument (default: `.`) specifying the content directory or Git URL. See [Configuration](02-configuration.md) for the full reference of flags, environment variables, and config file options.
+
 ## Next Steps
 
 *   Configure the server: [Configuration](02-configuration.md)
 *   Connect to private repos: [Content Sources](03-content-sources.md)
 *   Customize the look: [Theming](04-theming-and-assets.md)
+*   Set up search: [Full-Text Search](11-search.md)
+*   Optimize for search engines: [SEO](12-seo.md)

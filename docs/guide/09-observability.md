@@ -1,7 +1,80 @@
+---
+title: "Observability"
+description: "Health endpoints, Prometheus metrics, and pprof profiling for monitoring gomddoc."
+author: "nicolasm"
+---
+
 # Observability
 
-gomddoc exposes Prometheus metrics out of the box so you can monitor request
-traffic, latency, and error rates.
+gomddoc provides health endpoints, Prometheus metrics, and optional pprof profiling for monitoring and debugging.
+
+## Health Endpoints
+
+gomddoc exposes two health check endpoints compatible with Kubernetes liveness and readiness probes. These endpoints bypass all middleware (security headers, hidden path blocking) to ensure they are always accessible and lightweight.
+
+### Liveness: `GET /health/live`
+
+Returns `200 OK` unconditionally. This confirms the process is running and able to handle HTTP requests.
+
+```json
+{"status":"ok"}
+```
+
+Use this as a Kubernetes liveness probe. If this endpoint stops responding, the container should be restarted.
+
+### Readiness: `GET /health/ready`
+
+Checks whether the content provider (filesystem) is accessible by calling `Stat(".")` on the root directory. Returns `200 OK` if the provider is healthy, or `503 Service Unavailable` if not.
+
+**Healthy (200):**
+```json
+{"status":"ok"}
+```
+
+**Unhealthy (503):**
+```json
+{"status":"unavailable","error":"stat error message"}
+```
+
+Use this as a Kubernetes readiness probe. If this endpoint returns 503, the pod should be removed from the service load balancer until it recovers.
+
+### Kubernetes Configuration
+
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: gomddoc
+      image: gomddoc:latest
+      livenessProbe:
+        httpGet:
+          path: /health/live
+          port: 8080
+        initialDelaySeconds: 3
+        periodSeconds: 10
+      readinessProbe:
+        httpGet:
+          path: /health/ready
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 10
+```
+
+### Docker Compose Healthcheck
+
+```yaml
+services:
+  gomddoc:
+    image: gomddoc:latest
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+```
+
+---
 
 ## Metrics Endpoint
 
@@ -13,7 +86,7 @@ Prometheus-compatible collector.
 GET /metrics
 ```
 
-## Available Metrics
+### Available Metrics
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
@@ -51,15 +124,17 @@ sum(rate(http_requests_total{status!~"2.."}[5m]))
 sum(rate(http_requests_total[5m]))
 ```
 
-## Middleware Order
+### Middleware Order
 
 The metrics middleware is the innermost in the chain so it measures the actual
 handler processing time without including overhead from security headers or
 hidden-path checks:
 
 ```
-SecurityHeaders -> BlockHiddenPaths -> Metrics -> Handler
+SecurityHeaders -> RequestID -> Compression -> MethodFilter -> BlockHiddenPaths -> Metrics -> Handler
 ```
+
+---
 
 ## pprof Profiling
 
@@ -111,7 +186,8 @@ View all goroutines in the browser:
 curl http://localhost:8080/debug/pprof/goroutine?debug=1
 ```
 
-> **Warning:** pprof endpoints bypass authentication and expose internal runtime
+> [!WARNING]
+> pprof endpoints bypass authentication and expose internal runtime
 > details. Only enable on trusted networks for debugging purposes.
 
 ---
