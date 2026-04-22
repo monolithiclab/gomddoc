@@ -8,7 +8,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
-func TestTransformAdmonitions(t *testing.T) {
+func Test_transformAdmonitions(t *testing.T) {
 	tests := []struct {
 		name           string
 		input          string
@@ -151,7 +151,7 @@ A warning.</p>
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := TransformAdmonitions([]byte(tt.input))
+			result := transformAdmonitions([]byte(tt.input))
 			output := string(result)
 
 			for _, want := range tt.wantContains {
@@ -169,16 +169,16 @@ A warning.</p>
 	}
 }
 
-func TestTransformAdmonitions_EmptyInput(t *testing.T) {
-	result := TransformAdmonitions([]byte{})
+func Test_transformAdmonitions_EmptyInput(t *testing.T) {
+	result := transformAdmonitions([]byte{})
 	if len(result) != 0 {
 		t.Errorf("expected empty output for empty input, got %q", string(result))
 	}
 }
 
-func TestTransformAdmonitions_NoBlockquotes(t *testing.T) {
+func Test_transformAdmonitions_NoBlockquotes(t *testing.T) {
 	input := []byte("<p>No blockquotes here.</p>")
-	result := TransformAdmonitions(input)
+	result := transformAdmonitions(input)
 	if string(result) != string(input) {
 		t.Errorf("expected unchanged output, got %q", string(result))
 	}

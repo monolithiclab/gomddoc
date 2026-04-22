@@ -52,7 +52,7 @@ type MarkdownRenderer struct {
 //
 // Configuration:
 //   - extension.GFM: Tables, strikethrough, linkify, task lists
-//   - meta.Meta: YAML front matter support
+//   - meta.Meta: Strips YAML frontmatter from rendered output (metadata extraction is in enricher)
 //   - highlighting: Syntax highlighting via Chroma with the specified theme
 //   - parser.WithAutoHeadingID: Automatic ID generation for headings
 //   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
@@ -65,7 +65,7 @@ func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,
-			meta.Meta,
+			meta.Meta, // Strips YAML frontmatter from rendered output
 			highlighting.NewHighlighting(
 				highlighting.WithStyle(highlightTheme),
 			),
@@ -112,7 +112,7 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 
 	// Post-process: add anchor links to headings, transform admonitions, then color chips
 	rendered := addHeadingAnchors(buf.Bytes())
-	rendered = TransformAdmonitions(rendered)
+	rendered = transformAdmonitions(rendered)
 
 	// Color chips: check enrichment metadata for per-page override
 	var metadata map[string]any

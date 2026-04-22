@@ -35,7 +35,7 @@ var admonitionPattern = regexp.MustCompile(
 	`(?is)<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\n?(.*?)</p>(.*?)</blockquote>`,
 )
 
-// TransformAdmonitions converts GitHub-style admonition blockquotes in rendered HTML
+// transformAdmonitions converts GitHub-style admonition blockquotes in rendered HTML
 // to styled admonition divs.
 //
 // It transforms patterns like:
@@ -47,7 +47,7 @@ var admonitionPattern = regexp.MustCompile(
 //
 //	<div class="admonition admonition-note"><p class="admonition-title">Note</p>
 //	<p>Content here</p></div>
-func TransformAdmonitions(html []byte) []byte {
+func transformAdmonitions(html []byte) []byte {
 	return admonitionPattern.ReplaceAllFunc(html, func(match []byte) []byte {
 		submatches := admonitionPattern.FindSubmatch(match)
 		if len(submatches) < 4 {
