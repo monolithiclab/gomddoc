@@ -131,7 +131,16 @@ func (s *ServeCmd) Run() error {
 	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
 
 	redirectFinder := redirectFinderAdapter(navGen)
-	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, redirectFinder, staticFS)
+	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
+		Config:           cfg,
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: enricherRegistry,
+		TemplateRenderer: templateRenderer,
+		MetaIndex:        metaIndex,
+		RedirectFinder:   redirectFinder,
+		StaticFS:         staticFS,
+	})
 
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()

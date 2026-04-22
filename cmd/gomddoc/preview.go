@@ -93,7 +93,16 @@ func (p *PreviewCmd) Run() error {
 	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
 
 	redirectFinder := redirectFinderAdapter(navGen)
-	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, redirectFinder, staticFS)
+	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
+		Config:           cfg,
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: enricherRegistry,
+		TemplateRenderer: templateRenderer,
+		MetaIndex:        metaIndex,
+		RedirectFinder:   redirectFinder,
+		StaticFS:         staticFS,
+	})
 
 	url := server.ListenURL(cfg.Server.Port)
 	fmt.Printf("Preview: %s\n", url)

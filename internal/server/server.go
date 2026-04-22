@@ -32,19 +32,22 @@ type HTTPServer struct {
 	handler *Handler
 }
 
+// HTTPServerConfig holds all dependencies for creating an HTTPServer.
+type HTTPServerConfig struct {
+	Config           *config.Config
+	Provider         provider.Provider
+	Registry         renderer.RendererRegistry
+	EnricherRegistry enricher.EnricherRegistry
+	TemplateRenderer template.Renderer
+	MetaIndex        *metadata.Index // nil disables metadata API
+	RedirectFinder   RedirectFinder  // nil disables redirect lookup
+	StaticFS         fs.FS           // nil disables static asset serving
+}
+
 // NewHTTPServer creates a new HTTP server with the given dependencies.
-// staticFS may be nil if no static asset directories exist.
-func NewHTTPServer(
-	cfg *config.Config,
-	provider provider.Provider,
-	registry renderer.RendererRegistry,
-	enricherRegistry enricher.EnricherRegistry,
-	templateRenderer template.Renderer,
-	metaIndex *metadata.Index,
-	redirectFinder RedirectFinder,
-	staticFS fs.FS,
-) *HTTPServer {
-	handler := NewHandler(provider, registry, enricherRegistry, templateRenderer, &cfg.Site, redirectFinder)
+func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
+	cfg := opts.Config
+	handler := NewHandler(opts.Provider, opts.Registry, opts.EnricherRegistry, opts.TemplateRenderer, &cfg.Site, opts.RedirectFinder)
 
 	// Apply middleware chain (outermost first, innermost closest to handler)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)
@@ -56,21 +59,21 @@ func NewHTTPServer(
 	h = SecurityHeaders(h)                               // Must be outermost so headers are set first
 
 	// Health and metrics endpoints bypass content middleware
-	healthHandler := NewHealthHandler(provider)
+	healthHandler := NewHealthHandler(opts.Provider)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", healthHandler.LiveHandler)
 	mux.HandleFunc("GET /health/ready", healthHandler.ReadyHandler)
 	mux.Handle("/metrics", promhttp.Handler())
 
-	if metaIndex != nil {
-		metaHandler := NewMetadataHandler(metaIndex)
+	if opts.MetaIndex != nil {
+		metaHandler := NewMetadataHandler(opts.MetaIndex)
 		mux.HandleFunc("GET /api/tags", metaHandler.TagsHandler)
 		mux.HandleFunc("GET /api/tags/{tag}", metaHandler.TagPagesHandler)
 	}
 
-	if staticFS != nil {
-		assetsHandler := NewAssetsHandler(staticFS)
+	if opts.StaticFS != nil {
+		assetsHandler := NewAssetsHandler(opts.StaticFS)
 		mux.Handle("GET /_assets/", http.StripPrefix("/_assets/", assetsHandler))
 	}
 
