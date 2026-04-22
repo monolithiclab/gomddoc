@@ -31,6 +31,10 @@ func (e *errorProvider) DefaultIndex() string {
 	return "README.md"
 }
 
+func (e *errorProvider) RootFS() (fs.FS, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (e *errorProvider) Close() error {
 	return nil
 }

@@ -145,6 +145,17 @@ func (g *GitProvider) DefaultIndex() string {
 	return g.defaultIndex
 }
 
+// RootFS returns the content root as an fs.FS backed by the cloned tree.
+// Triggers a clone if the repository has not been cloned yet.
+func (g *GitProvider) RootFS() (fs.FS, error) {
+	if err := g.ensureCloned(); err != nil {
+		return nil, err
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return &gitTreeFS{tree: g.tree, modTime: g.commitTime}, nil
+}
+
 // Close releases resources held by the provider.
 // This clears cached state, allowing GC to reclaim memory.
 func (g *GitProvider) Close() error {

@@ -5,6 +5,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"slices"
+	"strings"
+
+	"github.com/monolithiclab/gomddoc/internal/config"
 )
 
 // Ensure OverlayFS implements these interfaces at compile time
@@ -178,13 +181,7 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 			result = append(result, entry)
 		}
 		slices.SortFunc(result, func(a, b fs.DirEntry) int {
-			if a.Name() < b.Name() {
-				return -1
-			}
-			if a.Name() > b.Name() {
-				return 1
-			}
-			return 0
+			return strings.Compare(a.Name(), b.Name())
 		})
 		return result, nil
 	}
@@ -194,4 +191,21 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		return nil, lastErr
 	}
 	return nil, fs.ErrNotExist
+}
+
+// BuildFS creates the asset filesystem used for template resolution.
+// If the content root contains a .gomddoc/ directory, it is layered
+// on top of the embedded assets so that local themes take priority.
+// This works for both filesystem and Git-backed content providers.
+func BuildFS(contentRoot fs.FS, embedded fs.FS) fs.FS {
+	info, err := fs.Stat(contentRoot, config.ConfigDirName)
+	if err != nil || !info.IsDir() {
+		return embedded
+	}
+	sub, err := fs.Sub(contentRoot, config.ConfigDirName)
+	if err != nil {
+		return embedded
+	}
+	slog.Info("Using local asset overrides", slog.String("path", config.ConfigDirName))
+	return NewOverlayFS(sub, embedded)
 }

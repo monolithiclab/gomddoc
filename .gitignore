@@ -1,5 +1,9 @@
 .claude/
-build/
-cover.out
-docs/.gomddoc/
 GEMINI.md
+
+.DS_Store
+*.log
+cover.out
+
+build/
+docs/.gomddoc/

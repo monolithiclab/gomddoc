@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"testing"
 	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/config"
 )
 
 func TestOverlayFS_Operations(t *testing.T) {
@@ -340,4 +342,61 @@ func TestOverlayFS_StatFallback(t *testing.T) {
 	if info.Size() != 7 {
 		t.Errorf("Stat() size = %d, want 7", info.Size())
 	}
+}
+
+func TestBuildFS(t *testing.T) {
+	t.Parallel()
+
+	embedded := fstest.MapFS{
+		"themes/default/layout.html": &fstest.MapFile{Data: []byte("embedded")},
+	}
+
+	t.Run("returns embedded when no config dir", func(t *testing.T) {
+		t.Parallel()
+		contentRoot := fstest.MapFS{
+			"README.md": &fstest.MapFile{Data: []byte("hello")},
+		}
+		result := BuildFS(contentRoot, embedded)
+		data, err := fs.ReadFile(result, "themes/default/layout.html")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "embedded" {
+			t.Errorf("got %q, want %q", data, "embedded")
+		}
+	})
+
+	t.Run("overlays config dir on top of embedded", func(t *testing.T) {
+		t.Parallel()
+		contentRoot := fstest.MapFS{
+			config.ConfigDirName + "/themes/default/layout.html": &fstest.MapFile{Data: []byte("local")},
+		}
+		result := BuildFS(contentRoot, embedded)
+
+		// Local file should win
+		data, err := fs.ReadFile(result, "themes/default/layout.html")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "local" {
+			t.Errorf("got %q, want %q", data, "local")
+		}
+	})
+
+	t.Run("falls back to embedded for missing files", func(t *testing.T) {
+		t.Parallel()
+		contentRoot := fstest.MapFS{
+			config.ConfigDirName + "/themes/custom/layout.html": &fstest.MapFile{Data: []byte("custom")},
+		}
+		result := BuildFS(contentRoot, embedded)
+
+		// Default theme should come from embedded
+		data, err := fs.ReadFile(result, "themes/default/layout.html")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "embedded" {
+			t.Errorf("got %q, want %q", data, "embedded")
+		}
+	})
 }

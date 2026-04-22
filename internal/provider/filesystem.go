@@ -141,6 +141,11 @@ func (f *FilesystemProvider) DefaultIndex() string {
 	return f.defaultIndex
 }
 
+// RootFS returns the content root as an fs.FS
+func (f *FilesystemProvider) RootFS() (fs.FS, error) {
+	return f.root, nil
+}
+
 // Close releases resources held by the provider
 // Currently os.DirFS doesn't require explicit cleanup, but this method
 // provides a hook for future implementations that may need resource cleanup

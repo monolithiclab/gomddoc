@@ -16,6 +16,10 @@ type Provider interface {
 	Stat(path string) (fs.FileInfo, error)
 	// DefaultIndex returns the default index file name
 	DefaultIndex() string
+	// RootFS returns the content root as an fs.FS for reading files directly.
+	// For filesystem providers this is the directory FS; for Git providers
+	// this is backed by the cloned tree (triggering a clone if needed).
+	RootFS() (fs.FS, error)
 	// Close releases resources held by the provider
 	io.Closer
 }

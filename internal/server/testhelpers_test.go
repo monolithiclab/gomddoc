@@ -83,6 +83,10 @@ func (m *memoryProvider) DefaultIndex() string {
 	return m.defaultIndex
 }
 
+func (m *memoryProvider) RootFS() (fs.FS, error) {
+	return m.fsys, nil
+}
+
 func (m *memoryProvider) Close() error {
 	return nil
 }

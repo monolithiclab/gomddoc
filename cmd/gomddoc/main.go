@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
@@ -19,7 +20,7 @@ import (
 )
 
 //go:embed assets
-var assets embed.FS
+var embeddedAssets embed.FS
 
 const (
 	ExitSuccess     = 0
@@ -79,10 +80,16 @@ func startCmd() int {
 	// Create breadcrumb generator
 	breadcrumbGen := breadcrumb.NewGenerator(&infoProviderAdapter{p: prov})
 
-	// Create template cache based on dev mode (factory pattern)
+	// Build asset filesystem with local .gomddoc/ overrides layered on top of embedded assets.
+	contentRoot, err := prov.RootFS()
+	if err != nil {
+		slog.Error("Cannot access content root", slog.Any("error", err))
+		return ExitError
+	}
+	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
 
 	// Create template renderer with injected dependencies (using functional options for cache)
-	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assets, template.WithBreadcrumbGenerator(breadcrumbGen))
+	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS, template.WithBreadcrumbGenerator(breadcrumbGen))
 	if !cfg.Server.DevMode {
 		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
 	}
