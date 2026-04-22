@@ -1,0 +1,101 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"net/http"
+	"os"
+	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/provider"
+)
+
+func TestClassifyError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{
+			name: "ErrDirListingDisabled",
+			err:  provider.ErrDirListingDisabled,
+			want: http.StatusForbidden,
+		},
+		{
+			name: "ErrDirListingDisabled wrapped",
+			err:  fmt.Errorf("failed to list directory: %w", provider.ErrDirListingDisabled),
+			want: http.StatusForbidden,
+		},
+		{
+			name: "ErrNotFound",
+			err:  provider.ErrNotFound,
+			want: http.StatusNotFound,
+		},
+		{
+			name: "ErrNotFound wrapped",
+			err:  fmt.Errorf("resource not available: %w", provider.ErrNotFound),
+			want: http.StatusNotFound,
+		},
+		{
+			name: "os.ErrNotExist",
+			err:  os.ErrNotExist,
+			want: http.StatusNotFound,
+		},
+		{
+			name: "os.ErrNotExist wrapped",
+			err:  fmt.Errorf("file read failed: %w", os.ErrNotExist),
+			want: http.StatusNotFound,
+		},
+		{
+			name: "fs.ErrPermission",
+			err:  fs.ErrPermission,
+			want: http.StatusForbidden,
+		},
+		{
+			name: "fs.ErrPermission wrapped",
+			err:  fmt.Errorf("access denied: %w", fs.ErrPermission),
+			want: http.StatusForbidden,
+		},
+		{
+			name: "context.Canceled",
+			err:  context.Canceled,
+			want: 499,
+		},
+		{
+			name: "context.Canceled wrapped",
+			err:  fmt.Errorf("operation aborted: %w", context.Canceled),
+			want: 499,
+		},
+		{
+			name: "context.DeadlineExceeded",
+			err:  context.DeadlineExceeded,
+			want: http.StatusGatewayTimeout,
+		},
+		{
+			name: "context.DeadlineExceeded wrapped",
+			err:  fmt.Errorf("timeout occurred: %w", context.DeadlineExceeded),
+			want: http.StatusGatewayTimeout,
+		},
+		{
+			name: "generic error",
+			err:  errors.New("something went wrong"),
+			want: http.StatusInternalServerError,
+		},
+		{
+			name: "nil error",
+			err:  nil,
+			want: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyError(tt.err)
+			if got != tt.want {
+				t.Errorf("classifyError(%v) = %d, want %d", tt.err, got, tt.want)
+			}
+		})
+	}
+}
