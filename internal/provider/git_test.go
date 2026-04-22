@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/go-git/go-billy/v5/memfs"
@@ -984,3 +985,161 @@ var _ = plumbing.HEAD
 
 // Ensure we import fs for interface checks
 var _ fs.FileInfo = (*gitFileInfo)(nil)
+
+func TestGitProviderOptions_WithSSHKeyFile(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewGitProvider(
+		"git+https://github.com/user/repo",
+		"README.md",
+		false,
+		WithSSHKeyFile("/path/to/key"),
+	)
+	if err != nil {
+		t.Fatalf("NewGitProvider() error = %v", err)
+	}
+	if p.sshKeyFile != "/path/to/key" {
+		t.Errorf("sshKeyFile = %q, want %q", p.sshKeyFile, "/path/to/key")
+	}
+}
+
+func TestGitProvider_RootFS_Mocked(t *testing.T) {
+	t.Parallel()
+
+	repo := createTestRepo(t, map[string]string{
+		"README.md": "# Hello",
+	})
+
+	tree := mustGetTree(t, repo)
+	commitTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+
+	p := &GitProvider{
+		parsedURL: &ParsedGitURL{
+			Ref:    "HEAD",
+			Subdir: "",
+		},
+		defaultIndex: "README.md",
+		maxFileSize:  defaultMaxFileSize,
+		repo:         repo,
+		tree:         tree,
+		commitTime:   commitTime,
+	}
+
+	rootFS, err := p.RootFS(t.Context())
+	if err != nil {
+		t.Fatalf("RootFS() error = %v", err)
+	}
+	if rootFS == nil {
+		t.Fatal("RootFS() returned nil")
+	}
+
+	// Verify we can read files through the returned fs.FS
+	data, err := fs.ReadFile(rootFS, "README.md")
+	if err != nil {
+		t.Fatalf("ReadFile via RootFS error = %v", err)
+	}
+	if string(data) != "# Hello" {
+		t.Errorf("content = %q, want %q", string(data), "# Hello")
+	}
+}
+
+func TestGitProvider_EnsureCloned_AlreadyClosed(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false)
+	if err != nil {
+		t.Fatalf("NewGitProvider() error = %v", err)
+	}
+	_ = p.Close()
+
+	_, _, err = p.ReadFile(t.Context(), "/README.md")
+	if err == nil {
+		t.Error("ReadFile() on closed provider should return error")
+	}
+
+	var pathErr *PathError
+	if !errors.As(err, &pathErr) {
+		t.Errorf("error should be *PathError, got %T: %v", err, err)
+	}
+}
+
+func TestGitProvider_EnsureCloned_AlreadyCloned(t *testing.T) {
+	t.Parallel()
+
+	repo := createTestRepo(t, map[string]string{
+		"README.md": "# Test",
+	})
+
+	tree := mustGetTree(t, repo)
+	commitTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+
+	p := &GitProvider{
+		parsedURL: &ParsedGitURL{
+			Ref:    "HEAD",
+			Subdir: "",
+		},
+		defaultIndex: "README.md",
+		maxFileSize:  defaultMaxFileSize,
+		repo:         repo,
+		tree:         tree,
+		commitTime:   commitTime,
+	}
+
+	// ensureCloned should return immediately (fast path)
+	err := p.ensureCloned(t.Context())
+	if err != nil {
+		t.Errorf("ensureCloned() on already-cloned provider = %v, want nil", err)
+	}
+}
+
+func TestFilesystemProvider_Stat_Directory(t *testing.T) {
+	t.Parallel()
+
+	mapFS := fstest.MapFS{
+		"docs/file.md": &fstest.MapFile{Data: []byte("# Doc")},
+	}
+
+	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false)
+	if err != nil {
+		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
+	}
+
+	info, err := p.Stat(t.Context(), "docs")
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("Stat(\"docs\") should report IsDir=true")
+	}
+}
+
+func TestFilesystemProvider_DefaultIndex(t *testing.T) {
+	t.Parallel()
+
+	mapFS := fstest.MapFS{
+		"readme.txt": &fstest.MapFile{Data: []byte("hello")},
+	}
+
+	p, err := NewFilesystemProviderFromFS(mapFS, "readme.txt", false)
+	if err != nil {
+		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
+	}
+
+	if p.DefaultIndex() != "readme.txt" {
+		t.Errorf("DefaultIndex() = %q, want %q", p.DefaultIndex(), "readme.txt")
+	}
+}
+
+func TestFilesystemProvider_Close(t *testing.T) {
+	t.Parallel()
+
+	mapFS := fstest.MapFS{}
+	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false)
+	if err != nil {
+		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
+	}
+
+	if err := p.Close(); err != nil {
+		t.Errorf("Close() error = %v, want nil", err)
+	}
+}

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-
 	"gopkg.in/yaml.v3"
 )
 
@@ -107,5 +106,56 @@ func TestGenerateConfigYAML(t *testing.T) {
 	}
 	if !strings.Contains(content, `name: "material"`) {
 		t.Error("missing theme")
+	}
+}
+
+func TestInitCmd_NonexistentParentDir(t *testing.T) {
+	cmd := &InitCmd{Dir: "/nonexistent/path/that/does/not/exist", Theme: "default"}
+	err := cmd.Run()
+	if err == nil {
+		t.Error("Init.Run() should fail for nonexistent parent dir")
+	}
+}
+
+func TestInitCmd_Defaults(t *testing.T) {
+	cmd := InitCmd{}
+	if cmd.Dir != "" {
+		t.Errorf("Dir default = %q, want empty (Kong sets '.')", cmd.Dir)
+	}
+	if cmd.Theme != "" {
+		t.Errorf("Theme default = %q, want empty (Kong sets 'default')", cmd.Theme)
+	}
+}
+
+func TestInitCmd_ReadOnlyDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "readonly")
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0750) })
+
+	cmd := &InitCmd{Dir: dir, Theme: "default"}
+	err := cmd.Run()
+	if err == nil {
+		t.Error("Init.Run() should fail with read-only dir")
+	}
+}
+
+func TestGenerateConfigYAML_AllFields(t *testing.T) {
+	content := generateConfigYAML("Test Project", "nord")
+	if !strings.Contains(content, config.DefaultIndex) {
+		t.Error("missing default_index value")
+	}
+	if !strings.Contains(content, "dir_index: false") {
+		t.Error("missing dir_index setting")
+	}
+	if !strings.Contains(content, "color_chips: true") {
+		t.Error("missing color_chips setting")
+	}
+	if !strings.Contains(content, config.DefaultHighlightTheme) {
+		t.Error("missing highlight theme")
 	}
 }

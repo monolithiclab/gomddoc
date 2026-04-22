@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"log/slog"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -117,6 +119,23 @@ func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
 		}
 		return convertNavNodes(root.Children)
 	}
+}
+
+// runUntilCancelled starts the HTTP server and blocks until the context is cancelled,
+// then performs a graceful shutdown. Used by serve and preview commands.
+func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer) error {
+	g, gCtx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		return httpServer.Start(gCtx)
+	})
+
+	g.Go(func() error {
+		<-gCtx.Done()
+		return httpServer.Shutdown(context.Background())
+	})
+
+	return g.Wait()
 }
 
 // convertNavNodes converts navigation.NavNode children to enricher.NavItem slices.

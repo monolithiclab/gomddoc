@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"text/tabwriter"
@@ -37,18 +38,23 @@ func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 		return nil
 	}
 
+	return writeEnvVarsHelp(ctx.Stdout)
+}
+
+// writeEnvVarsHelp writes the environment variables help section to w.
+func writeEnvVarsHelp(w io.Writer) error {
 	vars := config.EnvVars()
-	fmt.Fprintln(ctx.Stdout)
-	fmt.Fprintln(ctx.Stdout, "Environment variables:")
-	w := tabwriter.NewWriter(ctx.Stdout, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Environment variables:")
+	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
 	for _, v := range vars {
 		def := v.DefaultValue
 		if def == "" {
 			def = "(empty)"
 		}
-		fmt.Fprintf(w, "  %s\t%s\t(default: %s)\n", v.Name, v.Type, def)
+		fmt.Fprintf(tw, "  %s\t%s\t(default: %s)\n", v.Name, v.Type, def)
 	}
-	return w.Flush()
+	return tw.Flush()
 }
 
 func main() {

@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/server"
@@ -40,16 +38,22 @@ func resolvePort(port string) (string, error) {
 	return resolved, nil
 }
 
-// Run executes the serve command.
-func (s *ServeCmd) Run() error {
+// serveSetupResult holds the assembled server and cleanup function.
+type serveSetupResult struct {
+	httpServer *server.HTTPServer
+	cleanup    func()
+}
+
+// setup creates the provider, pipeline, and HTTP server without starting it.
+func (s *ServeCmd) setup() (*serveSetupResult, error) {
 	port, err := resolvePort(s.Port)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	cfg, err := config.NewFromServeArgs(s.Dir, port, s.DevMode, s.GitSSHKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if cfg.Server.DevMode {
@@ -61,8 +65,6 @@ func (s *ServeCmd) Run() error {
 		providerOpts = append(providerOpts, provider.WithSSHKeyFile(cfg.Server.GitSSHKey))
 	}
 	if s.GitStorageDir != "" {
-		// Hash the dir/URL to create a unique subdirectory per provider,
-		// avoiding filesystem path issues with special characters.
 		h := sha256.Sum256([]byte(s.Dir))
 		subdir := filepath.Join(s.GitStorageDir, hex.EncodeToString(h[:8]))
 		providerOpts = append(providerOpts, provider.WithStorageFactory(provider.DiskStorageFactory(subdir)))
@@ -70,13 +72,8 @@ func (s *ServeCmd) Run() error {
 
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, providerOpts...)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() {
-		if err := prov.Close(); err != nil {
-			slog.Error("Failed to close provider", slog.Any("error", err))
-		}
-	}()
 
 	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
 		EnableCache:      !cfg.Server.DevMode,
@@ -84,7 +81,8 @@ func (s *ServeCmd) Run() error {
 		EnableMetadata:   true,
 	})
 	if err != nil {
-		return err
+		_ = prov.Close()
+		return nil, err
 	}
 
 	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
@@ -98,19 +96,26 @@ func (s *ServeCmd) Run() error {
 		StaticFS:         pipeline.StaticFS,
 	})
 
-	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	return &serveSetupResult{
+		httpServer: httpServer,
+		cleanup: func() {
+			if err := prov.Close(); err != nil {
+				slog.Error("Failed to close provider", slog.Any("error", err))
+			}
+		},
+	}, nil
+}
+
+// Run executes the serve command.
+func (s *ServeCmd) Run() error {
+	result, err := s.setup()
+	if err != nil {
+		return err
+	}
+	defer result.cleanup()
+
+	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	g, gCtx := errgroup.WithContext(sigChan)
-
-	g.Go(func() error {
-		return httpServer.Start(gCtx)
-	})
-
-	g.Go(func() error {
-		<-gCtx.Done()
-		return httpServer.Shutdown(context.Background())
-	})
-
-	return g.Wait()
+	return runUntilCancelled(sigCtx, result.httpServer)
 }

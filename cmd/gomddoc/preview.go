@@ -7,8 +7,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/server"
@@ -21,35 +19,38 @@ type PreviewCmd struct {
 	Open bool   `name:"open" default:"false" help:"Open the browser automatically on startup."`
 }
 
-// Run executes the preview command.
-func (p *PreviewCmd) Run() error {
+// previewSetupResult holds the assembled preview server and cleanup function.
+type previewSetupResult struct {
+	httpServer *server.HTTPServer
+	cfg        *config.Config
+	cleanup    func()
+}
+
+// setup creates the provider, pipeline, and HTTP server without starting it.
+func (p *PreviewCmd) setup() (*previewSetupResult, error) {
 	port, err := resolvePort(p.Port)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	cfg, err := config.NewFromServeArgs(p.Dir, port, true, "")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() {
-		if closeErr := prov.Close(); closeErr != nil {
-			slog.Error("Failed to close provider", slog.Any("error", closeErr))
-		}
-	}()
 
 	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
-		EnableCache:      false, // preview = dev mode, no caching
+		EnableCache:      false,
 		EnableNavigation: true,
 		EnableMetadata:   true,
 	})
 	if err != nil {
-		return err
+		_ = prov.Close()
+		return nil, err
 	}
 
 	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
@@ -63,7 +64,26 @@ func (p *PreviewCmd) Run() error {
 		StaticFS:         pipeline.StaticFS,
 	})
 
-	url := server.ListenURL(cfg.Server.Port)
+	return &previewSetupResult{
+		httpServer: httpServer,
+		cfg:        cfg,
+		cleanup: func() {
+			if closeErr := prov.Close(); closeErr != nil {
+				slog.Error("Failed to close provider", slog.Any("error", closeErr))
+			}
+		},
+	}, nil
+}
+
+// Run executes the preview command.
+func (p *PreviewCmd) Run() error {
+	result, err := p.setup()
+	if err != nil {
+		return err
+	}
+	defer result.cleanup()
+
+	url := server.ListenURL(result.cfg.Server.Port)
 	fmt.Printf("Preview: %s\n", url)
 	fmt.Println("Press Ctrl+C to stop")
 
@@ -73,19 +93,8 @@ func (p *PreviewCmd) Run() error {
 		}
 	}
 
-	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
 
-	g, gCtx := errgroup.WithContext(sigChan)
-
-	g.Go(func() error {
-		return httpServer.Start(gCtx)
-	})
-
-	g.Go(func() error {
-		<-gCtx.Done()
-		return httpServer.Shutdown(context.Background())
-	})
-
-	return g.Wait()
+	return runUntilCancelled(sigCtx, result.httpServer)
 }
