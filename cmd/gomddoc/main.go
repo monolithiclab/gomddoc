@@ -27,51 +27,25 @@ const (
 )
 
 func startCmd() int {
-	// 1. Create application config with defaults (includes temporary SiteConfig)
-	cfg := config.New()
-
-	// 2. Apply environment variable overrides to Config (before CLI flags)
-	cfg.ApplyEnvOverrides()
-
-	// 3. Parse CLI flags (affects Config, CLI flags take precedence over env vars)
-	cfg.ParseFlags()
-
-	// 4. Initialize SiteConfig with final Dir value (for correct default title)
-	// This ensures the title defaults to the basename of the actual directory being served
-	// All config initialization must complete before any goroutines start
-	siteConfig := config.NewSiteConfig(cfg.Dir)
-
-	// 5. Load site config from .gomddoc/config.yml (affects SiteConfig only)
-	if err := siteConfig.LoadFromFile(cfg.Dir); err != nil {
-		slog.Error("Cannot load site config", slog.Any("error", err))
-		os.Exit(1)
+	// Load configuration (Defaults -> Env -> Flags -> File -> Env -> Validate)
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("Failed to load configuration", slog.Any("error", err))
+		return ExitConfigError
 	}
 
-	// 6. Apply environment variable overrides to SiteConfig (after YAML)
-	siteConfig.ApplyEnvOverrides()
-
-	// 7. Validate site config (with auto-fixes)
-	if err := siteConfig.Validate(); err != nil {
-		slog.Error("Invalid site configuration", slog.Any("error", err))
-		os.Exit(1)
+	// Log config in dev mode
+	if cfg.Server.DevMode {
+		slog.Info("Development mode enabled", slog.Any("config", cfg))
 	}
 
-	// 8. Assign finalized SiteConfig to Config (single assignment, no mutation)
-	cfg.Site = siteConfig
-
-	// 9. Validate application config
-	if err := cfg.Validate(); err != nil {
-		slog.Error("Invalid configuration", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	// Initialize content provider (filesystem or Git based on cfg.Dir)
+	// Initialize content provider (filesystem or Git based on Dir)
 	var providerOpts []provider.GitProviderOption
-	if cfg.GitSSHKeyFile != "" {
-		providerOpts = append(providerOpts, provider.WithSSHKeyFile(cfg.GitSSHKeyFile))
+	if cfg.Server.GitSSHKey != "" {
+		providerOpts = append(providerOpts, provider.WithSSHKeyFile(cfg.Server.GitSSHKey))
 	}
 
-	prov, err := provider.NewProvider(cfg.Dir, cfg.Server.DefaultIndex, cfg.Server.DirIndex, providerOpts...)
+	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, providerOpts...)
 	if err != nil {
 		slog.Error("Cannot create content provider", slog.Any("error", err))
 		os.Exit(1)
@@ -91,8 +65,8 @@ func startCmd() int {
 	// Create template cache based on dev mode (factory pattern)
 
 	// Create template renderer with injected dependencies (using functional options for cache)
-	templateRenderer := template.NewHTMLRenderer(cfg.Site, assets)
-	if !cfg.DevMode {
+	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assets)
+	if !cfg.Server.DevMode {
 		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
 	}
 

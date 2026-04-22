@@ -21,13 +21,13 @@ func TestNewHTMLRenderer(t *testing.T) {
 
 	// Test with explicit cache
 	cache := &CachedTemplateStore{}
-	renderer := NewHTMLRenderer(siteConfig, testFS, WithCache(cache))
+	renderer := NewHTMLRenderer(&siteConfig, testFS, WithCache(cache))
 	if renderer == nil {
 		t.Fatal("Renderer should not be nil")
 	}
 
 	// Test with default cache (no options)
-	renderer2 := NewHTMLRenderer(siteConfig, testFS)
+	renderer2 := NewHTMLRenderer(&siteConfig, testFS)
 	if renderer2 == nil {
 		t.Fatal("Renderer should not be nil")
 	}
@@ -42,7 +42,7 @@ func TestTemplateContext(t *testing.T) {
 	siteConfig.Meta.Description = "Test Description"
 
 	ctx := &TemplateContext{
-		Site: siteConfig,
+		Site: &siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<p>Test content</p>"),
 			Breadcrumbs: []breadcrumb.Breadcrumb{
@@ -94,10 +94,10 @@ func TestHTMLRendererRender(t *testing.T) {
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test Page"
 	cache := &CachedTemplateStore{}
-	renderer := NewHTMLRenderer(siteConfig, testFS, WithCache(cache))
+	renderer := NewHTMLRenderer(&siteConfig, testFS, WithCache(cache))
 
 	ctx := &TemplateContext{
-		Site: siteConfig,
+		Site: &siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<h1>Hello World</h1>"),
 			Breadcrumbs: []breadcrumb.Breadcrumb{
@@ -139,10 +139,10 @@ func TestTemplateCache(t *testing.T) {
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test"
 	cache := &CachedTemplateStore{} // Production mode with caching
-	renderer := NewHTMLRenderer(siteConfig, testFS, WithCache(cache))
+	renderer := NewHTMLRenderer(&siteConfig, testFS, WithCache(cache))
 
 	ctx := &TemplateContext{
-		Site: siteConfig,
+		Site: &siteConfig,
 		Page: PageContext{
 			Breadcrumbs: []breadcrumb.Breadcrumb{
 				{Path: "/", Label: "Home"},
@@ -183,10 +183,10 @@ func TestRenderWithContextCancellation(t *testing.T) {
 	}
 
 	siteConfig := config.NewSiteConfig(".")
-	renderer := NewHTMLRenderer(siteConfig, testFS)
+	renderer := NewHTMLRenderer(&siteConfig, testFS)
 
 	templateCtx := &TemplateContext{
-		Site: siteConfig,
+		Site: &siteConfig,
 		Page: PageContext{Breadcrumbs: []breadcrumb.Breadcrumb{{Path: "/", Label: "Home"}}},
 	}
 

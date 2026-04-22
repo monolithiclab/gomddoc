@@ -14,23 +14,28 @@ import (
 func TestNewHTTPServer(t *testing.T) {
 	// Create test config
 	siteConfig := config.NewSiteConfig(".")
+	siteConfig.DefaultIndex = "README.test.md"
+	siteConfig.DirIndex = false
+
 	cfg := &config.Config{
-		Dir:               ".",
-		Port:              ":8080",
-		ShutdownTimeout:   1 * time.Second,
-		ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
-		WriteTimeout:      config.DefaultWriteTimeout,
-		IdleTimeout:       config.DefaultIdleTimeout,
-		MaxHeaderMB:       config.DefaultMaxHeaderMB,
-		Server: &config.ServerConfig{
-			DefaultIndex: "README.test.md",
-			DirIndex:     false,
+		Server: config.ServerConfig{
+			Port:      ":8080",
+			DevMode:   false,
+			Dir:       ".",
+			GitSSHKey: "",
+			HTTP: config.HTTPConfig{
+				ShutdownTimeout:   1 * time.Second,
+				ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+				WriteTimeout:      config.DefaultWriteTimeout,
+				IdleTimeout:       config.DefaultIdleTimeout,
+				MaxHeaderMB:       config.DefaultMaxHeaderMB,
+			},
 		},
 		Site: siteConfig,
 	}
 
 	// Create dependencies
-	prov, err := provider.NewFilesystemProvider(cfg.Dir, cfg.Server.DefaultIndex, cfg.Server.DirIndex)
+	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -54,7 +59,7 @@ func TestNewHTTPServer(t *testing.T) {
 		},
 	}
 
-	rend := template.NewHTMLRenderer(siteConfig, testFS)
+	rend := template.NewHTMLRenderer(&siteConfig, testFS)
 
 	server := NewHTTPServer(cfg, prov, registry, rend)
 	if server == nil {

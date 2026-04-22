@@ -127,7 +127,9 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 	}
 
 	siteConfig := config.NewSiteConfig(".")
-	return tmpl.NewHTMLRenderer(siteConfig, testFS)
+	siteConfig.Meta.Title = "Test Site"
+
+	return tmpl.NewHTMLRenderer(&siteConfig, testFS)
 }
 
 func setupTestRegistry() renderer.RendererRegistry {

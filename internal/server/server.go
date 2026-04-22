@@ -35,7 +35,7 @@ func NewHTTPServer(
 	templateRenderer template.Renderer,
 ) *HTTPServer {
 	// Create handler with new signature
-	handler := NewHandler(provider, registry, templateRenderer, cfg.Site)
+	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site)
 
 	// Apply middleware chain
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)
@@ -44,11 +44,11 @@ func NewHTTPServer(
 	h = SecurityHeaders(h) // Must be last so headers are set first
 
 	server := &http.Server{
-		Addr:              cfg.Port,
+		Addr:              cfg.Server.Port,
 		Handler:           h,
-		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
-		WriteTimeout:      cfg.WriteTimeout,
-		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.Server.HTTP.ReadHeaderTimeout,
+		WriteTimeout:      cfg.Server.HTTP.WriteTimeout,
+		IdleTimeout:       cfg.Server.HTTP.IdleTimeout,
 		MaxHeaderBytes:    cfg.MaxHeaderBytes(),
 	}
 
@@ -70,7 +70,7 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 
 // Shutdown gracefully shuts down the HTTP server
 func (s *HTTPServer) Shutdown(ctx context.Context) error {
-	shutdownCtx, cancel := context.WithTimeout(ctx, s.config.ShutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(ctx, s.config.Server.HTTP.ShutdownTimeout)
 	defer cancel()
 	return s.server.Shutdown(shutdownCtx)
 }

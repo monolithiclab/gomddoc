@@ -5,190 +5,431 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/common"
+	"github.com/monolithiclab/gomddoc/internal/text"
+	"gopkg.in/yaml.v3"
 )
 
-// Default values for HTTP server timeouts
+// Default values
 const (
-	DefaultReadHeaderTimeout = 5 * time.Second   // Time to read request headers
-	DefaultWriteTimeout      = 30 * time.Second  // Time to write response
-	DefaultIdleTimeout       = 120 * time.Second // Time to keep idle connections open
-	DefaultMaxHeaderMB       = 1                 // 1 MB max header size
+	DefaultReadHeaderTimeout = 5 * time.Second
+	DefaultWriteTimeout      = 30 * time.Second
+	DefaultIdleTimeout       = 120 * time.Second
+	DefaultMaxHeaderMB       = 1
+	DefaultPort              = ":8080"
+	DefaultShutdownTimeout   = 1 * time.Second
+	DefaultIndex             = "README.md"
+	DefaultThemeName         = "default"
 
 	// Configurable upper bounds
-	MaxReadHeaderTimeout = 1 * time.Minute  // Maximum configurable time to read request headers
-	MaxWriteTimeout      = 5 * time.Minute  // Maximum configurable time to write response
-	MaxIdleTimeout       = 10 * time.Minute // Maximum configurable time to keep idle connections open
-	MaxMaxHeaderMB       = 10               // Maximum configurable header size
+	MaxReadHeaderTimeout = 1 * time.Minute
+	MaxWriteTimeout      = 5 * time.Minute
+	MaxIdleTimeout       = 10 * time.Minute
+	MaxMaxHeaderMB       = 10
+
+	// Config file constants
+	ConfigDirName  = ".gomddoc"
+	ConfigFileName = "config.yml"
 )
 
-// ServerConfig holds server-specific configuration
-type ServerConfig struct {
-	DefaultIndex string `env:"DEFAULT_INDEX"` // Default index file name (e.g., "README.md")
-	DirIndex     bool   `env:"DIR_INDEX"`     // Enable directory listing (default: false, secure by default)
+// Config represents the top-level configuration structure (GOMDDOC)
+type Config struct {
+	Server ServerConfig `env:"SERVER"`
+	Site   SiteConfig   `env:"SITE"`
 }
 
-// Config holds the application (operational) configuration
-// This is NOT exposed to templates and NOT configurable via .gomddoc/config.yml
-// Configurable via: environment variables + CLI flags (CLI flags take precedence)
-type Config struct {
-	// Operational fields (environment variables + CLI flags)
-	Dir             string        `env:"DIR"`
-	Port            string        `env:"PORT"`
-	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT"`
-	DevMode         bool          `env:"DEV_MODE"`
+// ServerConfig holds server-side settings
+type ServerConfig struct {
+	Port      string     `env:"PORT"`
+	DevMode   bool       `env:"DEV_MODE"`
+	Dir       string     `env:"DIR"`
+	GitSSHKey string     `env:"GIT_SSH_KEY"`
+	HTTP      HTTPConfig `env:"HTTP"`
+}
 
-	// HTTP server timeouts (defense against slow clients and resource exhaustion)
-	ReadHeaderTimeout time.Duration `env:"READ_HEADER_TIMEOUT"` // Time to read request headers
-	WriteTimeout      time.Duration `env:"WRITE_TIMEOUT"`       // Time to write response
-	IdleTimeout       time.Duration `env:"IDLE_TIMEOUT"`        // Time to keep idle connections open
-	MaxHeaderMB       int           `env:"MAX_HEADER_MB"`       // Maximum size of request headers in MB
+// HTTPConfig holds HTTP server tuning parameters
+type HTTPConfig struct {
+	ShutdownTimeout   time.Duration `env:"SHUTDOWN_TIMEOUT"`
+	ReadHeaderTimeout time.Duration `env:"READ_HEADER_TIMEOUT"`
+	WriteTimeout      time.Duration `env:"WRITE_TIMEOUT"`
+	IdleTimeout       time.Duration `env:"IDLE_TIMEOUT"`
+	MaxHeaderMB       int           `env:"MAX_HEADER_MB"`
+}
 
-	// Server configuration
-	Server *ServerConfig `env:"SERVER"`
+// SiteConfig holds site-specific settings (loadable from file)
+type SiteConfig struct {
+	DefaultIndex string      `env:"DEFAULT_INDEX" yaml:"default_index"`
+	DirIndex     bool        `env:"DIR_INDEX" yaml:"dir_index"`
+	Meta         MetaConfig  `env:"META" yaml:"meta"`
+	Theme        ThemeConfig `env:"THEME" yaml:"theme"`
+}
 
-	// Git configuration
-	GitSSHKeyFile string `env:"GIT_SSH_KEY_FILE"`
+// MetaConfig holds site metadata
+type MetaConfig struct {
+	Title       string `env:"TITLE" yaml:"title"`
+	Description string `env:"DESCRIPTION" yaml:"description"`
+	Domain      string `env:"DOMAIN" yaml:"domain"`
+}
 
-	// Reference to site configuration (this IS exposed to templates)
-	Site *SiteConfig
+// ThemeConfig holds theme settings
+type ThemeConfig struct {
+	Name string `env:"NAME" yaml:"name"`
+}
+
+// Load initializes and returns the full configuration.
+// It loads defaults, environment variables, command-line flags, and config files in the correct order.
+func Load() (*Config, error) {
+	cfg := New()
+
+	// 1. Load from Environment (Pre-flag)
+	cfg.ApplyEnvOverrides()
+
+	// 2. Load from Flags
+	// Only parse flags if they haven't been parsed yet (to support testing or multiple calls safe-guard)
+	if !flag.Parsed() {
+		cfg.ParseFlags()
+	}
+
+	// 3. Compute derived defaults (like Title from Dir)
+	cfg.ComputeDynamicDefaults()
+
+	// 4. Load from File
+	if err := cfg.Site.LoadFromFile(cfg.Server.Dir); err != nil {
+		return nil, fmt.Errorf("load config file: %w", err)
+	}
+
+	// 5. Re-apply Environment (Post-file) to ensure Env > File
+	cfg.ApplyEnvOverrides()
+
+	// 6. Validate
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // New creates a new Config with default values
 func New() *Config {
-	defaultDir := "."
 	return &Config{
-		Dir:               defaultDir,
-		Port:              ":8080",
-		ShutdownTimeout:   1 * time.Second,
-		DevMode:           false,
-		ReadHeaderTimeout: DefaultReadHeaderTimeout,
-		WriteTimeout:      DefaultWriteTimeout,
-		IdleTimeout:       DefaultIdleTimeout,
-		MaxHeaderMB:       DefaultMaxHeaderMB,
-		Server: &ServerConfig{
-			DefaultIndex: "README.md",
-			DirIndex:     false, // Secure by default
+		Server: ServerConfig{
+			Port:      DefaultPort,
+			DevMode:   false,
+			Dir:       ".",
+			GitSSHKey: "",
+			HTTP: HTTPConfig{
+				ShutdownTimeout:   DefaultShutdownTimeout,
+				ReadHeaderTimeout: DefaultReadHeaderTimeout,
+				WriteTimeout:      DefaultWriteTimeout,
+				IdleTimeout:       DefaultIdleTimeout,
+				MaxHeaderMB:       DefaultMaxHeaderMB,
+			},
 		},
-		Site: NewSiteConfig(defaultDir), // Initialize with default dir for title
+		Site: NewSiteConfig("."), // Initialize with default "."
 	}
+}
+
+// NewSiteConfig creates a new SiteConfig with default values
+func NewSiteConfig(dir string) SiteConfig {
+	// Compute default title from directory basename
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = dir
+	}
+	basename := filepath.Base(absDir)
+	title := text.TitleCase(basename)
+
+	return SiteConfig{
+		DefaultIndex: DefaultIndex,
+		DirIndex:     false,
+		Meta: MetaConfig{
+			Title: title,
+		},
+		Theme: ThemeConfig{
+			Name: DefaultThemeName,
+		},
+	}
+}
+
+// LoadFromFile loads site config from .gomddoc/config.yml
+func (sc *SiteConfig) LoadFromFile(rootDir string) error {
+	path := filepath.Join(rootDir, ConfigDirName, ConfigFileName)
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		slog.Debug("No site config file found, using defaults", slog.String("path", path))
+		return nil
+	}
+
+	data, err := os.ReadFile(path) // #nosec G304
+	if err != nil {
+		return fmt.Errorf("read config file: %w", err)
+	}
+
+	// Unmarshal directly into struct.
+	// yaml.Unmarshal will match fields with `yaml` tags.
+	// Fields without matching keys in YAML will retain their existing values (defaults).
+	if err := yaml.Unmarshal(data, sc); err != nil {
+		return fmt.Errorf("parse config.yml: %w", err)
+	}
+
+	slog.Info("Loaded site configuration",
+		slog.String("path", path),
+		slog.String("title", sc.Meta.Title),
+		slog.String("theme", sc.Theme.Name))
+
+	return nil
 }
 
 // ApplyEnvOverrides applies environment variable overrides to Config using reflection
-// This is called before ParseFlags, so CLI flags take precedence over env vars
 func (c *Config) ApplyEnvOverrides() {
+	// GOMDDOC_...
 	applyEnvOverridesWithPrefix(c, "GOMDDOC")
 }
 
+// ApplyEnvOverrides applies environment variable overrides to SiteConfig (useful if loaded separately)
+func (sc *SiteConfig) ApplyEnvOverrides() {
+	// This maintains the previous behavior for testing or standalone usage
+	// But strictly speaking, it should probably respect the full path if possible.
+	// However, SiteConfig is a child. If we want GOMDDOC_SITE_... we need to pass that prefix.
+	// But to keep backward compatibility with existing tests or behavior, we default to GOMDDOC prefix here?
+	// Actually, main.go calls cfg.ApplyEnvOverrides(), which does nested walking.
+	// If we call sc.ApplyEnvOverrides(), it uses "GOMDDOC" prefix, so it looks for GOMDDOC_DEFAULT_INDEX (no SITE).
+	// This might be confusing. Let's make it consistent:
+	// If main.go uses cfg.ApplyEnvOverrides(), we don't need this method on SiteConfig for main execution.
+	// But for tests it might be useful.
+	applyEnvOverridesWithPrefix(sc, "GOMDDOC")
+}
+
 // ParseFlags parses command line flags and updates the configuration
-// Call this AFTER ApplyEnvOverrides so CLI flags take precedence
+// Flags override everything else.
 func (c *Config) ParseFlags() {
-	flag.StringVar(&c.Dir, "d", c.Dir, "Markdown directory")
-	flag.StringVar(&c.Port, "p", c.Port, "HTTP port (default: 8080)")
-	flag.BoolVar(&c.DevMode, "dev", c.DevMode, "Enable development mode (hot reload)")
-	flag.StringVar(&c.GitSSHKeyFile, "git-key-file", c.GitSSHKeyFile, "Path to SSH private key file for Git operations")
+	flag.StringVar(&c.Server.Dir, "d", c.Server.Dir, "Markdown directory")
+	flag.StringVar(&c.Server.Port, "p", c.Server.Port, "HTTP port")
+	flag.BoolVar(&c.Server.DevMode, "dev", c.Server.DevMode, "Enable development mode")
+	flag.StringVar(&c.Server.GitSSHKey, "git-key-file", c.Server.GitSSHKey, "Path to SSH private key file")
 	flag.Parse()
 }
 
+// ComputeDynamicDefaults calculates defaults that depend on other values
+// e.g. Site Title depends on Dir
+func (c *Config) ComputeDynamicDefaults() {
+	if c.Site.Meta.Title == "" {
+		// Compute default title from directory basename
+		absDir, err := filepath.Abs(c.Server.Dir)
+		if err != nil {
+			absDir = c.Server.Dir
+		}
+		basename := filepath.Base(absDir)
+		c.Site.Meta.Title = text.TitleCase(basename)
+	}
+}
+
 // Validate validates the configuration values.
-// Critical configuration errors (port, directory) cause validation failure.
-// For timeout values, invalid values trigger a warning and are reset to defaults.
 func (c *Config) Validate() error {
-	// Validate port format and range
-	_, portStr, err := net.SplitHostPort(c.Port)
+	return c.validateServer()
+}
+
+// Validate site config separately
+func (sc *SiteConfig) Validate() error {
+	if sc.Theme.Name == "" {
+		sc.Theme.Name = DefaultThemeName
+		slog.Warn("Empty theme name, using default")
+	}
+
+	if sc.Meta.Domain != "" {
+		if strings.Contains(sc.Meta.Domain, "://") {
+			return fmt.Errorf("domain should not include protocol: %s", sc.Meta.Domain)
+		}
+		if strings.Contains(sc.Meta.Domain, "/") {
+			return fmt.Errorf("domain should not include path: %s", sc.Meta.Domain)
+		}
+		if _, err := url.Parse("//" + sc.Meta.Domain); err != nil {
+			return fmt.Errorf("invalid domain: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateServer() error {
+	// Validate Port
+	_, portStr, err := net.SplitHostPort(c.Server.Port)
 	if err != nil {
 		return fmt.Errorf("invalid port format: %w", err)
 	}
-
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535, got: %s", portStr)
 	}
 
-	// Skip filesystem validation for Git URLs
-	// Git URL validation happens at provider construction time
-	if !common.IsGitURL(c.Dir) {
-		// Validate directory exists and is accessible
-		info, err := os.Stat(c.Dir)
+	// Validate Dir (skip if Git URL)
+	if !common.IsGitURL(c.Server.Dir) {
+		info, err := os.Stat(c.Server.Dir)
 		if err != nil {
 			return fmt.Errorf("directory validation failed: %w", err)
 		}
 		if !info.IsDir() {
-			return fmt.Errorf("path is not a directory: %s", c.Dir)
+			return fmt.Errorf("path is not a directory: %s", c.Server.Dir)
 		}
 	}
 
-	// Validate shutdown timeout (negative is invalid, warn if too long)
-	if c.ShutdownTimeout < 0 {
-		return fmt.Errorf("shutdown timeout cannot be negative: %v", c.ShutdownTimeout)
+	// Validate Site
+	if err := c.Site.Validate(); err != nil {
+		return err
 	}
-	if c.ShutdownTimeout > 60*time.Second {
+
+	// Validate HTTP timeouts
+	if c.Server.HTTP.ShutdownTimeout < 0 {
+		return fmt.Errorf("shutdown timeout cannot be negative: %v", c.Server.HTTP.ShutdownTimeout)
+	}
+	if c.Server.HTTP.ShutdownTimeout > 60*time.Second {
 		slog.Warn("Shutdown timeout is very long",
-			slog.Duration("timeout", c.ShutdownTimeout),
+			slog.Duration("timeout", c.Server.HTTP.ShutdownTimeout),
 			slog.Duration("recommended_max", 60*time.Second))
 	}
 
-	// Validate ReadHeaderTimeout (must be positive, max 60s)
-	if c.ReadHeaderTimeout <= 0 {
+	if c.Server.HTTP.ReadHeaderTimeout <= 0 {
 		slog.Warn("ReadHeaderTimeout must be positive, using default",
-			slog.Duration("configured", c.ReadHeaderTimeout),
+			slog.Duration("configured", c.Server.HTTP.ReadHeaderTimeout),
 			slog.Duration("default", DefaultReadHeaderTimeout))
-		c.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	} else if c.ReadHeaderTimeout > MaxReadHeaderTimeout {
+		c.Server.HTTP.ReadHeaderTimeout = DefaultReadHeaderTimeout
+	} else if c.Server.HTTP.ReadHeaderTimeout > MaxReadHeaderTimeout {
 		slog.Warn("ReadHeaderTimeout exceeds maximum (60s), using default",
-			slog.Duration("configured", c.ReadHeaderTimeout),
+			slog.Duration("configured", c.Server.HTTP.ReadHeaderTimeout),
 			slog.Duration("default", DefaultReadHeaderTimeout))
-		c.ReadHeaderTimeout = DefaultReadHeaderTimeout
+		c.Server.HTTP.ReadHeaderTimeout = DefaultReadHeaderTimeout
 	}
 
-	// Validate WriteTimeout (must be positive, max 5 minutes)
-	if c.WriteTimeout <= 0 {
+	if c.Server.HTTP.WriteTimeout <= 0 {
 		slog.Warn("WriteTimeout must be positive, using default",
-			slog.Duration("configured", c.WriteTimeout),
+			slog.Duration("configured", c.Server.HTTP.WriteTimeout),
 			slog.Duration("default", DefaultWriteTimeout))
-		c.WriteTimeout = DefaultWriteTimeout
-	} else if c.WriteTimeout > MaxWriteTimeout {
+		c.Server.HTTP.WriteTimeout = DefaultWriteTimeout
+	} else if c.Server.HTTP.WriteTimeout > MaxWriteTimeout {
 		slog.Warn("WriteTimeout exceeds maximum (5m), using default",
-			slog.Duration("configured", c.WriteTimeout),
+			slog.Duration("configured", c.Server.HTTP.WriteTimeout),
 			slog.Duration("default", DefaultWriteTimeout))
-		c.WriteTimeout = DefaultWriteTimeout
+		c.Server.HTTP.WriteTimeout = DefaultWriteTimeout
 	}
 
-	// Validate IdleTimeout (must be positive, max 10 minutes)
-	if c.IdleTimeout <= 0 {
+	if c.Server.HTTP.IdleTimeout <= 0 {
 		slog.Warn("IdleTimeout must be positive, using default",
-			slog.Duration("configured", c.IdleTimeout),
+			slog.Duration("configured", c.Server.HTTP.IdleTimeout),
 			slog.Duration("default", DefaultIdleTimeout))
-		c.IdleTimeout = DefaultIdleTimeout
-	} else if c.IdleTimeout > MaxIdleTimeout {
+		c.Server.HTTP.IdleTimeout = DefaultIdleTimeout
+	} else if c.Server.HTTP.IdleTimeout > MaxIdleTimeout {
 		slog.Warn("IdleTimeout exceeds maximum (10m), using default",
-			slog.Duration("configured", c.IdleTimeout),
+			slog.Duration("configured", c.Server.HTTP.IdleTimeout),
 			slog.Duration("default", DefaultIdleTimeout))
-		c.IdleTimeout = DefaultIdleTimeout
+		c.Server.HTTP.IdleTimeout = DefaultIdleTimeout
 	}
 
-	// Validate MaxHeaderMB (must be positive, max 10MB)
-	if c.MaxHeaderMB <= 0 {
+	if c.Server.HTTP.MaxHeaderMB <= 0 {
 		slog.Warn("MaxHeaderMB must be positive, using default",
-			slog.Int("configured_mb", c.MaxHeaderMB),
+			slog.Int("configured_mb", c.Server.HTTP.MaxHeaderMB),
 			slog.Int("default_mb", DefaultMaxHeaderMB))
-		c.MaxHeaderMB = DefaultMaxHeaderMB
-	} else if c.MaxHeaderMB > MaxMaxHeaderMB {
+		c.Server.HTTP.MaxHeaderMB = DefaultMaxHeaderMB
+	} else if c.Server.HTTP.MaxHeaderMB > MaxMaxHeaderMB {
 		slog.Warn("MaxHeaderMB exceeds maximum (10MB), using default",
-			slog.Int("configured_mb", c.MaxHeaderMB),
+			slog.Int("configured_mb", c.Server.HTTP.MaxHeaderMB),
 			slog.Int("default_mb", DefaultMaxHeaderMB))
-		c.MaxHeaderMB = DefaultMaxHeaderMB
+		c.Server.HTTP.MaxHeaderMB = DefaultMaxHeaderMB
 	}
 
 	return nil
 }
 
 // MaxHeaderBytes returns the maximum header size in bytes.
-// This converts MaxHeaderMB (megabytes) to bytes for use with http.Server.
 func (c *Config) MaxHeaderBytes() int {
-	return c.MaxHeaderMB << 20
+	return c.Server.HTTP.MaxHeaderMB << 20
+}
+
+// applyEnvOverridesWithPrefix applies env overrides to any struct with env tags
+func applyEnvOverridesWithPrefix(target any, prefix string) {
+	v := reflect.ValueOf(target).Elem()
+	t := v.Type()
+	walkStruct(v, t, prefix)
+}
+
+// walkStruct recursively walks any struct and applies env overrides
+func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldType := t.Field(i)
+
+		if !field.CanSet() {
+			continue
+		}
+
+		envTag := fieldType.Tag.Get("env")
+
+		kind := field.Kind()
+		if kind == reflect.Struct {
+			newPrefix := prefix
+			if envTag != "" {
+				newPrefix = prefix + "_" + envTag
+			}
+			walkStruct(field, field.Type(), newPrefix)
+			continue
+		}
+
+		if kind == reflect.Ptr {
+			if !field.IsNil() {
+				newPrefix := prefix
+				if envTag != "" {
+					newPrefix = prefix + "_" + envTag
+				}
+				walkStruct(field.Elem(), field.Elem().Type(), newPrefix)
+			}
+			continue
+		}
+
+		if envTag == "" {
+			continue
+		}
+
+		envVarName := prefix + "_" + envTag
+		envValue := os.Getenv(envVarName)
+		if envValue == "" {
+			continue
+		}
+
+		slog.Debug("Applied env override",
+			slog.String("var", envVarName),
+			slog.String("kind", kind.String()))
+
+		switch kind {
+		case reflect.String:
+			field.SetString(envValue)
+
+		case reflect.Int, reflect.Int64:
+			if field.Type() == reflect.TypeOf(time.Duration(0)) {
+				if duration, err := time.ParseDuration(envValue); err == nil {
+					field.SetInt(int64(duration))
+				} else {
+					slog.Warn("Invalid duration format", slog.String("var", envVarName), slog.String("value", envValue))
+				}
+			} else {
+				if intValue, err := strconv.ParseInt(envValue, 10, 64); err == nil {
+					field.SetInt(intValue)
+				} else {
+					slog.Warn("Invalid int format", slog.String("var", envVarName), slog.String("value", envValue))
+				}
+			}
+
+		case reflect.Bool:
+			if boolValue, err := strconv.ParseBool(envValue); err == nil {
+				field.SetBool(boolValue)
+			} else {
+				slog.Warn("Invalid bool format", slog.String("var", envVarName), slog.String("value", envValue))
+			}
+		}
+	}
 }

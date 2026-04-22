@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -10,46 +11,41 @@ func TestNew(t *testing.T) {
 	t.Parallel()
 	config := New()
 
-	if config.Dir != "." {
-		t.Errorf("Expected default dir '.', got %q", config.Dir)
+	if config.Server.Dir != "." {
+		t.Errorf("Expected default dir '.', got %q", config.Server.Dir)
 	}
 
-	if config.Port != ":8080" {
-		t.Errorf("Expected default port ':8080', got %q", config.Port)
+	if config.Server.Port != ":8080" {
+		t.Errorf("Expected default port ':8080', got %q", config.Server.Port)
 	}
 
-	// Test new ServerConfig
-	if config.Server == nil {
-		t.Fatal("Expected Server to be initialized")
+	if config.Site.DefaultIndex != "README.md" {
+		t.Errorf("Expected site default index 'README.md', got %q", config.Site.DefaultIndex)
 	}
 
-	if config.Server.DefaultIndex != "README.md" {
-		t.Errorf("Expected server default index 'README.md', got %q", config.Server.DefaultIndex)
+	if config.Site.DirIndex != false {
+		t.Errorf("Expected site dir index false (secure by default), got %v", config.Site.DirIndex)
 	}
 
-	if config.Server.DirIndex != false {
-		t.Errorf("Expected server dir index false (secure by default), got %v", config.Server.DirIndex)
-	}
-
-	if config.ShutdownTimeout.Seconds() != 1 {
-		t.Errorf("Expected shutdown timeout 1s, got %v", config.ShutdownTimeout)
+	if config.Server.HTTP.ShutdownTimeout.Seconds() != 1 {
+		t.Errorf("Expected shutdown timeout 1s, got %v", config.Server.HTTP.ShutdownTimeout)
 	}
 
 	// Test HTTP server timeout defaults
-	if config.ReadHeaderTimeout != DefaultReadHeaderTimeout {
-		t.Errorf("Expected ReadHeaderTimeout %v, got %v", DefaultReadHeaderTimeout, config.ReadHeaderTimeout)
+	if config.Server.HTTP.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+		t.Errorf("Expected ReadHeaderTimeout %v, got %v", DefaultReadHeaderTimeout, config.Server.HTTP.ReadHeaderTimeout)
 	}
 
-	if config.WriteTimeout != DefaultWriteTimeout {
-		t.Errorf("Expected WriteTimeout %v, got %v", DefaultWriteTimeout, config.WriteTimeout)
+	if config.Server.HTTP.WriteTimeout != DefaultWriteTimeout {
+		t.Errorf("Expected WriteTimeout %v, got %v", DefaultWriteTimeout, config.Server.HTTP.WriteTimeout)
 	}
 
-	if config.IdleTimeout != DefaultIdleTimeout {
-		t.Errorf("Expected IdleTimeout %v, got %v", DefaultIdleTimeout, config.IdleTimeout)
+	if config.Server.HTTP.IdleTimeout != DefaultIdleTimeout {
+		t.Errorf("Expected IdleTimeout %v, got %v", DefaultIdleTimeout, config.Server.HTTP.IdleTimeout)
 	}
 
-	if config.MaxHeaderMB != DefaultMaxHeaderMB {
-		t.Errorf("Expected MaxHeaderMB %v, got %v", DefaultMaxHeaderMB, config.MaxHeaderMB)
+	if config.Server.HTTP.MaxHeaderMB != DefaultMaxHeaderMB {
+		t.Errorf("Expected MaxHeaderMB %v, got %v", DefaultMaxHeaderMB, config.Server.HTTP.MaxHeaderMB)
 	}
 
 	// Test MaxHeaderBytes() method converts MB to bytes
@@ -69,12 +65,12 @@ func TestParseFlags(t *testing.T) {
 	config := New()
 	config.ParseFlags()
 
-	if config.Dir != "." {
-		t.Errorf("Expected default dir '.', got %q", config.Dir)
+	if config.Server.Dir != "." {
+		t.Errorf("Expected default dir '.', got %q", config.Server.Dir)
 	}
 
-	if config.Port != ":8080" {
-		t.Errorf("Expected default port ':8080', got %q", config.Port)
+	if config.Server.Port != ":8080" {
+		t.Errorf("Expected default port ':8080', got %q", config.Server.Port)
 	}
 }
 
@@ -89,7 +85,7 @@ func TestValidate(t *testing.T) {
 func TestValidate_InvalidPort(t *testing.T) {
 	t.Parallel()
 	config := New()
-	config.Port = "invalid"
+	config.Server.Port = "invalid"
 	err := config.Validate()
 	if err == nil {
 		t.Error("Expected validation to fail for invalid port format")
@@ -149,7 +145,7 @@ func TestValidate_PortRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := New()
-			cfg.Port = tt.port
+			cfg.Server.Port = tt.port
 			err := cfg.Validate()
 			if tt.wantError && err == nil {
 				t.Errorf("Expected validation to fail for port %q", tt.port)
@@ -200,7 +196,7 @@ func TestValidate_Directory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := New()
-			cfg.Dir = tt.dir
+			cfg.Server.Dir = tt.dir
 			err := cfg.Validate()
 			if tt.wantError && err == nil {
 				t.Errorf("Expected validation to fail for dir %q", tt.dir)
@@ -222,7 +218,7 @@ func TestValidate_DirectoryIsFile(t *testing.T) {
 	tmpFile.Close()
 
 	cfg := New()
-	cfg.Dir = tmpFile.Name()
+	cfg.Server.Dir = tmpFile.Name()
 	err = cfg.Validate()
 	if err == nil {
 		t.Error("Expected validation to fail when Dir is a file, not a directory")
@@ -262,7 +258,7 @@ func TestValidate_ShutdownTimeout(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := New()
-			cfg.ShutdownTimeout = tt.timeout
+			cfg.Server.HTTP.ShutdownTimeout = tt.timeout
 			err := cfg.Validate()
 			if tt.wantError && err == nil {
 				t.Errorf("Expected validation to fail for timeout %v", tt.timeout)
@@ -285,143 +281,143 @@ func TestValidate_TimeoutDefaults(t *testing.T) {
 		{
 			name: "negative ReadHeaderTimeout resets to default",
 			mutate: func(c *Config) {
-				c.ReadHeaderTimeout = -1
+				c.Server.HTTP.ReadHeaderTimeout = -1
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+				if c.Server.HTTP.ReadHeaderTimeout != DefaultReadHeaderTimeout {
 					t.Errorf("Expected ReadHeaderTimeout to be reset to %v, got %v",
-						DefaultReadHeaderTimeout, c.ReadHeaderTimeout)
+						DefaultReadHeaderTimeout, c.Server.HTTP.ReadHeaderTimeout)
 				}
 			},
 		},
 		{
 			name: "zero ReadHeaderTimeout resets to default",
 			mutate: func(c *Config) {
-				c.ReadHeaderTimeout = 0
+				c.Server.HTTP.ReadHeaderTimeout = 0
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+				if c.Server.HTTP.ReadHeaderTimeout != DefaultReadHeaderTimeout {
 					t.Errorf("Expected ReadHeaderTimeout to be reset to %v, got %v",
-						DefaultReadHeaderTimeout, c.ReadHeaderTimeout)
+						DefaultReadHeaderTimeout, c.Server.HTTP.ReadHeaderTimeout)
 				}
 			},
 		},
 		{
 			name: "excessive ReadHeaderTimeout resets to default",
 			mutate: func(c *Config) {
-				c.ReadHeaderTimeout = 120 * time.Second
+				c.Server.HTTP.ReadHeaderTimeout = 120 * time.Second
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+				if c.Server.HTTP.ReadHeaderTimeout != DefaultReadHeaderTimeout {
 					t.Errorf("Expected ReadHeaderTimeout to be reset to %v, got %v",
-						DefaultReadHeaderTimeout, c.ReadHeaderTimeout)
+						DefaultReadHeaderTimeout, c.Server.HTTP.ReadHeaderTimeout)
 				}
 			},
 		},
 		{
 			name: "negative WriteTimeout resets to default",
 			mutate: func(c *Config) {
-				c.WriteTimeout = -1
+				c.Server.HTTP.WriteTimeout = -1
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.WriteTimeout != DefaultWriteTimeout {
+				if c.Server.HTTP.WriteTimeout != DefaultWriteTimeout {
 					t.Errorf("Expected WriteTimeout to be reset to %v, got %v",
-						DefaultWriteTimeout, c.WriteTimeout)
+						DefaultWriteTimeout, c.Server.HTTP.WriteTimeout)
 				}
 			},
 		},
 		{
 			name: "excessive WriteTimeout resets to default",
 			mutate: func(c *Config) {
-				c.WriteTimeout = 10 * time.Minute
+				c.Server.HTTP.WriteTimeout = 10 * time.Minute
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.WriteTimeout != DefaultWriteTimeout {
+				if c.Server.HTTP.WriteTimeout != DefaultWriteTimeout {
 					t.Errorf("Expected WriteTimeout to be reset to %v, got %v",
-						DefaultWriteTimeout, c.WriteTimeout)
+						DefaultWriteTimeout, c.Server.HTTP.WriteTimeout)
 				}
 			},
 		},
 		{
 			name: "negative IdleTimeout resets to default",
 			mutate: func(c *Config) {
-				c.IdleTimeout = -1
+				c.Server.HTTP.IdleTimeout = -1
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.IdleTimeout != DefaultIdleTimeout {
+				if c.Server.HTTP.IdleTimeout != DefaultIdleTimeout {
 					t.Errorf("Expected IdleTimeout to be reset to %v, got %v",
-						DefaultIdleTimeout, c.IdleTimeout)
+						DefaultIdleTimeout, c.Server.HTTP.IdleTimeout)
 				}
 			},
 		},
 		{
 			name: "excessive IdleTimeout resets to default",
 			mutate: func(c *Config) {
-				c.IdleTimeout = 15 * time.Minute
+				c.Server.HTTP.IdleTimeout = 15 * time.Minute
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.IdleTimeout != DefaultIdleTimeout {
+				if c.Server.HTTP.IdleTimeout != DefaultIdleTimeout {
 					t.Errorf("Expected IdleTimeout to be reset to %v, got %v",
-						DefaultIdleTimeout, c.IdleTimeout)
+						DefaultIdleTimeout, c.Server.HTTP.IdleTimeout)
 				}
 			},
 		},
 		{
 			name: "negative MaxHeaderMB resets to default",
 			mutate: func(c *Config) {
-				c.MaxHeaderMB = -1
+				c.Server.HTTP.MaxHeaderMB = -1
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.MaxHeaderMB != DefaultMaxHeaderMB {
+				if c.Server.HTTP.MaxHeaderMB != DefaultMaxHeaderMB {
 					t.Errorf("Expected MaxHeaderMB to be reset to %v, got %v",
-						DefaultMaxHeaderMB, c.MaxHeaderMB)
+						DefaultMaxHeaderMB, c.Server.HTTP.MaxHeaderMB)
 				}
 			},
 		},
 		{
 			name: "zero MaxHeaderMB resets to default",
 			mutate: func(c *Config) {
-				c.MaxHeaderMB = 0
+				c.Server.HTTP.MaxHeaderMB = 0
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.MaxHeaderMB != DefaultMaxHeaderMB {
+				if c.Server.HTTP.MaxHeaderMB != DefaultMaxHeaderMB {
 					t.Errorf("Expected MaxHeaderMB to be reset to %v, got %v",
-						DefaultMaxHeaderMB, c.MaxHeaderMB)
+						DefaultMaxHeaderMB, c.Server.HTTP.MaxHeaderMB)
 				}
 			},
 		},
 		{
 			name: "excessive MaxHeaderMB resets to default",
 			mutate: func(c *Config) {
-				c.MaxHeaderMB = 20 // 20 MB exceeds max of 10
+				c.Server.HTTP.MaxHeaderMB = 20 // 20 MB exceeds max of 10
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.MaxHeaderMB != DefaultMaxHeaderMB {
+				if c.Server.HTTP.MaxHeaderMB != DefaultMaxHeaderMB {
 					t.Errorf("Expected MaxHeaderMB to be reset to %v, got %v",
-						DefaultMaxHeaderMB, c.MaxHeaderMB)
+						DefaultMaxHeaderMB, c.Server.HTTP.MaxHeaderMB)
 				}
 			},
 		},
 		{
 			name: "valid custom timeouts are preserved",
 			mutate: func(c *Config) {
-				c.ReadHeaderTimeout = 10 * time.Second
-				c.WriteTimeout = 60 * time.Second
-				c.IdleTimeout = 180 * time.Second
-				c.MaxHeaderMB = 5 // 5 MB
+				c.Server.HTTP.ReadHeaderTimeout = 10 * time.Second
+				c.Server.HTTP.WriteTimeout = 60 * time.Second
+				c.Server.HTTP.IdleTimeout = 180 * time.Second
+				c.Server.HTTP.MaxHeaderMB = 5 // 5 MB
 			},
 			check: func(t *testing.T, c *Config) {
-				if c.ReadHeaderTimeout != 10*time.Second {
-					t.Errorf("Expected ReadHeaderTimeout 10s, got %v", c.ReadHeaderTimeout)
+				if c.Server.HTTP.ReadHeaderTimeout != 10*time.Second {
+					t.Errorf("Expected ReadHeaderTimeout 10s, got %v", c.Server.HTTP.ReadHeaderTimeout)
 				}
-				if c.WriteTimeout != 60*time.Second {
-					t.Errorf("Expected WriteTimeout 60s, got %v", c.WriteTimeout)
+				if c.Server.HTTP.WriteTimeout != 60*time.Second {
+					t.Errorf("Expected WriteTimeout 60s, got %v", c.Server.HTTP.WriteTimeout)
 				}
-				if c.IdleTimeout != 180*time.Second {
-					t.Errorf("Expected IdleTimeout 180s, got %v", c.IdleTimeout)
+				if c.Server.HTTP.IdleTimeout != 180*time.Second {
+					t.Errorf("Expected IdleTimeout 180s, got %v", c.Server.HTTP.IdleTimeout)
 				}
-				if c.MaxHeaderMB != 5 {
-					t.Errorf("Expected MaxHeaderMB 5, got %v", c.MaxHeaderMB)
+				if c.Server.HTTP.MaxHeaderMB != 5 {
+					t.Errorf("Expected MaxHeaderMB 5, got %v", c.Server.HTTP.MaxHeaderMB)
 				}
 				// Also verify bytes conversion
 				if c.MaxHeaderBytes() != 5<<20 {
@@ -451,85 +447,92 @@ func TestApplyEnvOverrides(t *testing.T) {
 		validate func(*testing.T, *Config)
 	}{
 		{
-			name: "top-level string fields",
+			name: "server port override",
 			envVars: map[string]string{
-				"GOMDDOC_DIR":  "/custom/dir",
-				"GOMDDOC_PORT": ":9000",
+				"GOMDDOC_SERVER_PORT": ":9000",
 			},
 			validate: func(t *testing.T, c *Config) {
-				if c.Dir != "/custom/dir" {
-					t.Errorf("Expected Dir '/custom/dir', got %q", c.Dir)
-				}
-				if c.Port != ":9000" {
-					t.Errorf("Expected Port ':9000', got %q", c.Port)
+				if c.Server.Port != ":9000" {
+					t.Errorf("Expected Server.Port ':9000', got %q", c.Server.Port)
 				}
 			},
 		},
 		{
-			name: "top-level bool fields",
+			name: "server dir override",
 			envVars: map[string]string{
-				"GOMDDOC_DEV_MODE": "true",
+				"GOMDDOC_SERVER_DIR": "/custom/dir",
 			},
 			validate: func(t *testing.T, c *Config) {
-				if !c.DevMode {
-					t.Errorf("Expected DevMode true, got %v", c.DevMode)
+				if c.Server.Dir != "/custom/dir" {
+					t.Errorf("Expected Server.Dir '/custom/dir', got %q", c.Server.Dir)
 				}
 			},
 		},
 		{
-			name: "top-level duration fields",
+			name: "server dev mode override",
 			envVars: map[string]string{
-				"GOMDDOC_SHUTDOWN_TIMEOUT": "5s",
+				"GOMDDOC_SERVER_DEV_MODE": "true",
 			},
 			validate: func(t *testing.T, c *Config) {
-				if c.ShutdownTimeout.Seconds() != 5 {
-					t.Errorf("Expected ShutdownTimeout 5s, got %v", c.ShutdownTimeout)
+				if !c.Server.DevMode {
+					t.Errorf("Expected Server.DevMode true, got %v", c.Server.DevMode)
 				}
 			},
 		},
 		{
-			name: "nested pointer struct fields (ServerConfig)",
+			name: "http shutdown timeout override",
 			envVars: map[string]string{
-				"GOMDDOC_SERVER_DIR_INDEX":     "true",
-				"GOMDDOC_SERVER_DEFAULT_INDEX": "index.md",
+				"GOMDDOC_SERVER_HTTP_SHUTDOWN_TIMEOUT": "5s",
 			},
 			validate: func(t *testing.T, c *Config) {
-				if !c.Server.DirIndex {
-					t.Errorf("Expected Server.DirIndex true, got %v", c.Server.DirIndex)
+				if c.Server.HTTP.ShutdownTimeout.Seconds() != 5 {
+					t.Errorf("Expected Server.HTTP.ShutdownTimeout 5s, got %v", c.Server.HTTP.ShutdownTimeout)
 				}
-				if c.Server.DefaultIndex != "index.md" {
-					t.Errorf("Expected Server.DefaultIndex 'index.md', got %q", c.Server.DefaultIndex)
+			},
+		},
+		{
+			name: "site defaults",
+			envVars: map[string]string{
+				"GOMDDOC_SITE_DIR_INDEX":     "true",
+				"GOMDDOC_SITE_DEFAULT_INDEX": "index.md",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if !c.Site.DirIndex {
+					t.Errorf("Expected Site.DirIndex true, got %v", c.Site.DirIndex)
+				}
+				if c.Site.DefaultIndex != "index.md" {
+					t.Errorf("Expected Site.DefaultIndex 'index.md', got %q", c.Site.DefaultIndex)
 				}
 			},
 		},
 		{
 			name: "all config fields together",
 			envVars: map[string]string{
-				"GOMDDOC_DIR":                  "/test",
-				"GOMDDOC_PORT":                 ":7777",
-				"GOMDDOC_SHUTDOWN_TIMEOUT":     "10s",
-				"GOMDDOC_DEV_MODE":             "true",
-				"GOMDDOC_SERVER_DIR_INDEX":     "true",
-				"GOMDDOC_SERVER_DEFAULT_INDEX": "HOME.md",
+				"GOMDDOC_SERVER_DIR":                   "/test",
+				"GOMDDOC_SERVER_PORT":                  ":7777",
+				"GOMDDOC_SERVER_HTTP_SHUTDOWN_TIMEOUT": "10s",
+				"GOMDDOC_SERVER_DEV_MODE":              "true",
+				"GOMDDOC_SITE_DIR_INDEX":               "true",
+				"GOMDDOC_SITE_DEFAULT_INDEX":           "HOME.md",
 			},
 			validate: func(t *testing.T, c *Config) {
-				if c.Dir != "/test" {
-					t.Errorf("Expected Dir '/test', got %q", c.Dir)
+				if c.Server.Dir != "/test" {
+					t.Errorf("Expected Server.Dir '/test', got %q", c.Server.Dir)
 				}
-				if c.Port != ":7777" {
-					t.Errorf("Expected Port ':7777', got %q", c.Port)
+				if c.Server.Port != ":7777" {
+					t.Errorf("Expected Server.Port ':7777', got %q", c.Server.Port)
 				}
-				if c.ShutdownTimeout.Seconds() != 10 {
-					t.Errorf("Expected ShutdownTimeout 10s, got %v", c.ShutdownTimeout)
+				if c.Server.HTTP.ShutdownTimeout.Seconds() != 10 {
+					t.Errorf("Expected Server.HTTP.ShutdownTimeout 10s, got %v", c.Server.HTTP.ShutdownTimeout)
 				}
-				if !c.DevMode {
-					t.Errorf("Expected DevMode true, got %v", c.DevMode)
+				if !c.Server.DevMode {
+					t.Errorf("Expected Server.DevMode true, got %v", c.Server.DevMode)
 				}
-				if !c.Server.DirIndex {
-					t.Errorf("Expected Server.DirIndex true, got %v", c.Server.DirIndex)
+				if !c.Site.DirIndex {
+					t.Errorf("Expected Site.DirIndex true, got %v", c.Site.DirIndex)
 				}
-				if c.Server.DefaultIndex != "HOME.md" {
-					t.Errorf("Expected Server.DefaultIndex 'HOME.md', got %q", c.Server.DefaultIndex)
+				if c.Site.DefaultIndex != "HOME.md" {
+					t.Errorf("Expected Site.DefaultIndex 'HOME.md', got %q", c.Site.DefaultIndex)
 				}
 			},
 		},
@@ -537,17 +540,248 @@ func TestApplyEnvOverrides(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set test env vars
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}
 
-			// Create config and apply env overrides
 			cfg := New()
+			// ApplyEnvOverrides applies to the whole struct including Site (via nested walking)
 			cfg.ApplyEnvOverrides()
 
-			// Validate
 			tt.validate(t, cfg)
+		})
+	}
+}
+
+func TestSiteConfig_Defaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		dir       string
+		wantTheme string
+	}{
+		{
+			name:      "current directory",
+			dir:       ".",
+			wantTheme: "default",
+		},
+		{
+			name:      "custom directory",
+			dir:       "/var/docs",
+			wantTheme: "default",
+		},
+		{
+			name:      "api-docs directory",
+			dir:       "/var/www/api-docs",
+			wantTheme: "default",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sc := NewSiteConfig(tt.dir)
+
+			if sc.Meta.Title == "" {
+				t.Error("Title should not be empty")
+			}
+
+			// For current directory, verify title is capitalized
+			if tt.dir == "." {
+				if sc.Meta.Title[0] < 'A' || sc.Meta.Title[0] > 'Z' {
+					t.Errorf("Title first letter should be capitalized, got %q", sc.Meta.Title)
+				}
+			}
+
+			if sc.Theme.Name != tt.wantTheme {
+				t.Errorf("Theme.Name = %q, want %q", sc.Theme.Name, tt.wantTheme)
+			}
+
+			if sc.Meta.Domain != "" {
+				t.Errorf("Meta.Domain = %q, want empty", sc.Meta.Domain)
+			}
+
+			if sc.Meta.Description != "" {
+				t.Errorf("Meta.Description = %q, want empty", sc.Meta.Description)
+			}
+		})
+	}
+}
+
+func TestSiteConfig_LoadFromFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		configYAML   string
+		wantTitle    string
+		wantDomain   string
+		wantDesc     string
+		wantTheme    string
+		wantErr      bool
+		missingFile  bool
+		expectDefaut bool
+	}{
+		{
+			name: "valid config file",
+			configYAML: `meta:
+  domain: example.com
+  title: "Test Site"
+  description: "Test Description"
+
+theme:
+  name: "custom"
+`,
+			wantTitle:  "Test Site",
+			wantDomain: "example.com",
+			wantDesc:   "Test Description",
+			wantTheme:  "custom",
+		},
+		{
+			name:         "missing config file - uses defaults",
+			missingFile:  true,
+			expectDefaut: true,
+		},
+		{
+			name: "invalid YAML",
+			configYAML: `meta:
+  title: "Unclosed quote
+  domain: example.com
+`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			sc := NewSiteConfig(tmpDir)
+			originalTitle := sc.Meta.Title
+
+			// Create config file if needed
+			if !tt.missingFile {
+				gomddocDir := filepath.Join(tmpDir, ".gomddoc")
+				if err := os.MkdirAll(gomddocDir, 0755); err != nil {
+					t.Fatalf("Failed to create .gomddoc dir: %v", err)
+				}
+
+				configPath := filepath.Join(gomddocDir, "config.yml")
+				if err := os.WriteFile(configPath, []byte(tt.configYAML), 0644); err != nil {
+					t.Fatalf("Failed to write config file: %v", err)
+				}
+			}
+
+			err := sc.LoadFromFile(tmpDir)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("LoadFromFile() error = nil, want error")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("LoadFromFile() error = %v, want nil", err)
+			}
+
+			if tt.expectDefaut {
+				if sc.Meta.Title != originalTitle {
+					t.Error("Title should remain default when config file missing")
+				}
+				return
+			}
+
+			if sc.Meta.Title != tt.wantTitle {
+				t.Errorf("Meta.Title = %q, want %q", sc.Meta.Title, tt.wantTitle)
+			}
+
+			if sc.Meta.Domain != tt.wantDomain {
+				t.Errorf("Meta.Domain = %q, want %q", sc.Meta.Domain, tt.wantDomain)
+			}
+
+			if sc.Meta.Description != tt.wantDesc {
+				t.Errorf("Meta.Description = %q, want %q", sc.Meta.Description, tt.wantDesc)
+			}
+
+			if sc.Theme.Name != tt.wantTheme {
+				t.Errorf("Theme.Name = %q, want %q", sc.Theme.Name, tt.wantTheme)
+			}
+		})
+	}
+}
+
+func TestSiteConfig_Validate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		setup   func(*SiteConfig)
+		wantErr bool
+		wantFix func(*testing.T, *SiteConfig)
+	}{
+		{
+			name: "empty theme auto-fixes to default",
+			setup: func(sc *SiteConfig) {
+				sc.Theme.Name = ""
+			},
+			wantErr: false,
+			wantFix: func(t *testing.T, sc *SiteConfig) {
+				if sc.Theme.Name != "default" {
+					t.Errorf("Theme.Name should be auto-fixed to 'default', got %q", sc.Theme.Name)
+				}
+			},
+		},
+		{
+			name: "domain with protocol",
+			setup: func(sc *SiteConfig) {
+				sc.Meta.Domain = "https://example.com"
+			},
+			wantErr: true,
+		},
+		{
+			name: "domain with path",
+			setup: func(sc *SiteConfig) {
+				sc.Meta.Domain = "example.com/path"
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid domain",
+			setup: func(sc *SiteConfig) {
+				sc.Meta.Domain = "example.com"
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty domain",
+			setup: func(sc *SiteConfig) {
+				sc.Meta.Domain = ""
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sc := NewSiteConfig(".")
+			tt.setup(&sc)
+
+			err := sc.Validate()
+			if tt.wantErr && err == nil {
+				t.Error("Validate() error = nil, want error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Validate() error = %v, want nil", err)
+			}
+
+			if tt.wantFix != nil {
+				tt.wantFix(t, &sc)
+			}
 		})
 	}
 }
