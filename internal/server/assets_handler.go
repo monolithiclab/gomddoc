@@ -50,16 +50,5 @@ func (h *AssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", negotiate.DetectMIME(filePath))
-
-	etag := generateETag(content)
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-
-	if checkETag(r, etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-
-	_, _ = w.Write(content) // #nosec G705 -- serves static theme assets from controlled embedded/overlay FS, not user content
+	serveWithETag(w, r, content, negotiate.DetectMIME(filePath), "public, max-age=31536000, immutable")
 }

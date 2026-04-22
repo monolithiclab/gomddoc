@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -51,4 +52,28 @@ func checkETag(r *http.Request, etag string) bool {
 	}
 
 	return false
+}
+
+// serveWithETag generates an ETag, sets cache headers, handles conditional
+// requests, and writes the response body. Returns true if the response was
+// served (either 200 or 304), false should not happen in practice.
+func serveWithETag(w http.ResponseWriter, r *http.Request, content []byte, contentType, cacheControl string) {
+	etag := generateETag(content)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", cacheControl)
+
+	if checkETag(r, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
+	w.WriteHeader(http.StatusOK)
+	_, writeErr := w.Write(content) // #nosec G705 -- content served with correct Content-Type; callers control the content source
+	if writeErr != nil {
+		slog.Error("Cannot write response",
+			slog.String("request_id", GetRequestID(r.Context())),
+			slog.Any("error", writeErr))
+	}
 }

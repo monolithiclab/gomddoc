@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -150,46 +149,12 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		return
 	}
 
-	etag := generateETag(rendered)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=300")
-
-	if checkETag(r, etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-
-	w.Header().Set("Content-Length", strconv.Itoa(len(rendered)))
-	w.WriteHeader(http.StatusOK)
-	_, writeErr := w.Write(rendered) // #nosec G705 -- template-rendered HTML served with correct Content-Type
-	if writeErr != nil {
-		slog.Error("Cannot write response",
-			slog.String("request_id", GetRequestID(r.Context())),
-			slog.Any("error", writeErr))
-	}
+	serveWithETag(w, r, rendered, "text/html; charset=utf-8", "public, max-age=300")
 }
 
 // serveRaw serves content directly without template wrapping (passthrough).
 func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byte, mimeType string) {
-	etag := generateETag(content)
-	w.Header().Set("Content-Type", mimeType)
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=300")
-
-	if checkETag(r, etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-
-	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
-	w.WriteHeader(http.StatusOK)
-	_, writeErr := w.Write(content) // #nosec G705 -- static file content served with correct Content-Type and nosniff header
-	if writeErr != nil {
-		slog.Error("Cannot write response",
-			slog.String("request_id", GetRequestID(r.Context())),
-			slog.Any("error", writeErr))
-	}
+	serveWithETag(w, r, content, mimeType, "public, max-age=300")
 }
 
 // handleError handles errors and sends appropriate HTTP responses.
