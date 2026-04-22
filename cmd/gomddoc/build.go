@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -139,7 +140,7 @@ func (b *BuildCmd) walkAndBuild(
 		if !d.IsDir() {
 			filePaths = append(filePaths, filePath)
 			if strings.EqualFold(name, "index.md") {
-				dirsWithIndexMD[filepath.Dir(filePath)] = true
+				dirsWithIndexMD[path.Dir(filePath)] = true
 			}
 		}
 
@@ -233,9 +234,9 @@ func (b *BuildCmd) buildFile(
 
 	// Determine the output path. The DefaultIndex file (e.g. README.md)
 	// becomes index.html unless an index.md exists in the same directory.
-	htmlPath := strings.TrimSuffix(filePath, filepath.Ext(filePath)) + ".html"
-	if b.isDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[filepath.Dir(filePath)] {
-		htmlPath = filepath.Join(filepath.Dir(filePath), "index.html")
+	htmlPath := strings.TrimSuffix(filePath, path.Ext(filePath)) + ".html"
+	if b.isDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
+		htmlPath = path.Join(path.Dir(filePath), "index.html")
 	}
 	if err := b.writeOutputFile(htmlPath, rendered); err != nil {
 		return err
@@ -281,7 +282,7 @@ func (b *BuildCmd) copyStaticAssets(staticFS fs.FS, stats *buildStats) error {
 			return fmt.Errorf("read static %s: %w", filePath, readErr)
 		}
 
-		outPath := filepath.Join("_assets", filePath)
+		outPath := path.Join("_assets", filePath)
 		if writeErr := b.writeOutputFile(outPath, content); writeErr != nil {
 			return writeErr
 		}
@@ -327,7 +328,7 @@ func (b *BuildCmd) generateSEOFiles(contentRoot fs.FS, siteConfig *config.SiteCo
 // DefaultIndex filename (case-insensitive). For example, "docs/README.md"
 // matches DefaultIndex "README.md".
 func (b *BuildCmd) isDefaultIndex(filePath, defaultIndex string) bool {
-	return strings.EqualFold(filepath.Base(filePath), defaultIndex)
+	return strings.EqualFold(path.Base(filePath), defaultIndex)
 }
 
 // writeOutputFile writes content to a file in the output directory, creating parent directories as needed.
