@@ -87,6 +87,7 @@ type HTMLRenderer struct {
 	resolver       *resolve.PathResolver // Optional path resolver for clean URLs
 	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
 	hasSearchIndex bool                  // Whether a search index was successfully built
+	loggedMissing  sync.Map              // Tracks template names already warned about
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
@@ -222,9 +223,11 @@ func (h *HTMLRenderer) parseTemplate(templateName string) (*template.Template, e
 		if !errors.Is(err, errTemplateNotFound) {
 			return nil, err
 		}
-		slog.Warn("Theme template not found, falling back to default",
-			slog.String("theme", h.siteConfig.Theme.Name),
-			slog.String("template", templateName))
+		if _, loaded := h.loggedMissing.LoadOrStore(templateName, struct{}{}); !loaded {
+			slog.Warn("Theme template not found, falling back to default",
+				slog.String("theme", h.siteConfig.Theme.Name),
+				slog.String("template", templateName))
+		}
 		tmpl, err = h.parseThemeTemplate(templateName, config.DefaultThemeName)
 	}
 	return tmpl, err
