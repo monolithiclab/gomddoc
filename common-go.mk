@@ -13,7 +13,7 @@ help:  ## Show this help.
 .SILENT: lint-format
 .PHONY: lint-format
 lint-format:  ## test if source code is properly formated. (no-help)
-	test -z "$$(gofmt -d .)"
+	test -z "$$(gofmt -d .)" || (echo 'Formatting error, run `make format` to fix issues'; exit 1)
 
 
 .SILENT: lint-vet
