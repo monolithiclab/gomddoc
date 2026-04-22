@@ -3,6 +3,7 @@ package common
 import (
 	"mime"
 	"path/filepath"
+	"strings"
 )
 
 func init() {
@@ -19,4 +20,14 @@ func DetectMIME(path string) string {
 		return "application/octet-stream"
 	}
 	return mimeType
+}
+
+// NormalizeMimeType strips parameters from MIME types.
+// Example: "text/html; charset=utf-8" -> "text/html"
+func NormalizeMimeType(mimeType string) string {
+	mediaType, _, err := mime.ParseMediaType(mimeType)
+	if err != nil || mediaType == "" {
+		return strings.TrimSpace(mimeType)
+	}
+	return mediaType
 }

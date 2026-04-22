@@ -1,9 +1,9 @@
 package enricher
 
 import (
-	"mime"
-	"strings"
 	"sync"
+
+	"github.com/monolithiclab/gomddoc/internal/common"
 )
 
 // DefaultEnricherRegistry is a MIME-type-keyed registry of enrichers.
@@ -28,7 +28,7 @@ func (r *DefaultEnricherRegistry) Register(e Enricher) {
 	defer r.mu.Unlock()
 
 	for _, mimeType := range e.SupportedMimeTypes() {
-		r.enrichers[normalizeMimeType(mimeType)] = e
+		r.enrichers[common.NormalizeMimeType(mimeType)] = e
 	}
 }
 
@@ -38,18 +38,9 @@ func (r *DefaultEnricherRegistry) Get(mimeType string) Enricher {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	normalized := normalizeMimeType(mimeType)
+	normalized := common.NormalizeMimeType(mimeType)
 	if e, ok := r.enrichers[normalized]; ok {
 		return e
 	}
 	return r.fallback
-}
-
-// normalizeMimeType strips charset and other parameters from a MIME type.
-func normalizeMimeType(mimeType string) string {
-	mediaType, _, _ := mime.ParseMediaType(mimeType)
-	if mediaType == "" {
-		return strings.TrimSpace(mimeType)
-	}
-	return mediaType
 }

@@ -244,6 +244,30 @@ func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutTags(t *testing.T) {
 	}
 }
 
+func TestMarkdownEnricher_Enrich_MalformedTags(t *testing.T) {
+	fsys := fstest.MapFS{
+		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
+	}
+
+	idx, err := metadata.BuildIndex(context.Background(), fsys)
+	if err != nil {
+		t.Fatalf("BuildIndex() error = %v", err)
+	}
+
+	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
+
+	// Content with tags as a string instead of a list — should not panic
+	content := []byte("---\ntitle: Bad Tags\ntags: single-string\n---\n# Bad Tags")
+	result, err := e.Enrich(context.Background(), content, "/bad.md")
+	if err != nil {
+		t.Fatalf("Enrich() error = %v", err)
+	}
+
+	if len(result.RelatedDocs) != 0 {
+		t.Errorf("RelatedDocs = %v, want empty for malformed tags", result.RelatedDocs)
+	}
+}
+
 func TestMarkdownEnricher_Enrich_ContextCancelled(t *testing.T) {
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 

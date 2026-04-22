@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
@@ -52,8 +53,9 @@ func NewHandler(
 // Flow:
 //  1. Read file from provider (gets content + input MIME type)
 //  2. Parse Accept header and negotiate renderer (2D: input type + output type)
-//  3. Render content
-//  4. Serve as HTML (wrapped in template) or raw (passthrough)
+//  3. Enrich content (extract metadata, TOC, navigation, related docs)
+//  4. Render content with enrichment data
+//  5. Serve as HTML (wrapped in template) or raw (passthrough)
 func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// 1. Read file + get MIME type
 	content, mimeType, err := h.provider.ReadFile(r.Context(), r.URL.Path)
@@ -71,7 +73,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Content negotiation BEFORE rendering (2D lookup)
-	normalized := renderer.NormalizeMimeType(mimeType)
+	normalized := common.NormalizeMimeType(mimeType)
 	acceptedTypes := negotiate.ParseAccept(r.Header.Get("Accept"))
 
 	contentRenderer, selectedOutput, err := h.registry.Get(normalized, acceptedTypes)
@@ -103,7 +105,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Serve based on selected output MIME type
-	outputNormalized := renderer.NormalizeMimeType(selectedOutput)
+	outputNormalized := common.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
 		h.serveHTML(w, r, renderResult.Content, enrichment)
 	} else {

@@ -156,7 +156,7 @@ func (b *BuildCmd) walkAndBuild(
 	for _, fp := range filePaths {
 		g.Go(func() error {
 			mimeType := common.DetectMIME(fp)
-			normalized := renderer.NormalizeMimeType(mimeType)
+			normalized := common.NormalizeMimeType(mimeType)
 
 			contentRenderer, _, err := registry.Get(normalized, htmlAccept)
 			if err != nil {

@@ -13,7 +13,7 @@ import (
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 
-	enricher "github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
 func init() {
@@ -115,7 +115,10 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 	rendered = TransformAdmonitions(rendered)
 
 	// Color chips: check enrichment metadata for per-page override
-	metadata := enrichment.Metadata
+	var metadata map[string]any
+	if enrichment != nil {
+		metadata = enrichment.Metadata
+	}
 	if colorChipsEnabled(m.colorChips, metadata) {
 		rendered = transformColorChips(rendered)
 	}

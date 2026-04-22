@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 )
 
@@ -62,7 +63,7 @@ func (r *DefaultRegistry) Get(inputMimeType string, accepted []negotiate.MediaTy
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	normalized := NormalizeMimeType(inputMimeType)
+	normalized := common.NormalizeMimeType(inputMimeType)
 
 	if len(accepted) == 0 {
 		accepted = []negotiate.MediaType{{Type: "*", Subtype: "*", Q: 1.0}}
@@ -127,7 +128,7 @@ func (r *DefaultRegistry) AvailableOutputTypes(inputMimeType string) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	normalized := NormalizeMimeType(inputMimeType)
+	normalized := common.NormalizeMimeType(inputMimeType)
 	seen := make(map[string]bool)
 	var types []string
 
