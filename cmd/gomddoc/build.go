@@ -46,7 +46,7 @@ type buildStats struct {
 func (b *BuildCmd) Run() error {
 	start := time.Now()
 
-	cfg, err := config.NewFromServeArgs(b.Dir, ":8080", false, "")
+	cfg, err := config.NewFromDir(b.Dir)
 	if err != nil {
 		return fmt.Errorf("build config: %w", err)
 	}

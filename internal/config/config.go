@@ -133,6 +133,12 @@ func NewFromServeArgs(dir, port string, devMode bool, gitSSHKey string) (*Config
 	return cfg, nil
 }
 
+// NewFromDir creates a Config from a content directory without server-specific
+// settings. Used by the build command and other non-server contexts.
+func NewFromDir(dir string) (*Config, error) {
+	return NewFromServeArgs(dir, ":8080", false, "")
+}
+
 // New creates a new Config with default values
 func New() *Config {
 	return &Config{
