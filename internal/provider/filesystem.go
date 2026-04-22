@@ -1,13 +1,12 @@
 package provider
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"mime"
 	"os"
 	"path"
-	"path/filepath"
-	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/common"
 )
@@ -63,19 +62,12 @@ func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool)
 //   - Returns "text/markdown" for README.md and directory listings
 //   - Defaults to "application/octet-stream" for unknown types
 func (f *FilesystemProvider) ReadFile(requestPath string) ([]byte, string, error) {
-	// Clean and normalize path
-	cleanPath := requestPath
-	if cleanPath == "/" {
-		cleanPath = "."
-	} else {
-		cleanPath = path.Clean(cleanPath)
-		cleanPath = strings.TrimPrefix(cleanPath, "/")
-	}
+	cleanPath := normalizePath(requestPath)
 
 	// Check if path is directory
 	info, err := fs.Stat(f.root, cleanPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
 		}
 		return nil, "", &PathError{Op: "stat", Path: requestPath, Err: err}
@@ -100,14 +92,14 @@ func (f *FilesystemProvider) ReadFile(requestPath string) ([]byte, string, error
 // handleDirectory processes directory requests with default index fallback and optional listing.
 func (f *FilesystemProvider) handleDirectory(cleanPath, requestPath string) ([]byte, string, error) {
 	// Try default index file first (always)
-	indexPath := filepath.Join(cleanPath, f.defaultIndex)
+	indexPath := path.Join(cleanPath, f.defaultIndex)
 	if cleanPath == "." {
 		indexPath = f.defaultIndex
 	}
 
 	if content, err := fs.ReadFile(f.root, indexPath); err == nil {
 		// Detect MIME type for the index file
-		mimeType := mime.TypeByExtension(filepath.Ext(f.defaultIndex))
+		mimeType := mime.TypeByExtension(path.Ext(f.defaultIndex))
 		if mimeType == "" {
 			mimeType = "text/markdown"
 		}
@@ -131,18 +123,11 @@ func (f *FilesystemProvider) handleDirectory(cleanPath, requestPath string) ([]b
 
 // Stat returns a FileInfo describing the named file
 func (f *FilesystemProvider) Stat(requestPath string) (fs.FileInfo, error) {
-	// Clean and normalize path
-	cleanPath := requestPath
-	if cleanPath == "/" {
-		cleanPath = "."
-	} else {
-		cleanPath = path.Clean(cleanPath)
-		cleanPath = strings.TrimPrefix(cleanPath, "/")
-	}
+	cleanPath := normalizePath(requestPath)
 
 	info, err := fs.Stat(f.root, cleanPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrNotFound}
 		}
 		return nil, &PathError{Op: "stat", Path: requestPath, Err: err}

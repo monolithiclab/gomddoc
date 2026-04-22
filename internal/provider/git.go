@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"context"
+	"errors"
 	"io/fs"
 	"path"
 	"strings"
@@ -95,6 +97,7 @@ type GitProvider struct {
 
 	// Lazily initialized state (protected by mu)
 	mu         sync.RWMutex
+	closed     bool
 	storage    storage.Storer
 	repo       *git.Repository
 	tree       *object.Tree
@@ -148,7 +151,7 @@ func (g *GitProvider) Close() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Clear cached state - allows GC to reclaim memory
+	g.closed = true
 	g.repo = nil
 	g.tree = nil
 	g.storage = nil
@@ -161,6 +164,10 @@ func (g *GitProvider) Close() error {
 func (g *GitProvider) ensureCloned() error {
 	// Fast path: already cloned
 	g.mu.RLock()
+	if g.closed {
+		g.mu.RUnlock()
+		return &PathError{Op: "read", Path: "", Err: errors.New("provider closed")}
+	}
 	if g.repo != nil {
 		g.mu.RUnlock()
 		return nil
@@ -172,6 +179,9 @@ func (g *GitProvider) ensureCloned() error {
 	defer g.mu.Unlock()
 
 	// Double-check after acquiring write lock
+	if g.closed {
+		return &PathError{Op: "read", Path: "", Err: errors.New("provider closed")}
+	}
 	if g.repo != nil {
 		return nil
 	}
@@ -207,7 +217,10 @@ func (g *GitProvider) cloneLocked() error {
 		cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(g.parsedURL.Ref)
 	}
 
-	repo, err := git.Clone(g.storage, nil, cloneOpts)
+	ctx, cancel := context.WithTimeout(context.Background(), g.cloneTimeout)
+	defer cancel()
+
+	repo, err := git.CloneContext(ctx, g.storage, nil, cloneOpts)
 	if err != nil {
 		return g.classifyCloneError(err)
 	}

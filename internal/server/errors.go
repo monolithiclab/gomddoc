@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 )
 
 // classifyError maps errors to appropriate HTTP status codes.
@@ -40,6 +41,8 @@ func classifyError(err error) int {
 		return http.StatusNotImplemented // 501
 	case errors.Is(err, provider.ErrFileTooLarge):
 		return http.StatusRequestEntityTooLarge // 413
+	case errors.Is(err, renderer.ErrNoRenderer):
+		return http.StatusUnsupportedMediaType // 415
 
 	default:
 		return http.StatusInternalServerError // 500

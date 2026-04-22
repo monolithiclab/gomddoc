@@ -3,8 +3,8 @@ package provider
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
+	"path/filepath"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
@@ -38,6 +38,11 @@ func setupSSHAuth(user string, sshKeyFile string) (transport.AuthMethod, error) 
 		return nil, fmt.Errorf("ssh authentication requires a key file (use --git-key-file)")
 	}
 
+	hostKeyCallback, err := createHostKeyCallback()
+	if err != nil {
+		return nil, fmt.Errorf("SSH host key verification: %w", err)
+	}
+
 	return &ssh.PublicKeysCallback{
 		User: user,
 		Callback: func() ([]gossh.Signer, error) {
@@ -56,32 +61,23 @@ func setupSSHAuth(user string, sshKeyFile string) (transport.AuthMethod, error) 
 			return []gossh.Signer{signer}, nil
 		},
 		HostKeyCallbackHelper: ssh.HostKeyCallbackHelper{
-			HostKeyCallback: createHostKeyCallback(),
+			HostKeyCallback: hostKeyCallback,
 		},
 	}, nil
 }
 
 // createHostKeyCallback creates a host key verification callback.
-// Tries to use known_hosts file, falls back to TOFU (trust on first use).
-func createHostKeyCallback() gossh.HostKeyCallback {
-	// Try to use known_hosts file
-	knownHostsPath := os.ExpandEnv("$HOME/.ssh/known_hosts")
+// Returns an error when known_hosts is unavailable (fail closed).
+func createHostKeyCallback() (gossh.HostKeyCallback, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	knownHostsPath := filepath.Join(home, ".ssh", "known_hosts")
 	callback, err := ssh.NewKnownHostsCallback(knownHostsPath)
-	if err == nil {
-		return callback
+	if err != nil {
+		return nil, fmt.Errorf("known_hosts required for SSH: %w", err)
 	}
-
-	// Fallback: log warning and accept (TOFU)
-	slog.Warn("known_hosts not available, accepting all host keys (TOFU)",
-		slog.String("path", knownHostsPath),
-		slog.Any("error", err),
-	)
-
-	return func(hostname string, remote net.Addr, key gossh.PublicKey) error {
-		slog.Debug("Accepting host key",
-			slog.String("host", hostname),
-			slog.String("key_type", key.Type()),
-		)
-		return nil
-	}
+	slog.Debug("Using known_hosts for host key verification", slog.String("path", knownHostsPath))
+	return callback, nil
 }

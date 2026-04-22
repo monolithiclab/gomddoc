@@ -62,7 +62,7 @@ func startCmd() int {
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, providerOpts...)
 	if err != nil {
 		slog.Error("Cannot create content provider", slog.Any("error", err))
-		os.Exit(1)
+		return ExitError
 	}
 	defer func() {
 		// Cleanup provider on normal exit

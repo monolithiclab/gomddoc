@@ -37,11 +37,11 @@ func NewHTTPServer(
 	// Create handler with new signature
 	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site)
 
-	// Apply middleware chain
+	// Apply middleware chain (outermost first)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)
-	h = BlockHiddenPaths(h) // Block all hidden files/directories (., .git, .env, etc.)
-	// Exception: .well-known/ is allowed (IETF RFC 8615)
-	h = SecurityHeaders(h) // Must be last so headers are set first
+	h = BlockHiddenPaths(h)                              // Block all hidden files/directories
+	h = MethodFilter(http.MethodGet, http.MethodHead)(h) // Only allow GET and HEAD
+	h = SecurityHeaders(h)                               // Must be outermost so headers are set first
 
 	server := &http.Server{
 		Addr:              cfg.Server.Port,

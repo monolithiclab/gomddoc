@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/url"
@@ -164,13 +166,12 @@ func NewSiteConfig(dir string) SiteConfig {
 func (sc *SiteConfig) LoadFromFile(rootDir string) error {
 	path := filepath.Join(rootDir, ConfigDirName, ConfigFileName)
 
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		slog.Debug("No site config file found, using defaults", slog.String("path", path))
-		return nil
-	}
-
 	data, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			slog.Debug("No site config file found, using defaults", slog.String("path", path))
+			return nil
+		}
 		return fmt.Errorf("read config file: %w", err)
 	}
 
@@ -195,23 +196,18 @@ func (c *Config) ApplyEnvOverrides() {
 	applyEnvOverridesWithPrefix(c, "GOMDDOC")
 }
 
-// ApplyEnvOverrides applies environment variable overrides to SiteConfig (useful if loaded separately)
+// ApplyEnvOverrides applies environment variable overrides to SiteConfig using the
+// correct prefix GOMDDOC_SITE (useful for standalone usage or testing).
 func (sc *SiteConfig) ApplyEnvOverrides() {
-	// This maintains the previous behavior for testing or standalone usage
-	// But strictly speaking, it should probably respect the full path if possible.
-	// However, SiteConfig is a child. If we want GOMDDOC_SITE_... we need to pass that prefix.
-	// But to keep backward compatibility with existing tests or behavior, we default to GOMDDOC prefix here?
-	// Actually, main.go calls cfg.ApplyEnvOverrides(), which does nested walking.
-	// If we call sc.ApplyEnvOverrides(), it uses "GOMDDOC" prefix, so it looks for GOMDDOC_DEFAULT_INDEX (no SITE).
-	// This might be confusing. Let's make it consistent:
-	// If main.go uses cfg.ApplyEnvOverrides(), we don't need this method on SiteConfig for main execution.
-	// But for tests it might be useful.
-	applyEnvOverridesWithPrefix(sc, "GOMDDOC")
+	applyEnvOverridesWithPrefix(sc, "GOMDDOC_SITE")
 }
 
 // ParseFlags parses command line flags and updates the configuration
 // Flags override everything else.
 func (c *Config) ParseFlags() {
+	if flag.Parsed() {
+		return
+	}
 	flag.StringVar(&c.Server.Dir, "d", c.Server.Dir, "Markdown directory")
 	flag.StringVar(&c.Server.Port, "p", c.Server.Port, "HTTP port")
 	flag.BoolVar(&c.Server.DevMode, "dev", c.Server.DevMode, "Enable development mode")
@@ -382,7 +378,7 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 		}
 
 		if kind == reflect.Pointer {
-			if !field.IsNil() {
+			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
 				newPrefix := prefix
 				if envTag != "" {
 					newPrefix = prefix + "_" + envTag

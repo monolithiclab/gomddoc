@@ -88,6 +88,49 @@ func TestBlockHiddenPaths_HiddenFiles(t *testing.T) {
 	}
 }
 
+func TestMethodFilter(t *testing.T) {
+	t.Parallel()
+
+	handler := MethodFilter(http.MethodGet, http.MethodHead)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+
+	tests := []struct {
+		name           string
+		method         string
+		expectedStatus int
+	}{
+		{"GET allowed", http.MethodGet, http.StatusOK},
+		{"HEAD allowed", http.MethodHead, http.StatusOK},
+		{"POST blocked", http.MethodPost, http.StatusMethodNotAllowed},
+		{"PUT blocked", http.MethodPut, http.StatusMethodNotAllowed},
+		{"DELETE blocked", http.MethodDelete, http.StatusMethodNotAllowed},
+		{"PATCH blocked", http.MethodPatch, http.StatusMethodNotAllowed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(tt.method, "/test", nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Method %s: Status = %d, want %d", tt.method, w.Code, tt.expectedStatus)
+			}
+
+			if tt.expectedStatus == http.StatusMethodNotAllowed {
+				allow := w.Header().Get("Allow")
+				if allow != "GET, HEAD" {
+					t.Errorf("Allow header = %q, want %q", allow, "GET, HEAD")
+				}
+			}
+		})
+	}
+}
+
 func TestBlockHiddenPaths_ResponseFormat(t *testing.T) {
 	handler := BlockHiddenPaths(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

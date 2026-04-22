@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 )
 
 func TestClassifyError(t *testing.T) {
@@ -150,6 +151,16 @@ func TestClassifyError(t *testing.T) {
 			name: "ErrFileTooLarge wrapped",
 			err:  fmt.Errorf("100MB exceeds 50MB limit: %w", provider.ErrFileTooLarge),
 			want: http.StatusRequestEntityTooLarge,
+		},
+		{
+			name: "ErrNoRenderer",
+			err:  renderer.ErrNoRenderer,
+			want: http.StatusUnsupportedMediaType,
+		},
+		{
+			name: "ErrNoRenderer wrapped",
+			err:  fmt.Errorf("no handler for type: %w", renderer.ErrNoRenderer),
+			want: http.StatusUnsupportedMediaType,
 		},
 	}
 

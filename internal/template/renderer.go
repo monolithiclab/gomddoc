@@ -144,7 +144,9 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		buf.Reset()
-		bufferPool.Put(buf)
+		if buf.Cap() <= 65536 {
+			bufferPool.Put(buf)
+		}
 	}()
 
 	err = tmpl.Execute(buf, data)
@@ -279,9 +281,11 @@ func (h *HTMLRenderer) ClearCache() {
 // This is a fatal error if missing, as the application cannot function without it
 func (h *HTMLRenderer) ValidateDefaultTheme() error {
 	defaultTemplate := path.Join("assets/themes/", config.DefaultThemeName, "layout.html.tmpl")
-	if _, err := h.assetsFS.Open(defaultTemplate); err != nil {
+	f, err := h.assetsFS.Open(defaultTemplate)
+	if err != nil {
 		return fmt.Errorf("default theme not found: %w (this is a fatal error)", err)
 	}
+	_ = f.Close()
 	slog.Debug("Default theme validated", slog.String("template", defaultTemplate))
 	return nil
 }

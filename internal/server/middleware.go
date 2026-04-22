@@ -8,6 +8,26 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
+// MethodFilter returns middleware that only allows the specified HTTP methods.
+// Responds with 405 Method Not Allowed and an Allow header for disallowed methods.
+func MethodFilter(allowedMethods ...string) func(http.Handler) http.Handler {
+	allowed := make(map[string]bool, len(allowedMethods))
+	for _, m := range allowedMethods {
+		allowed[m] = true
+	}
+	allowHeader := strings.Join(allowedMethods, ", ")
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !allowed[r.Method] {
+				w.Header().Set("Allow", allowHeader)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // SecurityHeaders adds security headers to HTTP responses for defense-in-depth
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -113,8 +113,13 @@ func (o *OverlayFS) Stat(name string) (fs.FileInfo, error) {
 			// Fallback to Open for fs.FS without StatFS
 			f, err := filesystem.Open(name)
 			if err == nil {
-				defer f.Close()
-				return f.Stat()
+				info, statErr := f.Stat()
+				_ = f.Close()
+				if statErr == nil {
+					return info, nil
+				}
+				lastErr = statErr
+				continue
 			}
 			lastErr = err
 			if errors.Is(err, fs.ErrNotExist) {

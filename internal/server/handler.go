@@ -4,7 +4,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"path/filepath"
+	"path"
 	"strconv"
 	"strings"
 
@@ -144,13 +144,13 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 // deriveTitle derives a title from the file path.
 // Example: "/docs/my-page.md" -> "My Page"
 func deriveTitle(reqPath string) string {
-	base := filepath.Base(reqPath)
+	base := path.Base(reqPath)
 	if base == "." || base == "/" {
 		return "Home"
 	}
 
 	// Remove extension
-	ext := filepath.Ext(base)
+	ext := path.Ext(base)
 	name := strings.TrimSuffix(base, ext)
 
 	// Replace hyphens/underscores with spaces
