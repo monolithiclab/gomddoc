@@ -26,7 +26,7 @@ meta:
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
-	cfg, err := NewFromServeArgs(tmpDir, ":8080", false, "")
+	cfg, err := NewFromServeArgs(ServeArgs{Dir: tmpDir, Port: ":8080"})
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}
@@ -47,7 +47,7 @@ meta:
 func TestNewFromServeArgs_EnvOverrides(t *testing.T) {
 	t.Setenv("GOMDDOC_SITE_META_TITLE", "Env Title")
 
-	cfg, err := NewFromServeArgs(t.TempDir(), ":9999", false, "")
+	cfg, err := NewFromServeArgs(ServeArgs{Dir: t.TempDir(), Port: ":9999"})
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestNewFromServeArgs_DynamicDefaults(t *testing.T) {
 		t.Fatalf("Cannot write into temporary test folder: %v", err)
 	}
 
-	cfg, err := NewFromServeArgs(tmpDir, ":8080", false, "")
+	cfg, err := NewFromServeArgs(ServeArgs{Dir: tmpDir, Port: ":8080"})
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestNewFromServeArgs_DynamicDefaults(t *testing.T) {
 func TestNewFromServeArgs_DevMode(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := NewFromServeArgs(t.TempDir(), ":8080", true, "")
+	cfg, err := NewFromServeArgs(ServeArgs{Dir: t.TempDir(), Port: ":8080", DevMode: true})
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestNewFromServeArgs_DevMode(t *testing.T) {
 func TestNewFromServeArgs_GitSSHKey(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := NewFromServeArgs(t.TempDir(), ":8080", false, "/path/to/key")
+	cfg, err := NewFromServeArgs(ServeArgs{Dir: t.TempDir(), Port: ":8080", GitSSHKey: "/path/to/key"})
 	if err != nil {
 		t.Fatalf("NewFromServeArgs() returned error: %v", err)
 	}

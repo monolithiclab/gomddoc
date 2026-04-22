@@ -108,17 +108,32 @@ type HighlightConfig struct {
 	Theme string `env:"THEME" yaml:"theme"`
 }
 
+// ServeArgs holds all serve/preview command arguments that feed into config
+// construction. All fields are set before validation.
+type ServeArgs struct {
+	Dir       string
+	Port      string
+	AdminPort string
+	DevMode   bool
+	DirIndex  bool
+	Pprof     bool
+	GitSSHKey string
+}
+
 // NewFromServeArgs creates a fully initialized Config from serve command arguments.
 // Kong has already resolved flags > env vars > defaults for server-level settings.
 // This function handles: build Config -> ComputeDynamicDefaults -> LoadFromFile -> ApplyEnvOverrides (site) -> Validate.
-func NewFromServeArgs(dir, port string, devMode bool, gitSSHKey string) (*Config, error) {
+func NewFromServeArgs(args ServeArgs) (*Config, error) {
 	cfg := New()
 
 	// 1. Apply serve command args (already resolved by Kong: flags > env > defaults)
-	cfg.Server.Dir = dir
-	cfg.Server.Port = port
-	cfg.Server.DevMode = devMode
-	cfg.Server.GitSSHKey = gitSSHKey
+	cfg.Server.Dir = args.Dir
+	cfg.Server.Port = args.Port
+	cfg.Server.AdminPort = args.AdminPort
+	cfg.Server.DevMode = args.DevMode
+	cfg.Server.Pprof = args.Pprof
+	cfg.Server.GitSSHKey = args.GitSSHKey
+	cfg.Site.DirIndex = args.DirIndex
 
 	// 2. Compute derived defaults (like Title from Dir)
 	cfg.ComputeDynamicDefaults()
@@ -149,7 +164,7 @@ func NewFromServeArgs(dir, port string, devMode bool, gitSSHKey string) (*Config
 // NewFromDir creates a Config from a content directory without server-specific
 // settings. Used by the build command and other non-server contexts.
 func NewFromDir(dir string) (*Config, error) {
-	return NewFromServeArgs(dir, ":8080", false, "")
+	return NewFromServeArgs(ServeArgs{Dir: dir, Port: ":8080"})
 }
 
 // New creates a new Config with default values
@@ -380,6 +395,18 @@ func (c *Config) validateServer() error {
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535, got: %s", portStr)
+	}
+
+	// Validate AdminPort (if set)
+	if c.Server.AdminPort != "" {
+		_, adminPortStr, err := net.SplitHostPort(c.Server.AdminPort)
+		if err != nil {
+			return fmt.Errorf("invalid admin port format: %w", err)
+		}
+		adminPort, err := strconv.Atoi(adminPortStr)
+		if err != nil || adminPort < 1 || adminPort > 65535 {
+			return fmt.Errorf("admin port must be between 1 and 65535, got: %s", adminPortStr)
+		}
 	}
 
 	// Validate Dir (skip if Git URL)

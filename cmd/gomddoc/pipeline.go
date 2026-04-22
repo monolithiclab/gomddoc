@@ -184,16 +184,17 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		return nil, err
 	}
 
-	cfg, err := config.NewFromServeArgs(opts.Dir, port, opts.DevMode, opts.GitSSHKey)
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{
+		Dir:       opts.Dir,
+		Port:      port,
+		AdminPort: opts.AdminPort,
+		DevMode:   opts.DevMode,
+		DirIndex:  opts.DirIndex,
+		Pprof:     opts.Pprof,
+		GitSSHKey: opts.GitSSHKey,
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	cfg.Server.Pprof = opts.Pprof
-	cfg.Server.AdminPort = opts.AdminPort
-
-	if opts.DirIndex {
-		cfg.Site.DirIndex = true
 	}
 
 	if opts.Domain != "" {

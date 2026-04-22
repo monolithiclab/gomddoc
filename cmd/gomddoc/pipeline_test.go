@@ -18,7 +18,7 @@ func TestRunUntilCancelled(t *testing.T) {
 	srcDir := t.TempDir()
 	writeTestFile(t, srcDir, "README.md", "# Run Test")
 
-	cfg, err := config.NewFromServeArgs(srcDir, ":18923", false, "")
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":18923"})
 	if err != nil {
 		t.Fatalf("config error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestSetupPipeline(t *testing.T) {
 	writeTestFile(t, srcDir, "README.md", "# Hello")
 	writeTestFile(t, filepath.Join(srcDir, "docs"), "guide.md", "# Guide")
 
-	cfg, err := config.NewFromServeArgs(srcDir, ":8080", false, "")
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
 	if err != nil {
 		t.Fatalf("config error: %v", err)
 	}

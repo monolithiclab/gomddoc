@@ -105,7 +105,7 @@ Extracted from completed spec files before deletion.
 
 - **Options struct** preferred over functional options (simpler, sufficient, zero-value gives sensible defaults)
 - Example: `NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})` — empty struct gives defaults
-- **Constructor pattern**: `config.NewFromServeArgs(dir, port, devMode, gitSSHKey)` replaced `Load()` + `ParseFlags()`
+- **Constructor pattern**: `config.NewFromServeArgs(ServeArgs{...})` replaced `Load()` + `ParseFlags()`
 
 ## Disk-Based Git Storage
 
