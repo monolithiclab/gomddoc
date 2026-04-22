@@ -5,6 +5,11 @@ import (
 	"path/filepath"
 )
 
+func init() {
+	// Register MIME types not present in all OS MIME databases.
+	_ = mime.AddExtensionType(".mjs", "text/javascript; charset=utf-8")
+}
+
 // DetectMIME returns the MIME type for a file path.
 // It uses mime.TypeByExtension and defaults to "application/octet-stream"
 // if the extension is unknown.

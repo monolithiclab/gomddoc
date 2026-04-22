@@ -743,32 +743,10 @@
       margin-bottom: 0;
     }
 
-    /* ===== Color Chips ===== */
-    .color-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-      padding: 0.125rem 0.5rem;
-      background-color: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
-      border-radius: 4px;
+    /* ===== Color Chips (pre-definition styling) ===== */
+    color-chip:not(:defined) {
       font-family: var(--font-family-mono);
       font-size: 0.875em;
-      vertical-align: baseline;
-    }
-
-    .color-chip-swatch {
-      display: inline-block;
-      width: 1rem;
-      height: 1rem;
-      border-radius: 3px;
-      border: 1px solid var(--color-border);
-      flex-shrink: 0;
-    }
-
-    .color-chip-code {
-      font-weight: 600;
-      color: var(--color-text);
     }
 
     /* ===== Heading Anchors ===== */
@@ -1283,6 +1261,9 @@
       });
     })();
   </script>
+
+  <!-- Color Chip Web Component -->
+  <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>
 
   <!-- KaTeX Auto-render -->
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>

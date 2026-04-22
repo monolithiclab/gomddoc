@@ -17,35 +17,31 @@ func TestTransformColorChips(t *testing.T) {
 			name:  "6-digit hex in code tag",
 			input: `<p>Use <code>#FF5733</code> for the accent.</p>`,
 			wantContains: []string{
-				`class="color-chip"`,
-				`class="color-chip-swatch"`,
-				`style="background:#FF5733"`,
-				`#FF5733`,
+				`<color-chip>#FF5733</color-chip>`,
 			},
-			wantNotContain: []string{"<code>#FF5733</code>", `style="color:`},
+			wantNotContain: []string{"<code>#FF5733</code>"},
 		},
 		{
 			name:  "3-digit hex in code tag",
 			input: `<p>Red is <code>#f00</code>.</p>`,
 			wantContains: []string{
-				`class="color-chip"`,
-				`style="background:#f00"`,
+				`<color-chip>#f00</color-chip>`,
 			},
-			wantNotContain: []string{"<code>#f00</code>", `style="color:`},
+			wantNotContain: []string{"<code>#f00</code>"},
 		},
 		{
 			name:  "lowercase 6-digit hex",
 			input: `<code>#aabbcc</code>`,
 			wantContains: []string{
-				`style="background:#aabbcc"`,
+				`<color-chip>#aabbcc</color-chip>`,
 			},
 		},
 		{
 			name:  "multiple code colors in same paragraph",
 			input: `<p>Mix <code>#FF0000</code> with <code>#00FF00</code>.</p>`,
 			wantContains: []string{
-				`style="background:#FF0000"`,
-				`style="background:#00FF00"`,
+				`<color-chip>#FF0000</color-chip>`,
+				`<color-chip>#00FF00</color-chip>`,
 			},
 		},
 		{
@@ -135,17 +131,15 @@ func TestMarkdownRenderer_ColorChips(t *testing.T) {
 			name:  "backtick hex color in paragraph",
 			input: "The brand color is `#E91E63` and it looks great.",
 			wantContains: []string{
-				`class="color-chip"`,
-				`style="background:#E91E63"`,
+				`<color-chip>#E91E63</color-chip>`,
 			},
-			wantNotContain: []string{`style="color:`},
 		},
 		{
 			name:  "backtick hex color in list",
 			input: "- Primary: `#3366FF`\n- Secondary: `#FF6633`",
 			wantContains: []string{
-				`style="background:#3366FF"`,
-				`style="background:#FF6633"`,
+				`<color-chip>#3366FF</color-chip>`,
+				`<color-chip>#FF6633</color-chip>`,
 			},
 		},
 		{
@@ -173,8 +167,7 @@ func TestMarkdownRenderer_ColorChips(t *testing.T) {
 			name:  "3-digit hex in backticks",
 			input: "Short form: `#f0f`",
 			wantContains: []string{
-				`class="color-chip"`,
-				`style="background:#f0f"`,
+				`<color-chip>#f0f</color-chip>`,
 			},
 		},
 	}

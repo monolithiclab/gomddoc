@@ -20,6 +20,7 @@ func TestDetectMIME(t *testing.T) {
 		{"text file", "test.txt", "text/plain; charset=utf-8"},
 		{"markdown file", "test.md", "text/markdown; charset=utf-8"},
 		{"json file", "test.json", "application/json"},
+		{"mjs module", "component.mjs", "text/javascript; charset=utf-8"},
 		{"unknown extension", "test.unknown", "application/octet-stream"},
 		{"no extension", "test", "application/octet-stream"},
 		{"path with dots", "path/to.file/test.txt", "text/plain; charset=utf-8"},

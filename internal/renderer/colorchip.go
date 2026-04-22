@@ -9,13 +9,8 @@ var colorCodePattern = regexp.MustCompile(
 	`<code>(#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3}))</code>`,
 )
 
-// transformColorChips replaces <code>#HEX</code> elements with inline color
-// chip components: a colored square swatch followed by the hex code text.
-//
-// The swatch shows the actual color. The hex code text uses the page's default
-// text color for readability in both light and dark modes (coloring the text
-// would make light colors invisible on white and dark colors invisible on dark
-// backgrounds).
+// transformColorChips replaces <code>#HEX</code> elements with <color-chip>
+// web components. The custom element handles its own rendering via shadow DOM.
 //
 // Only <code> tags containing exactly a hex color code are transformed.
 // Code blocks with other content, fenced code blocks, and colors in plain
@@ -27,7 +22,6 @@ func transformColorChips(html []byte) []byte {
 			return match
 		}
 		hex := string(sub[1]) // e.g. "#FF5733"
-		return []byte(`<span class="color-chip"><span class="color-chip-swatch" style="background:` +
-			hex + `"></span><code class="color-chip-code">` + hex + `</code></span>`)
+		return []byte(`<color-chip>` + hex + `</color-chip>`)
 	})
 }
