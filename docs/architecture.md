@@ -18,7 +18,8 @@ sources. It is designed for extensibility, testability, and HTTP compliance.
 graph TD
     A[HTTP Request] --> B["Middleware<br/>1. Security Headers<br/>2. RequestID<br/>3. Compression<br/>4. Method Filter<br/>5. Hidden Path Block<br/>6. Metrics"]
     B --> C["Handler<br/>ServeContent()"]
-    C --> D["Provider<br/>ReadFile"]
+    C --> RES["PathResolver<br/>ResolvePath"]
+    RES --> D["Provider<br/>ReadFile"]
     C --> EN["Enricher<br/>Enrich"]
     C --> E["Registry<br/>Get"]
     C --> F["Template<br/>Render"]
@@ -56,6 +57,30 @@ type Provider interface {
 - **GitProvider** — Remote Git repositories via go-git with configurable storage backend
 
 Both providers share a common `normalizePath()` function for converting request paths to fs-compatible paths.
+
+**URL Resolution:**
+
+The `internal/resolve` package provides the `PathResolver` component that sits between HTTP handlers and the provider layer. It resolves incoming request URLs to actual file paths, handling:
+
+- **Extensionless URLs**: Maps `/docs/guide` to `docs/guide.md` when `.md` is configured for stripping
+- **Redirects**: Returns 301 redirects when a request includes a stripped extension (e.g., `/docs/guide.md` → `/docs/guide`)
+- **Collision handling**: Resolves priority when multiple files match (first configured extension wins)
+- **Build mode**: Generates directory-based URLs (`guide/index.html`) for static host compatibility
+
+```go
+type PathResolver interface {
+    ResolvePath(ctx context.Context, requestPath string) (*ResolveResult, error)
+    BuildOutputPath(sourcePath string) string
+}
+
+type ResolveResult struct {
+    FilePath     string
+    RedirectTo   string
+    IsRedirect   bool
+}
+```
+
+The resolver is configured with `strip_extensions` from site config (default: `[".md"]`). Request flow is Handler → PathResolver → Provider.
 
 **Git Storage Backends:**
 - **MemoryStorageFactory** (default) — In-memory clone for fast startup and small repos
@@ -171,12 +196,13 @@ Uses `sync.RWMutex` for thread safety.
 **Responsibility:** HTTP orchestration and content negotiation
 
 **Flow:**
-1. Read file + get MIME type (Provider)
-2. Enrich content (extract metadata, TOC, related docs)
-3. Parse Accept header → negotiate renderer via 2D registry lookup (input type + accepted output)
-4. If no match → 406 Not Acceptable with available output types
-5. Render content with enrichment data
-6. Serve (wrapped in template if HTML, raw otherwise)
+1. Resolve request path to file path via PathResolver (handle extensionless URLs and redirects)
+2. Read file + get MIME type (Provider)
+3. Enrich content (extract metadata, TOC, related docs)
+4. Parse Accept header → negotiate renderer via 2D registry lookup (input type + accepted output)
+5. If no match → 406 Not Acceptable with available output types
+6. Render content with enrichment data
+7. Serve (wrapped in template if HTML, raw otherwise)
 
 ### 6. Template Layer
 
@@ -446,14 +472,17 @@ sequenceDiagram
     participant C as Client
     participant M as Middleware
     participant H as Handler
+    participant RES as PathResolver
     participant P as Provider
     participant EN as Enricher
     participant Reg as Registry
     participant R as MarkdownRenderer
     participant T as Template
 
-    C->>M: GET /docs/guide.md (Accept: text/html)
+    C->>M: GET /docs/guide (Accept: text/html)
     M->>H: ServeContent()
+    H->>RES: ResolvePath("/docs/guide")
+    RES-->>H: ResolveResult{"/docs/guide.md"}
     H->>P: ReadFile("/docs/guide.md")
     P-->>H: content + "text/markdown"
     H->>EN: Enrich(ctx, content, path)
@@ -678,10 +707,14 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Config-only theme vars | No README parsing; `--theme-*` CSS custom properties from config only — simple, predictable |
 | Layout fallback to default | Missing layouts gracefully degrade to `default.html.tmpl` — no broken pages |
 | Static overlay FS for assets | Reuses existing `OverlayFS`; same site > theme > shared precedence as templates |
+| PathResolver between handler and provider | Clean separation of URL resolution from file I/O; enables extensionless URLs with 301 redirects for extension requests |
+| Extension stripping via config list | Ordered list determines priority for collision handling; flexible for multiple renderable formats |
+| Build mode directory URLs | `guide.md` → `guide/index.html` works on all static hosts without server rewrites; proper REST resource semantics |
 
 ## Glossary
 
 - **Provider**: Reads files and detects MIME types (filesystem or Git)
+- **PathResolver**: URL-to-file-path resolver that handles extensionless URLs, redirects, and collision detection
 - **Enricher**: Pre-rendering step that extracts structured data (metadata, TOC, related docs) from content
 - **Renderer**: Transforms content from one MIME type to another
 - **Registry**: MIME type → renderer mapping with wildcard support

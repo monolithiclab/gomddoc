@@ -85,6 +85,11 @@ _Usability improvements to the serve, build, and preview subcommands._
       mode — `serve` never injects the script. Medium complexity.
 - [x] **`--domain` flag for serve/build/preview**: `-d, --domain` / `GOMDDOC_DOMAIN` on all
       three subcommands overrides `meta.domain` from config. CLI flag takes precedence.
+- [x] **URL extension stripping**: `strip_extensions` config option (default: `[".md"]`) removes
+      specified extensions from URLs. Requests to `/docs/guide.md` redirect (301) to `/docs/guide`.
+      In build mode, generates directory-based URLs (`guide/index.html`) for static host compatibility.
+      Implemented in `internal/resolve` with collision detection (first configured extension wins).
+      Low-medium complexity.
 - [ ] Add an ignore list (matching gitignore rules) to exclude files/folder/globs/...
 
 ## Phase 9: SEO and Discoverability

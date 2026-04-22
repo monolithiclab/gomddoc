@@ -204,6 +204,35 @@ exclude:
 
 Excluded files return HTTP 404, are omitted from navigation, search, directory listings, and MCP tool access.
 
+### URL Extension Stripping
+
+The `strip_extensions` option controls which file extensions are removed from URLs. Files matching these extensions that have an HTML renderer are served at extensionless canonical URLs.
+
+```yaml
+strip_extensions:
+  - .md
+  - .html
+```
+
+*   **YAML:** `strip_extensions`
+*   **Default:** `[".md"]` — markdown files are served without extensions by default
+
+**Behavior:**
+
+*   `docs/guide.md` becomes accessible at `/docs/guide`
+*   Requests to `/docs/guide.md` are 301-redirected to `/docs/guide`
+*   Non-rendered files (images, CSS, etc.) keep their extensions
+*   Set to `[]` to disable extension stripping
+
+**Collisions:**
+
+*   If both `guide.md` and `guide.html` exist and both extensions are stripped, the first extension in the list wins
+*   If a file and directory share a name (e.g., `guide.md` and `guide/`), the file wins `/guide` and the directory is accessible via `/guide/`
+
+**Build mode:**
+
+When enabled, the build command generates pretty URLs: `guide.md` is output to `guide/index.html`. This works with any static host without server-side rewrite rules.
+
 ### Metadata (`SITE.META`)
 
 **Title**
