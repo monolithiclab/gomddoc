@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"mime"
 	"os"
 	"path"
 
@@ -103,11 +102,7 @@ func (f *FilesystemProvider) handleDirectory(cleanPath, requestPath string) ([]b
 	}
 
 	if content, err := fs.ReadFile(f.root, indexPath); err == nil {
-		// Detect MIME type for the index file
-		mimeType := mime.TypeByExtension(path.Ext(f.defaultIndex))
-		if mimeType == "" {
-			mimeType = "text/markdown"
-		}
+		mimeType := negotiate.DetectMIME(f.defaultIndex)
 		return content, mimeType, nil
 	}
 
