@@ -85,6 +85,16 @@ func TestParseAccept(t *testing.T) {
 			header:    "text/html; charset=utf-8; q=0.9",
 			wantOrder: []string{"text/html"},
 		},
+		{
+			name:      "q>1 clamped to 1",
+			header:    "text/html;q=1.5, application/json;q=0.9",
+			wantOrder: []string{"text/html", "application/json"},
+		},
+		{
+			name:      "negative q clamped to 0 and filtered",
+			header:    "text/html;q=-0.5, application/json",
+			wantOrder: []string{"application/json"},
+		},
 	}
 
 	for _, tt := range tests {

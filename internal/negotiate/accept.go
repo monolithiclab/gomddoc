@@ -118,7 +118,7 @@ func parseQValue(params string) float64 {
 		p := strings.TrimSpace(param)
 		if len(p) >= 3 && (p[0] == 'q' || p[0] == 'Q') && p[1] == '=' {
 			if v, err := strconv.ParseFloat(p[2:], 64); err == nil {
-				return v
+				return max(0, min(1, v))
 			}
 		}
 	}
