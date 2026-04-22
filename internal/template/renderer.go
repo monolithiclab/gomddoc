@@ -79,13 +79,14 @@ var bufferPool = sync.Pool{
 //
 // IMPORTANT: Do not mutate siteConfig after construction if using concurrently.
 type HTMLRenderer struct {
-	assetsFS      fs.FS
-	siteConfig    *config.SiteConfig    // For theme name (NOT full Config - security)
-	cache         TemplateCache         // Injected dependency (strategy pattern)
-	parseGroup    singleflight.Group    // Coalesces concurrent cache-miss parses
-	breadcrumbGen breadcrumb.Generator  // Optional breadcrumb generator
-	resolver      *resolve.PathResolver // Optional path resolver for clean URLs
-	themeVars     themeVarsCache        // Cached CSS custom properties from theme config
+	assetsFS       fs.FS
+	siteConfig     *config.SiteConfig    // For theme name (NOT full Config - security)
+	cache          TemplateCache         // Injected dependency (strategy pattern)
+	parseGroup     singleflight.Group    // Coalesces concurrent cache-miss parses
+	breadcrumbGen  breadcrumb.Generator  // Optional breadcrumb generator
+	resolver       *resolve.PathResolver // Optional path resolver for clean URLs
+	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
+	hasSearchIndex bool                  // Whether a search index was successfully built
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
@@ -110,6 +111,14 @@ func WithBreadcrumbGenerator(gen breadcrumb.Generator) RendererOption {
 func WithResolver(resolver *resolve.PathResolver) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.resolver = resolver
+	}
+}
+
+// WithSearchIndex indicates that a search index was successfully built.
+// This controls JSON-LD SearchAction output, independent of theme feature flags.
+func WithSearchIndex() RendererOption {
+	return func(r *HTMLRenderer) {
+		r.hasSearchIndex = true
 	}
 }
 
@@ -311,7 +320,7 @@ func (h *HTMLRenderer) generateJSONLD(page PageContext) template.JS {
 		Domain:       h.siteConfig.Meta.Domain,
 		SiteName:     h.siteConfig.Meta.Title,
 		DefaultIndex: h.siteConfig.DefaultIndex,
-		HasSearch:    config.FeatureEnabled("search", h.siteConfig.Theme.Features),
+		HasSearch:    h.hasSearchIndex,
 	}
 
 	// Build breadcrumbs with full URLs

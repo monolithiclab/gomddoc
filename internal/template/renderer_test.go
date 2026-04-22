@@ -1358,9 +1358,8 @@ func TestJSONLDFunction(t *testing.T) {
 		siteConfig := config.NewSiteConfig(".")
 		siteConfig.Meta.Domain = "docs.example.com"
 		siteConfig.Meta.Title = "My Docs"
-		siteConfig.Theme.Features = map[string]bool{"search": true}
 
-		r := NewHTMLRenderer(&siteConfig, testFS)
+		r := NewHTMLRenderer(&siteConfig, testFS, WithSearchIndex())
 		ctx := &TemplateContext{
 			Site: &siteConfig,
 			Page: PageContext{

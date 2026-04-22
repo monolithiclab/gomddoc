@@ -122,10 +122,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 			slog.Warn("Failed to build search index", slog.Any("error", searchErr))
 		} else {
 			p.SearchIndex = searchIdx
-			if cfg.Site.Theme.Features == nil {
-				cfg.Site.Theme.Features = make(map[string]bool)
-			}
-			cfg.Site.Theme.Features["search"] = true
+			templateRenderer.Configure(template.WithSearchIndex())
 		}
 	}
 
