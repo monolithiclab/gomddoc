@@ -45,10 +45,7 @@ func (c *CachedTemplateStore) Set(key string, tmpl *template.Template) {
 }
 
 func (c *CachedTemplateStore) Clear() {
-	c.cache.Range(func(key, value any) bool {
-		c.cache.Delete(key)
-		return true
-	})
+	c.cache.Clear()
 }
 
 // PassthroughTemplateStore is a no-op cache for development mode
