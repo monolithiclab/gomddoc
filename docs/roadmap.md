@@ -23,9 +23,9 @@ The foundation is production-ready with 87.3% test coverage. For a full descript
 of current capabilities, see `docs/architecture.md`.
 
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
-7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO), 10a-10b (MCP server + HTTP).
-Six review batches resolved 45/46 identified issues (security, correctness, deduplication,
-hardening).
+7 (partial — sitemap generation complete), 7b (preview), 8 (theming engine), 9a (pre-launch SEO),
+10a-10b (MCP server + HTTP). Six review batches resolved 45/46 identified issues (security,
+correctness, deduplication, hardening).
 
 **Phase 5 note:** Server-side full-text search and client-side search UI are complete for `serve`
 and `preview` modes. Build-mode search (Pagefind) deferred.
@@ -61,10 +61,10 @@ go-git library limitations.
 
 ## Phase 7: Static Site Generation
 
-- [ ] **Sitemap generation**: Generate `sitemap.xml` during build with `<url>` entries for all rendered
-      pages. Include `<lastmod>` from Git commit dates (filesystem provider falls back to file mtime).
+- [x] **Sitemap generation**: Generate `sitemap.xml` during build with `<url>` entries for all rendered
+      pages. Include `<lastmod>` from file mtime (Git provider returns commit timestamps).
       Respects `base_url` from site config for absolute URLs. Excludes hidden files and non-HTML outputs.
-      See also Phase 9a for dynamic `/sitemap.xml` in serve mode.
+      Implemented in `cmd/gomddoc/build.go` via `server.GenerateSitemap()`.
 - [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
 - [ ] **Static host compatibility**: Output structure compatible with S3, Netlify, Cloudflare Pages.
 
@@ -253,7 +253,6 @@ _Streamable HTTP transport for remote MCP access._
       in `setupServer` and shared between stdio (`gomddoc mcp`) and HTTP (`gomddoc serve/preview`)
       transports.
 
-
 ## Distribution and Packaging
 
 _Make gomddoc easy to install across platforms and deployment targets. Currently gomddoc is built
@@ -272,7 +271,7 @@ from source via `make build` — these items add standard distribution channels.
 - [ ] **Homebrew tap**: Create a `homebrew-tap` repository with a formula that downloads the
       pre-built binary from GitHub Releases. Formula should include a `test` block that runs
       `gomddoc --version`. Consider whether to start with a tap (`brew tap monolithiclab/tap && brew
-      install gomddoc`) or aim for Homebrew core inclusion later. Low complexity once releases
+install gomddoc`) or aim for Homebrew core inclusion later. Low complexity once releases
       exist.
 - [ ] **GitHub Releases with GoReleaser**: Set up GoReleaser to produce cross-platform binaries
       (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) on tagged releases.
@@ -333,6 +332,11 @@ _Enable community theme sharing via a GitHub-based registry._
 - [ ] **`gomddoc theme update [name]`**: Pull latest version of installed theme(s). Without a name,
       updates all installed themes.
 
+## Bugs
+
+- [ ] When falling back to the default theme for layout (eg. error.html.tmpl), the template loads the
+      partials from default rather than those from the overloaded theme.
+
 ## Future CLI Commands
 
 | Command                 | Purpose                                              | Status  |
@@ -341,8 +345,8 @@ _Enable community theme sharing via a GitHub-based registry._
 | `gomddoc build`         | Static site generation                               | Done    |
 | `gomddoc preview`       | Quick local preview with auto-open browser           | Done    |
 | `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Done    |
-| `gomddoc mcp`            | MCP server for AI-native documentation access        | Done    |
-| `gomddoc info`           | Show version, config file location, environment vars | Done    |
+| `gomddoc mcp`           | MCP server for AI-native documentation access        | Done    |
+| `gomddoc info`          | Show version, config file location, environment vars | Done    |
 | `gomddoc validate`      | Validate config and check for broken links           | Planned |
 | `gomddoc theme list`    | List available themes from the marketplace           | Planned |
 | `gomddoc theme search`  | Search themes by name, category, or keyword          | Planned |
