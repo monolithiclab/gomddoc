@@ -35,6 +35,7 @@ gomddoc serve [DIR] [flags]
 | `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
 | `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
 | `--pprof` | `GOMDDOC_SERVER_PPROF` | `false` | Enable profiling endpoints |
+| `--admin-port` | `GOMDDOC_SERVER_ADMIN_PORT` | | Separate listen address for admin endpoints (health, metrics, pprof) |
 | `--basic-auth-file` | `GOMDDOC_SERVER_BASIC_AUTH_FILE` | | Path to htpasswd file (bcrypt only) |
 
 ### `preview`
@@ -47,9 +48,11 @@ gomddoc preview [DIR] [flags]
 
 | Flag/Arg | Env Var | Default | Description |
 |----------|---------|---------|-------------|
-| `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory |
+| `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory or Git URL |
 | `-p, --port` | `GOMDDOC_SERVER_PORT` | `:auto` | Listen address (auto-assigns from 8080) |
 | `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
+| `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
+| `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
 | `--open` | `GOMDDOC_PREVIEW_OPEN` | `false` | Auto-open browser on startup |
 | `--dir-index` | `GOMDDOC_DIR_INDEX` | `false` | Enable directory listings when no index file exists |
 
@@ -68,6 +71,8 @@ gomddoc build [DIR] [flags]
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Markdown source directory or Git URL |
 | `-o, --output` | `GOMDDOC_BUILD_OUTPUT` | `build/site` | Output directory |
 | `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
+| `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
+| `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
 
 **Build behavior:**
 - A `.gomddoc-build` sentinel file is written to the output directory. On subsequent builds, the sentinel proves the directory was created by gomddoc and is safe to overwrite. Non-empty directories without the sentinel are refused.
@@ -113,6 +118,7 @@ gomddoc mcp [DIR] [flags]
 |----------|---------|---------|-------------|
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Markdown directory or Git URL |
 | `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
+| `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
 
 ### `info`
 
@@ -136,6 +142,7 @@ These settings control how your documentation is presented and served. They are 
 default_index: "README.md"
 dir_index: false
 edit_url: "https://github.com/org/repo/edit/main"
+language: "en-US"
 exclude:
   - "drafts/"
   - "*.bak"
@@ -147,6 +154,8 @@ meta:
 
 theme:
   name: "default"
+  vars:
+    primary-color: "#2563eb"
   features:
     color_chips: true
     katex: false
@@ -177,10 +186,15 @@ Controls what happens when a directory is requested but no index file (e.g., `RE
 *   **Default:** `false`
 
 **Language**
-Sets the `lang` attribute on the `<html>` tag (e.g., `<html lang="en">`). Lighthouse flags missing or incorrect language attributes. Can be overridden per page via frontmatter `lang` field.
+Sets the default language for the site using a BCP 47 code (e.g., `en-US`, `fr-FR`). This controls the `lang`
+attribute on the `<html>` tag, determines which content is served at the root URL in multi-language sites, and sets the
+fallback language for translations. Can be overridden per page via frontmatter `lang` field.
+
+When BCP 47 directories (e.g., `fr-FR/`, `es-ES/`) exist in the content root, gomddoc automatically detects them and
+creates per-language pipelines. See [Internationalization](13-internationalization.md) for details.
 *   **YAML:** `language`
 *   **Env Var:** `GOMDDOC_SITE_LANGUAGE`
-*   **Default:** `"en"`
+*   **Default:** `"en-US"`
 
 **Exclude Patterns**
 A list of glob patterns for files and directories that should not be served, indexed, or included in navigation. Works like `.gitignore` — extends the built-in dot-file blocking (`.git/`, `.env`, `.gomddoc/`) with user-defined rules.
@@ -325,6 +339,42 @@ Features not listed in config default to enabled. Setting a feature to `false` p
 
 **Per-page overrides:** See [Frontmatter & Page-Level Overrides](#frontmatter--page-level-overrides) below.
 
+### Theme Variables (`SITE.THEME.VARS`)
+
+Theme variables let you customize a theme's visual appearance without creating a custom theme. They are exposed as CSS
+custom properties (`--theme-{key}`) in a `:root` block, allowing themes to define configurable design tokens.
+
+```yaml
+theme:
+  name: default
+  vars:
+    primary-color: "#2563eb"
+    font-family: "Georgia, serif"
+    sidebar-width: "280px"
+```
+
+This generates:
+
+```css
+:root {
+  --theme-font-family: Georgia, serif;
+  --theme-primary-color: #2563eb;
+  --theme-sidebar-width: 280px;
+}
+```
+
+*   **YAML:** `theme.vars`
+*   **Env Var:** Not available (map type, YAML only)
+*   **Default:** `{}` (empty)
+
+**Validation:**
+- Keys must contain only alphanumeric characters and hyphens
+- Values must not contain braces (`{}`), semicolons (`;`), or angle brackets (`<>`)
+- Invalid entries are logged and skipped (they don't fail startup)
+
+Custom themes can reference these variables in their CSS. See [Theming & Assets](05-theming-and-assets.md) for the
+`themeVarsCSS` template function.
+
 ### Search (`SITE.SEARCH`)
 
 Controls full-text search index building. When enabled, gomddoc builds an inverted index at startup and exposes a `/api/search` endpoint. The search UI in the theme is controlled separately via `theme.features.search`.
@@ -366,6 +416,8 @@ or environment variable setting — but only for that page.
 | `lang` | `language` | Sets the `<html lang="...">` attribute for this page, overriding the site-level language |
 | `tags` | — | Page tags for the metadata index, queryable via `/api/tags` and the MCP `find_related` tool |
 | `date` | — | Publication date included in tags API responses |
+| `layout` | — | Selects an alternate template layout file (e.g., `layout: wide` uses `wide.html.tmpl`) |
+| `redirect_from` | — | List of URL paths that should redirect (301) to this page. See [URL Redirects](#url-redirects) below |
 
 ### How Overrides Work
 
@@ -414,6 +466,27 @@ to pages.
 
 See [Markdown Extensions](12-advanced/02-markdown-extensions.md) for the full frontmatter syntax and
 field reference.
+
+### URL Redirects
+
+The `redirect_from` frontmatter field creates 301 redirects from old URLs to the current page. This is useful when
+reorganizing documentation — old bookmarks and external links continue to work.
+
+```yaml
+---
+title: "Setup Guide"
+redirect_from:
+  - /old/installation
+  - /getting-started
+---
+```
+
+With this frontmatter, requests to `/old/installation` and `/getting-started` are 301-redirected to the current page's
+URL. In `build` mode, redirect HTML files containing `<meta http-equiv="refresh">` are generated at the old paths for
+static hosts that don't support server-side redirects.
+
+Redirects are checked early in request processing (before content is read) and use the path resolver for clean target
+URLs, preventing double redirects.
 
 ---
 

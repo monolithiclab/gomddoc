@@ -85,13 +85,14 @@ The search engine is also accessible via a JSON REST API, which is useful for in
 or building custom search interfaces:
 
 ```
-GET /api/search?q=<query>&limit=<n>
+GET /api/search?q=<query>&limit=<n>&lang=<code>
 ```
 
 | Parameter | Required | Default | Max | Description |
 |-----------|----------|---------|-----|-------------|
-| `q` | Yes | | | Search query (multiple terms use AND semantics) |
+| `q` | Yes | | 500 chars | Search query (multiple terms use AND semantics) |
 | `limit` | No | 20 | 100 | Maximum results to return |
+| `lang` | No | default language | | BCP 47 code to search a specific language's index (e.g., `fr-FR`) |
 
 ### Response
 
@@ -129,6 +130,23 @@ curl 'http://localhost:8080/api/search?q=getting+started&limit=5'
 # Use content negotiation to get raw markdown for a result
 curl -H "Accept: text/markdown" 'http://localhost:8080/docs/guide.md'
 ```
+
+## Multi-Language Search
+
+When multiple languages are detected (via BCP 47 directories), gomddoc builds a separate search index for each
+language. Each index contains only the content from its language directory, so search results are language-specific.
+
+The `lang` query parameter selects which language's index to query. If omitted, the language is resolved from the
+`Accept-Language` request header, falling back to the site's default language.
+
+```bash
+# Search French content
+curl 'http://localhost:8080/api/search?q=configuration&lang=fr-FR'
+```
+
+The search modal in the browser uses the current page's language automatically — no user action is needed.
+
+See [Internationalization](13-internationalization.md) for the full multi-language setup guide.
 
 ## Availability
 

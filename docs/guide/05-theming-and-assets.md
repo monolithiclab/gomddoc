@@ -47,14 +47,28 @@ To customize your site, create a `.gomddoc` folder in your content root:
 /my-docs
 ├── .gomddoc/
 │   ├── config.yml
+│   ├── locales/                         ← Translation overrides (see Internationalization)
+│   │   └── fr-FR.yml
 │   └── assets/
 │       └── themes/
 │           └── default/
-│               └── default.html.tmpl  <-- Overrides built-in layout
+│               └── default.html.tmpl    ← Overrides built-in layout
 └── README.md
 ```
 
-The overlay filesystem checks your `.gomddoc/assets/` first, then falls back to the embedded defaults.
+The overlay filesystem checks your `.gomddoc/assets/` first, then falls back to the embedded defaults. Locale files
+in `.gomddoc/locales/` override built-in and theme-provided translations.
+
+### Static Asset Overlay
+
+Static assets (CSS, JS, images, fonts) follow a three-layer priority system:
+
+1. **Site-level** (`static/` in content root) — highest priority
+2. **Theme-level** (`assets/themes/{name}/static/`) — theme-specific assets
+3. **Shared** (`assets/shared/static/`) — common assets across themes
+
+All static assets are served at `/_assets/` and cached with `Cache-Control: public, max-age=31536000, immutable`
+(1-year, immutable).
 
 ## Creating a Custom Theme
 
@@ -161,28 +175,76 @@ Custom functions available in templates:
   {{ inlineHTMLAsset "logo.svg" }}
   ```
 
+- **`themeVarsCSS`**: Returns CSS custom properties generated from the `theme.vars` config. Embed inside a `<style>`
+  tag to make theme variables available to your CSS.
+  ```html
+  <style>{{ themeVarsCSS }}</style>
+  {{/* Output: :root { --theme-primary-color: #2563eb; --theme-sidebar-width: 280px; } */}}
+  ```
+
+- **`jsonLD`**: Returns JSON-LD structured data (`<script type="application/ld+json">`) for the current page. Includes
+  TechArticle, BreadcrumbList, and WebSite schemas. See [SEO — Structured Data](11-seo.md#structured-data-json-ld) for
+  details.
+  ```html
+  {{ jsonLD . }}
+  ```
+
+- **`assetURL`**: Returns the URL path for a static asset, prefixed with `/_assets/`. Use this to reference theme
+  assets in templates.
+  ```html
+  <link rel="icon" href="{{ assetURL "favicon.ico" }}">
+  {{/* Output: /_assets/favicon.ico */}}
+  ```
+
+#### i18n Functions
+
+These functions are available when multi-language support is active. See
+[Internationalization](13-internationalization.md) for the full i18n guide.
+
+- **`.T "key"`**: Returns the translated string for the current page's language. Falls back to the default language,
+  then to the key itself.
+  ```html
+  <span>{{ .T "toc_title" }}</span>
+  ```
+
+- **`.Lang`**: Returns the BCP 47 language code for the current page. Respects per-page `lang` frontmatter overrides.
+  ```html
+  <html lang="{{ .Lang }}">
+  ```
+
+- **`.Languages`**: Returns all available languages as `LanguageInfo` objects (`.Code`, `.Name`, `.Active`,
+  `.Default`). Used to build a language switcher.
+  ```html
+  {{- range .Languages }}
+  <a href="/{{ .Code }}{{ $path }}">{{ .Name }}</a>
+  {{- end }}
+  ```
+
 ### Example Layout
 
 ```html
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ .Lang }}">
 <head>
     <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
     <meta name="description" content="{{ .Site.Meta.Description }}">
+    <style>{{ themeVarsCSS }}</style>
+    {{ template "hreflang" . }}
 </head>
 <body>
     <header>
         <a href="/">{{ .Site.Meta.Title }}</a>
+        {{ template "lang-switcher" . }}
         {{- if .Feature "dark_mode" }}
-        <button id="theme-toggle">Toggle Theme</button>
+        <button id="theme-toggle">{{ .T "aria_toggle_theme" }}</button>
         {{- end }}
     </header>
 
-    <nav id="nav-sidebar">
+    <nav id="nav-sidebar" aria-label="{{ .T "aria_site_nav" }}">
         {{ navigation .Page.Path }}
     </nav>
 
-    <nav aria-label="Breadcrumb">
+    <nav aria-label="{{ .T "aria_breadcrumb" }}">
         {{ range breadcrumbs .Page.Path }}
             <a href="{{ .Path }}">{{ .Label }}</a> /
         {{ end }}
@@ -193,18 +255,121 @@ Custom functions available in templates:
 
         {{ $editLink := editURL .Page.Path }}
         {{ if $editLink }}
-        <footer><a href="{{ $editLink }}">Edit this page</a></footer>
+        <footer><a href="{{ $editLink }}">{{ .T "edit_page" }}</a></footer>
         {{ end }}
     </article>
 
     {{ template "toc" . }}
 
     {{- if .Feature "color_chips" }}
-    <!-- Color Chip Web Component -->
     <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
     {{- end }}
 </body>
 </html>
+```
+
+## Web Components
+
+gomddoc uses custom HTML elements (web components) for interactive UI features rendered from markdown. The goldmark
+renderer emits semantic `<gmd-*>` elements, and JavaScript modules loaded by the theme bring them to life. This
+separation keeps the rendering pipeline concerned with structure while themes control presentation.
+
+All web components are prefixed with `gmd-` to avoid collisions with other custom elements.
+
+### Built-in Components
+
+| Element | Source File | DOM | Feature Flag | Description |
+|---|---|---|---|---|
+| `<gmd-color-chip>` | `gmd-color-chip.mjs` | Shadow | `color_chips` | Inline color swatch from hex codes. Click to copy. |
+| `<gmd-admonition>` | `gmd-admonition.mjs` | Light | `admonitions` | Styled callout block (note, tip, warning, etc.) |
+| `<gmd-heading-anchor>` | `gmd-heading-anchor.mjs` | Shadow | `heading_anchors` | Anchor link (#) appended to headings, revealed on hover |
+
+### How They Work
+
+**Server side (goldmark):** During markdown rendering, goldmark extensions detect specific patterns and emit custom
+elements instead of plain HTML:
+
+- Backtick-wrapped hex codes (`\`#FF5733\``) become `<gmd-color-chip>#FF5733</gmd-color-chip>`
+- `> [!NOTE]` blockquotes become `<gmd-admonition type="note" title="Note">...</gmd-admonition>`
+- Headings with IDs get `<gmd-heading-anchor href="#id"></gmd-heading-anchor>` appended
+
+**Client side (JavaScript):** The theme's template loads the component modules conditionally based on feature flags:
+
+```html
+{{- if .Feature "color_chips" }}
+<script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
+{{- end }}
+{{- if .Feature "admonitions" }}
+<script type="module">{{ inlineJSAsset "gmd-admonition.mjs" }}</script>
+{{- end }}
+{{- if .Feature "heading_anchors" }}
+<script type="module">{{ inlineJSAsset "gmd-heading-anchor.mjs" }}</script>
+{{- end }}
+```
+
+If a feature flag is disabled, the custom element tags remain inert in the HTML — they render as empty inline
+elements with no visual effect, since the JavaScript that defines them is never loaded.
+
+### Shadow DOM vs Light DOM
+
+Components use one of two DOM strategies:
+
+- **Shadow DOM** (`<gmd-color-chip>`, `<gmd-heading-anchor>`): Styles are encapsulated inside the component. The
+  component renders identically across all themes without theme-specific CSS. Themes can customize appearance
+  through CSS custom properties (inherited into Shadow DOM) or `::part()` selectors.
+- **Light DOM** (`<gmd-admonition>`): No Shadow DOM encapsulation. The component's children are styled by the
+  theme's global CSS. This is necessary when the inner content (paragraphs, code blocks, lists) must be styled
+  by theme rules.
+
+### Overriding Components
+
+Themes can replace any built-in web component by providing their own `.mjs` file with the same name. The overlay
+filesystem resolves assets in priority order:
+
+1. **Theme-level** — `assets/themes/{name}/shared/gmd-color-chip.mjs`
+2. **Shared** — `assets/shared/gmd-color-chip.mjs` (built-in default)
+
+To customize a component in your site, place a replacement file in `.gomddoc/assets/shared/`:
+
+```text
+.gomddoc/
+└── assets/
+    └── shared/
+        └── gmd-color-chip.mjs    ← Your custom implementation
+```
+
+Your custom component must call `customElements.define("gmd-color-chip", ...)` with the same element name.
+
+### CSS Custom Properties
+
+Shadow DOM components inherit CSS custom properties from the document. All built-in components use these shared
+variables so they adapt to any theme's color scheme automatically:
+
+| Property | Used By | Fallback |
+|---|---|---|
+| `--color-text` | color chip label | `#1f2328` |
+| `--color-text-muted` | heading anchor link | `#64748b` |
+| `--color-primary` | heading anchor hover | `#2563eb` |
+| `--color-bg-secondary` | color chip background | `rgba(255,255,255,0.6)` |
+| `--color-border` | color chip and swatch border | `rgba(46,52,64,0.1)` |
+| `--font-family-mono` | color chip label | system monospace stack |
+
+Themes that define these properties (all built-in themes do) get consistent component styling with no additional
+work.
+
+### CSS Parts
+
+Shadow DOM components expose `::part()` selectors for targeted styling:
+
+- **`<gmd-color-chip>`**: `::part(chip)`, `::part(swatch)`, `::part(label)`
+- **`<gmd-heading-anchor>`**: `::part(link)`
+
+Example theme override:
+
+```css
+gmd-color-chip::part(swatch) {
+  border-radius: 4px;  /* square swatches instead of circles */
+}
 ```
 
 ## Theme Features Checklist
@@ -226,4 +391,9 @@ When creating a custom theme, ensure it supports these features for parity with 
 - **KaTeX** — guarded by `{{ .Feature "katex" }}`. CSS link in `<head>` and auto-render scripts.
 - **Mermaid** — guarded by `{{ .Feature "mermaid" }}`. Script for diagram rendering (theme-aware: dark/light).
 - **Canonical URLs and Open Graph tags** via `{{ canonicalURL .Page.Path }}` when domain is configured
+- **Language switcher** via `{{ template "lang-switcher" . }}` — shown when multiple languages are detected
+- **hreflang tags** via `{{ template "hreflang" . }}` — SEO alternate language links in `<head>`
+- **Translated UI strings** via `{{ .T "key" }}` — all user-visible text should use translation keys
+- **HTML lang attribute** via `{{ .Lang }}` on the `<html>` tag
+- **Theme variables** via `{{ themeVarsCSS }}` — CSS custom properties from config
 - **Responsive design** with mobile breakpoints

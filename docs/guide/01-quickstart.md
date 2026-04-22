@@ -74,7 +74,8 @@ gomddoc build ./my-docs -o ./public
 
 This renders all Markdown files through the full template pipeline and generates HTML in `./public/`,
 ready for S3, Netlify, GitHub Pages, or Cloudflare Pages. Non-markdown files (images, CSS, JS) are
-copied as-is. The output includes `robots.txt`, and `sitemap.xml` when a domain is configured.
+copied as-is. The output includes `robots.txt`, `feed.xml`, and `sitemap.xml` when a domain is
+configured.
 
 ### 5. AI-Native Documentation Access
 
@@ -113,4 +114,5 @@ Git URL. Run `gomddoc info` to see all available environment variables and their
 - Write richer content: [Markdown Extensions](12-advanced/02-markdown-extensions.md)
 - Set up search: [Full-Text Search](10-search.md)
 - Optimize for search engines: [SEO](11-seo.md)
+- Add languages: [Internationalization](13-internationalization.md)
 - Deploy to production: [Deployment](09-deployment.md)

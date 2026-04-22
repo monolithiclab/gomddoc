@@ -659,7 +659,6 @@ type ServerConfig struct {
     Port      string     `env:"PORT"`        // ":8080"
     DevMode   bool       `env:"DEV_MODE"`    // false
     Dir       string     `env:"DIR"`         // "."
-    GitSSHKey string     `env:"GIT_SSH_KEY"` // ""
     Pprof     bool       `env:"PPROF"`       // false
     HTTP      HTTPConfig `env:"HTTP"`        // Timeout tuning
 }

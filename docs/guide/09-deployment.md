@@ -60,12 +60,46 @@ This walks your content directory, renders all markdown through the full templat
 breadcrumbs, TOC, and styling), copies non-markdown files as-is, and generates `index.html` files alongside
 `README.html` for clean URLs.
 
+The output includes:
+
+- Rendered HTML for all markdown files (with navigation, breadcrumbs, TOC, styling)
+- Non-markdown files copied as-is (images, PDFs, etc.)
+- `robots.txt` — always generated
+- `sitemap.xml` — generated when `meta.domain` is configured
+- `feed.xml` — Atom 1.0 feed with the 20 most recently modified pages
+- `404.html` — error page for static hosts (Netlify, GitHub Pages, Cloudflare Pages)
+- `_assets/` — theme static assets (CSS, JS, fonts)
+
 The output is a self-contained directory ready for:
 
 - **GitHub Pages**: Push `./public` to a `gh-pages` branch
 - **Netlify/Vercel**: Point the build output to `./public`
 - **S3 + CloudFront**: Sync `./public` to an S3 bucket
 - **Any static file server**: Serve `./public` with nginx, caddy, etc.
+
+### Multi-Language Build
+
+When your content includes BCP 47 directories (e.g., `fr-FR/`, `es-ES/`), the build generates per-language output
+with separate sitemaps, feeds, and 404 pages:
+
+```text
+./public/
+├── index.html
+├── robots.txt
+├── sitemap.xml              ← default language
+├── feed.xml                 ← default language
+├── 404.html                 ← default language
+├── sitemap-index.xml        ← references all per-language sitemaps
+├── fr-FR/
+│   ├── index.html
+│   ├── sitemap.xml
+│   ├── feed.xml
+│   └── 404.html
+└── _assets/
+```
+
+The `sitemap-index.xml` is only generated when more than one language is detected. See
+[Internationalization](13-internationalization.md) for the full multi-language guide.
 
 ## Container Deployment
 

@@ -96,6 +96,30 @@ Submitting your sitemap to search engines (via Google Search Console or Bing Web
 them discover all your pages efficiently, especially for large documentation sites where not every
 page is reachable through links from the homepage.
 
+### Multi-Language Sitemaps
+
+When multiple languages are detected, each language gets its own sitemap:
+
+- `/sitemap.xml` — default language pages
+- `/fr-FR/sitemap.xml` — French pages
+- `/es-ES/sitemap.xml` — Spanish pages
+
+A sitemap index file is generated at `/sitemap-index.xml` that references all per-language sitemaps:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://docs.example.com/sitemap.xml</loc>
+  </sitemap>
+  <sitemap>
+    <loc>https://docs.example.com/fr-FR/sitemap.xml</loc>
+  </sitemap>
+</sitemapindex>
+```
+
+Submit the sitemap index URL to search engines — they will discover all per-language sitemaps from it.
+
 ## Robots.txt
 
 A `robots.txt` file is always served at `/robots.txt`, regardless of whether a domain is configured:
@@ -122,6 +146,61 @@ Sitemap: https://docs.example.com/sitemap.xml
 This tells search engine crawlers where to find your sitemap without requiring manual submission.
 
 In `build` mode, `robots.txt` is always generated in the output directory.
+
+## Atom Feed
+
+gomddoc generates an Atom 1.0 XML feed at `/feed.xml` when a domain is configured. The feed includes the 20 most
+recently modified pages, sorted by modification time (newest first). Pages with `robots: noindex` in frontmatter are
+excluded.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>My Project Docs</title>
+  <link href="https://docs.example.com/" rel="alternate"/>
+  <link href="https://docs.example.com/feed.xml" rel="self"/>
+  <updated>2025-06-15T10:30:00Z</updated>
+  <entry>
+    <title>Setup Guide</title>
+    <link href="https://docs.example.com/guide/setup" rel="alternate"/>
+    <updated>2025-06-15T10:30:00Z</updated>
+    <summary>How to install and configure the project</summary>
+  </entry>
+</feed>
+```
+
+Each entry includes the page title, URL, modification time, and description (from frontmatter). The feed is generated
+on first request and cached for the lifetime of the server.
+
+### Multi-Language Feeds
+
+When multiple languages are detected, each language gets its own feed:
+
+- `/feed.xml` — default language
+- `/fr-FR/feed.xml` — French content
+- `/es-ES/feed.xml` — Spanish content
+
+Themes include `<link rel="alternate" type="application/atom+xml">` in the `<head>` so that feed readers and browsers
+can auto-discover the feed.
+
+## hreflang Tags
+
+When multiple languages are detected, gomddoc injects `<link rel="alternate" hreflang="...">` tags in the `<head>` of
+every page. These tags tell search engines which language variants exist for each page:
+
+```html
+<link rel="alternate" hreflang="en-US" href="/guide/setup">
+<link rel="alternate" hreflang="x-default" href="/guide/setup">
+<link rel="alternate" hreflang="fr-FR" href="/fr-FR/guide/setup">
+```
+
+The default language pages get an unprefixed URL and the `x-default` hreflang value (which tells search engines to use
+this variant as the fallback for unsupported languages). Non-default languages get prefixed URLs.
+
+hreflang tags prevent search engines from treating translated pages as duplicate content and enable them to serve the
+correct language variant in search results based on the user's locale.
+
+See [Internationalization](13-internationalization.md) for the full multi-language setup guide.
 
 ## Open Graph Tags
 
@@ -278,8 +357,10 @@ gomddoc build ./docs -o ./public
 The output includes:
 
 - **`robots.txt`** — always generated in the output root
-- **`sitemap.xml`** — generated when `meta.domain` is configured
-- **Canonical URLs and Open Graph tags** — embedded in each HTML page's `<head>`
+- **`sitemap.xml`** — generated when `meta.domain` is configured (per-language in multi-language sites)
+- **`sitemap-index.xml`** — generated when multiple languages are detected
+- **`feed.xml`** — Atom 1.0 feed (per-language in multi-language sites)
+- **Canonical URLs, Open Graph tags, and hreflang tags** — embedded in each HTML page's `<head>`
 
 This means your static site has the same SEO capabilities as the live server, with no additional
 build steps or plugins required.

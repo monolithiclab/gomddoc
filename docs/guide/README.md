@@ -45,7 +45,8 @@ It is designed for:
 8. [Observability](08-observability.md) — Health checks, Prometheus metrics, pprof profiling
 9. [Deployment](09-deployment.md) — Live server, Docker, Kubernetes, static hosting
 10. [Full-Text Search](10-search.md) — Built-in search engine with TF-IDF ranking and keyboard shortcuts
-11. [SEO](11-seo.md) — Canonical URLs, sitemap, robots.txt, Open Graph tags
+11. [SEO](11-seo.md) — Canonical URLs, sitemap, robots.txt, Open Graph tags, Atom feeds
+12. [Internationalization](13-internationalization.md) — Multi-language sites, translations, hreflang, language switcher
 ### Advanced Topics
 
 - [HTTP Behavior](12-advanced/01-http-behavior.md) — Caching, compression, content negotiation
@@ -68,8 +69,12 @@ It is designed for:
 - **Eight Themes:** Ships with default, academic, gitbook, material, midnight, minimal, nord, and
   ocean themes. All support light/dark mode, responsive design, and every rendering feature. Create
   custom themes with Go templates and CSS custom properties.
-- **SEO Ready:** Automatic sitemap.xml, robots.txt, canonical URLs, and Open Graph meta tags. All
-  features work in both serve and build modes. Configure a domain and everything activates.
+- **Internationalization:** Multi-language documentation with BCP 47 directory-based content
+  structure, translated UI strings, a language switcher, per-language search and sitemaps, and
+  hreflang tags for SEO. Add a language by creating a directory — no configuration needed.
+- **SEO Ready:** Automatic sitemap.xml, robots.txt, Atom feeds, canonical URLs, hreflang tags, and
+  Open Graph meta tags. All features work in both serve and build modes. Configure a domain and
+  everything activates.
 - **Markdown Extensions:** GitHub Flavored Markdown, YAML frontmatter, five admonition types, KaTeX
   math rendering, Mermaid diagrams, interactive color chips, heading anchors, and scroll-tracked
   table of contents.

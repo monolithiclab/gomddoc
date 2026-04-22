@@ -41,7 +41,21 @@ unaffected.
 
 Non-markdown files (images, CSS, JS, PDFs) are served as-is with their detected MIME type.
 
-**Caching:** All responses include `Cache-Control: public, max-age=300` and a weak `ETag` (FNV-64a content hash). Conditional requests with `If-None-Match` return `304 Not Modified` when content is unchanged.
+**Caching:** All responses include `Cache-Control: public, max-age=300` and a weak `ETag` (FNV-64a content hash).
+Conditional requests with `If-None-Match` return `304 Not Modified` when content is unchanged.
+
+### Per-Language Content
+
+When multiple languages are detected, non-default language content is served under a language prefix:
+
+| URL | Content |
+|---|---|
+| `GET /guide/setup` | Default language (e.g., English) |
+| `GET /fr-FR/guide/setup` | French version |
+| `GET /es-ES/guide/setup` | Spanish version |
+
+Each language has its own content handler with independent navigation, search index, and metadata. All middleware
+(compression, caching, extension redirect, content exclusion) applies identically to all languages.
 
 ---
 
@@ -53,8 +67,13 @@ Full-text search across all markdown content.
 
 | Parameter | Required | Default | Max | Description |
 |-----------|----------|---------|-----|-------------|
-| `q` | Yes | | | Search query (AND semantics for multiple terms) |
+| `q` | Yes | | 500 chars | Search query (AND semantics for multiple terms) |
 | `limit` | No | 20 | 100 | Maximum results to return |
+| `lang` | No | default language | | BCP 47 language code to search a specific language's index |
+
+When multiple languages are configured, the `lang` parameter selects which language's search index to query. If
+omitted, the language is resolved from the `Accept-Language` request header, falling back to the site's default
+language.
 
 **Response:** JSON array of search results, sorted by relevance score.
 
@@ -113,11 +132,34 @@ Returns an empty array if no pages have the specified tag.
 
 ### `GET /robots.txt`
 
-Returns a robots.txt file. Always available regardless of domain configuration. Includes a `Sitemap:` directive when `meta.domain` is configured.
+Returns a robots.txt file. Always available regardless of domain configuration. Includes a `Sitemap:` directive when
+`meta.domain` is configured.
 
 ### `GET /sitemap.xml`
 
-Returns an XML sitemap listing all indexed pages. Only available when `meta.domain` is configured.
+Returns an XML sitemap listing all indexed pages. Only available when `meta.domain` is configured. Pages with
+`robots: noindex` frontmatter are excluded. URLs use clean extensionless paths when `strip_extensions` is active.
+
+### `GET /sitemap-index.xml`
+
+Returns a sitemap index referencing all per-language sitemaps. Only generated when multiple languages are detected and
+`meta.domain` is configured.
+
+### `GET /feed.xml`
+
+Returns an Atom 1.0 XML feed with the 20 most recently modified pages. Only available when `meta.domain` is
+configured. Pages with `robots: noindex` are excluded. The feed is cached after first generation.
+
+### Per-Language SEO Endpoints
+
+When multiple languages are detected, each non-default language gets its own SEO endpoints:
+
+| Endpoint | Description |
+|---|---|
+| `GET /{lang}/sitemap.xml` | Sitemap for the specified language |
+| `GET /{lang}/feed.xml` | Atom feed for the specified language |
+
+For example, `GET /fr-FR/sitemap.xml` returns the sitemap for French content only.
 
 ---
 
@@ -172,7 +214,10 @@ Go profiling endpoints. Only available when `--pprof` flag is set. Includes CPU 
 
 ### `GET /_assets/*`
 
-Serves theme static assets (CSS, JS, fonts). Only available in `build` mode — in `serve` mode, assets are inlined in templates.
+Serves theme static assets (CSS, JS, fonts, images). Available in both `serve` and `build` modes. Assets are served
+from the overlay filesystem (site-level > theme-level > shared). Responses include
+`Cache-Control: public, max-age=31536000, immutable` for aggressive caching. Hidden files (dotfiles) and directory
+listings are blocked (return 404).
 
 ---
 
@@ -233,4 +278,10 @@ All content requests pass through this middleware chain (outermost to innermost)
 7. **ExtensionRedirect** — 301 redirects from `.md` (or other stripped extensions) to extensionless canonical URLs
 8. **Metrics** — records Prometheus metrics
 
-Health, metrics, API, and SEO endpoints are registered directly on the mux and bypass the content middleware chain (including authentication). The MCP endpoint (`/_mcp/`) and pprof endpoints (`/debug/pprof/*`) are behind the auth RouteGroup and require credentials when `--basic-auth-file` is configured.
+Health and robots endpoints bypass all middleware (including authentication). API, metrics, and SEO endpoints are
+registered within the auth group. The MCP endpoint (`/_mcp/`) and pprof endpoints (`/debug/pprof/*`) also require
+credentials when `--basic-auth-file` is configured. Static assets at `/_assets/` bypass auth for unauthenticated
+access.
+
+When `--admin-port` is configured, health, metrics, and pprof endpoints move to the admin port and are removed from the
+main port. See [Observability](../08-observability.md#admin-port) for details.

@@ -64,7 +64,13 @@ This is enforced via the `MethodFilter` middleware in the request chain, before 
 
 When serving from a Git repository:
 
-- The repository is cloned into **memory**. It is never written to disk, preventing residual data.
+- **In-memory by default.** The repository is cloned into memory and never written to disk, preventing residual
+  data. This is the default behavior when `--git-storage-dir` is not set.
+- **Disk-based storage.** When `--git-storage-dir` is set, the repository is cloned to the specified directory for
+  large repositories that would exceed available memory. Each repository URL gets a unique subdirectory (SHA-256
+  hash of the URL). **gomddoc does not delete this data** — the cache persists across restarts by design. It is
+  the operator's responsibility to clean up the storage directory when it is no longer needed (e.g., `rm -rf`
+  the directory, or use a scheduled job to prune stale caches).
 - SSH keys used for authentication are handled in memory by the Go process and are not accessible via the HTTP
   interface or file system operations.
 - **File size limits**: Files larger than 50MB (configurable via `WithMaxFileSize`) are rejected to prevent memory

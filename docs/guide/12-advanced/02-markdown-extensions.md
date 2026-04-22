@@ -30,6 +30,11 @@ author: Jane Doe
 tags: [go, markdown]
 date: 2026-03-25
 og_type: article
+robots: "index, follow"
+lang: en-US
+layout: default
+redirect_from:
+  - /old/my-document
 features:
   color_chips: true
 ---
@@ -48,6 +53,10 @@ gomddoc processes these frontmatter fields with special behavior:
 | `tags` | array | Page tags — normalized to lowercase, queryable via `/api/tags` endpoint |
 | `date` | string | Publication date (`YYYY-MM-DD`) — included in tags API responses |
 | `og_type` | string | Open Graph type (defaults to `article`) — controls `<meta property="og:type">` |
+| `robots` | string | Controls `<meta name="robots">` for this page (e.g., `noindex`). Pages with `noindex` are excluded from sitemap and feed |
+| `lang` | string | BCP 47 language code — overrides the site-level `language` for this page's `<html lang>` attribute |
+| `layout` | string | Alternate template layout file (e.g., `layout: wide` uses `wide.html.tmpl` instead of `default.html.tmpl`) |
+| `redirect_from` | array | List of URL paths that 301-redirect to this page (e.g., `[/old/path, /legacy]`) |
 | `features` | map | Per-page feature toggle overrides (e.g., `features: { color_chips: false }`) |
 
 ### Custom Fields
