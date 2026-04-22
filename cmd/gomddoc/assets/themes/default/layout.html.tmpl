@@ -1,461 +1,1301 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="color-scheme" content="light dark">
-        <meta name="description" content="{{ .Site.Meta.Description }}">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" />
-        <script type="module">
-            import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-            mermaid.initialize({ startOnLoad: false });
-            await mermaid.run({
-                querySelector: '.language-mermaid',
-            });
-        </script>
-        <style>
-        :root {
-            --pico-font-size: 90%;
-        }
-        /* GitHub-style admonitions */
-        .admonition { padding: 1rem 1.5rem; margin: 1rem 0; border-left: 4px solid; border-radius: 4px; }
-        .admonition-title { font-weight: bold; margin-bottom: 0.5rem; }
-        .admonition-note { border-color: #448aff; background: rgba(68,138,255,0.1); }
-        .admonition-tip { border-color: #00c853; background: rgba(0,200,83,0.1); }
-        .admonition-important { border-color: #7c4dff; background: rgba(124,77,255,0.1); }
-        .admonition-warning { border-color: #ff9100; background: rgba(255,145,0,0.1); }
-        .admonition-caution { border-color: #ff5252; background: rgba(255,82,82,0.1); }
-        /* Inline color chips */
-        .color-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25em;
-            padding: 0.1em 0.4em;
-            border: 1px solid var(--pico-muted-border-color);
-            border-radius: 4px;
-            font-family: var(--pico-font-family-monospace);
-            font-size: 0.9em;
-            vertical-align: baseline;
-        }
-        .color-chip-swatch {
-            display: inline-block;
-            width: 0.9em;
-            height: 0.9em;
-            border-radius: 2px;
-            border: 1px solid rgba(0,0,0,0.15);
-            flex-shrink: 0;
-        }
-        .color-chip-code {
-            font-weight: 600;
-        }
-        /* Heading anchor links */
-        .heading-anchor {
-            text-decoration: none;
-            color: var(--pico-muted-color);
-            opacity: 0;
-            margin-left: 0.5rem;
-            transition: opacity 0.2s;
-            font-weight: normal;
-        }
-        h1:hover .heading-anchor,
-        h2:hover .heading-anchor,
-        h3:hover .heading-anchor,
-        h4:hover .heading-anchor,
-        h5:hover .heading-anchor,
-        h6:hover .heading-anchor {
-            opacity: 1;
-        }
-        .heading-anchor:hover {
-            color: var(--pico-primary);
-        }
-        .page-layout {
-            display: flex;
-            gap: 2rem;
-            align-items: flex-start;
-        }
-        #nav-sidebar {
-            width: 250px;
-            flex-shrink: 0;
-            position: sticky;
-            top: 2rem;
-            max-height: calc(100vh - 4rem);
-            overflow-y: auto;
-            font-size: 0.9em;
-            order: -1;
-        }
-        #nav-sidebar ul {
-            list-style: none;
-            padding-left: 0;
-            margin: 0;
-        }
-        #nav-sidebar ul ul {
-            padding-left: 1rem;
-        }
-        #nav-sidebar li {
-            margin-bottom: 0.15rem;
-        }
-        #nav-sidebar a {
-            color: var(--pico-muted-color);
-            text-decoration: none;
-            display: block;
-            padding: 3px 0.5rem;
-            border-radius: 4px;
-            transition: color 0.2s, background-color 0.2s;
-        }
-        #nav-sidebar a:hover {
-            color: var(--pico-color);
-            background-color: var(--pico-form-element-background-color);
-        }
-        #nav-sidebar a.active {
-            color: var(--pico-primary);
-            font-weight: bold;
-            background-color: var(--pico-primary-focus);
-        }
-        #nav-sidebar details {
-            border: none;
-            padding: 0;
-            margin: 0;
-        }
-        #nav-sidebar summary {
-            color: var(--pico-color);
-            font-weight: 600;
-            padding: 3px 0.5rem;
-            cursor: pointer;
-            font-size: 0.95em;
-            list-style: none;
-        }
-        #nav-sidebar summary::before {
-            content: "\25b6";
-            display: inline-block;
-            margin-right: 0.4em;
-            font-size: 0.7em;
-            transition: transform 0.2s;
-        }
-        #nav-sidebar details[open] > summary::before {
-            transform: rotate(90deg);
-        }
-        #nav-sidebar summary::-webkit-details-marker {
-            display: none;
-        }
-        #toc-sidebar {
-            width: 250px;
-            flex-shrink: 0;
-            position: sticky;
-            top: 2rem;
-            max-height: calc(100vh - 4rem);
-            overflow-y: auto;
-            font-size: 0.9em;
-            padding-right: 1rem;
-        }
-        .page-content {
-            flex-grow: 1;
-            min-width: 0; /* Prevents overflow in flex items */
-        }
-        #toc-sidebar ul {
-            list-style: none;
-            padding-left: 1rem;
-            margin: 0;
-        }
-        #toc-sidebar ul ul {
-            padding-left: 1rem;
-        }
-        #toc-sidebar li {
-            margin-bottom: 0.25rem;
-        }
-        #toc-sidebar a {
-            color: var(--pico-muted-color);
-            text-decoration: none;
-            display: block;
-            padding: 2px 0;
-            transition: color 0.2s, padding-left 0.2s;
-        }
-        #toc-sidebar a:hover {
-            color: var(--pico-color);
-        }
-        #toc-sidebar a.active {
-            color: var(--pico-primary);
-            font-weight: bold;
-            border-left: 2px solid var(--pico-primary);
-            padding-left: 0.5rem;
-            margin-left: -0.6rem; /* visual compensation for border */
-        }
-        #theme-toggle {
-            padding: 0.25rem 0.5rem;
-            margin: 0;
-            font-size: 1rem;
-            line-height: 1;
-            border: none;
-            background: none;
-            cursor: pointer;
-        }
-        #toc-toggle {
-            display: none;
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            z-index: 100;
-            padding: 0.5rem;
-            border-radius: 50%;
-            width: 3.5rem;
-            height: 3.5rem;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        pre { position: relative; }
-        .copy-btn {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            padding: 0.25rem 0.5rem;
-            font-size: 0.75rem;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.2s;
-            border: 1px solid var(--pico-muted-border-color);
-            border-radius: 4px;
-            background: var(--pico-background-color);
-            color: var(--pico-muted-color);
-        }
-        pre:hover .copy-btn { opacity: 1; }
-        .copy-btn:hover { color: var(--pico-color); }
-        .copy-btn.copied { color: var(--pico-ins-color); }
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ .Site.Meta.Description }}">
+  <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
 
-        @media (max-width: 992px) {
-            .page-layout {
-                flex-direction: column;
-            }
-            #nav-sidebar {
-                display: none;
-            }
-            #toc-sidebar {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                bottom: 0;
-                width: 300px;
-                max-width: 80vw;
-                background: var(--pico-background-color);
-                z-index: 101;
-                padding: 2rem;
-                box-shadow: 5px 0 15px rgba(0,0,0,0.1);
-                border-right: 1px solid var(--pico-muted-border-color);
-            }
-            #toc-sidebar.show {
-                display: block;
-            }
-            #toc-toggle {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            #toc-overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0,0,0,0.5);
-                z-index: 100;
-                backdrop-filter: blur(2px);
-            }
-            #toc-overlay.show {
-                display: block;
-            }
-        }
-        </style>
-    </head>
-    <body>
-        <header class="container-fluid">
-            <hgroup>
-            <nav>
-                <ul>
-                    <li><strong>{{ .Site.Meta.Title }}</strong></li>
-                </ul>
-                <ul>
-                    <li><a href="/">Home</a></li>
-                    <li><button id="theme-toggle" class="outline contrast" aria-label="Toggle dark mode">🌙</button></li>
-                </ul>
-            </nav>
-            {{- $crumbs := breadcrumbs .Page.Path }}
-            {{- if gt (len $crumbs) 1 }}
-            <nav aria-label="breadcrumb">
-                <ul>
-                    {{- range $crumbs }}
-                    <li><a href="{{ .Path }}">{{ .Label }}</a></li>
-                    {{- end }}
-                </ul>
-            </nav>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ===== CSS Reset & Base ===== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      font-size: 16px;
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    img, picture, video, canvas, svg {
+      display: block;
+      max-width: 100%;
+    }
+
+    input, button, textarea, select {
+      font: inherit;
+    }
+
+    p, h1, h2, h3, h4, h5, h6 {
+      overflow-wrap: break-word;
+    }
+
+    /* ===== CSS Custom Properties (Light Mode) ===== */
+    :root {
+      /* Colors - Light Mode */
+      --color-bg: #ffffff;
+      --color-bg-secondary: #f8fafc;
+      --color-bg-tertiary: #f1f5f9;
+      --color-text: #1e293b;
+      --color-text-secondary: #475569;
+      --color-text-muted: #64748b;
+      --color-border: #e2e8f0;
+      --color-border-hover: #cbd5e1;
+      --color-primary: #2563eb;
+      --color-primary-hover: #1d4ed8;
+      --color-primary-bg: #eff6ff;
+      --color-code-bg: #f6f8fa;
+      --color-code-text: #1f2328;
+
+      /* Admonition colors */
+      --color-note: #2563eb;
+      --color-note-bg: #eff6ff;
+      --color-tip: #10b981;
+      --color-tip-bg: #ecfdf5;
+      --color-important: #8b5cf6;
+      --color-important-bg: #f5f3ff;
+      --color-warning: #f59e0b;
+      --color-warning-bg: #fffbeb;
+      --color-caution: #ef4444;
+      --color-caution-bg: #fef2f2;
+
+      /* Layout */
+      --nav-width: 260px;
+      --toc-width: 220px;
+      --header-height: 60px;
+      --max-content-width: 1400px;
+
+      /* Typography */
+      --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      --font-family-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    }
+
+    /* ===== Dark Mode ===== */
+    [data-theme="dark"] {
+      --color-bg: #13111C;
+      --color-bg-secondary: #1C1A27;
+      --color-bg-tertiary: #2D2B3A;
+      --color-text: #e2e8f0;
+      --color-text-secondary: #cbd5e1;
+      --color-text-muted: #94a3b8;
+      --color-border: #2D2B3A;
+      --color-border-hover: #3E3C4D;
+      --color-primary: #818CF8;
+      --color-primary-hover: #6366F1;
+      --color-primary-bg: #1e1b4b;
+      --color-code-bg: #f6f8fa;
+      --color-code-text: #1f2328;
+
+      --color-note: #818CF8;
+      --color-note-bg: #1e1b4b;
+      --color-tip: #34d399;
+      --color-tip-bg: #064e3b;
+      --color-important: #c084fc;
+      --color-important-bg: #3b0764;
+      --color-warning: #fbbf24;
+      --color-warning-bg: #78350f;
+      --color-caution: #fb7185;
+      --color-caution-bg: #881337;
+    }
+
+    /* Auto dark mode if no preference set */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) {
+        --color-bg: #13111C;
+        --color-bg-secondary: #1C1A27;
+        --color-bg-tertiary: #2D2B3A;
+        --color-text: #e2e8f0;
+        --color-text-secondary: #cbd5e1;
+        --color-text-muted: #94a3b8;
+        --color-border: #2D2B3A;
+        --color-border-hover: #3E3C4D;
+        --color-primary: #818CF8;
+        --color-primary-hover: #6366F1;
+        --color-primary-bg: #1e1b4b;
+        --color-code-bg: #f6f8fa;
+        --color-code-text: #1f2328;
+
+        --color-note: #818CF8;
+        --color-note-bg: #1e1b4b;
+        --color-tip: #34d399;
+        --color-tip-bg: #064e3b;
+        --color-important: #c084fc;
+        --color-important-bg: #3b0764;
+        --color-warning: #fbbf24;
+        --color-warning-bg: #78350f;
+        --color-caution: #fb7185;
+        --color-caution-bg: #881337;
+      }
+    }
+
+    /* ===== Base Styles ===== */
+    body {
+      font-family: var(--font-family);
+      background-color: var(--color-bg);
+      color: var(--color-text);
+      font-size: 16px;
+    }
+
+    /* ===== Header ===== */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      height: var(--header-height);
+      background-color: var(--color-bg);
+      border-bottom: 1px solid transparent;
+      border-image: linear-gradient(90deg, var(--color-primary), var(--color-border)) 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      backdrop-filter: blur(12px);
+      background-color: rgba(255, 255, 255, 0.85);
+    }
+
+    [data-theme="dark"] .site-header {
+      background-color: rgba(19, 17, 28, 0.85);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) .site-header {
+        background-color: rgba(19, 17, 28, 0.85);
+      }
+    }
+
+    .site-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      color: var(--color-text);
+    }
+
+    .site-title a {
+      color: inherit;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .site-title a:hover {
+      color: var(--color-primary);
+    }
+
+    #theme-toggle {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+      transition: all 0.2s;
+      color: var(--color-text);
+    }
+
+    #theme-toggle:hover {
+      background-color: var(--color-bg-secondary);
+      border-color: var(--color-border-hover);
+    }
+
+    /* ===== Layout ===== */
+    .page-layout {
+      display: flex;
+      align-items: flex-start;
+      min-height: calc(100vh - var(--header-height));
+    }
+
+    /* ===== Navigation Sidebar ===== */
+    #nav-sidebar {
+      width: var(--nav-width);
+      flex-shrink: 0;
+      position: sticky;
+      top: var(--header-height);
+      height: calc(100vh - var(--header-height));
+      overflow-y: auto;
+      border-right: 1px solid var(--color-border);
+      background-color: var(--color-bg);
+      padding: 1.5rem 1rem;
+    }
+
+    #nav-sidebar::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #nav-sidebar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #nav-sidebar::-webkit-scrollbar-thumb {
+      background: var(--color-border);
+      border-radius: 4px;
+    }
+
+    #nav-sidebar::-webkit-scrollbar-thumb:hover {
+      background: var(--color-border-hover);
+    }
+
+    #nav-sidebar ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    #nav-sidebar ul ul {
+      padding-left: 1.25rem;
+      margin-top: 0.25rem;
+      margin-bottom: 0.25rem;
+    }
+
+    #nav-sidebar li {
+      margin-bottom: 0.125rem;
+    }
+
+    #nav-sidebar a {
+      display: block;
+      padding: 0.375rem 0.75rem;
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      font-size: 0.875rem;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+      border-left: 3px solid transparent;
+    }
+
+    #nav-sidebar a:hover {
+      color: var(--color-text);
+      background-color: var(--color-bg-secondary);
+    }
+
+    #nav-sidebar a.active {
+      color: var(--color-primary);
+      background-color: var(--color-primary-bg);
+      border-left-color: var(--color-primary);
+      font-weight: 600;
+    }
+
+    #nav-sidebar details {
+      margin-bottom: 0.25rem;
+    }
+
+    #nav-sidebar summary {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-text);
+      cursor: pointer;
+      list-style: none;
+      border-radius: 6px;
+      transition: background-color 0.15s ease;
+      user-select: none;
+    }
+
+    #nav-sidebar summary::-webkit-details-marker {
+      display: none;
+    }
+
+    #nav-sidebar summary::before {
+      content: '\25B6';
+      display: inline-block;
+      margin-right: 0.5rem;
+      font-size: 0.625rem;
+      transition: transform 0.2s ease;
+      color: var(--color-text-muted);
+    }
+
+    #nav-sidebar details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    #nav-sidebar summary:hover {
+      background-color: var(--color-bg-secondary);
+    }
+
+    /* ===== Content Area ===== */
+    .content-area {
+      flex: 1;
+      min-width: 0;
+      max-width: 100%;
+      padding: 2rem 2.5rem;
+    }
+
+    .breadcrumb-bar {
+      margin-bottom: 1.5rem;
+    }
+
+    .breadcrumb-bar ul {
+      display: flex;
+      flex-wrap: wrap;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+
+    .breadcrumb-bar li:not(:last-child)::after {
+      content: '/';
+      margin: 0 0.5rem;
+      color: var(--color-border-hover);
+    }
+
+    .breadcrumb-bar a {
+      color: var(--color-text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .breadcrumb-bar a:hover {
+      color: var(--color-primary);
+    }
+
+    .content-with-toc {
+      display: flex;
+      gap: 2.5rem;
+      align-items: flex-start;
+    }
+
+    article {
+      flex: 1;
+      min-width: 0;
+      max-width: 800px;
+      overflow-x: hidden;
+    }
+
+    /* ===== TOC Sidebar ===== */
+    #toc-sidebar {
+      width: var(--toc-width);
+      flex-shrink: 0;
+      position: sticky;
+      top: calc(var(--header-height) + 2rem);
+      max-height: calc(100vh - var(--header-height) - 4rem);
+      overflow-y: auto;
+      padding-left: 1.5rem;
+      border-left: 1px solid var(--color-border);
+    }
+
+    #toc-sidebar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #toc-sidebar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #toc-sidebar::-webkit-scrollbar-thumb {
+      background: var(--color-border);
+      border-radius: 3px;
+    }
+
+    #toc-sidebar nav > header {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text);
+      margin-bottom: 0.75rem;
+    }
+
+    #toc-sidebar ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    #toc-sidebar ul ul {
+      padding-left: 1rem;
+      margin-top: 0.25rem;
+      margin-bottom: 0.25rem;
+    }
+
+    #toc-sidebar li {
+      margin-bottom: 0.375rem;
+    }
+
+    #toc-sidebar a {
+      display: block;
+      padding: 0.25rem 0;
+      color: var(--color-text-muted);
+      text-decoration: none;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      transition: all 0.15s ease;
+      border-left: 2px solid transparent;
+      padding-left: 0.75rem;
+      margin-left: -0.75rem;
+    }
+
+    #toc-sidebar a:hover {
+      color: var(--color-text);
+    }
+
+    #toc-sidebar a.active {
+      color: var(--color-primary);
+      font-weight: 600;
+      border-left-color: var(--color-primary);
+    }
+
+    /* ===== Typography ===== */
+    article h1, article h2, article h3, article h4, article h5, article h6 {
+      font-weight: 700;
+      line-height: 1.3;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      letter-spacing: -0.025em;
+      scroll-margin-top: calc(var(--header-height) + 1rem);
+    }
+
+    article h1 {
+      font-size: 2.25rem;
+      margin-top: 0;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 0.5rem;
+    }
+
+    article h2 {
+      font-size: 1.875rem;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 0.375rem;
+    }
+
+    article h3 {
+      font-size: 1.5rem;
+    }
+
+    article h4 {
+      font-size: 1.25rem;
+    }
+
+    article h5 {
+      font-size: 1.125rem;
+    }
+
+    article h6 {
+      font-size: 1rem;
+      color: var(--color-text-secondary);
+    }
+
+    article p {
+      margin-bottom: 1rem;
+      line-height: 1.75;
+    }
+
+    article a {
+      color: var(--color-primary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    article a:hover {
+      color: var(--color-primary-hover);
+      text-decoration: underline;
+    }
+
+    article ul, article ol {
+      margin-bottom: 1rem;
+      padding-left: 1.5rem;
+    }
+
+    article li {
+      margin-bottom: 0.5rem;
+      line-height: 1.75;
+    }
+
+    article blockquote {
+      margin: 1.5rem 0;
+      padding: 1rem 1.5rem;
+      border-left: 4px solid var(--color-primary);
+      background-color: var(--color-bg-secondary);
+      color: var(--color-text-secondary);
+      border-radius: 0 6px 6px 0;
+    }
+
+    article blockquote p:last-child {
+      margin-bottom: 0;
+    }
+
+    article hr {
+      margin: 2rem 0;
+      border: none;
+      border-top: 1px solid var(--color-border);
+    }
+
+    article table {
+      width: 100%;
+      margin-bottom: 1.5rem;
+      border-collapse: collapse;
+      font-size: 0.9375rem;
+    }
+
+    article th, article td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    article th {
+      font-weight: 600;
+      background-color: var(--color-bg-secondary);
+      color: var(--color-text);
+    }
+
+    /* Dark mode: more visible table header */
+    [data-theme="dark"] article th {
+      background-color: var(--color-bg-tertiary);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) article th {
+        background-color: var(--color-bg-tertiary);
+      }
+    }
+
+    article tr {
+      transition: background-color 0.15s ease;
+    }
+
+    article tr:hover {
+      background-color: var(--color-bg-secondary);
+    }
+
+    /* ===== Code Blocks ===== */
+    article code {
+      font-family: var(--font-family-mono);
+      font-size: 0.875em;
+      background-color: var(--color-bg-secondary);
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      color: var(--color-text);
+    }
+
+    article pre {
+      margin: 1.5rem 0;
+      padding: 1.25rem 1.5rem;
+      background-color: var(--color-code-bg);
+      border-radius: 8px;
+      overflow-x: auto;
+      position: relative;
+      border: 1px solid var(--color-border);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Dark mode: code blocks use light bg for readability with github highlight theme */
+    [data-theme="dark"] article pre {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) article pre {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+    }
+
+    article pre code {
+      background: none;
+      padding: 0;
+      color: var(--color-code-text);
+      font-size: 0.875rem;
+      line-height: 1.7;
+    }
+
+
+    .copy-btn {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      padding: 0.375rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background-color: var(--color-bg-secondary);
+      color: var(--color-text-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0;
+      transition: all 0.2s;
+      font-family: var(--font-family);
+    }
+
+    article pre:hover .copy-btn {
+      opacity: 1;
+    }
+
+    .copy-btn:hover {
+      background-color: var(--color-bg-tertiary);
+      color: var(--color-text);
+      border-color: var(--color-border-hover);
+    }
+
+    .copy-btn.copied {
+      color: var(--color-tip);
+      border-color: var(--color-tip);
+    }
+
+    /* ===== Admonitions ===== */
+    .admonition {
+      margin: 1.5rem 0;
+      padding: 1rem 1.25rem;
+      border-left: 4px solid;
+      border-radius: 0 6px 6px 0;
+      background-color: var(--color-bg-secondary);
+    }
+
+    .admonition-title {
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .admonition-title::before {
+      font-size: 1.25rem;
+      line-height: 1;
+    }
+
+    .admonition-note {
+      border-color: var(--color-note);
+      background-color: var(--color-note-bg);
+    }
+
+    .admonition-note .admonition-title {
+      color: var(--color-note);
+    }
+
+    .admonition-note .admonition-title::before {
+      content: '\2139\FE0F';
+    }
+
+    .admonition-tip {
+      border-color: var(--color-tip);
+      background-color: var(--color-tip-bg);
+    }
+
+    .admonition-tip .admonition-title {
+      color: var(--color-tip);
+    }
+
+    .admonition-tip .admonition-title::before {
+      content: '\1F4A1';
+    }
+
+    .admonition-important {
+      border-color: var(--color-important);
+      background-color: var(--color-important-bg);
+    }
+
+    .admonition-important .admonition-title {
+      color: var(--color-important);
+    }
+
+    .admonition-important .admonition-title::before {
+      content: '\2757';
+    }
+
+    .admonition-warning {
+      border-color: var(--color-warning);
+      background-color: var(--color-warning-bg);
+    }
+
+    .admonition-warning .admonition-title {
+      color: var(--color-warning);
+    }
+
+    .admonition-warning .admonition-title::before {
+      content: '\26A0\FE0F';
+    }
+
+    .admonition-caution {
+      border-color: var(--color-caution);
+      background-color: var(--color-caution-bg);
+    }
+
+    .admonition-caution .admonition-title {
+      color: var(--color-caution);
+    }
+
+    .admonition-caution .admonition-title::before {
+      content: '\1F525';
+    }
+
+    .admonition p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* ===== Color Chips ===== */
+    .color-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.125rem 0.5rem;
+      background-color: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      font-family: var(--font-family-mono);
+      font-size: 0.875em;
+      vertical-align: baseline;
+    }
+
+    .color-chip-swatch {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border-radius: 3px;
+      border: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+
+    .color-chip-code {
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    /* ===== Heading Anchors ===== */
+    .heading-anchor {
+      color: var(--color-text-muted);
+      text-decoration: none;
+      opacity: 0;
+      margin-left: 0.5rem;
+      font-weight: 400;
+      transition: opacity 0.2s, color 0.2s;
+    }
+
+    h1:hover .heading-anchor,
+    h2:hover .heading-anchor,
+    h3:hover .heading-anchor,
+    h4:hover .heading-anchor,
+    h5:hover .heading-anchor,
+    h6:hover .heading-anchor {
+      opacity: 1;
+    }
+
+    .heading-anchor:hover {
+      color: var(--color-primary);
+    }
+
+    /* ===== Footer ===== */
+    article footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--color-border);
+    }
+
+    article footer a {
+      font-size: 0.875rem;
+      color: var(--color-text-secondary);
+    }
+
+    article footer a:hover {
+      color: var(--color-primary);
+    }
+
+    /* ===== Mobile TOC Toggle ===== */
+    #toc-toggle {
+      display: none;
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      width: 3.5rem;
+      height: 3.5rem;
+      padding: 0;
+      background-color: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      box-shadow: var(--shadow-lg);
+      cursor: pointer;
+      z-index: 40;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    #toc-toggle:hover {
+      transform: scale(1.1);
+      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2);
+    }
+
+    #toc-toggle svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    #toc-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 45;
+    }
+
+    #toc-overlay.show {
+      display: block;
+    }
+
+    /* ===== Responsive Design ===== */
+
+    /* Tablet: Hide TOC sidebar */
+    @media (max-width: 1200px) {
+      #toc-sidebar {
+        display: none;
+      }
+
+      .content-with-toc {
+        display: block;
+      }
+
+      article {
+        max-width: 100%;
+      }
+
+      #toc-toggle {
+        display: flex;
+      }
+    }
+
+    /* Mobile: Hide navigation sidebar, show hamburger */
+    @media (max-width: 992px) {
+      .page-layout {
+        flex-direction: column;
+      }
+
+      #nav-sidebar {
+        display: none;
+        position: fixed;
+        top: var(--header-height);
+        left: 0;
+        bottom: 0;
+        width: 280px;
+        max-width: 80vw;
+        height: auto;
+        background-color: var(--color-bg);
+        z-index: 45;
+        box-shadow: var(--shadow-lg);
+        border-right: 1px solid var(--color-border);
+      }
+
+      #nav-sidebar.show {
+        display: block;
+      }
+
+      .content-area {
+        padding: 1.5rem 1rem;
+      }
+
+      article h1 {
+        font-size: 1.875rem;
+      }
+
+      article h2 {
+        font-size: 1.5rem;
+      }
+
+      article h3 {
+        font-size: 1.25rem;
+      }
+
+      /* Mobile TOC overlay */
+      #toc-sidebar.show {
+        display: block;
+        position: fixed;
+        top: var(--header-height);
+        right: 0;
+        bottom: 0;
+        width: 280px;
+        max-width: 80vw;
+        height: auto;
+        background-color: var(--color-bg);
+        border-left: 1px solid var(--color-border);
+        border-right: none;
+        padding: 1.5rem;
+        z-index: 46;
+        box-shadow: var(--shadow-lg);
+        max-height: none;
+      }
+
+      .site-header {
+        padding: 0 1rem;
+      }
+
+      #nav-toggle {
+        display: flex;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .site-title {
+        font-size: 1.125rem;
+      }
+
+      .content-area {
+        padding: 1rem;
+      }
+
+      article {
+        font-size: 0.9375rem;
+      }
+
+      #toc-toggle {
+        bottom: 1rem;
+        right: 1rem;
+        width: 3rem;
+        height: 3rem;
+      }
+    }
+
+    /* ===== Mobile Navigation Toggle ===== */
+    #nav-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+      transition: all 0.2s;
+      color: var(--color-text);
+      margin-right: 0.5rem;
+    }
+
+    #nav-toggle:hover {
+      background-color: var(--color-bg-secondary);
+      border-color: var(--color-border-hover);
+    }
+
+    @media (max-width: 992px) {
+      #nav-toggle {
+        display: inline-block;
+      }
+    }
+
+    #nav-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 44;
+    }
+
+    #nav-overlay.show {
+      display: block;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+  </style>
+
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-title">
+      <button id="nav-toggle" aria-label="Toggle navigation">☰</button>
+      <a href="/">{{ .Site.Meta.Title }}</a>
+    </div>
+    <div class="header-controls">
+      <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+    </div>
+  </header>
+
+  <main>
+    {{- $nav := navigation .Page.Path }}
+    {{- $toc := toc .Page.TOC }}
+    {{- $crumbs := breadcrumbs .Page.Path }}
+
+    <div class="page-layout">
+      {{- if $nav }}
+      <aside id="nav-sidebar" aria-label="Navigation">
+        <nav>
+          {{ $nav }}
+        </nav>
+      </aside>
+      <div id="nav-overlay"></div>
+      {{- end }}
+
+      <div class="content-area">
+        {{- if gt (len $crumbs) 1 }}
+        <nav aria-label="Breadcrumb" class="breadcrumb-bar">
+          <ul>
+            {{- range $crumbs }}
+            <li><a href="{{ .Path }}">{{ .Label }}</a></li>
             {{- end }}
-            </hgroup>
-        </header>
+          </ul>
+        </nav>
+        {{- end }}
 
-        <main class="container-fluid">
-            {{- $nav := navigation .Page.Path }}
-            {{- $toc := toc .Page.TOC }}
-            <div class="page-layout">
-                {{- if $nav }}
-                <aside id="nav-sidebar">
-                    <nav aria-label="Page navigation">
-                        <header><strong>Navigation</strong></header>
-                        {{ $nav }}
-                    </nav>
-                </aside>
-                {{- end }}
-                {{- if $toc }}
-                <aside id="toc-sidebar">
-                    <nav>
-                        <header><strong>Contents</strong></header>
-                        {{ $toc }}
-                    </nav>
-                </aside>
-                <div id="toc-overlay"></div>
-                <button id="toc-toggle" class="contrast" aria-label="Toggle Table of Contents">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-                </button>
-                {{- end }}
+        <div class="content-with-toc">
+          <article>
+            {{ .Page.Content }}
 
-                <article class="page-content">
-                    {{ .Page.Content }}
-                    {{- $editLink := editURL .Page.Path }}
-                    {{- if $editLink }}
-                    <footer>
-                        <small><a href="{{ $editLink }}" target="_blank" rel="noopener noreferrer">Edit this page</a></small>
-                    </footer>
-                    {{- end }}
-                </article>
-            </div>
-        </main>
+            {{- $editLink := editURL .Page.Path }}
+            {{- if $editLink }}
+            <footer>
+              <a href="{{ $editLink }}" target="_blank" rel="noopener noreferrer">Edit this page</a>
+            </footer>
+            {{- end }}
+          </article>
 
-        <script>
-            // TOC functionality - wrapped in IIFE for encapsulation
-            (function() {
-                'use strict';
+          {{- if $toc }}
+          <aside id="toc-sidebar" aria-label="Table of Contents">
+            <nav>
+              <header>On this page</header>
+              {{ $toc }}
+            </nav>
+          </aside>
+          <div id="toc-overlay"></div>
+          <button id="toc-toggle" aria-label="Toggle table of contents">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          {{- end }}
+        </div>
+      </div>
+    </div>
+  </main>
 
-                // Mobile TOC Toggle
-                const tocToggle = document.getElementById('toc-toggle');
-                const tocSidebar = document.getElementById('toc-sidebar');
-                const tocOverlay = document.getElementById('toc-overlay');
+  <script>
+    // Theme Toggle with localStorage persistence
+    (function() {
+      'use strict';
 
-                if (tocToggle && tocSidebar) {
-                    const toggleToc = () => {
-                        const isShown = tocSidebar.classList.contains('show');
-                        tocSidebar.classList.toggle('show', !isShown);
-                        if (tocOverlay) tocOverlay.classList.toggle('show', !isShown);
-                    };
+      const toggle = document.getElementById('theme-toggle');
+      const html = document.documentElement;
 
-                    tocToggle.addEventListener('click', toggleToc);
-                    if (tocOverlay) tocOverlay.addEventListener('click', toggleToc);
+      // Initialize theme from localStorage or system preference
+      const stored = localStorage.getItem('theme');
+      if (stored) {
+        html.setAttribute('data-theme', stored);
+      }
 
-                    // Close on link click (mobile only)
-                    tocSidebar.addEventListener('click', (e) => {
-                        if (e.target.tagName === 'A' && window.innerWidth <= 992) {
-                            toggleToc();
-                        }
-                    });
-                }
+      function updateIcon() {
+        let current = html.getAttribute('data-theme');
+        if (!current) {
+          current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        toggle.textContent = current === 'dark' ? '☀️' : '🌙';
+      }
 
-                // Scroll Highlighting with IntersectionObserver
-                if (tocSidebar) {
-                    const observer = new IntersectionObserver((entries) => {
-                        entries.forEach(entry => {
-                            if (entry.isIntersecting) {
-                                const id = entry.target.getAttribute('id');
-                                if (id) {
-                                    tocSidebar.querySelectorAll('a').forEach(link => {
-                                        const isActive = link.getAttribute('href') === '#' + id;
-                                        link.classList.toggle('active', isActive);
-                                        if (isActive) {
-                                            link.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                                        }
-                                    });
-                                }
-                            }
-                        });
-                    }, { rootMargin: '-100px 0px -66%', threshold: 0 });
+      updateIcon();
 
-                    document.querySelectorAll('article h1[id], article h2[id], article h3[id]').forEach((section) => {
-                        observer.observe(section);
-                    });
-                }
-            })();
+      toggle.addEventListener('click', () => {
+        let current = html.getAttribute('data-theme');
+        if (!current) {
+          current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        const next = current === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        updateIcon();
+      });
 
-            // Code block copy button - wrapped in IIFE for encapsulation
-            (function() {
-                'use strict';
-                document.querySelectorAll('pre > code').forEach(function(codeBlock) {
-                    var pre = codeBlock.parentNode;
-                    var btn = document.createElement('button');
-                    btn.className = 'copy-btn';
-                    btn.textContent = 'Copy';
-                    btn.setAttribute('aria-label', 'Copy code to clipboard');
-                    btn.addEventListener('click', function() {
-                        navigator.clipboard.writeText(codeBlock.textContent).then(function() {
-                            btn.textContent = 'Copied!';
-                            btn.classList.add('copied');
-                            setTimeout(function() {
-                                btn.textContent = 'Copy';
-                                btn.classList.remove('copied');
-                            }, 2000);
-                        });
-                    });
-                    pre.appendChild(btn);
-                });
-            })();
-        </script>
+      // Listen for system theme changes
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (!localStorage.getItem('theme')) {
+          updateIcon();
+        }
+      });
+    })();
 
-        <script>
-            // Dark/Light mode toggle - wrapped in IIFE for encapsulation
-            (function() {
-                'use strict';
-                var toggle = document.getElementById('theme-toggle');
-                var html = document.documentElement;
+    // Mobile Navigation Toggle
+    (function() {
+      'use strict';
 
-                // Determine initial theme from localStorage
-                var stored = localStorage.getItem('theme');
-                if (stored) {
-                    html.setAttribute('data-theme', stored);
-                }
+      const navToggle = document.getElementById('nav-toggle');
+      const navSidebar = document.getElementById('nav-sidebar');
+      const navOverlay = document.getElementById('nav-overlay');
 
-                // Update button icon based on current theme
-                function updateIcon() {
-                    var current = html.getAttribute('data-theme');
-                    if (!current) {
-                        // Auto-detect from system preference
-                        current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                    }
-                    toggle.textContent = current === 'dark' ? '\u2600\uFE0F' : '\uD83C\uDF19';
-                }
+      if (navToggle && navSidebar) {
+        const closeNav = () => {
+          navSidebar.classList.remove('show');
+          if (navOverlay) navOverlay.classList.remove('show');
+        };
 
-                updateIcon();
+        navToggle.addEventListener('click', () => {
+          const isShown = navSidebar.classList.contains('show');
+          navSidebar.classList.toggle('show', !isShown);
+          if (navOverlay) navOverlay.classList.toggle('show', !isShown);
+        });
+        if (navOverlay) navOverlay.addEventListener('click', closeNav);
 
-                if (toggle) {
-                    toggle.addEventListener('click', function() {
-                        var current = html.getAttribute('data-theme');
-                        if (!current) {
-                            current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                        }
-                        var next = current === 'dark' ? 'light' : 'dark';
-                        html.setAttribute('data-theme', next);
-                        localStorage.setItem('theme', next);
-                        updateIcon();
-                    });
-                }
+        // Close on link click
+        navSidebar.addEventListener('click', (e) => {
+          if (e.target.closest('a')) {
+            closeNav();
+          }
+        });
+      }
+    })();
 
-                // Listen for system theme changes
-                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-                    if (!localStorage.getItem('theme')) {
-                        updateIcon();
-                    }
-                });
-            })();
-        </script>
+    // Mobile TOC Toggle
+    (function() {
+      'use strict';
 
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
-            onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
-    </body>
+      const tocToggle = document.getElementById('toc-toggle');
+      const tocSidebar = document.getElementById('toc-sidebar');
+      const tocOverlay = document.getElementById('toc-overlay');
+
+      if (tocToggle && tocSidebar) {
+        const closeToc = () => {
+          tocSidebar.classList.remove('show');
+          if (tocOverlay) tocOverlay.classList.remove('show');
+        };
+
+        tocToggle.addEventListener('click', () => {
+          const isShown = tocSidebar.classList.contains('show');
+          tocSidebar.classList.toggle('show', !isShown);
+          if (tocOverlay) tocOverlay.classList.toggle('show', !isShown);
+        });
+        if (tocOverlay) tocOverlay.addEventListener('click', closeToc);
+
+        // Close on link click
+        tocSidebar.addEventListener('click', (e) => {
+          if (e.target.closest('a')) {
+            closeToc();
+          }
+        });
+      }
+    })();
+
+    // TOC Scroll Highlighting
+    (function() {
+      'use strict';
+
+      const tocSidebar = document.getElementById('toc-sidebar');
+      if (!tocSidebar) return;
+
+      const headings = document.querySelectorAll('article h1[id], article h2[id], article h3[id], article h4[id]');
+      const tocLinks = tocSidebar.querySelectorAll('a');
+      if (!headings.length || !tocLinks.length) return;
+
+      // Build a set of IDs that have TOC links for quick lookup
+      const tocIds = new Set();
+      tocLinks.forEach(link => {
+        const href = link.getAttribute('href');
+        if (href && href.startsWith('#')) tocIds.add(href.slice(1));
+      });
+
+      let prevId = null;
+
+      function updateActive() {
+        // Find the last heading that scrolled past the top of the viewport
+        let current = null;
+        for (const h of headings) {
+          if (h.getBoundingClientRect().top <= 100) current = h;
+        }
+
+        // If the current heading isn't in the TOC (e.g. h3/h4 sub-heading),
+        // walk backwards to find the nearest ancestor heading that is
+        if (current && !tocIds.has(current.id)) {
+          const arr = Array.from(headings);
+          let idx = arr.indexOf(current);
+          while (idx >= 0 && !tocIds.has(arr[idx].id)) idx--;
+          current = idx >= 0 ? arr[idx] : null;
+        }
+
+        const id = current ? current.id : null;
+        if (id === prevId) return;
+        prevId = id;
+
+        tocLinks.forEach(link => {
+          const isActive = id && link.getAttribute('href') === '#' + id;
+          link.classList.toggle('active', isActive);
+          if (isActive) {
+            const linkTop = link.offsetTop - tocSidebar.offsetTop;
+            tocSidebar.scrollTo({ top: linkTop - tocSidebar.clientHeight / 2, behavior: 'smooth' });
+          }
+        });
+      }
+
+      window.addEventListener('scroll', updateActive, { passive: true });
+      updateActive();
+    })();
+
+    // Code Block Copy Button
+    (function() {
+      'use strict';
+
+      document.querySelectorAll('article pre > code').forEach(codeBlock => {
+        const pre = codeBlock.parentNode;
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = 'Copy';
+        btn.setAttribute('aria-label', 'Copy code to clipboard');
+
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(codeBlock.textContent);
+            btn.textContent = 'Copied!';
+            btn.classList.add('copied');
+            setTimeout(() => {
+              btn.textContent = 'Copy';
+              btn.classList.remove('copied');
+            }, 2000);
+          } catch (err) {
+            console.error('Failed to copy:', err);
+          }
+        });
+
+        pre.appendChild(btn);
+      });
+    })();
+  </script>
+
+  <!-- KaTeX Auto-render -->
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- Mermaid -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+    });
+    await mermaid.run({ querySelector: '.language-mermaid' });
+  </script>
+</body>
 </html>
