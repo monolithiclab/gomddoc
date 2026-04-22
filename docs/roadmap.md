@@ -164,7 +164,7 @@ _A zero-friction subcommand for previewing documentation locally, distinct from 
 - [x] **`gomddoc preview [dir]`**: Serve a directory (defaults to `.`) with sensible defaults optimized for
       local authoring. Differences from `serve`:
   - **Auto port**: Find an available port starting from 8080 (`--port :auto`).
-  - **Auto open**: Launch the default browser on startup (`--no-open` to disable).
+  - **Browser open**: Launch the default browser with `--open` flag.
   - **Dev mode on**: Implies `--dev` (no caching) without requiring the flag.
   - **Minimal output**: Print only the URL and "Press Ctrl+C to stop".
 - [x] **Port discovery**: Sequential scan from 8080 via `net.Listen`. Port is resolved before server

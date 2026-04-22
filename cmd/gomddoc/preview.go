@@ -25,7 +25,7 @@ import (
 type PreviewCmd struct {
 	Dir    string `arg:"" optional:"" default:"." help:"Markdown directory to preview."`
 	Port   string `name:"port" short:"p" default:":auto" help:"HTTP listen address (host:port). Defaults to auto-assigned port."`
-	NoOpen bool   `name:"no-open" default:"false" help:"Do not open the browser automatically."`
+	Open bool `name:"open" default:"false" help:"Open the browser automatically on startup."`
 }
 
 // Run executes the preview command.
@@ -99,7 +99,7 @@ func (p *PreviewCmd) Run() error {
 	fmt.Printf("Preview: %s\n", url)
 	fmt.Println("Press Ctrl+C to stop")
 
-	if !p.NoOpen {
+	if p.Open {
 		if err := server.OpenBrowser(url); err != nil {
 			slog.Debug("Failed to open browser", slog.Any("error", err))
 		}

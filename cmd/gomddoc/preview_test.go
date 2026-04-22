@@ -14,8 +14,8 @@ func TestPreviewCmd_Defaults(t *testing.T) {
 	if cmd.Port != "" {
 		t.Errorf("Port default = %q, want empty (Kong sets ':auto')", cmd.Port)
 	}
-	if cmd.NoOpen {
-		t.Error("NoOpen should default to false")
+	if cmd.Open {
+		t.Error("Open should default to false")
 	}
 }
 
@@ -25,7 +25,7 @@ func TestPreviewCmd_FieldTags(t *testing.T) {
 	cmd := PreviewCmd{
 		Dir:    "/tmp/docs",
 		Port:   ":9090",
-		NoOpen: true,
+		Open: true,
 	}
 
 	if cmd.Dir != "/tmp/docs" {
@@ -34,7 +34,7 @@ func TestPreviewCmd_FieldTags(t *testing.T) {
 	if cmd.Port != ":9090" {
 		t.Errorf("Port = %q, want :9090", cmd.Port)
 	}
-	if !cmd.NoOpen {
-		t.Error("NoOpen should be true")
+	if !cmd.Open {
+		t.Error("Open should be true")
 	}
 }

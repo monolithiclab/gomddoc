@@ -51,7 +51,7 @@ Preview your docs with zero friction — auto-finds a free port and opens your b
 gomddoc preview
 ```
 
-This starts the server in dev mode (no caching), auto-assigns a port starting from 8080, and opens your default browser. Use `--no-open` to skip the browser launch.
+This starts the server in dev mode (no caching) and auto-assigns a port starting from 8080. Add `--open` to launch your default browser automatically.
 
 ### 4. Live Server (Local Folder)
 
