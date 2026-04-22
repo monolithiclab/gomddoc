@@ -262,7 +262,7 @@ func TestValidate_ShutdownTimeout(t *testing.T) {
 	}
 }
 
-func TestValidate_TimeoutDefaults(t *testing.T) {
+func TestNormalize_TimeoutDefaults(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -425,10 +425,7 @@ func TestValidate_TimeoutDefaults(t *testing.T) {
 
 			cfg := New()
 			tt.mutate(cfg)
-			err := cfg.Validate()
-			if err != nil {
-				t.Fatalf("Unexpected validation error: %v", err)
-			}
+			cfg.Normalize()
 			tt.check(t, cfg)
 		})
 	}
@@ -935,14 +932,15 @@ func TestSiteConfig_Validate(t *testing.T) {
 		wantFix func(*testing.T, *SiteConfig)
 	}{
 		{
-			name: "empty theme auto-fixes to default",
+			name: "empty theme is valid after normalize",
 			setup: func(sc *SiteConfig) {
 				sc.Theme.Name = ""
+				sc.Normalize()
 			},
 			wantErr: false,
 			wantFix: func(t *testing.T, sc *SiteConfig) {
 				if sc.Theme.Name != "default" {
-					t.Errorf("Theme.Name should be auto-fixed to 'default', got %q", sc.Theme.Name)
+					t.Errorf("Theme.Name should be normalized to 'default', got %q", sc.Theme.Name)
 				}
 			},
 		},

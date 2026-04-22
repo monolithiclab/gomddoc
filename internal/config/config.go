@@ -135,7 +135,10 @@ func NewFromServeArgs(dir, port string, devMode bool, gitSSHKey string) (*Config
 		slog.String("title", cfg.Site.Meta.Title),
 		slog.String("theme", cfg.Site.Theme.Name))
 
-	// 5. Validate
+	// 5. Normalize (fix up invalid values with sensible defaults)
+	cfg.Normalize()
+
+	// 6. Validate (pure checks, no mutations)
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -252,20 +255,82 @@ func (c *Config) ComputeDynamicDefaults() {
 	}
 }
 
+// Normalize fixes up configuration values that can be auto-corrected, such as
+// resetting out-of-range timeouts to defaults. Must be called before Validate.
+func (c *Config) Normalize() {
+	c.Site.Normalize()
+	c.normalizeHTTP()
+}
+
+// Normalize fixes up site config values that can be auto-corrected.
+func (sc *SiteConfig) Normalize() {
+	if sc.Theme.Name == "" {
+		sc.Theme.Name = DefaultThemeName
+		slog.Warn("Empty theme name, using default")
+	}
+}
+
+func (c *Config) normalizeHTTP() {
+	h := &c.Server.HTTP
+
+	if h.ReadHeaderTimeout <= 0 {
+		slog.Warn("ReadHeaderTimeout must be positive, using default",
+			slog.Duration("configured", h.ReadHeaderTimeout),
+			slog.Duration("default", DefaultReadHeaderTimeout))
+		h.ReadHeaderTimeout = DefaultReadHeaderTimeout
+	} else if h.ReadHeaderTimeout > MaxReadHeaderTimeout {
+		slog.Warn("ReadHeaderTimeout exceeds maximum (60s), using default",
+			slog.Duration("configured", h.ReadHeaderTimeout),
+			slog.Duration("default", DefaultReadHeaderTimeout))
+		h.ReadHeaderTimeout = DefaultReadHeaderTimeout
+	}
+
+	if h.WriteTimeout <= 0 {
+		slog.Warn("WriteTimeout must be positive, using default",
+			slog.Duration("configured", h.WriteTimeout),
+			slog.Duration("default", DefaultWriteTimeout))
+		h.WriteTimeout = DefaultWriteTimeout
+	} else if h.WriteTimeout > MaxWriteTimeout {
+		slog.Warn("WriteTimeout exceeds maximum (5m), using default",
+			slog.Duration("configured", h.WriteTimeout),
+			slog.Duration("default", DefaultWriteTimeout))
+		h.WriteTimeout = DefaultWriteTimeout
+	}
+
+	if h.IdleTimeout <= 0 {
+		slog.Warn("IdleTimeout must be positive, using default",
+			slog.Duration("configured", h.IdleTimeout),
+			slog.Duration("default", DefaultIdleTimeout))
+		h.IdleTimeout = DefaultIdleTimeout
+	} else if h.IdleTimeout > MaxIdleTimeout {
+		slog.Warn("IdleTimeout exceeds maximum (10m), using default",
+			slog.Duration("configured", h.IdleTimeout),
+			slog.Duration("default", DefaultIdleTimeout))
+		h.IdleTimeout = DefaultIdleTimeout
+	}
+
+	if h.MaxHeaderMB <= 0 {
+		slog.Warn("MaxHeaderMB must be positive, using default",
+			slog.Int("configured_mb", h.MaxHeaderMB),
+			slog.Int("default_mb", DefaultMaxHeaderMB))
+		h.MaxHeaderMB = DefaultMaxHeaderMB
+	} else if h.MaxHeaderMB > MaxMaxHeaderMB {
+		slog.Warn("MaxHeaderMB exceeds maximum (10MB), using default",
+			slog.Int("configured_mb", h.MaxHeaderMB),
+			slog.Int("default_mb", DefaultMaxHeaderMB))
+		h.MaxHeaderMB = DefaultMaxHeaderMB
+	}
+}
+
 // Validate validates the configuration values.
 func (c *Config) Validate() error {
 	return c.validateServer()
 }
 
-// Validate site config separately
+// Validate validates site config separately. Does not mutate; call Normalize first.
 func (sc *SiteConfig) Validate() error {
 	if sc.DefaultIndex == "" {
 		return fmt.Errorf("default_index must not be empty")
-	}
-
-	if sc.Theme.Name == "" {
-		sc.Theme.Name = DefaultThemeName
-		slog.Warn("Empty theme name, using default")
 	}
 
 	if sc.EditURL != "" {
@@ -330,7 +395,7 @@ func (c *Config) validateServer() error {
 		return err
 	}
 
-	// Validate HTTP timeouts
+	// Validate HTTP timeouts (Normalize should be called first to fix up values)
 	if c.Server.HTTP.ShutdownTimeout < 0 {
 		return fmt.Errorf("shutdown timeout cannot be negative: %v", c.Server.HTTP.ShutdownTimeout)
 	}
@@ -338,54 +403,6 @@ func (c *Config) validateServer() error {
 		slog.Warn("Shutdown timeout is very long",
 			slog.Duration("timeout", c.Server.HTTP.ShutdownTimeout),
 			slog.Duration("recommended_max", 60*time.Second))
-	}
-
-	if c.Server.HTTP.ReadHeaderTimeout <= 0 {
-		slog.Warn("ReadHeaderTimeout must be positive, using default",
-			slog.Duration("configured", c.Server.HTTP.ReadHeaderTimeout),
-			slog.Duration("default", DefaultReadHeaderTimeout))
-		c.Server.HTTP.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	} else if c.Server.HTTP.ReadHeaderTimeout > MaxReadHeaderTimeout {
-		slog.Warn("ReadHeaderTimeout exceeds maximum (60s), using default",
-			slog.Duration("configured", c.Server.HTTP.ReadHeaderTimeout),
-			slog.Duration("default", DefaultReadHeaderTimeout))
-		c.Server.HTTP.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	}
-
-	if c.Server.HTTP.WriteTimeout <= 0 {
-		slog.Warn("WriteTimeout must be positive, using default",
-			slog.Duration("configured", c.Server.HTTP.WriteTimeout),
-			slog.Duration("default", DefaultWriteTimeout))
-		c.Server.HTTP.WriteTimeout = DefaultWriteTimeout
-	} else if c.Server.HTTP.WriteTimeout > MaxWriteTimeout {
-		slog.Warn("WriteTimeout exceeds maximum (5m), using default",
-			slog.Duration("configured", c.Server.HTTP.WriteTimeout),
-			slog.Duration("default", DefaultWriteTimeout))
-		c.Server.HTTP.WriteTimeout = DefaultWriteTimeout
-	}
-
-	if c.Server.HTTP.IdleTimeout <= 0 {
-		slog.Warn("IdleTimeout must be positive, using default",
-			slog.Duration("configured", c.Server.HTTP.IdleTimeout),
-			slog.Duration("default", DefaultIdleTimeout))
-		c.Server.HTTP.IdleTimeout = DefaultIdleTimeout
-	} else if c.Server.HTTP.IdleTimeout > MaxIdleTimeout {
-		slog.Warn("IdleTimeout exceeds maximum (10m), using default",
-			slog.Duration("configured", c.Server.HTTP.IdleTimeout),
-			slog.Duration("default", DefaultIdleTimeout))
-		c.Server.HTTP.IdleTimeout = DefaultIdleTimeout
-	}
-
-	if c.Server.HTTP.MaxHeaderMB <= 0 {
-		slog.Warn("MaxHeaderMB must be positive, using default",
-			slog.Int("configured_mb", c.Server.HTTP.MaxHeaderMB),
-			slog.Int("default_mb", DefaultMaxHeaderMB))
-		c.Server.HTTP.MaxHeaderMB = DefaultMaxHeaderMB
-	} else if c.Server.HTTP.MaxHeaderMB > MaxMaxHeaderMB {
-		slog.Warn("MaxHeaderMB exceeds maximum (10MB), using default",
-			slog.Int("configured_mb", c.Server.HTTP.MaxHeaderMB),
-			slog.Int("default_mb", DefaultMaxHeaderMB))
-		c.Server.HTTP.MaxHeaderMB = DefaultMaxHeaderMB
 	}
 
 	return nil
