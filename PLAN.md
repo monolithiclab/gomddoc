@@ -91,8 +91,8 @@ type DocumentProcessor interface {
 
 - Extended CommonMark with GitHub Flavored Markdown
 - Custom extensions: tables, task lists, footnotes, strikethrough
-- Math rendering via KaTeX integration
-- Mermaid diagram support
+- Math rendering via KaTeX integration (DONE - client-side via CDN)
+- Mermaid diagram support (DONE - client-side via CDN)
 - Syntax highlighting via Chroma (200+ languages)
 - Custom shortcodes: `{{< youtube "id" >}}`, `{{< tweet "id" >}}`
 - Auto-generated table of contents
