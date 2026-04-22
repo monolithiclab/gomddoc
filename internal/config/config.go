@@ -29,6 +29,7 @@ const (
 	DefaultShutdownTimeout   = 1 * time.Second
 	DefaultIndex             = "README.md"
 	DefaultThemeName         = "default"
+	DefaultHighlightTheme    = "github"
 
 	// Configurable upper bounds
 	MaxReadHeaderTimeout = 1 * time.Minute
@@ -67,10 +68,11 @@ type HTTPConfig struct {
 
 // SiteConfig holds site-specific settings (loadable from file)
 type SiteConfig struct {
-	DefaultIndex string      `env:"DEFAULT_INDEX" yaml:"default_index"`
-	DirIndex     bool        `env:"DIR_INDEX" yaml:"dir_index"`
-	Meta         MetaConfig  `env:"META" yaml:"meta"`
-	Theme        ThemeConfig `env:"THEME" yaml:"theme"`
+	DefaultIndex string          `env:"DEFAULT_INDEX" yaml:"default_index"`
+	DirIndex     bool            `env:"DIR_INDEX" yaml:"dir_index"`
+	Meta         MetaConfig      `env:"META" yaml:"meta"`
+	Theme        ThemeConfig     `env:"THEME" yaml:"theme"`
+	Highlighting HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
 }
 
 // MetaConfig holds site metadata
@@ -83,6 +85,11 @@ type MetaConfig struct {
 // ThemeConfig holds theme settings
 type ThemeConfig struct {
 	Name string `env:"NAME" yaml:"name"`
+}
+
+// HighlightConfig holds syntax highlighting settings
+type HighlightConfig struct {
+	Theme string `env:"THEME" yaml:"theme"`
 }
 
 // Load initializes and returns the full configuration.
@@ -156,6 +163,9 @@ func NewSiteConfig(dir string) SiteConfig {
 		},
 		Theme: ThemeConfig{
 			Name: DefaultThemeName,
+		},
+		Highlighting: HighlightConfig{
+			Theme: DefaultHighlightTheme,
 		},
 	}
 }
