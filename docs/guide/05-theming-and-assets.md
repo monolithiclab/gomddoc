@@ -91,7 +91,7 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
 
 ### Template Functions
 
-Eight custom functions are available in templates:
+Custom functions available in templates:
 
 - **`breadcrumbs`**: Generates breadcrumb navigation from a path.
   ```html
@@ -136,6 +136,13 @@ Eight custom functions are available in templates:
   {{- if .Feature "color_chips" }}
   <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
   {{- end }}
+  ```
+
+- **`contentURL`**: Returns the absolute URL path (without scheme or domain) for a content file. When extension stripping is active, returns the clean extensionless path. Default index files (e.g., `README.md`) are resolved to their directory path.
+  ```html
+  <a href="{{ contentURL "docs/guide.md" }}">Guide</a>
+  {{/* Output: /docs/guide (with extension stripping) */}}
+  {{/* Output: /docs/guide.md (without extension stripping) */}}
   ```
 
 - **`inlineJSAsset`**: Loads an asset from the theme directory (falling back to shared assets) and returns it as `template.JS` for safe embedding inside `<script>` tags.

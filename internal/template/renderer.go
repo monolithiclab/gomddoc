@@ -17,6 +17,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/seo"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
@@ -79,11 +80,12 @@ var bufferPool = sync.Pool{
 // IMPORTANT: Do not mutate siteConfig after construction if using concurrently.
 type HTMLRenderer struct {
 	assetsFS      fs.FS
-	siteConfig    *config.SiteConfig   // For theme name (NOT full Config - security)
-	cache         TemplateCache        // Injected dependency (strategy pattern)
-	parseGroup    singleflight.Group   // Coalesces concurrent cache-miss parses
-	breadcrumbGen breadcrumb.Generator // Optional breadcrumb generator
-	themeVars     themeVarsCache       // Cached CSS custom properties from theme config
+	siteConfig    *config.SiteConfig    // For theme name (NOT full Config - security)
+	cache         TemplateCache         // Injected dependency (strategy pattern)
+	parseGroup    singleflight.Group    // Coalesces concurrent cache-miss parses
+	breadcrumbGen breadcrumb.Generator  // Optional breadcrumb generator
+	resolver      *resolve.PathResolver // Optional path resolver for clean URLs
+	themeVars     themeVarsCache        // Cached CSS custom properties from theme config
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
@@ -101,6 +103,13 @@ func WithCache(cache TemplateCache) RendererOption {
 func WithBreadcrumbGenerator(gen breadcrumb.Generator) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.breadcrumbGen = gen
+	}
+}
+
+// WithResolver sets the path resolver for clean URL generation in templates
+func WithResolver(resolver *resolve.PathResolver) RendererOption {
+	return func(r *HTMLRenderer) {
+		r.resolver = resolver
 	}
 }
 
@@ -289,6 +298,7 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"assetURL": func(name string) string {
 			return "/_assets/" + name
 		},
+		"contentURL":      h.contentURL,
 		"inlineJSAsset":   h.inlineJSAsset,
 		"inlineCSSAsset":  h.inlineCSSAsset,
 		"inlineHTMLAsset": h.inlineHTMLAsset,
@@ -424,6 +434,32 @@ func ResolveLayout(r Renderer, metadata map[string]any) string {
 		return candidate
 	}
 	return defaultTemplate
+}
+
+// contentURL returns the absolute URL path (without scheme or domain) for a content file.
+// If extension stripping is active and the file has a clean path, the extensionless form is returned.
+// Default index files (e.g., README.md) are stripped to their directory path.
+func (h *HTMLRenderer) contentURL(filePath string) string {
+	// Normalize: strip leading slash for resolver lookup
+	p := strings.TrimPrefix(filePath, "/")
+
+	// Strip default index file before resolver (e.g., "docs/README.md" -> "docs/")
+	if path.Base(p) == h.siteConfig.DefaultIndex {
+		p = path.Dir(p)
+		if p == "." {
+			p = ""
+		}
+		return "/" + p
+	}
+
+	// Try resolver for clean (extensionless) path
+	if h.resolver != nil {
+		if clean, ok := h.resolver.CleanPath(p); ok {
+			p = clean
+		}
+	}
+
+	return "/" + p
 }
 
 // HasTemplate checks if a layout template exists for the current theme.

@@ -233,6 +233,7 @@ type Renderer interface {
 | `inlineJSAsset` | `inlineJSAsset(name) → JS` | Loads asset as `template.JS` for `<script>` embedding |
 | `inlineCSSAsset` | `inlineCSSAsset(name) → CSS` | Loads asset as `template.CSS` for `<style>` embedding |
 | `inlineHTMLAsset` | `inlineHTMLAsset(name) → HTML` | Loads asset as `template.HTML` for HTML context (e.g. SVGs) |
+| `contentURL` | `contentURL(filePath) → string` | Returns absolute URL path for a content file (extensionless when stripping is active) |
 | `themeVarsCSS` | `themeVarsCSS() → CSS` | Generates `<style>` with `--theme-*` CSS custom properties from config |
 | `assetURL` | `assetURL(name) → string` | Resolves static file to `/_assets/{name}` URL (validates existence) |
 

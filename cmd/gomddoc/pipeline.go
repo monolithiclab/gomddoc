@@ -86,6 +86,8 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		return err == nil
 	})
 
+	templateRenderer.Configure(template.WithResolver(resolver))
+
 	p := &Pipeline{
 		Registry:         registry,
 		TemplateRenderer: templateRenderer,

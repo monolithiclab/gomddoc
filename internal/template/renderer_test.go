@@ -11,6 +11,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
@@ -1638,5 +1639,80 @@ func TestTemplateContext_Feature(t *testing.T) {
 				t.Errorf("Feature(%q) = %v, want %v", tt.feature, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestContentURL(t *testing.T) {
+	t.Parallel()
+
+	// Build a resolver with some .md files
+	contentFS := fstest.MapFS{
+		"docs/guide.md":  {Data: []byte("# Guide")},
+		"docs/setup.md":  {Data: []byte("# Setup")},
+		"docs/README.md": {Data: []byte("# Docs index")},
+		"README.md":      {Data: []byte("# Root")},
+		"docs/image.jpg": {Data: []byte("binary")},
+	}
+	resolver := resolve.Build(contentFS, []string{".md"}, func(string) bool { return true })
+
+	tests := []struct {
+		name     string
+		path     string
+		resolver *resolve.PathResolver
+		want     string
+	}{
+		{"extensionless with resolver", "docs/guide.md", resolver, "/docs/guide"},
+		{"leading slash stripped", "/docs/setup.md", resolver, "/docs/setup"},
+		{"default index stripped", "docs/README.md", resolver, "/docs"},
+		{"root index", "README.md", resolver, "/"},
+		{"no resolver passthrough", "docs/guide.md", nil, "/docs/guide.md"},
+		{"non-mapped file passthrough", "docs/image.jpg", resolver, "/docs/image.jpg"},
+		{"already clean path", "docs/guide", resolver, "/docs/guide"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			siteConfig := config.NewSiteConfig(".")
+			r := NewHTMLRenderer(&siteConfig, fstest.MapFS{})
+			if tt.resolver != nil {
+				r.Configure(WithResolver(tt.resolver))
+			}
+
+			got := r.contentURL(tt.path)
+			if got != tt.want {
+				t.Errorf("contentURL(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestContentURLInTemplate(t *testing.T) {
+	t.Parallel()
+
+	contentFS := fstest.MapFS{
+		"docs/guide.md": {Data: []byte("# Guide")},
+	}
+	resolver := resolve.Build(contentFS, []string{".md"}, func(string) bool { return true })
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`{{contentURL "docs/guide.md"}}`),
+		},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS, WithResolver(resolver))
+
+	result, err := r.Render(context.Background(), "default.html.tmpl", &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/"},
+	})
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+	got := strings.TrimSpace(string(result))
+	if got != "/docs/guide" {
+		t.Errorf("contentURL in template = %q, want %q", got, "/docs/guide")
 	}
 }
