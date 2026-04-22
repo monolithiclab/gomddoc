@@ -41,7 +41,7 @@ default. This single setting enables canonical URLs, sitemap generation, Open Gr
 When a domain is configured, every page includes a `<link rel="canonical">` tag in the HTML `<head>`:
 
 ```html
-<link rel="canonical" href="https://docs.example.com/guide/getting-started.md">
+<link rel="canonical" href="https://docs.example.com/guide/getting-started">
 ```
 
 Canonical URLs tell search engines the authoritative URL for each page. This prevents duplicate
@@ -79,7 +79,7 @@ discovered by the metadata index:
     <lastmod>2025-06-15</lastmod>
   </url>
   <url>
-    <loc>https://docs.example.com/guide/getting-started.md</loc>
+    <loc>https://docs.example.com/guide/getting-started</loc>
     <lastmod>2025-06-10</lastmod>
   </url>
 </urlset>
@@ -129,7 +129,7 @@ When a domain is configured, pages include Open Graph and Twitter Card meta tags
 your documentation appears when shared on social media, in chat applications, and in link previews:
 
 ```html
-<meta property="og:url" content="https://docs.example.com/guide.md">
+<meta property="og:url" content="https://docs.example.com/guide">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="My Project Docs">
 <meta property="og:title" content="Getting Started Guide">
@@ -185,7 +185,7 @@ Every page gets a `TechArticle` schema with fields populated from frontmatter:
   "description": "How to install and configure the project",
   "author": {"@type": "Person", "name": "Alice"},
   "datePublished": "2025-06-15T00:00:00Z",
-  "url": "https://docs.example.com/guide/setup.md"
+  "url": "https://docs.example.com/guide/setup"
 }
 ```
 
@@ -246,6 +246,26 @@ Or override with custom schemas:
 </script>
 {{ end }}
 ```
+
+## Clean URLs and SEO
+
+gomddoc serves extensionless (clean) URLs by default, which has several SEO benefits:
+
+- **301 redirects preserve link equity.** Requests to `/guide/setup.md` receive a `301 Moved
+  Permanently` redirect to `/guide/setup`. The permanent redirect tells search engines to transfer
+  all ranking signals from the old URL to the canonical extensionless form.
+- **Extensionless URLs are the canonical form.** Canonical `<link>` tags, Open Graph URLs, and
+  structured data URLs all use the clean path. Search engines index the extensionless version,
+  avoiding duplicate content issues between `/page.md` and `/page`.
+- **Sitemap and feed URLs use clean paths.** When a `PathResolver` is available, `sitemap.xml` and
+  the Atom feed automatically emit extensionless URLs, so search engines discover the canonical
+  form directly.
+- **Migration-safe.** If you are migrating an existing site that previously used `.md` URLs, all
+  old extension-based links (from external sites, bookmarks, or cached search results) are properly
+  redirected. No manual redirect rules are needed.
+
+For details on how URL resolution works, see
+[HTTP Behavior](12-advanced/01-http-behavior.md#url-resolution).
 
 ## Static Site Generation
 

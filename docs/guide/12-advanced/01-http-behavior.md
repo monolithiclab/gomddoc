@@ -106,3 +106,82 @@ The MCP server's `read_page` tool uses the same content pipeline but always retu
 MCP server is the preferred access method — see [MCP Server](../04-mcp.md) for details.
 
 No configuration is required. Content negotiation is always enabled.
+
+---
+
+## URL Resolution
+
+gomddoc serves extensionless (clean) URLs by default. A request to `/guide/setup` resolves to
+the underlying file `guide/setup.md` transparently. This section explains how the resolution
+pipeline works.
+
+### PathResolver
+
+At startup, gomddoc walks the content filesystem and builds an immutable `PathResolver` — a pair
+of maps that translate between extensionless paths and real file paths. The resolver is configured
+by the `strip_extensions` site config option (default: `[".md"]`).
+
+For each file in the content tree, the resolver checks:
+
+1. Whether the file extension is in `strip_extensions`.
+2. Whether a renderer is registered for the file's MIME type (only renderable content gets clean URLs).
+3. Whether the resulting extensionless path collides with an existing mapping or directory.
+
+The resolver produces O(1) lookups in both directions:
+
+- **`Resolve(cleanPath) -> realPath`** — used by the handler when the provider returns "not found"
+  for an extensionless path.
+- **`CleanPath(realPath) -> cleanPath`** — used by the sitemap, feed, canonical URL, and redirect
+  map generators to emit extensionless URLs.
+
+### Extension Redirect Middleware
+
+The `ExtensionRedirect` middleware intercepts requests that include a strippable extension and
+issues a `301 Moved Permanently` redirect to the canonical extensionless URL:
+
+```
+GET /guide/setup.md  →  301 → /guide/setup
+GET /guide/setup     →  (passes through to handler)
+```
+
+The redirect only fires when the resolver has a mapping for the requested file. Requests with
+extensions not in `strip_extensions` (e.g., `.css`, `.png`) pass through unmodified.
+
+### Handler Resolution
+
+When the handler receives a request for a path that the provider cannot find (e.g., `/guide/setup`
+— no such literal file exists), it consults the `PathResolver`:
+
+1. Strip the leading `/` to get the fs-relative path (`guide/setup`).
+2. Call `resolver.Resolve("guide/setup")` — returns `guide/setup.md` if mapped.
+3. Re-read the file from the provider using the real path.
+
+This means the resolver runs *after* the provider's initial lookup fails, not before. Files that
+exist at their literal path (images, CSS, non-stripped extensions) are served directly without
+resolver involvement.
+
+### 404 Behavior
+
+When a request path has no extension and the resolver has no mapping for it, the handler returns
+`404 Not Found`. The resolver does not guess or probe — if the path was not registered at startup,
+it does not exist.
+
+### Middleware Ordering
+
+Content requests pass through the middleware chain in this order:
+
+1. **ContentExclusion** — blocks hidden files (dotfiles) and user-configured exclude patterns
+2. **ExtensionRedirect** — redirects `.md` (or other stripped extensions) to extensionless URLs
+3. **Metrics** — records Prometheus request metrics
+4. **Handler** — resolves path, reads content, renders, and responds
+
+The redirect middleware runs before the handler so that extension-bearing requests never reach
+the rendering pipeline — they are redirected immediately.
+
+### Build Mode
+
+In `gomddoc build`, the resolver drives pretty URL output. Instead of generating `guide.html`,
+the build command generates `guide/index.html` so that static hosts serve the page at `/guide/`.
+Extension redirect HTML files (e.g., `guide.md` containing a meta-refresh redirect to `/guide`)
+are also generated so old extension-based URLs work on static hosts that do not support server-side
+redirects.

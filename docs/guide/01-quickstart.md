@@ -50,6 +50,20 @@ assignment starting from 8080. Add `--open` to launch your default browser autom
 gomddoc preview --open
 ```
 
+### URL Structure
+
+Files in your content directory map to clean, extensionless URLs:
+
+| File | URL |
+|------|-----|
+| `README.md` | `/` |
+| `guide.md` | `/guide` |
+| `guide/setup.md` | `/guide/setup` |
+| `api/reference.md` | `/api/reference` |
+
+Requests to the original `.md` path (e.g., `/guide.md`) are automatically 301-redirected to the
+clean URL (`/guide`).
+
 ### 4. Static Site Generation
 
 Build a complete static site for deployment to any hosting platform:

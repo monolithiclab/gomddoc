@@ -14,6 +14,22 @@ gomddoc exposes several HTTP endpoints beyond content serving. This page documen
 
 Serves content from the documentation directory. Markdown files are rendered as HTML by default.
 
+**URL resolution:** Extensionless paths are resolved to real files via the `PathResolver`. A request
+to `GET /guide/setup` resolves internally to `guide/setup.md` if that file exists and `.md` is in
+the `strip_extensions` config. If the resolver has no mapping and the provider cannot find the
+literal path, the server returns `404 Not Found`.
+
+**Extension redirect:** Requests to paths with a strippable extension receive a `301 Moved
+Permanently` redirect to the extensionless canonical URL:
+
+```
+GET /guide/setup.md  →  301 Location: /guide/setup
+```
+
+This only applies to extensions listed in `strip_extensions` (default: `[".md"]`) and only when
+the resolver has a mapping for the file. Non-stripped extensions (`.css`, `.png`, etc.) are
+unaffected.
+
 **Content negotiation** via the `Accept` header controls the output format:
 
 | Accept Header | Behavior |
@@ -213,7 +229,8 @@ All content requests pass through this middleware chain (outermost to innermost)
 3. **BasicAuth** — HTTP Basic Authentication (only when `--basic-auth-file` is configured)
 4. **Compression** — gzip for responses >= 1KB (skips pre-compressed types like images)
 5. **MethodFilter** — allows GET and HEAD only, returns 405 for others
-6. **BlockHiddenPaths** — blocks dotfiles except `/.well-known/`
-7. **Metrics** — records Prometheus metrics
+6. **ContentExclusion** — blocks hidden files (dotfiles) and user-configured exclude patterns (returns 404)
+7. **ExtensionRedirect** — 301 redirects from `.md` (or other stripped extensions) to extensionless canonical URLs
+8. **Metrics** — records Prometheus metrics
 
 Health, metrics, API, and SEO endpoints are registered directly on the mux and bypass the content middleware chain (including authentication). The MCP endpoint (`/_mcp/`) and pprof endpoints (`/debug/pprof/*`) are behind the auth RouteGroup and require credentials when `--basic-auth-file` is configured.

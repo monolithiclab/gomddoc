@@ -317,6 +317,23 @@ mode compatibility — no per-theme CSS needed. Follows the `color-chip.mjs` pre
 **Discarded: MCP for static sites (Phase 10c)**:
 Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` output, plus a build-time `_mcp/manifest.json` manifest. Dropped because `gomddoc mcp` already works with any content directory — running it against the source markdown provides richer metadata (frontmatter, tags) than post-build HTML. The manifest adds build complexity for a use case already covered by the existing command.
 
+## URL Extension Stripping
+
+**Chosen**: Extensionless canonical URLs with a resolution table built at startup
+
+**Context**: Clean URLs (`/guide/setup` instead of `/guide/setup.md`) are standard practice for web applications. They improve UX (shorter, more memorable URLs), follow REST semantics (resources identified without implementation detail leaking), and benefit SEO (search engines treat extensionless URLs as the canonical form). For a documentation server, clean URLs also mean that content can migrate between formats (e.g., `.md` to `.rst`) without breaking external links.
+
+**Alternatives considered**:
+- **Handler-level rewriting** (middleware probes provider for each request): The middleware would strip the extension and try `provider.ReadFile()` with the new path. Simple but performs a double lookup on every request — first the original path fails, then the rewritten path is tried. No collision detection. No way to use clean paths in sitemaps/feeds without duplicating the logic.
+- **Provider-level resolution** (provider maps paths internally): The provider would accept both `guide.md` and `guide` and resolve internally. Rejected because it muddies the provider's responsibility — providers are content sources, not URL routers. Also prevents sharing the resolution table with other components (sitemap, feed, canonical URL).
+- **Resolution table** (chosen): `resolve.Build()` walks `fs.FS` at startup and creates an immutable `PathResolver` with two maps (`toReal` and `toClean`). O(1) lookup in both directions. Collision detection runs at build time with logged warnings. The resolver is shared by the handler, sitemap, feed, canonical URL, redirect map, and build command — single source of truth for path mapping.
+
+**Trade-offs**: Memory for the two maps is negligible for documentation sites (one map entry per file with a strippable extension). The resolver must be rebuilt when content changes (e.g., after a git pull), but this already happens via provider reinitialization.
+
+**Collision strategy**:
+- **File vs. directory**: File wins. If `guide.md` and `guide/` both exist, `/guide` resolves to the file. A warning is logged at startup.
+- **Multi-extension conflicts**: The first extension in the `strip_extensions` config list wins. If both `guide.md` and `guide.html` exist and both extensions are strippable, the one whose extension appears first in the config claims `/guide`. The other is skipped with a warning.
+
 ## Deferred / Discarded Ideas
 
 | Idea | Status | Reason |

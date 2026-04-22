@@ -17,6 +17,12 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 - **Performance-first**: Built for speed with intelligent caching
 - **Security by design**: Path traversal protection, content sanitization, secure defaults
 
+## Idea
+
+- MCP enable website for forms, etc. eg.
+  agents discover monolithic and are able to interact with it.
+- Provide generic gomddoc skill.
+
 ## Current State
 
 The foundation is production-ready with 87.3% test coverage. For a full description
@@ -85,12 +91,16 @@ _Usability improvements to the serve, build, and preview subcommands._
       mode — `serve` never injects the script. Medium complexity.
 - [x] **`--domain` flag for serve/build/preview**: `-d, --domain` / `GOMDDOC_DOMAIN` on all
       three subcommands overrides `meta.domain` from config. CLI flag takes precedence.
+- [x] **Exclude patterns**: Configurable `exclude` list in `.gomddoc/config.yml` using glob patterns
+      (`path.Match` syntax). Patterns block matching files from HTTP serving, navigation, search,
+      metadata indexing, MCP access, and directory listings. `IsExcludedPath` + `IsRestrictedPath`
+      consolidate hidden-path and exclude-pattern checks. `ContentExclusion` middleware replaces
+      `BlockHiddenPaths`. All blocked paths return 404 (no existence leakage).
 - [x] **URL extension stripping**: `strip_extensions` config option (default: `[".md"]`) removes
       specified extensions from URLs. Requests to `/docs/guide.md` redirect (301) to `/docs/guide`.
       In build mode, generates directory-based URLs (`guide/index.html`) for static host compatibility.
       Implemented in `internal/resolve` with collision detection (first configured extension wins).
       Low-medium complexity.
-- [ ] Add an ignore list (matching gitignore rules) to exclude files/folder/globs/...
 
 ## Phase 9: SEO and Discoverability
 
@@ -258,6 +268,29 @@ _Streamable HTTP transport for remote MCP access._
       Protected by the same authentication middleware as other endpoints. MCP server is created
       in `setupServer` and shared between stdio (`gomddoc mcp`) and HTTP (`gomddoc serve/preview`)
       transports.
+
+## Self-Documentation via MCP
+
+_gomddoc bundles its own guide and serves it to AI agents via CLI MCP, enabling agents to learn
+how to build documentation sites with gomddoc without external docs._
+
+- [ ] **Bundled guide content**: Embed the `docs/guide/` documentation into the binary via `embed.FS`.
+      This is gomddoc's own user guide — configuration, theming, features, MCP usage, etc. The
+      embedded content is self-contained and versioned with the binary.
+- [ ] **`gomddoc mcp` serves bundled guide**: When `gomddoc mcp` runs without a content directory
+      argument, it serves the bundled guide instead of requiring user content. This lets any
+      MCP-compatible agent (Claude, Cursor, Windsurf, etc.) query gomddoc's own documentation to
+      learn how to set up a site, configure themes, write frontmatter, use exclude patterns, etc.
+      With a content directory, the guide content is available alongside user content (e.g. via a
+      `guide://` resource prefix or a `gomddoc_help` tool).
+- [ ] **Agent onboarding prompt**: Add an MCP prompt (`learn_gomddoc`) that walks an agent through
+      gomddoc's capabilities — what config options exist, how themes work, what frontmatter fields
+      are available — by pulling from the bundled guide. This is the "teach me how to use you"
+      entry point.
+
+**Why:** gomddoc's MCP server already lets agents query _user_ documentation. Bundling its own
+guide closes the loop — agents can learn how to _use_ gomddoc itself via the same protocol.
+Dogfooding the MCP interface with gomddoc's own docs.
 
 ## Distribution and Packaging
 
