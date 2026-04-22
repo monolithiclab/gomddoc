@@ -39,10 +39,12 @@ type TemplateContext struct {
 
 type PageContext struct {
 	Content    template.HTML
-	Path       string            // Current request path
-	Meta       map[string]any    // Extracted metadata (e.g., front matter)
-	TOC        *enricher.TOCNode // Table of Contents
-	Navigation *enricher.NavTree // Navigation tree (populated by enricher)
+	Path       string             // Current request path
+	Meta       map[string]any     // Extracted metadata (e.g., front matter)
+	TOC        *enricher.TOCNode  // Table of Contents
+	Navigation *enricher.NavTree  // Navigation tree (populated by enricher)
+	PrevPage   *enricher.PageLink // Previous page in navigation order
+	NextPage   *enricher.PageLink // Next page in navigation order
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects

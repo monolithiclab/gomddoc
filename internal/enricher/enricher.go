@@ -35,6 +35,13 @@ type RelatedDoc struct {
 	Title string
 }
 
+// PageLink represents a link to a page with its display title.
+// Used for previous/next navigation.
+type PageLink struct {
+	Path  string
+	Title string
+}
+
 // EnrichmentData holds structured data extracted from content before rendering.
 // The enricher runs before the renderer, producing format-agnostic data that
 // renderers and templates can use.
@@ -43,6 +50,8 @@ type EnrichmentData struct {
 	TOC         *TOCNode
 	Navigation  *NavTree
 	RelatedDocs []RelatedDoc
+	PrevPage    *PageLink // Previous page in navigation order
+	NextPage    *PageLink // Next page in navigation order
 }
 
 // Enricher extracts structured data from content before rendering.

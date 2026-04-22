@@ -154,6 +154,8 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 			Meta:       metadata,
 			TOC:        enrichment.TOC,
 			Navigation: enrichment.Navigation,
+			PrevPage:   enrichment.PrevPage,
+			NextPage:   enrichment.NextPage,
 		},
 	}
 

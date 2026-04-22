@@ -157,7 +157,7 @@ _Enhances competitiveness and closes remaining gaps._
 - [ ] **Image dimension attributes**: Post-process rendered HTML to add `width`/`height` to
       `<img>` tags that lack them. Prevents CLS (Core Web Vitals). Reads dimensions from content
       provider. Medium complexity.
-- [ ] **`<link rel="next/prev">`**: Sequential page links derived from navigation order. Minor
+- [x] **`<link rel="next/prev">`**: Sequential page links derived from navigation order. Minor
       crawl efficiency signal. Low complexity.
 
 ## Tag Components

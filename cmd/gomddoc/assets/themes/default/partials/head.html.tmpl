@@ -11,6 +11,10 @@
   <link rel="canonical" href="{{ $url }}">{{ end }}
   {{ $feedURL := canonicalURL "/feed.xml" }}{{ if $feedURL }}
   <link rel="alternate" type="application/atom+xml" title="{{ .Site.Meta.Title }}" href="{{ $feedURL }}">{{ end }}
+  {{ if .Page.PrevPage }}{{ $prevURL := canonicalURL .Page.PrevPage.Path }}{{ if $prevURL }}
+  <link rel="prev" href="{{ $prevURL }}">{{ end }}{{ end }}
+  {{ if .Page.NextPage }}{{ $nextURL := canonicalURL .Page.NextPage.Path }}{{ if $nextURL }}
+  <link rel="next" href="{{ $nextURL }}">{{ end }}{{ end }}
 
   <!-- Open Graph -->{{ if $url }}
   <meta property="og:url" content="{{ $url }}">{{ end }}

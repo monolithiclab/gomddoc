@@ -91,6 +91,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	if opts.EnableNavigation {
 		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex)
 		enricherOpts.NavBuilder = navBuilderAdapter(navGen)
+		enricherOpts.PrevNextBuilder = prevNextBuilderAdapter(navGen)
 		p.RedirectFinder = redirectFinderAdapter(navGen)
 	}
 
@@ -259,6 +260,45 @@ func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer) error
 	})
 
 	return g.Wait()
+}
+
+// prevNextBuilderAdapter wraps a navigation.Generator into an enricher.PrevNextBuilder,
+// computing previous/next page links from the navigation tree.
+func prevNextBuilderAdapter(navGen *navigation.Generator) enricher.PrevNextBuilder {
+	return func(currentPath string) (prev, next *enricher.PageLink) {
+		root := navGen.Generate(currentPath)
+		if root == nil {
+			return nil, nil
+		}
+		prevPath, nextPath := navigation.FindPrevNext(root, currentPath)
+		if prevPath != "" {
+			prev = &enricher.PageLink{
+				Path:  prevPath,
+				Title: findNodeLabel(root, prevPath),
+			}
+		}
+		if nextPath != "" {
+			next = &enricher.PageLink{
+				Path:  nextPath,
+				Title: findNodeLabel(root, nextPath),
+			}
+		}
+		return prev, next
+	}
+}
+
+// findNodeLabel searches the navigation tree for a node matching path
+// and returns its label. Returns "" if not found.
+func findNodeLabel(node *navigation.NavNode, path string) string {
+	if !node.IsDir && node.Path == path {
+		return node.Label
+	}
+	for _, child := range node.Children {
+		if label := findNodeLabel(child, path); label != "" {
+			return label
+		}
+	}
+	return ""
 }
 
 // convertNavNodes converts navigation.NavNode children to enricher.NavItem slices.

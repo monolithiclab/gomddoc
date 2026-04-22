@@ -19,6 +19,9 @@ import (
 // preventing import cycles.
 type NavBuilder func(currentPath string) []NavItem
 
+// PrevNextBuilder computes the previous and next pages in navigation order.
+type PrevNextBuilder func(currentPath string) (prev, next *PageLink)
+
 // MarkdownEnricherOptions configures the MarkdownEnricher.
 type MarkdownEnricherOptions struct {
 	// MetaIndex provides access to the metadata index for related document lookup.
@@ -28,15 +31,20 @@ type MarkdownEnricherOptions struct {
 	// NavBuilder generates navigation items for a given path.
 	// When nil, navigation is not included in enrichment data.
 	NavBuilder NavBuilder
+
+	// PrevNextBuilder computes previous/next page links.
+	// When nil, prev/next links are not included in enrichment data.
+	PrevNextBuilder PrevNextBuilder
 }
 
 // MarkdownEnricher extracts structured data from markdown content.
 // It parses YAML frontmatter, builds a table of contents from headings,
 // generates navigation context, and finds related documents via shared tags.
 type MarkdownEnricher struct {
-	md         goldmark.Markdown
-	metaIndex  *metadata.Index
-	navBuilder NavBuilder
+	md              goldmark.Markdown
+	metaIndex       *metadata.Index
+	navBuilder      NavBuilder
+	prevNextBuilder PrevNextBuilder
 }
 
 // NewMarkdownEnricher creates a new markdown enricher with the given options.
@@ -53,9 +61,10 @@ func NewMarkdownEnricher(opts MarkdownEnricherOptions) *MarkdownEnricher {
 		),
 	)
 	return &MarkdownEnricher{
-		md:         md,
-		metaIndex:  opts.MetaIndex,
-		navBuilder: opts.NavBuilder,
+		md:              md,
+		metaIndex:       opts.MetaIndex,
+		navBuilder:      opts.NavBuilder,
+		prevNextBuilder: opts.PrevNextBuilder,
 	}
 }
 
@@ -99,6 +108,11 @@ func (m *MarkdownEnricher) Enrich(ctx context.Context, content []byte, path stri
 		if len(items) > 0 {
 			enrichment.Navigation = &NavTree{Items: items}
 		}
+	}
+
+	// Compute previous/next page links
+	if m.prevNextBuilder != nil {
+		enrichment.PrevPage, enrichment.NextPage = m.prevNextBuilder(path)
 	}
 
 	// Find related documents via shared tags

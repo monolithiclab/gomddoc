@@ -78,7 +78,7 @@ func (b *BuildCmd) Run() error {
 
 	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
 		EnableCache:      true,
-		EnableNavigation: false, // build doesn't serve navigation
+		EnableNavigation: true,  // needed for prev/next page links
 		EnableMetadata:   false, // build doesn't serve tag API
 	})
 	if err != nil {
@@ -269,10 +269,12 @@ func (b *BuildCmd) buildFile(
 	templateCtx := &tmpl.TemplateContext{
 		Site: siteConfig,
 		Page: tmpl.PageContext{
-			Content: template.HTML(renderResult.Content), // #nosec G203
-			Path:    "/" + filePath,
-			Meta:    metadata,
-			TOC:     enrichment.TOC,
+			Content:  template.HTML(renderResult.Content), // #nosec G203
+			Path:     "/" + filePath,
+			Meta:     metadata,
+			TOC:      enrichment.TOC,
+			PrevPage: enrichment.PrevPage,
+			NextPage: enrichment.NextPage,
 		},
 	}
 
