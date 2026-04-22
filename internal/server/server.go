@@ -37,15 +37,24 @@ func NewHTTPServer(
 	// Create handler with new signature
 	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site)
 
-	// Apply middleware chain (outermost first)
+	// Apply middleware chain to content handler (outermost first)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)
 	h = BlockHiddenPaths(h)                              // Block all hidden files/directories
 	h = MethodFilter(http.MethodGet, http.MethodHead)(h) // Only allow GET and HEAD
 	h = SecurityHeaders(h)                               // Must be outermost so headers are set first
 
+	// Health endpoints bypass all middleware
+	healthHandler := NewHealthHandler(provider)
+
+	// Route health endpoints before middleware-wrapped content handler
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health/live", healthHandler.LiveHandler)
+	mux.HandleFunc("GET /health/ready", healthHandler.ReadyHandler)
+	mux.Handle("/", h)
+
 	server := &http.Server{
 		Addr:              cfg.Server.Port,
-		Handler:           h,
+		Handler:           mux,
 		ReadHeaderTimeout: cfg.Server.HTTP.ReadHeaderTimeout,
 		WriteTimeout:      cfg.Server.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.Server.HTTP.IdleTimeout,
