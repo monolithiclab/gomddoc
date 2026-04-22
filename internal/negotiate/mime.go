@@ -30,7 +30,7 @@ func DetectMIME(path string) string {
 // (which allocates a map[string]string for parameters).
 func NormalizeMimeType(mimeType string) string {
 	if !strings.Contains(mimeType, ";") {
-		return strings.TrimSpace(mimeType)
+		return strings.ToLower(strings.TrimSpace(mimeType))
 	}
 	mediaType, _, err := mime.ParseMediaType(mimeType)
 	if err != nil || mediaType == "" {

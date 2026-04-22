@@ -57,6 +57,16 @@ func TestNormalizeMimeType(t *testing.T) {
 			want:     "invalid",
 		},
 		{
+			name:     "uppercase without params lowercased",
+			mimeType: "TEXT/HTML",
+			want:     "text/html",
+		},
+		{
+			name:     "uppercase with params lowercased",
+			mimeType: "TEXT/HTML; charset=utf-8",
+			want:     "text/html",
+		},
+		{
 			name:     "Empty string",
 			mimeType: "",
 			want:     "",
