@@ -24,6 +24,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/text"
@@ -105,13 +106,18 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate SEO files (robots.txt and sitemap.xml)
-	if err := b.generateSEOFiles(prov, &cfg.Site); err != nil {
+	if err := b.generateSEOFiles(prov, &cfg.Site, pipeline.Resolver); err != nil {
 		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
 	// Generate redirect HTML files for redirect_from frontmatter
 	if err := b.generateRedirectFiles(prov, &cfg.Site); err != nil {
 		return fmt.Errorf("generate redirect files: %w", err)
+	}
+
+	// Generate extension redirect files (e.g. guide.html -> guide/)
+	if err := b.generateExtensionRedirects(pipeline.Resolver); err != nil {
+		return fmt.Errorf("generate extension redirects: %w", err)
 	}
 
 	// Generate 404.html for static host compatibility (Netlify, GitHub Pages, Cloudflare Pages)
@@ -283,11 +289,17 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("template render %s: %w", filePath, err)
 	}
 
-	// Determine the output path. The DefaultIndex file (e.g. README.md)
-	// becomes index.html unless an index.md exists in the same directory.
-	htmlPath := strings.TrimSuffix(filePath, path.Ext(filePath)) + ".html"
-	if b.isDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
-		htmlPath = path.Join(path.Dir(filePath), "index.html")
+	// Determine the output path. When strip_extensions is active, use pretty
+	// URLs (guide.md -> guide/index.html). Otherwise, the DefaultIndex file
+	// (e.g. README.md) becomes index.html unless an index.md exists in the same directory.
+	var htmlPath string
+	if len(siteConfig.StripExtensions) > 0 {
+		htmlPath = prettyOutputPath(filePath, siteConfig.DefaultIndex, dirsWithIndexMD)
+	} else {
+		htmlPath = strings.TrimSuffix(filePath, path.Ext(filePath)) + ".html"
+		if b.isDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
+			htmlPath = path.Join(path.Dir(filePath), "index.html")
+		}
 	}
 	if err := b.writeOutputFile(htmlPath, rendered); err != nil {
 		return err
@@ -346,7 +358,7 @@ func (b *BuildCmd) copyStaticAssets(staticFS fs.FS, stats *buildStats) error {
 }
 
 // generateSEOFiles generates robots.txt and optionally sitemap.xml in the output directory.
-func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.SiteConfig) error {
+func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.SiteConfig, resolver *resolve.PathResolver) error {
 	// Always generate robots.txt
 	robotsTxt := server.GenerateRobotsTxt(siteConfig.Meta.Domain)
 	if err := b.writeOutputFile("robots.txt", []byte(robotsTxt)); err != nil {
@@ -366,7 +378,7 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 			return fmt.Errorf("build metadata index for sitemap: %w", err)
 		}
 
-		sitemapData, err := server.GenerateSitemap(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov)
+		sitemapData, err := server.GenerateSitemap(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, resolver)
 		if err != nil {
 			return fmt.Errorf("generate sitemap: %w", err)
 		}
@@ -376,7 +388,7 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 		}
 		slog.Debug("Generated", slog.String("file", "sitemap.xml"))
 
-		feedData, err := server.GenerateFeed(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, siteConfig.Meta.Title)
+		feedData, err := server.GenerateFeed(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, siteConfig.Meta.Title, resolver)
 		if err != nil {
 			return fmt.Errorf("generate feed: %w", err)
 		}
@@ -421,6 +433,49 @@ func (b *BuildCmd) generateRedirectFiles(prov provider.Provider, siteConfig *con
 			return fmt.Errorf("write redirect %s: %w", source, err)
 		}
 		slog.Debug("Generated redirect", slog.String("from", source), slog.String("to", target))
+	}
+
+	return nil
+}
+
+// prettyOutputPath computes the output path for pretty URLs.
+// Regular files: guide.md -> guide/index.html
+// index.md stays as index.html (no double nesting)
+// Default index (README.md) -> index.html when no index.md in same dir
+func prettyOutputPath(filePath, defaultIndex string, dirsWithIndexMD map[string]bool) string {
+	base := path.Base(filePath)
+
+	// index.md stays as index.html — no double nesting
+	if strings.EqualFold(base, "index.md") {
+		return strings.TrimSuffix(filePath, path.Ext(filePath)) + ".html"
+	}
+
+	// Default index (README.md) becomes index.html when no index.md exists
+	if strings.EqualFold(base, defaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
+		return path.Join(path.Dir(filePath), "index.html")
+	}
+
+	// Regular file: guide.md -> guide/index.html
+	stem := strings.TrimSuffix(filePath, path.Ext(filePath))
+	return path.Join(stem, "index.html")
+}
+
+// generateExtensionRedirects generates HTML redirect files so old extension-based
+// URLs still work on static hosts (e.g. guide.html -> guide/).
+func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver) error {
+	if resolver == nil || resolver.IsEmpty() {
+		return nil
+	}
+
+	for realPath, cleanPath := range resolver.AllMappings() {
+		html := server.GenerateRedirectHTML("/" + cleanPath)
+		if err := b.writeOutputFile(realPath, html); err != nil {
+			return fmt.Errorf("write extension redirect %s: %w", realPath, err)
+		}
+		slog.Debug("Generated extension redirect",
+			slog.String("from", "/"+realPath),
+			slog.String("to", "/"+cleanPath),
+		)
 	}
 
 	return nil

@@ -120,9 +120,10 @@ func TestBuildFile(t *testing.T) {
 		t.Fatalf("buildFile failed: %v", err)
 	}
 
-	htmlContent, err := os.ReadFile(filepath.Join(outDir, "page.html"))
+	// With default StripExtensions=[".md"], pretty URLs are used: page.md -> page/index.html
+	htmlContent, err := os.ReadFile(filepath.Join(outDir, "page", "index.html"))
 	if err != nil {
-		t.Fatalf("Expected page.html to exist: %v", err)
+		t.Fatalf("Expected page/index.html to exist: %v", err)
 	}
 	if !strings.Contains(string(htmlContent), "Test Page") {
 		t.Errorf("Expected 'Test Page' in output HTML, got:\n%s", htmlContent)
@@ -189,13 +190,13 @@ func TestBuildFile_README_WithIndexMD(t *testing.T) {
 		t.Fatalf("buildFile failed: %v", err)
 	}
 
-	// README.md should produce README.html (not index.html) since index.md exists
-	readmeHTML, err := os.ReadFile(filepath.Join(outDir, "README.html"))
+	// With pretty URLs, README.md becomes README/index.html when index.md exists
+	readmeHTML, err := os.ReadFile(filepath.Join(outDir, "README", "index.html"))
 	if err != nil {
-		t.Fatal("Expected README.html to exist")
+		t.Fatal("Expected README/index.html to exist")
 	}
 	if !strings.Contains(string(readmeHTML), "README Content") {
-		t.Errorf("Expected 'README Content' in README.html")
+		t.Errorf("Expected 'README Content' in README/index.html")
 	}
 
 	// index.html should NOT exist (index.md would produce it separately)
@@ -259,16 +260,16 @@ func TestWalkAndBuild(t *testing.T) {
 		t.Errorf("skippedFiles = %d, want 1 (hidden file)", stats.skippedFiles.Load())
 	}
 
-	// Verify output files exist
-	if _, err := os.Stat(filepath.Join(outDir, "page.html")); err != nil {
-		t.Error("Expected page.html to exist")
+	// Verify output files exist (pretty URLs: page.md -> page/index.html)
+	if _, err := os.Stat(filepath.Join(outDir, "page", "index.html")); err != nil {
+		t.Error("Expected page/index.html to exist")
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "style.css")); err != nil {
 		t.Error("Expected style.css to exist")
 	}
 	// Hidden file should not be in output
-	if _, err := os.Stat(filepath.Join(outDir, ".hidden.html")); !os.IsNotExist(err) {
-		t.Error("Expected .hidden.html to not exist")
+	if _, err := os.Stat(filepath.Join(outDir, ".hidden", "index.html")); !os.IsNotExist(err) {
+		t.Error("Expected .hidden/index.html to not exist")
 	}
 }
 
@@ -334,10 +335,10 @@ func TestWalkAndBuild_IndexMDAndREADME(t *testing.T) {
 		t.Errorf("Expected 'Home' in index.html (from index.md), got:\n%s", indexHTML)
 	}
 
-	// README.md should produce README.html (not index.html) since index.md exists
-	readmeHTML := readTestFile(t, outDir, "README.html")
+	// With pretty URLs, README.md becomes README/index.html when index.md exists
+	readmeHTML := readTestFile(t, filepath.Join(outDir, "README"), "index.html")
 	if !strings.Contains(readmeHTML, "README") {
-		t.Errorf("Expected 'README' in README.html, got:\n%s", readmeHTML)
+		t.Errorf("Expected 'README' in README/index.html, got:\n%s", readmeHTML)
 	}
 }
 
@@ -426,7 +427,8 @@ func TestBuildCmd_Run_WithFrontmatter(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	htmlContent := readTestFile(t, outDir, "page.html")
+	// With default StripExtensions, page.md -> page/index.html
+	htmlContent := readTestFile(t, filepath.Join(outDir, "page"), "index.html")
 	if !strings.Contains(htmlContent, "Page") {
 		t.Error("Expected 'Page' in output HTML")
 	}
@@ -508,9 +510,10 @@ func TestBuildFile_WithFrontmatterTitle(t *testing.T) {
 		t.Fatalf("buildFile failed: %v", err)
 	}
 
-	htmlContent, err := os.ReadFile(filepath.Join(outDir, "titled.html"))
+	// With default StripExtensions=[".md"], pretty URLs are used: titled.md -> titled/index.html
+	htmlContent, err := os.ReadFile(filepath.Join(outDir, "titled", "index.html"))
 	if err != nil {
-		t.Fatalf("Expected titled.html to exist: %v", err)
+		t.Fatalf("Expected titled/index.html to exist: %v", err)
 	}
 	if !strings.Contains(string(htmlContent), "Content") {
 		t.Errorf("Expected 'Content' in output HTML")
@@ -653,9 +656,10 @@ func TestBuildCmd_Run_WithSubdirectories(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outDir, "README.html")); !os.IsNotExist(err) {
 		t.Error("README.html should not exist")
 	}
-	for _, f := range []string{"endpoints.html", "types.html"} {
-		if _, err := os.Stat(filepath.Join(outDir, "api", f)); err != nil {
-			t.Errorf("Expected api/%s to exist", f)
+	// With default StripExtensions, pretty URLs are used
+	for _, f := range []string{"endpoints", "types"} {
+		if _, err := os.Stat(filepath.Join(outDir, "api", f, "index.html")); err != nil {
+			t.Errorf("Expected api/%s/index.html to exist", f)
 		}
 	}
 	// Non-markdown file copied
@@ -861,4 +865,34 @@ func readTestFile(t *testing.T, dir, name string) string {
 		t.Fatalf("Failed to read file %s/%s: %v", dir, name, err)
 	}
 	return string(content)
+}
+
+func TestPrettyOutputPath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name            string
+		filePath        string
+		defaultIndex    string
+		dirsWithIndexMD map[string]bool
+		want            string
+	}{
+		{"regular md", "docs/guide.md", "README.md", map[string]bool{}, "docs/guide/index.html"},
+		{"index.md stays", "docs/index.md", "README.md", map[string]bool{}, "docs/index.html"},
+		{"root file", "about.md", "README.md", map[string]bool{}, "about/index.html"},
+		{"nested", "a/b/c.md", "README.md", map[string]bool{}, "a/b/c/index.html"},
+		{"README becomes index", "docs/README.md", "README.md", map[string]bool{}, "docs/index.html"},
+		{"README with index.md in same dir", "docs/README.md", "README.md", map[string]bool{"docs": true}, "docs/README/index.html"},
+		{"root index.md", "index.md", "README.md", map[string]bool{}, "index.html"},
+		{"root README becomes index", "README.md", "README.md", map[string]bool{}, "index.html"},
+		{"root README with index.md", "README.md", "README.md", map[string]bool{".": true}, "README/index.html"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := prettyOutputPath(tt.filePath, tt.defaultIndex, tt.dirsWithIndexMD)
+			if got != tt.want {
+				t.Errorf("prettyOutputPath(%q) = %q, want %q", tt.filePath, got, tt.want)
+			}
+		})
+	}
 }
