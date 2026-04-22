@@ -16,8 +16,17 @@ func TestNew(t *testing.T) {
 		t.Errorf("Expected default port ':8080', got %q", config.Port)
 	}
 
-	if config.DefaultIndex != "README.md" {
-		t.Errorf("Expected default index 'README.md', got %q", config.DefaultIndex)
+	// Test new ServerConfig
+	if config.Server == nil {
+		t.Fatal("Expected Server to be initialized")
+	}
+
+	if config.Server.DefaultIndex != "README.md" {
+		t.Errorf("Expected server default index 'README.md', got %q", config.Server.DefaultIndex)
+	}
+
+	if config.Server.DirIndex != false {
+		t.Errorf("Expected server dir index false (secure by default), got %v", config.Server.DirIndex)
 	}
 
 	if config.ShutdownTimeout.Seconds() != 1 {

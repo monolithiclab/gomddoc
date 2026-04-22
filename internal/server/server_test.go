@@ -15,15 +15,18 @@ func TestNewHTTPServer(t *testing.T) {
 	// Create test config
 	siteConfig := config.NewSiteConfig(".")
 	cfg := &config.Config{
-		DefaultIndex:    "README.test.md",
 		Dir:             ".",
 		Port:            ":8080",
 		ShutdownTimeout: 1 * time.Second,
-		Site:            siteConfig,
+		Server: &config.ServerConfig{
+			DefaultIndex: "README.test.md",
+			DirIndex:     false,
+		},
+		Site: siteConfig,
 	}
 
 	// Create dependencies
-	prov, err := provider.NewFilesystemProvider(cfg.Dir, cfg.DefaultIndex, false)
+	prov, err := provider.NewFilesystemProvider(cfg.Dir, cfg.Server.DefaultIndex, cfg.Server.DirIndex)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}

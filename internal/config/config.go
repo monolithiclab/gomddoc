@@ -5,16 +5,24 @@ import (
 	"time"
 )
 
+// ServerConfig holds server-specific configuration
+type ServerConfig struct {
+	DefaultIndex string `env:"DEFAULT_INDEX"` // Default index file name (e.g., "README.md")
+	DirIndex     bool   `env:"DIR_INDEX"`     // Enable directory listing (default: false, secure by default)
+}
+
 // Config holds the application (operational) configuration
 // This is NOT exposed to templates and NOT configurable via .gomddoc/config.yml
 // Configurable via: environment variables + CLI flags (CLI flags take precedence)
 type Config struct {
 	// Operational fields (environment variables + CLI flags)
-	DefaultIndex    string        `env:"DEFAULT_INDEX"`
 	Dir             string        `env:"DIR"`
 	Port            string        `env:"PORT"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT"`
 	DevMode         bool          `env:"DEV_MODE"`
+
+	// Server configuration
+	Server *ServerConfig
 
 	// Reference to site configuration (this IS exposed to templates)
 	Site *SiteConfig
@@ -24,12 +32,15 @@ type Config struct {
 func New() *Config {
 	defaultDir := "."
 	return &Config{
-		DefaultIndex:    "README.md",
 		Dir:             defaultDir,
 		Port:            ":8080",
 		ShutdownTimeout: 1 * time.Second,
 		DevMode:         false,
-		Site:            NewSiteConfig(defaultDir), // Initialize with default dir for title
+		Server: &ServerConfig{
+			DefaultIndex: "README.md",
+			DirIndex:     false, // Secure by default
+		},
+		Site: NewSiteConfig(defaultDir), // Initialize with default dir for title
 	}
 }
 
