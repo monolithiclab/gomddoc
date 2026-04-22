@@ -63,9 +63,16 @@ func (s *AdminServer) Handler() http.Handler {
 	return s.server.Handler
 }
 
-// Start starts the admin HTTP server.
+// Start starts the admin HTTP server. When ctx is cancelled, the server
+// is gracefully shut down.
 func (s *AdminServer) Start(ctx context.Context) error {
 	slog.Info("Admin server started", slog.String("url", ListenURL(s.server.Addr)))
+
+	go func() { // #nosec G118 -- shutdown context is intentionally independent of the cancelled parent
+		<-ctx.Done()
+		_ = s.Shutdown(context.Background())
+	}()
+
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

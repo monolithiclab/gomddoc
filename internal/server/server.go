@@ -183,13 +183,20 @@ func ListenURL(addr string) string {
 	return "http://" + net.JoinHostPort(host, port)
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server. When ctx is cancelled, the server is
+// gracefully shut down. Callers may also use Shutdown() directly.
 func (s *HTTPServer) Start(ctx context.Context) error {
 	slog.Info("Server started",
 		slog.String("url", ListenURL(s.server.Addr)),
 		slog.String("dir", s.config.Server.Dir),
 		slog.Bool("dev", s.config.Server.DevMode),
 	)
+
+	go func() { // #nosec G118 -- shutdown context is intentionally independent of the cancelled parent
+		<-ctx.Done()
+		_ = s.Shutdown(context.Background())
+	}()
+
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

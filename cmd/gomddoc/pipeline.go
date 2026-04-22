@@ -290,19 +290,9 @@ func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer, admin
 		return httpServer.Start(gCtx)
 	})
 
-	g.Go(func() error {
-		<-gCtx.Done()
-		return httpServer.Shutdown(context.Background())
-	})
-
 	if adminServer != nil {
 		g.Go(func() error {
 			return adminServer.Start(gCtx)
-		})
-
-		g.Go(func() error {
-			<-gCtx.Done()
-			return adminServer.Shutdown(context.Background())
 		})
 	}
 
