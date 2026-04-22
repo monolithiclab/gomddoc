@@ -16,6 +16,12 @@ const (
 	DefaultWriteTimeout      = 30 * time.Second  // Time to write response
 	DefaultIdleTimeout       = 120 * time.Second // Time to keep idle connections open
 	DefaultMaxHeaderMB       = 1                 // 1 MB max header size
+
+	// Configurable upper bounds
+	MaxReadHeaderTimeout = 1 * time.Minute  // Maximum configurable time to read request headers
+	MaxWriteTimeout      = 5 * time.Minute  // Maximum configurable time to write response
+	MaxIdleTimeout       = 10 * time.Minute // Maximum configurable time to keep idle connections open
+	MaxMaxHeaderMB       = 10               // Maximum configurable header size
 )
 
 // ServerConfig holds server-specific configuration
@@ -122,7 +128,7 @@ func (c *Config) Validate() error {
 			slog.Duration("configured", c.ReadHeaderTimeout),
 			slog.Duration("default", DefaultReadHeaderTimeout))
 		c.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	} else if c.ReadHeaderTimeout > 60*time.Second {
+	} else if c.ReadHeaderTimeout > MaxReadHeaderTimeout {
 		slog.Warn("ReadHeaderTimeout exceeds maximum (60s), using default",
 			slog.Duration("configured", c.ReadHeaderTimeout),
 			slog.Duration("default", DefaultReadHeaderTimeout))
@@ -135,7 +141,7 @@ func (c *Config) Validate() error {
 			slog.Duration("configured", c.WriteTimeout),
 			slog.Duration("default", DefaultWriteTimeout))
 		c.WriteTimeout = DefaultWriteTimeout
-	} else if c.WriteTimeout > 5*time.Minute {
+	} else if c.WriteTimeout > MaxWriteTimeout {
 		slog.Warn("WriteTimeout exceeds maximum (5m), using default",
 			slog.Duration("configured", c.WriteTimeout),
 			slog.Duration("default", DefaultWriteTimeout))
@@ -148,7 +154,7 @@ func (c *Config) Validate() error {
 			slog.Duration("configured", c.IdleTimeout),
 			slog.Duration("default", DefaultIdleTimeout))
 		c.IdleTimeout = DefaultIdleTimeout
-	} else if c.IdleTimeout > 10*time.Minute {
+	} else if c.IdleTimeout > MaxIdleTimeout {
 		slog.Warn("IdleTimeout exceeds maximum (10m), using default",
 			slog.Duration("configured", c.IdleTimeout),
 			slog.Duration("default", DefaultIdleTimeout))
@@ -161,7 +167,7 @@ func (c *Config) Validate() error {
 			slog.Int("configured_mb", c.MaxHeaderMB),
 			slog.Int("default_mb", DefaultMaxHeaderMB))
 		c.MaxHeaderMB = DefaultMaxHeaderMB
-	} else if c.MaxHeaderMB > 10 {
+	} else if c.MaxHeaderMB > MaxMaxHeaderMB {
 		slog.Warn("MaxHeaderMB exceeds maximum (10MB), using default",
 			slog.Int("configured_mb", c.MaxHeaderMB),
 			slog.Int("default_mb", DefaultMaxHeaderMB))
