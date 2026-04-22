@@ -245,6 +245,10 @@ func (c *Config) Validate() error {
 
 // Validate site config separately
 func (sc *SiteConfig) Validate() error {
+	if sc.DefaultIndex == "" {
+		return fmt.Errorf("default_index must not be empty")
+	}
+
 	if sc.Theme.Name == "" {
 		sc.Theme.Name = DefaultThemeName
 		slog.Warn("Empty theme name, using default")

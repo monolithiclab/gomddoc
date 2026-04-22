@@ -997,6 +997,20 @@ func TestSiteConfig_Validate(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "empty defaultIndex rejected",
+			setup: func(sc *SiteConfig) {
+				sc.DefaultIndex = ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid defaultIndex",
+			setup: func(sc *SiteConfig) {
+				sc.DefaultIndex = "index.md"
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
