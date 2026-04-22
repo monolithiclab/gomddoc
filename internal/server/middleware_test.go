@@ -5,8 +5,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestSecurityHeaders(t *testing.T) {
@@ -142,7 +140,7 @@ func TestNewMethodFilterMiddleware(t *testing.T) {
 func TestNewBasicAuthMiddleware(t *testing.T) {
 	t.Parallel()
 
-	store, err := ParseHTPasswd(strings.NewReader("admin:" + mustHash(t, "secret")))
+	store, err := ParseHTPasswd(strings.NewReader("admin:" + testHash(t, "secret")))
 	if err != nil {
 		t.Fatalf("failed to create credential store: %v", err)
 	}
@@ -200,7 +198,7 @@ func TestNewBasicAuthMiddleware(t *testing.T) {
 func TestNewBasicAuthMiddleware_MultipleUsers(t *testing.T) {
 	t.Parallel()
 
-	input := strings.NewReader("admin:" + mustHash(t, "adminpass") + "\nviewer:" + mustHash(t, "viewerpass"))
+	input := strings.NewReader("admin:" + testHash(t, "adminpass") + "\nviewer:" + testHash(t, "viewerpass"))
 	store, err := ParseHTPasswd(input)
 	if err != nil {
 		t.Fatalf("failed to parse htpasswd: %v", err)
@@ -235,15 +233,6 @@ func TestNewBasicAuthMiddleware_MultipleUsers(t *testing.T) {
 			}
 		})
 	}
-}
-
-func mustHash(t *testing.T, password string) string {
-	t.Helper()
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-	if err != nil {
-		t.Fatalf("bcrypt hash failed: %v", err)
-	}
-	return string(hash)
 }
 
 func TestContentExclusion_ResponseFormat(t *testing.T) {

@@ -122,7 +122,7 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{
-			Port:    ":" + string(rune(port)),
+			Port:    ":" + strconv.Itoa(port),
 			DevMode: false,
 			Dir:     ".",
 			HTTP: config.HTTPConfig{
@@ -135,8 +135,6 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 		},
 		Site: siteConfig,
 	}
-	// Use port string properly
-	cfg.Server.Port = ":" + strconv.Itoa(port)
 
 	// Create dependencies
 	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
@@ -256,7 +254,7 @@ func TestPprofEndpoints(t *testing.T) {
 func TestHTTPServer_AuthProtectsAllEndpoints(t *testing.T) {
 	t.Parallel()
 
-	store, err := ParseHTPasswd(strings.NewReader("admin:" + mustHash(t, "secret")))
+	store, err := ParseHTPasswd(strings.NewReader("admin:" + testHash(t, "secret")))
 	if err != nil {
 		t.Fatal(err)
 	}
