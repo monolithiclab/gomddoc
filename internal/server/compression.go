@@ -11,6 +11,10 @@ import (
 // minCompressionSize is the minimum response size in bytes before compression kicks in.
 const minCompressionSize = 1024
 
+// maxPoolBufferSize is the maximum buffer size to return to the pool.
+// Buffers larger than this are left for GC to avoid retaining oversized allocations.
+const maxPoolBufferSize = 64 * 1024
+
 // gzipWriterPool reuses gzip writers to reduce allocations.
 var gzipWriterPool = sync.Pool{
 	New: func() any {
@@ -226,10 +230,13 @@ func (cw *compressionWriter) Close() {
 }
 
 // returnBuf returns the buffer to the pool for reuse.
+// Oversized buffers (>64KB) are discarded to avoid retaining large allocations.
 func (cw *compressionWriter) returnBuf() {
 	if cw.bufPtr != nil {
-		*cw.bufPtr = cw.buf[:0]
-		bufPool.Put(cw.bufPtr)
+		if cap(cw.buf) <= maxPoolBufferSize {
+			*cw.bufPtr = cw.buf[:0]
+			bufPool.Put(cw.bufPtr)
+		}
 		cw.bufPtr = nil
 		cw.buf = nil
 	}

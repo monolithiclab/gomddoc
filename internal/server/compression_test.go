@@ -373,6 +373,34 @@ func TestCompression_HeadRequest(t *testing.T) {
 	}
 }
 
+func TestCompressionWriter_ReturnBuf_OversizedDiscarded(t *testing.T) {
+	t.Parallel()
+
+	// Create a response large enough to exceed maxPoolBufferSize (64KB)
+	largeData := make([]byte, maxPoolBufferSize+1)
+	for i := range largeData {
+		largeData[i] = 'A'
+	}
+
+	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		// Write without gzip to exercise the passthrough buffer path
+		_, _ = w.Write(largeData)
+	}))
+
+	// Request without Accept-Encoding so compression is skipped but buffer is used
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	if w.Body.Len() != len(largeData) {
+		t.Errorf("body length = %d, want %d", w.Body.Len(), len(largeData))
+	}
+}
+
 func TestShouldSkipContentType(t *testing.T) {
 	tests := []struct {
 		contentType string
