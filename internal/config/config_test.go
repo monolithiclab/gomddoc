@@ -1145,11 +1145,11 @@ func TestSiteConfig_LoadFromFile_ThemeVarsNil(t *testing.T) {
 func TestSiteConfig_Language(t *testing.T) {
 	t.Parallel()
 
-	t.Run("defaults to en", func(t *testing.T) {
+	t.Run("defaults to en-US", func(t *testing.T) {
 		t.Parallel()
 		sc := NewSiteConfig(".")
-		if sc.Language != "en" {
-			t.Errorf("Language default = %q, want %q", sc.Language, "en")
+		if sc.Language != "en-US" {
+			t.Errorf("Language default = %q, want %q", sc.Language, "en-US")
 		}
 	})
 

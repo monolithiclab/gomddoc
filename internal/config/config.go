@@ -192,7 +192,7 @@ func NewSiteConfig(dir string) SiteConfig {
 	return SiteConfig{
 		DefaultIndex: DefaultIndex,
 		DirIndex:     false,
-		Language:     "en",
+		Language:     "en-US",
 		Meta: MetaConfig{
 			Title: titleFromDir(dir),
 		},
