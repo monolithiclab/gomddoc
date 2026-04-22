@@ -6,8 +6,10 @@ import (
 	"io/fs"
 	"mime"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -17,8 +19,16 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/storage"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
+
+// runCommand executes a command and returns combined output.
+func runCommand(t *testing.T, name string, args ...string) (string, error) {
+	t.Helper()
+	out, err := exec.Command(name, args...).CombinedOutput()
+	return string(out), err
+}
 
 func init() {
 	// Register markdown MIME type for tests
@@ -1078,6 +1088,279 @@ func TestGitProvider_EnsureCloned_AlreadyCloned(t *testing.T) {
 	}
 }
 
+func TestGitProvider_EnsureCloned_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
+	repo := createTestRepo(t, map[string]string{
+		"README.md": "# Test",
+	})
+	tree := mustGetTree(t, repo)
+	commitTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+
+	p := &GitProvider{
+		parsedURL: &ParsedGitURL{
+			Ref:    "HEAD",
+			Subdir: "",
+		},
+		defaultIndex: "README.md",
+		maxFileSize:  defaultMaxFileSize,
+		repo:         repo,
+		tree:         tree,
+		commitTime:   commitTime,
+	}
+
+	// Concurrent ensureCloned calls on already-cloned provider should all succeed
+	var wg sync.WaitGroup
+	errs := make([]error, 50)
+	for i := range 50 {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			errs[idx] = p.ensureCloned(t.Context())
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: ensureCloned() = %v, want nil", i, err)
+		}
+	}
+}
+
+func TestGitProvider_EnsureCloned_DoubleCheckAfterClose(t *testing.T) {
+	t.Parallel()
+
+	// Tests the slow path: fast path sees repo == nil, acquires write lock,
+	// then double-check sees closed == true.
+	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, GitProviderConfig{})
+	if err != nil {
+		t.Fatalf("NewGitProvider() error = %v", err)
+	}
+
+	// Close sets closed = true
+	_ = p.Close()
+
+	// ensureCloned should fail on the double-check
+	err = p.ensureCloned(t.Context())
+	if !errors.Is(err, ErrProviderClosed) {
+		t.Errorf("ensureCloned() on closed provider = %v, want ErrProviderClosed", err)
+	}
+}
+
+func TestGitProvider_ResolveCommitLocked(t *testing.T) {
+	t.Parallel()
+
+	repo := createTestRepo(t, map[string]string{
+		"README.md": "# Hello",
+	})
+
+	head, _ := repo.Head()
+
+	t.Run("resolves HEAD", func(t *testing.T) {
+		t.Parallel()
+
+		p := &GitProvider{
+			parsedURL: &ParsedGitURL{Ref: "HEAD"},
+			repo:      repo,
+		}
+
+		err := p.resolveCommitLocked()
+		if err != nil {
+			t.Fatalf("resolveCommitLocked() error = %v", err)
+		}
+		if p.commitHash != head.Hash() {
+			t.Errorf("commitHash = %v, want %v", p.commitHash, head.Hash())
+		}
+		if p.commitTime.IsZero() {
+			t.Error("commitTime should not be zero")
+		}
+	})
+
+	t.Run("resolves by commit hash", func(t *testing.T) {
+		t.Parallel()
+
+		p := &GitProvider{
+			parsedURL: &ParsedGitURL{Ref: head.Hash().String()},
+			repo:      repo,
+		}
+
+		err := p.resolveCommitLocked()
+		if err != nil {
+			t.Fatalf("resolveCommitLocked() error = %v", err)
+		}
+		if p.commitHash != head.Hash() {
+			t.Errorf("commitHash = %v, want %v", p.commitHash, head.Hash())
+		}
+	})
+
+	t.Run("returns error for nonexistent ref", func(t *testing.T) {
+		t.Parallel()
+
+		p := &GitProvider{
+			parsedURL: &ParsedGitURL{Ref: "nonexistent-branch"},
+			repo:      repo,
+		}
+
+		err := p.resolveCommitLocked()
+		if !errors.Is(err, ErrGitRefNotFound) {
+			t.Errorf("resolveCommitLocked() error = %v, want ErrGitRefNotFound", err)
+		}
+	})
+}
+
+func TestGitProvider_CacheTreeLocked(t *testing.T) {
+	t.Parallel()
+
+	t.Run("caches root tree", func(t *testing.T) {
+		t.Parallel()
+
+		repo := createTestRepo(t, map[string]string{
+			"README.md":     "# Hello",
+			"docs/guide.md": "# Guide",
+		})
+		head, _ := repo.Head()
+
+		p := &GitProvider{
+			parsedURL:  &ParsedGitURL{Ref: "HEAD", Subdir: ""},
+			repo:       repo,
+			commitHash: head.Hash(),
+			commitTime: time.Now(),
+		}
+
+		err := p.cacheTreeLocked()
+		if err != nil {
+			t.Fatalf("cacheTreeLocked() error = %v", err)
+		}
+		if p.tree == nil {
+			t.Fatal("tree should not be nil after cacheTreeLocked")
+		}
+
+		// Verify we can read files through the cached tree
+		_, fileErr := p.tree.File("README.md")
+		if fileErr != nil {
+			t.Errorf("tree.File(\"README.md\") error = %v", fileErr)
+		}
+
+		// Verify fsState was populated
+		if p.fsState.tree == nil {
+			t.Error("fsState.tree should not be nil")
+		}
+	})
+
+	t.Run("caches subdir tree", func(t *testing.T) {
+		t.Parallel()
+
+		repo := createTestRepo(t, map[string]string{
+			"README.md":     "# Root",
+			"docs/guide.md": "# Guide",
+		})
+		head, _ := repo.Head()
+
+		p := &GitProvider{
+			parsedURL:  &ParsedGitURL{Ref: "HEAD", Subdir: "docs"},
+			repo:       repo,
+			commitHash: head.Hash(),
+			commitTime: time.Now(),
+		}
+
+		err := p.cacheTreeLocked()
+		if err != nil {
+			t.Fatalf("cacheTreeLocked() error = %v", err)
+		}
+
+		// Tree should be the docs subtree — guide.md is at root
+		_, fileErr := p.tree.File("guide.md")
+		if fileErr != nil {
+			t.Errorf("tree.File(\"guide.md\") error = %v", fileErr)
+		}
+
+		// Root README should NOT be accessible
+		_, fileErr = p.tree.File("README.md")
+		if fileErr == nil {
+			t.Error("tree.File(\"README.md\") should fail for subdir tree")
+		}
+	})
+
+	t.Run("returns error for nonexistent subdir", func(t *testing.T) {
+		t.Parallel()
+
+		repo := createTestRepo(t, map[string]string{
+			"README.md": "# Hello",
+		})
+		head, _ := repo.Head()
+
+		p := &GitProvider{
+			parsedURL:  &ParsedGitURL{Ref: "HEAD", Subdir: "nonexistent"},
+			repo:       repo,
+			commitHash: head.Hash(),
+			commitTime: time.Now(),
+		}
+
+		err := p.cacheTreeLocked()
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("cacheTreeLocked() error = %v, want ErrNotFound", err)
+		}
+	})
+}
+
+func TestGitProvider_SetupAuthLocked(t *testing.T) {
+	t.Parallel()
+
+	t.Run("HTTPS requires no auth", func(t *testing.T) {
+		t.Parallel()
+
+		parsed, _ := parseGitURL("git+https://github.com/user/repo")
+		p := &GitProvider{parsedURL: parsed}
+
+		err := p.setupAuthLocked()
+		if err != nil {
+			t.Fatalf("setupAuthLocked() error = %v", err)
+		}
+		if p.auth != nil {
+			t.Error("auth should be nil for HTTPS")
+		}
+	})
+
+	t.Run("SSH without key file returns error", func(t *testing.T) {
+		t.Parallel()
+
+		parsed, _ := parseGitURL("git+ssh://git@github.com/user/repo")
+		p := &GitProvider{parsedURL: parsed, sshKeyFile: ""}
+
+		err := p.setupAuthLocked()
+		if err == nil {
+			t.Fatal("setupAuthLocked() error = nil, want error for SSH without key")
+		}
+	})
+}
+
+func TestGitProvider_CloneLocked_StorageFactoryError(t *testing.T) {
+	t.Parallel()
+
+	parsed, _ := parseGitURL("git+https://github.com/user/repo")
+	p := &GitProvider{
+		parsedURL: parsed,
+		storageFactory: func() (storage.Storer, error) {
+			return nil, fmt.Errorf("storage creation failed")
+		},
+		cloneTimeout: defaultCloneTimeout,
+	}
+
+	err := p.cloneLocked(t.Context())
+	if err == nil {
+		t.Fatal("cloneLocked() error = nil, want error")
+	}
+
+	var pathErr *PathError
+	if !errors.As(err, &pathErr) {
+		t.Fatalf("error type = %T, want *PathError", err)
+	}
+	if pathErr.Op != "storage" {
+		t.Errorf("PathError.Op = %q, want %q", pathErr.Op, "storage")
+	}
+}
+
 func TestFilesystemProvider_Stat_Directory(t *testing.T) {
 	t.Parallel()
 
@@ -1127,5 +1410,184 @@ func TestFilesystemProvider_Close(t *testing.T) {
 
 	if err := p.Close(); err != nil {
 		t.Errorf("Close() error = %v, want nil", err)
+	}
+}
+
+func TestSetupSSHAuth_NoKeyFile(t *testing.T) {
+	t.Parallel()
+
+	_, err := setupSSHAuth("git", "")
+	if err == nil {
+		t.Fatal("setupSSHAuth() error = nil, want error for empty key file")
+	}
+	if !strings.Contains(err.Error(), "key file") {
+		t.Errorf("error should mention key file, got: %v", err)
+	}
+}
+
+func TestSetupSSHAuth_DefaultUser(t *testing.T) {
+	t.Parallel()
+
+	// With empty user and no key file, should still fail on missing key file
+	// but the user default ("git") is set internally
+	_, err := setupSSHAuth("", "")
+	if err == nil {
+		t.Fatal("setupSSHAuth() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "key file") {
+		t.Errorf("error should mention key file, got: %v", err)
+	}
+}
+
+func TestSetupSSHAuth_WithValidKey(t *testing.T) {
+	// Generate a temporary SSH key for testing
+	tmpDir := t.TempDir()
+	keyFile := filepath.Join(tmpDir, "id_ed25519")
+
+	// Create a valid ed25519 private key in PEM format using ssh-keygen
+	cmd := fmt.Sprintf("ssh-keygen -t ed25519 -f %s -N '' -q", keyFile)
+	if err := os.WriteFile(keyFile, nil, 0600); err != nil {
+		t.Fatalf("failed to create key file: %v", err)
+	}
+	// Remove the placeholder and generate a real key
+	os.Remove(keyFile)
+	if output, err := runCommand(t, "sh", "-c", cmd); err != nil {
+		t.Skipf("ssh-keygen not available: %v (output: %s)", err, output)
+	}
+
+	// Create a known_hosts file
+	knownHostsFile := filepath.Join(tmpDir, "known_hosts")
+	if err := os.WriteFile(knownHostsFile, []byte("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"), 0600); err != nil {
+		t.Fatalf("failed to write known_hosts: %v", err)
+	}
+
+	t.Setenv("SSH_KNOWN_HOSTS", knownHostsFile)
+
+	auth, err := setupSSHAuth("git", keyFile)
+	if err != nil {
+		t.Fatalf("setupSSHAuth() error = %v", err)
+	}
+	if auth == nil {
+		t.Fatal("setupSSHAuth() returned nil auth")
+	}
+}
+
+func TestSetupSSHAuth_NonexistentKeyFile(t *testing.T) {
+	// Create a known_hosts file so we get past the host key callback
+	tmpDir := t.TempDir()
+	knownHostsFile := filepath.Join(tmpDir, "known_hosts")
+	if err := os.WriteFile(knownHostsFile, []byte("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"), 0600); err != nil {
+		t.Fatalf("failed to write known_hosts: %v", err)
+	}
+	t.Setenv("SSH_KNOWN_HOSTS", knownHostsFile)
+
+	// setupSSHAuth should succeed (key is read lazily via callback),
+	// but the auth object should be non-nil
+	auth, err := setupSSHAuth("git", "/nonexistent/key")
+	if err != nil {
+		t.Fatalf("setupSSHAuth() error = %v (key read is lazy)", err)
+	}
+	if auth == nil {
+		t.Fatal("setupSSHAuth() returned nil auth")
+	}
+}
+
+func TestResolveAuth_UnknownProtocol(t *testing.T) {
+	t.Parallel()
+
+	parsed, err := parseGitURL("git+https://github.com/user/repo")
+	if err != nil {
+		t.Fatalf("parseGitURL error: %v", err)
+	}
+	parsed.Endpoint.Protocol = "ftp"
+
+	auth, err := resolveAuth(parsed.Endpoint, "")
+	if err != nil {
+		t.Errorf("resolveAuth() error = %v, want nil", err)
+	}
+	if auth != nil {
+		t.Errorf("resolveAuth() = %v, want nil for unknown protocol", auth)
+	}
+}
+
+func TestCreateHostKeyCallback_WithKnownHosts(t *testing.T) {
+	// Create a temporary known_hosts file
+	knownHostsFile := filepath.Join(t.TempDir(), "known_hosts")
+	// Write a valid (but fake) known_hosts entry
+	err := os.WriteFile(knownHostsFile, []byte("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"), 0600)
+	if err != nil {
+		t.Fatalf("failed to write known_hosts: %v", err)
+	}
+
+	// Set SSH_KNOWN_HOSTS to our temp file
+	t.Setenv("SSH_KNOWN_HOSTS", knownHostsFile)
+
+	callback, err := createHostKeyCallback()
+	if err != nil {
+		t.Fatalf("createHostKeyCallback() error = %v", err)
+	}
+	if callback == nil {
+		t.Fatal("createHostKeyCallback() returned nil callback")
+	}
+}
+
+func TestCreateHostKeyCallback_InvalidPath(t *testing.T) {
+	t.Setenv("SSH_KNOWN_HOSTS", "/nonexistent/path/known_hosts")
+
+	_, err := createHostKeyCallback()
+	if err == nil {
+		t.Fatal("createHostKeyCallback() error = nil, want error for nonexistent path")
+	}
+	if !strings.Contains(err.Error(), "known_hosts") {
+		t.Errorf("error should mention known_hosts, got: %v", err)
+	}
+}
+
+func TestNewProvider_GitURL(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewProvider("git+https://github.com/user/repo", "README.md", false)
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	defer p.Close()
+
+	// Should be a GitProvider
+	if _, ok := p.(*GitProvider); !ok {
+		t.Errorf("NewProvider() returned %T, want *GitProvider", p)
+	}
+}
+
+func TestNewProvider_FilesystemPath(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewProvider(".", "README.md", false)
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	defer p.Close()
+
+	// Should be a FilesystemProvider
+	if _, ok := p.(*FilesystemProvider); !ok {
+		t.Errorf("NewProvider() returned %T, want *FilesystemProvider", p)
+	}
+}
+
+func TestNewProvider_WithGitConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := GitProviderConfig{CloneTimeout: 30 * time.Second}
+	p, err := NewProvider("git+https://github.com/user/repo", "README.md", false, cfg)
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	defer p.Close()
+
+	gp, ok := p.(*GitProvider)
+	if !ok {
+		t.Fatalf("NewProvider() returned %T, want *GitProvider", p)
+	}
+	if gp.cloneTimeout != 30*time.Second {
+		t.Errorf("cloneTimeout = %v, want 30s", gp.cloneTimeout)
 	}
 }

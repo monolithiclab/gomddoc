@@ -100,3 +100,148 @@ func TestOverlayProvider_RootFS(t *testing.T) {
 		t.Errorf("b.txt not found in RootFS")
 	}
 }
+
+func TestOverlayProvider_RootFS_NilFallback(t *testing.T) {
+	t.Parallel()
+
+	primaryFiles := fstest.MapFS{
+		"a.txt": &fstest.MapFile{Data: []byte("a")},
+	}
+
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	overlay := NewOverlayProvider(primary, nil)
+
+	root, err := overlay.RootFS(context.Background())
+	if err != nil {
+		t.Fatalf("RootFS() error = %v", err)
+	}
+
+	// Should return primary FS directly (not wrapped in OverlayFS)
+	if _, err := fs.Stat(root, "a.txt"); err != nil {
+		t.Errorf("a.txt not found in RootFS: %v", err)
+	}
+}
+
+func TestOverlayProvider_Stat(t *testing.T) {
+	t.Parallel()
+
+	primaryFiles := fstest.MapFS{
+		"primary.txt": &fstest.MapFile{Data: []byte("p")},
+	}
+	fallbackFiles := fstest.MapFS{
+		"fallback.txt": &fstest.MapFile{Data: []byte("f")},
+	}
+
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	overlay := NewOverlayProvider(primary, fallbackFiles)
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		path    string
+		wantErr error
+	}{
+		{"stat from primary", "/primary.txt", nil},
+		{"stat from fallback", "/fallback.txt", nil},
+		{"stat not found in both", "/missing.txt", ErrNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			info, err := overlay.Stat(ctx, tt.path)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("Stat() error = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Stat() error = %v, want nil", err)
+			}
+			if info == nil {
+				t.Fatal("Stat() returned nil info")
+			}
+		})
+	}
+}
+
+func TestOverlayProvider_Stat_RootPath(t *testing.T) {
+	t.Parallel()
+
+	primaryFiles := fstest.MapFS{
+		"a.txt": &fstest.MapFile{Data: []byte("a")},
+	}
+	fallbackFiles := fstest.MapFS{
+		"b.txt": &fstest.MapFile{Data: []byte("b")},
+	}
+
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	overlay := NewOverlayProvider(primary, fallbackFiles)
+
+	// Stat on root "/" normalizes to "." — primary handles it
+	info, err := overlay.Stat(context.Background(), "/")
+	if err != nil {
+		t.Fatalf("Stat(\"/\") error = %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("Stat(\"/\") should report IsDir=true")
+	}
+}
+
+func TestOverlayProvider_DefaultIndex(t *testing.T) {
+	t.Parallel()
+
+	primaryFiles := fstest.MapFS{
+		"a.txt": &fstest.MapFile{Data: []byte("a")},
+	}
+
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "index.md", false)
+	overlay := NewOverlayProvider(primary, nil)
+
+	if got := overlay.DefaultIndex(); got != "index.md" {
+		t.Errorf("DefaultIndex() = %q, want %q", got, "index.md")
+	}
+}
+
+func TestOverlayProvider_Close(t *testing.T) {
+	t.Parallel()
+
+	primaryFiles := fstest.MapFS{
+		"a.txt": &fstest.MapFile{Data: []byte("a")},
+	}
+
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	overlay := NewOverlayProvider(primary, nil)
+
+	if err := overlay.Close(); err != nil {
+		t.Errorf("Close() error = %v, want nil", err)
+	}
+}
+
+func TestOverlayProvider_ReadFile_RootPath(t *testing.T) {
+	t.Parallel()
+
+	// When primary returns a non-ErrNotFound error for root "/" path,
+	// fallback should NOT be tried (only ErrNotFound triggers fallback).
+	primaryFiles := fstest.MapFS{
+		"a.txt": &fstest.MapFile{Data: []byte("a")},
+	}
+	fallbackFiles := fstest.MapFS{
+		"README.md": &fstest.MapFile{Data: []byte("# Fallback")},
+	}
+
+	// dirIndex=false: root "/" with no README.md returns ErrDirListingDisabled
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	overlay := NewOverlayProvider(primary, fallbackFiles)
+
+	_, _, err := overlay.ReadFile(context.Background(), "/")
+	if err == nil {
+		t.Fatal("ReadFile(\"/\") error = nil, want error")
+	}
+	// Error is ErrDirListingDisabled (not ErrNotFound), so fallback is not attempted
+	if !errors.Is(err, ErrDirListingDisabled) {
+		t.Errorf("ReadFile(\"/\") error = %v, want ErrDirListingDisabled", err)
+	}
+}
