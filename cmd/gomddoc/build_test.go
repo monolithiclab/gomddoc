@@ -115,7 +115,7 @@ func TestBuildFile(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
 	enricherReg := newTestEnricherRegistry()
-	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, stats)
+	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestBuildFile(t *testing.T) {
 	}
 }
 
-func TestBuildFile_README(t *testing.T) {
+func TestBuildFile_README_BecomesIndex(t *testing.T) {
 	outDir := t.TempDir()
 	b := &BuildCmd{Output: outDir}
 	stats := &buildStats{}
@@ -149,25 +149,58 @@ func TestBuildFile_README(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
 	enricherReg := newTestEnricherRegistry()
-	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, stats)
+	// No index.md exists, so README.md should produce only index.html
+	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
 
-	// Should produce both README.html and index.html
-	readmeHTML, err := os.ReadFile(filepath.Join(outDir, "README.html"))
-	if err != nil {
-		t.Fatal("Expected README.html to exist")
-	}
 	indexHTML, err := os.ReadFile(filepath.Join(outDir, "index.html"))
 	if err != nil {
 		t.Fatal("Expected index.html to exist")
 	}
-	if string(readmeHTML) != string(indexHTML) {
-		t.Error("README.html and index.html should have identical content")
+	if !strings.Contains(string(indexHTML), "Project") {
+		t.Errorf("Expected 'Project' in index.html, got:\n%s", indexHTML)
 	}
-	if !strings.Contains(string(readmeHTML), "Project") {
-		t.Errorf("Expected 'Project' in output HTML, got:\n%s", readmeHTML)
+
+	// README.html should NOT exist
+	if _, err := os.Stat(filepath.Join(outDir, "README.html")); !os.IsNotExist(err) {
+		t.Error("README.html should not exist when no index.md is present")
+	}
+}
+
+func TestBuildFile_README_WithIndexMD(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+	stats := &buildStats{}
+
+	contentRoot := fstest.MapFS{
+		"README.md": &fstest.MapFile{Data: []byte("# README Content")},
+	}
+
+	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+
+	enricherReg := newTestEnricherRegistry()
+	// Simulate index.md existing in same directory
+	dirsWithIndexMD := map[string]bool{".": true}
+	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, dirsWithIndexMD, stats)
+	if err != nil {
+		t.Fatalf("buildFile failed: %v", err)
+	}
+
+	// README.md should produce README.html (not index.html) since index.md exists
+	readmeHTML, err := os.ReadFile(filepath.Join(outDir, "README.html"))
+	if err != nil {
+		t.Fatal("Expected README.html to exist")
+	}
+	if !strings.Contains(string(readmeHTML), "README Content") {
+		t.Errorf("Expected 'README Content' in README.html")
+	}
+
+	// index.html should NOT exist (index.md would produce it separately)
+	if _, err := os.Stat(filepath.Join(outDir, "index.html")); !os.IsNotExist(err) {
+		t.Error("index.html should not exist — index.md handles it")
 	}
 }
 
@@ -184,17 +217,17 @@ func TestBuildFile_SubdirREADME(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
 	enricherReg := newTestEnricherRegistry()
-	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, stats)
+	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
 
-	// Should produce docs/README.html and docs/index.html
-	if _, err := os.Stat(filepath.Join(outDir, "docs", "README.html")); err != nil {
-		t.Fatal("Expected docs/README.html to exist")
-	}
+	// Should produce only docs/index.html (not docs/README.html)
 	if _, err := os.Stat(filepath.Join(outDir, "docs", "index.html")); err != nil {
 		t.Fatal("Expected docs/index.html to exist")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "docs", "README.html")); !os.IsNotExist(err) {
+		t.Error("docs/README.html should not exist")
 	}
 }
 
@@ -274,6 +307,40 @@ func TestWalkAndBuild_MixedContent(t *testing.T) {
 	}
 }
 
+func TestWalkAndBuild_IndexMDAndREADME(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+
+	contentRoot := fstest.MapFS{
+		"README.md": &fstest.MapFile{Data: []byte("# README")},
+		"index.md":  &fstest.MapFile{Data: []byte("# Home")},
+	}
+
+	registry := newTestRegistry()
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+
+	stats, err := b.walkAndBuild(contentRoot, registry, newTestEnricherRegistry(), templateRenderer, siteConfig)
+	if err != nil {
+		t.Fatalf("walkAndBuild failed: %v", err)
+	}
+
+	if stats.markdownFiles.Load() != 2 {
+		t.Errorf("markdownFiles = %d, want 2", stats.markdownFiles.Load())
+	}
+
+	// index.md should produce index.html with "Home" content
+	indexHTML := readTestFile(t, outDir, "index.html")
+	if !strings.Contains(indexHTML, "Home") {
+		t.Errorf("Expected 'Home' in index.html (from index.md), got:\n%s", indexHTML)
+	}
+
+	// README.md should produce README.html (not index.html) since index.md exists
+	readmeHTML := readTestFile(t, outDir, "README.html")
+	if !strings.Contains(readmeHTML, "README") {
+		t.Errorf("Expected 'README' in README.html, got:\n%s", readmeHTML)
+	}
+}
+
 func newTestEnricherRegistry() enricher.EnricherRegistry {
 	reg := enricher.NewDefaultEnricherRegistry()
 	reg.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{}))
@@ -294,16 +361,13 @@ func TestBuildCmd_Run(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Verify markdown was rendered
-	htmlContent := readTestFile(t, outDir, "README.html")
-	if !strings.Contains(htmlContent, "Build Run Test") {
-		t.Error("Expected 'Build Run Test' in output HTML")
-	}
-
-	// Verify index.html was created for README
+	// Verify README.md was rendered as index.html (not README.html)
 	indexContent := readTestFile(t, outDir, "index.html")
 	if !strings.Contains(indexContent, "Build Run Test") {
-		t.Error("Expected index.html from README.md")
+		t.Error("Expected 'Build Run Test' in index.html")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "README.html")); !os.IsNotExist(err) {
+		t.Error("README.html should not exist — README.md should produce only index.html")
 	}
 
 	// Verify CSS was copied
@@ -412,7 +476,7 @@ func TestBuildFile_WithFrontmatterTitle(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	enricherReg := newTestEnricherRegistry()
 
-	err := b.buildFile(context.Background(), contentRoot, "titled.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, stats)
+	err := b.buildFile(context.Background(), contentRoot, "titled.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err != nil {
 		t.Fatalf("buildFile failed: %v", err)
 	}
@@ -484,7 +548,7 @@ func TestBuildFile_ReadError(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	enricherReg := newTestEnricherRegistry()
 
-	err := b.buildFile(context.Background(), contentRoot, "nonexistent.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, stats)
+	err := b.buildFile(context.Background(), contentRoot, "nonexistent.md", mdRenderer, enricherReg, "text/markdown", templateRenderer, siteConfig, nil, stats)
 	if err == nil {
 		t.Error("buildFile should fail for missing file")
 	}
@@ -552,11 +616,12 @@ func TestBuildCmd_Run_WithSubdirectories(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Verify all markdown files were rendered
-	for _, f := range []string{"README.html", "index.html"} {
-		if _, err := os.Stat(filepath.Join(outDir, f)); err != nil {
-			t.Errorf("Expected %s to exist", f)
-		}
+	// Verify README.md produced only index.html
+	if _, err := os.Stat(filepath.Join(outDir, "index.html")); err != nil {
+		t.Error("Expected index.html to exist")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "README.html")); !os.IsNotExist(err) {
+		t.Error("README.html should not exist")
 	}
 	for _, f := range []string{"endpoints.html", "types.html"} {
 		if _, err := os.Stat(filepath.Join(outDir, "api", f)); err != nil {
@@ -600,9 +665,9 @@ func TestBuildCmd_Run_MultipleRuns(t *testing.T) {
 		t.Fatalf("second Run() error = %v", err)
 	}
 
-	htmlContent := readTestFile(t, outDir, "README.html")
+	htmlContent := readTestFile(t, outDir, "index.html")
 	if !strings.Contains(htmlContent, "First Run") {
-		t.Error("Expected 'First Run' in output HTML")
+		t.Error("Expected 'First Run' in index.html")
 	}
 }
 

@@ -119,7 +119,10 @@ func (b *BuildCmd) walkAndBuild(
 	stats := &buildStats{}
 
 	// Collect all file paths first, skipping hidden files/directories.
+	// Also track which directories contain an index.md so we know whether
+	// DefaultIndex (e.g. README.md) should become index.html or keep its name.
 	var filePaths []string
+	dirsWithIndexMD := make(map[string]bool)
 	err := fs.WalkDir(contentRoot, ".", func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("walk %s: %w", filePath, err)
@@ -136,6 +139,9 @@ func (b *BuildCmd) walkAndBuild(
 
 		if !d.IsDir() {
 			filePaths = append(filePaths, filePath)
+			if strings.EqualFold(name, "index.md") {
+				dirsWithIndexMD[filepath.Dir(filePath)] = true
+			}
 		}
 
 		return nil
@@ -162,7 +168,7 @@ func (b *BuildCmd) walkAndBuild(
 				// No HTML renderer for this type → copy as-is
 				return b.copyFile(contentRoot, fp, stats)
 			}
-			return b.buildFile(ctx, contentRoot, fp, contentRenderer, enricherRegistry, normalized, templateRenderer, siteConfig, stats)
+			return b.buildFile(ctx, contentRoot, fp, contentRenderer, enricherRegistry, normalized, templateRenderer, siteConfig, dirsWithIndexMD, stats)
 		})
 	}
 
@@ -183,6 +189,7 @@ func (b *BuildCmd) buildFile(
 	mimeType string,
 	templateRenderer *tmpl.HTMLRenderer,
 	siteConfig *config.SiteConfig,
+	dirsWithIndexMD map[string]bool,
 	stats *buildStats,
 ) error {
 	content, err := fs.ReadFile(contentRoot, filePath)
@@ -225,22 +232,16 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("template render %s: %w", filePath, err)
 	}
 
-	// Write the .html file
+	// Determine the output path. The DefaultIndex file (e.g. README.md)
+	// becomes index.html unless an index.md exists in the same directory.
 	htmlPath := strings.TrimSuffix(filePath, filepath.Ext(filePath)) + ".html"
+	if b.isDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[filepath.Dir(filePath)] {
+		htmlPath = filepath.Join(filepath.Dir(filePath), "index.html")
+	}
 	if err := b.writeOutputFile(htmlPath, rendered); err != nil {
 		return err
 	}
 	stats.totalBytes.Add(int64(len(rendered)))
-
-	// For README.md files, also write index.html in the same directory
-	baseName := strings.ToLower(filepath.Base(filePath))
-	if baseName == "readme.md" {
-		indexPath := filepath.Join(filepath.Dir(filePath), "index.html")
-		if err := b.writeOutputFile(indexPath, rendered); err != nil {
-			return err
-		}
-		stats.totalBytes.Add(int64(len(rendered)))
-	}
 
 	stats.markdownFiles.Add(1)
 	slog.Debug("Built", slog.String("file", filePath), slog.String("output", htmlPath))
@@ -321,6 +322,13 @@ func (b *BuildCmd) generateSEOFiles(contentRoot fs.FS, siteConfig *config.SiteCo
 	}
 
 	return nil
+}
+
+// isDefaultIndex reports whether filePath's basename matches the configured
+// DefaultIndex filename (case-insensitive). For example, "docs/README.md"
+// matches DefaultIndex "README.md".
+func (b *BuildCmd) isDefaultIndex(filePath, defaultIndex string) bool {
+	return strings.EqualFold(filepath.Base(filePath), defaultIndex)
 }
 
 // writeOutputFile writes content to a file in the output directory, creating parent directories as needed.
