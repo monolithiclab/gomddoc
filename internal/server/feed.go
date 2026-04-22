@@ -134,13 +134,7 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 
 	// Sort by modification time descending (newest first).
 	slices.SortFunc(candidates, func(a, b pageWithTime) int {
-		if a.modTime.After(b.modTime) {
-			return -1
-		}
-		if a.modTime.Before(b.modTime) {
-			return 1
-		}
-		return 0
+		return -a.modTime.Compare(b.modTime)
 	})
 
 	// Limit to feedMaxEntries.

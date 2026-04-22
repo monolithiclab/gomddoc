@@ -174,24 +174,12 @@ func New() *Config {
 
 // NewSiteConfig creates a new SiteConfig with default values
 func NewSiteConfig(dir string) SiteConfig {
-	// Compute default title from directory basename.
-	// filepath.Base(".") returns ".", so resolve to absolute path first.
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		absDir = dir
-	}
-	basename := filepath.Base(absDir)
-	if basename == "." || basename == string(filepath.Separator) {
-		basename = "Documentation"
-	}
-	title := text.TitleCase(basename)
-
 	return SiteConfig{
 		DefaultIndex: DefaultIndex,
 		DirIndex:     false,
 		Language:     "en",
 		Meta: MetaConfig{
-			Title: title,
+			Title: titleFromDir(dir),
 		},
 		Theme: ThemeConfig{
 			Name: DefaultThemeName,
@@ -241,17 +229,24 @@ func (sc *SiteConfig) ApplyEnvOverrides() {
 	applyEnvOverridesWithPrefix(sc, "GOMDDOC_SITE")
 }
 
+// titleFromDir derives a human-readable title from a directory path.
+func titleFromDir(dir string) string {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = dir
+	}
+	basename := filepath.Base(absDir)
+	if basename == "." || basename == string(filepath.Separator) {
+		basename = "Documentation"
+	}
+	return text.TitleCase(basename)
+}
+
 // ComputeDynamicDefaults calculates defaults that depend on other values
 // e.g. Site Title depends on Dir
 func (c *Config) ComputeDynamicDefaults() {
 	if c.Site.Meta.Title == "" {
-		// Compute default title from directory basename
-		absDir, err := filepath.Abs(c.Server.Dir)
-		if err != nil {
-			absDir = c.Server.Dir
-		}
-		basename := filepath.Base(absDir)
-		c.Site.Meta.Title = text.TitleCase(basename)
+		c.Site.Meta.Title = titleFromDir(c.Server.Dir)
 	}
 }
 
@@ -477,7 +472,7 @@ func applyEnvOverridesWithPrefix(target any, prefix string) {
 
 // walkStruct recursively walks any struct and applies env overrides
 func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
-	for i := 0; i < v.NumField(); i++ {
+	for i := range v.NumField() {
 		field := v.Field(i)
 		fieldType := t.Field(i)
 

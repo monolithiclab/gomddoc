@@ -1,7 +1,9 @@
 package search
 
 import (
+	"cmp"
 	"html"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -175,15 +177,9 @@ func isWordBoundary(text string, pos int) bool {
 
 // sortSpans sorts spans by start position using insertion sort (small slices).
 func sortSpans(spans []span) {
-	for i := 1; i < len(spans); i++ {
-		key := spans[i]
-		j := i - 1
-		for j >= 0 && spans[j].start > key.start {
-			spans[j+1] = spans[j]
-			j--
-		}
-		spans[j+1] = key
-	}
+	slices.SortFunc(spans, func(a, b span) int {
+		return cmp.Compare(a.start, b.start)
+	})
 }
 
 // mergeSpans merges overlapping spans.

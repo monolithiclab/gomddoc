@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"io/fs"
 	"net/url"
 	"path"
@@ -51,7 +50,9 @@ func GenerateMarkdownListing(dirPath string, entries []fs.DirEntry, excludePatte
 	if dirPath == "" || dirPath == "." || dirPath == "/" {
 		builder.WriteString("# Index\n\n")
 	} else {
-		builder.WriteString(fmt.Sprintf("# Index of %s\n\n", escapeMarkdown(dirPath)))
+		builder.WriteString("# Index of ")
+		builder.WriteString(escapeMarkdown(dirPath))
+		builder.WriteString("\n\n")
 	}
 
 	// Add entries
@@ -64,11 +65,14 @@ func GenerateMarkdownListing(dirPath string, entries []fs.DirEntry, excludePatte
 			safeURL := url.PathEscape(name)
 			if entry.IsDir() {
 				// Directory: add trailing slash and link to directory path
-				builder.WriteString(fmt.Sprintf("- [%s/](%s/)\n", safeName, safeURL))
-			} else {
-				// File: link to file
-				builder.WriteString(fmt.Sprintf("- [%s](%s)\n", safeName, safeURL))
+				safeName += "/"
+				safeURL += "/"
 			}
+			builder.WriteString("- [")
+			builder.WriteString(safeName)
+			builder.WriteString("](")
+			builder.WriteString(safeURL)
+			builder.WriteString(")\n")
 		}
 	}
 
