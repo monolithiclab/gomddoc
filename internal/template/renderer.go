@@ -36,6 +36,13 @@ type Renderer interface {
 	HasTemplate(name string) bool
 }
 
+// LanguageInfo holds display information for a language.
+type LanguageInfo struct {
+	Code   string // BCP 47 code, e.g. "fr-FR"
+	Name   string // Display name, e.g. "Français"
+	Active bool   // Whether this is the current page's language
+}
+
 // TemplateContext holds the data passed to templates
 type TemplateContext struct {
 	// Site configuration (public, safe to expose)
@@ -43,6 +50,11 @@ type TemplateContext struct {
 
 	// Page-specific data (namespaced for extensibility)
 	Page PageContext
+
+	// i18n support (set by the server/build when creating the context)
+	tFunc     func(string) string // translation function bound to current language
+	lang      string              // BCP 47 language code for this request
+	languages []LanguageInfo      // all available languages
 }
 
 type PageContext struct {
@@ -60,6 +72,39 @@ type PageContext struct {
 // Uses pre-merged features (site defaults + page overrides), defaulting to true.
 func (tc *TemplateContext) Feature(name string) bool {
 	return config.FeatureEnabled(name, tc.Page.Features)
+}
+
+// T returns the translated string for the given key in the current language.
+func (tc *TemplateContext) T(key string) string {
+	if tc.tFunc != nil {
+		return tc.tFunc(key)
+	}
+	return key
+}
+
+// Lang returns the BCP 47 language code for the current page.
+// Page-level frontmatter lang overrides the request-level language.
+func (tc *TemplateContext) Lang() string {
+	if lang, ok := tc.Page.Meta["lang"].(string); ok && lang != "" {
+		return lang
+	}
+	if tc.lang != "" {
+		return tc.lang
+	}
+	return tc.Site.Language
+}
+
+// Languages returns all available languages for the language switcher.
+func (tc *TemplateContext) Languages() []LanguageInfo {
+	return tc.languages
+}
+
+// WithI18n returns the context with i18n fields set.
+func (tc *TemplateContext) WithI18n(lang string, tFunc func(string) string, languages []LanguageInfo) *TemplateContext {
+	tc.lang = lang
+	tc.tFunc = tFunc
+	tc.languages = languages
+	return tc
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects

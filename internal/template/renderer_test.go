@@ -1719,3 +1719,86 @@ func TestContentURLInTemplate(t *testing.T) {
 		t.Errorf("contentURL in template = %q, want %q", got, "/docs/guide")
 	}
 }
+
+func TestTemplateContext_T(t *testing.T) {
+	t.Parallel()
+
+	tc := &TemplateContext{
+		Site: &config.SiteConfig{Language: "en-US"},
+		Page: PageContext{
+			Meta: map[string]any{},
+		},
+		tFunc: func(key string) string {
+			switch key {
+			case "toc_title":
+				return "On this page"
+			default:
+				return key
+			}
+		},
+	}
+
+	if got := tc.T("toc_title"); got != "On this page" {
+		t.Errorf("T(toc_title) = %q, want %q", got, "On this page")
+	}
+	if got := tc.T("unknown"); got != "unknown" {
+		t.Errorf("T(unknown) = %q, want %q", got, "unknown")
+	}
+}
+
+func TestTemplateContext_T_NilFunc(t *testing.T) {
+	t.Parallel()
+
+	tc := &TemplateContext{
+		Site: &config.SiteConfig{Language: "en-US"},
+		Page: PageContext{Meta: map[string]any{}},
+	}
+
+	// Without tFunc, T returns the key itself
+	if got := tc.T("toc_title"); got != "toc_title" {
+		t.Errorf("T(toc_title) = %q, want %q", got, "toc_title")
+	}
+}
+
+func TestTemplateContext_Lang(t *testing.T) {
+	t.Parallel()
+
+	tc := &TemplateContext{
+		Site: &config.SiteConfig{Language: "fr-FR"},
+		Page: PageContext{Meta: map[string]any{}},
+		lang: "fr-FR",
+	}
+
+	if got := tc.Lang(); got != "fr-FR" {
+		t.Errorf("Lang() = %q, want %q", got, "fr-FR")
+	}
+}
+
+func TestTemplateContext_LangOverrideFromMeta(t *testing.T) {
+	t.Parallel()
+
+	tc := &TemplateContext{
+		Site: &config.SiteConfig{Language: "en-US"},
+		Page: PageContext{Meta: map[string]any{"lang": "de-DE"}},
+		lang: "en-US",
+	}
+
+	// Page-level lang in frontmatter takes precedence
+	if got := tc.Lang(); got != "de-DE" {
+		t.Errorf("Lang() = %q, want %q", got, "de-DE")
+	}
+}
+
+func TestTemplateContext_LangFallbackToSiteConfig(t *testing.T) {
+	t.Parallel()
+
+	tc := &TemplateContext{
+		Site: &config.SiteConfig{Language: "en-US"},
+		Page: PageContext{Meta: map[string]any{}},
+		// lang is empty, no frontmatter override
+	}
+
+	if got := tc.Lang(); got != "en-US" {
+		t.Errorf("Lang() = %q, want %q", got, "en-US")
+	}
+}
