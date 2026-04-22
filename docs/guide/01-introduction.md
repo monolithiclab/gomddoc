@@ -29,7 +29,21 @@ make build
 make install
 ```
 
-### 2. Live Server (Local Folder)
+### 2. Initialize Configuration (Optional)
+
+Scaffold a `.gomddoc/` directory with a default `config.yml`:
+
+```bash
+gomddoc init
+```
+
+This creates `.gomddoc/config.yml` with sensible defaults (title derived from directory name, default theme, color chips enabled). Use `--theme` to pick a different theme:
+
+```bash
+gomddoc init --theme midnight
+```
+
+### 3. Live Server (Local Folder)
 
 Serve the current directory:
 
@@ -45,7 +59,7 @@ Serve a specific directory on a different port:
 gomddoc serve -d ./my-docs -p :3000
 ```
 
-### 3. Serving from Git
+### 4. Serving from Git
 
 Serve directly from a public repository without cloning it manually (lazy clone on first request):
 
@@ -53,7 +67,7 @@ Serve directly from a public repository without cloning it manually (lazy clone 
 gomddoc serve -d "git+https://github.com/monolithiclab/gomddoc.git"
 ```
 
-### 4. Static Site Generation
+### 5. Static Site Generation
 
 Build a static site for deployment:
 

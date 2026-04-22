@@ -321,7 +321,7 @@ _Enable community theme sharing via a GitHub-based registry._
 | `gomddoc serve`         | Production HTTP server for documentation             | Done    |
 | `gomddoc build`         | Static site generation                               | Done    |
 | `gomddoc preview`       | Quick local preview with auto-open browser           | Planned |
-| `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Planned |
+| `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Done    |
 | `gomddoc validate`      | Validate config and check for broken links           | Planned |
 | `gomddoc theme list`    | List available themes from the marketplace           | Planned |
 | `gomddoc theme search`  | Search themes by name, category, or keyword          | Planned |

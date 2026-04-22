@@ -23,6 +23,7 @@ type CLI struct {
 	Version kong.VersionFlag `name:"version" help:"Show version and exit."`
 	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
 	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
+	Init    InitCmd          `cmd:"" help:"Initialize a .gomddoc/ directory with default configuration."`
 }
 
 // helpPrinter wraps Kong's default help to append environment variables for subcommands.
