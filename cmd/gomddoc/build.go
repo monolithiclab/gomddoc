@@ -6,10 +6,12 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -105,6 +107,15 @@ func (b *BuildCmd) Run() error {
 	// Generate SEO files (robots.txt and sitemap.xml)
 	if err := b.generateSEOFiles(prov, &cfg.Site); err != nil {
 		return fmt.Errorf("generate SEO files: %w", err)
+	}
+
+	// Generate 404.html for static host compatibility (Netlify, GitHub Pages, Cloudflare Pages)
+	errorContent, err := b.renderErrorPage(http.StatusNotFound, pipeline.TemplateRenderer, &cfg.Site)
+	if err != nil {
+		return fmt.Errorf("render 404 page: %w", err)
+	}
+	if err := b.writeOutputFile("404.html", errorContent); err != nil {
+		return fmt.Errorf("write 404.html: %w", err)
 	}
 
 	elapsed := time.Since(start)
@@ -384,4 +395,25 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 	}
 
 	return nil
+}
+
+// renderErrorPage renders a 404 page through the template engine.
+func (b *BuildCmd) renderErrorPage(statusCode int, templateRenderer tmpl.Renderer, siteConfig *config.SiteConfig) ([]byte, error) {
+	statusTitle := http.StatusText(statusCode)
+
+	ctx := &tmpl.TemplateContext{
+		Site: siteConfig,
+		Page: tmpl.PageContext{
+			Path: "/" + strconv.Itoa(statusCode),
+			Meta: map[string]any{
+				"title":         statusTitle,
+				"robots":        "noindex",
+				"error_code":    statusCode,
+				"error_title":   statusTitle,
+				"error_message": server.StatusMessage(statusCode),
+			},
+		},
+	}
+
+	return templateRenderer.Render(context.Background(), "error.html.tmpl", ctx)
 }

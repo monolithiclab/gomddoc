@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="{{ if .Page.Meta.lang }}{{ .Page.Meta.lang }}{{ else }}{{ .Site.Language }}{{ end }}">
+{{ template "head" . }}
+<body>
+  {{ template "header" . }}
+  <main>
+    <div class="page-layout">
+      <div class="content-area">
+        <article class="error-page">
+          <h1>{{ .Page.Meta.error_code }} {{ .Page.Meta.error_title }}</h1>
+          <p>{{ .Page.Meta.error_message }}</p>
+          <p><a href="/">Go to homepage</a></p>
+        </article>
+      </div>
+    </div>
+  </main>
+  {{ template "scripts" . }}
+</body>
+</html>

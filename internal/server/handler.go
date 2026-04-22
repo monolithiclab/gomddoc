@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -191,19 +192,35 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusCode)
 
-	// Serve simple error pages
-	var message string
-	switch statusCode {
-	case http.StatusNotFound:
-		message = "<h1>404 Not Found</h1>"
-	case http.StatusForbidden:
-		message = "<h1>403 Forbidden</h1>"
-	default:
-		message = "<h1>500 Internal Server Error</h1>"
-	}
-
-	_, writeErr := w.Write([]byte(message))
+	page := h.renderErrorPage(r, statusCode, path)
+	_, writeErr := w.Write(page) // #nosec G104,G705 -- best-effort error response, content from trusted templates
 	if writeErr != nil {
 		slog.Error("Cannot write error response", slog.Any("error", writeErr))
 	}
+}
+
+// renderErrorPage renders an error page through the template engine.
+// Falls back to plain text if template rendering fails.
+func (h *Handler) renderErrorPage(r *http.Request, statusCode int, pagePath string) []byte {
+	statusTitle := http.StatusText(statusCode)
+
+	context := &tmpl.TemplateContext{
+		Site: h.siteConfig,
+		Page: tmpl.PageContext{
+			Path: pagePath,
+			Meta: map[string]any{
+				"title":         statusTitle,
+				"robots":        "noindex",
+				"error_code":    statusCode,
+				"error_title":   statusTitle,
+				"error_message": StatusMessage(statusCode),
+			},
+		},
+	}
+
+	rendered, err := h.templateRenderer.Render(r.Context(), "error.html.tmpl", context)
+	if err != nil {
+		return fmt.Appendf(nil, "%d %s", statusCode, statusTitle)
+	}
+	return rendered
 }

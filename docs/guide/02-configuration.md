@@ -77,6 +77,7 @@ gomddoc build [DIR] [flags]
 - Hidden files (starting with `.`) are skipped
 - `robots.txt` is always generated
 - `sitemap.xml` is generated when `meta.domain` is configured
+- `404.html` is generated for static host compatibility (Netlify, GitHub Pages, Cloudflare Pages)
 - Theme assets are copied to `_assets/` in the output directory
 
 Build statistics are reported on completion:

@@ -11,6 +11,23 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 )
 
+const defaultStatusMessage = "Something went wrong. Please try again later."
+
+var statusMessages = map[int]string{
+	http.StatusNotFound:            "The page you're looking for doesn't exist.",
+	http.StatusForbidden:           "You don't have permission to access this page.",
+	http.StatusInternalServerError: defaultStatusMessage,
+}
+
+func StatusMessage(statusCode int) string {
+	msg, ok := statusMessages[statusCode]
+	if ok {
+		return msg
+	}
+	return defaultStatusMessage
+
+}
+
 // classifyError maps errors to appropriate HTTP status codes.
 // It uses errors.Is() to check for specific error types, including
 // wrapped errors, ensuring proper error classification throughout
