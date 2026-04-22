@@ -18,6 +18,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/server"
 	"github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // ServeCmd holds all flags for the serve subcommand.
@@ -77,7 +78,12 @@ func (s *ServeCmd) Run() error {
 	}
 	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
 
-	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS, template.WithBreadcrumbGenerator(breadcrumbGen))
+	navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex)
+
+	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS,
+		template.WithBreadcrumbGenerator(breadcrumbGen),
+		template.WithNavigationGenerator(navGen),
+	)
 	if !cfg.Server.DevMode {
 		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
 	}

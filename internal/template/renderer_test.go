@@ -10,6 +10,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 func TestNewHTMLRenderer(t *testing.T) {
@@ -674,6 +675,84 @@ func TestEditURLInTemplate(t *testing.T) {
 			t.Errorf("Expected empty output when EditURL not configured, got %q", string(result))
 		}
 	})
+}
+
+func TestNavigationFunction(t *testing.T) {
+	t.Parallel()
+
+	// Content filesystem with markdown files
+	contentFS := fstest.MapFS{
+		"guide.md":        {Data: []byte("# Getting Started")},
+		"docs/install.md": {Data: []byte("# Installation")},
+	}
+
+	templateContent := `{{ navigation .Page.Path }}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/nav.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	navGen := navigation.NewGenerator(contentFS, "README.md")
+
+	r := NewHTMLRenderer(&siteConfig, testFS, WithNavigationGenerator(navGen))
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			Path: "/guide.md",
+		},
+	}
+
+	result, err := r.Render(context.Background(), "nav.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	resultStr := string(result)
+
+	// Should contain navigation links
+	if !strings.Contains(resultStr, "Getting Started") {
+		t.Error("Expected navigation to contain 'Getting Started'")
+	}
+	if !strings.Contains(resultStr, `class="active"`) {
+		t.Error("Expected active class on current page")
+	}
+	if !strings.Contains(resultStr, "Installation") {
+		t.Error("Expected navigation to contain 'Installation'")
+	}
+}
+
+func TestNavigationFunction_NilGenerator(t *testing.T) {
+	t.Parallel()
+
+	templateContent := `[{{ navigation .Page.Path }}]`
+	testFS := fstest.MapFS{
+		"assets/themes/default/nav_nil.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	// No navigation generator configured
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			Path: "/test",
+		},
+	}
+
+	result, err := r.Render(context.Background(), "nav_nil.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if string(result) != "[]" {
+		t.Errorf("Expected empty navigation without generator, got %q", string(result))
+	}
 }
 
 func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {

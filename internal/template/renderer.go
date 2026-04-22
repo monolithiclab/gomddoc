@@ -14,6 +14,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // Renderer defines the interface for template rendering
@@ -57,9 +58,10 @@ var bufferPool = sync.Pool{
 // IMPORTANT: Do not mutate siteConfig after construction if using concurrently.
 type HTMLRenderer struct {
 	assetsFS      fs.FS
-	siteConfig    *config.SiteConfig   // For theme name (NOT full Config - security)
-	cache         TemplateCache        // Injected dependency (strategy pattern)
-	breadcrumbGen breadcrumb.Generator // Optional breadcrumb generator
+	siteConfig    *config.SiteConfig    // For theme name (NOT full Config - security)
+	cache         TemplateCache         // Injected dependency (strategy pattern)
+	breadcrumbGen breadcrumb.Generator  // Optional breadcrumb generator
+	navGen        *navigation.Generator // Optional navigation generator
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
@@ -70,6 +72,13 @@ type RendererOption func(*HTMLRenderer)
 func WithCache(cache TemplateCache) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.cache = cache
+	}
+}
+
+// WithNavigationGenerator sets the navigation tree generator for the renderer
+func WithNavigationGenerator(gen *navigation.Generator) RendererOption {
+	return func(r *HTMLRenderer) {
+		r.navGen = gen
 	}
 }
 
@@ -181,6 +190,7 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"breadcrumbs": h.generateBreadcrumbs,
 		"toc":         h.generateTOC,
 		"editURL":     h.generateEditURL,
+		"navigation":  h.generateNavigation,
 	}
 }
 
@@ -196,6 +206,16 @@ func (h *HTMLRenderer) generateEditURL(pagePath string) string {
 		pagePath = "/" + pagePath
 	}
 	return base + pagePath
+}
+
+// generateNavigation generates the navigation tree HTML for the given path.
+// Returns empty HTML if no navigation generator is configured.
+func (h *HTMLRenderer) generateNavigation(currentPath string) template.HTML {
+	if h.navGen == nil {
+		return ""
+	}
+	root := h.navGen.Generate(currentPath)
+	return template.HTML(navigation.RenderNavTree(root)) // #nosec G203
 }
 
 // generateBreadcrumbs generates breadcrumbs for the given path

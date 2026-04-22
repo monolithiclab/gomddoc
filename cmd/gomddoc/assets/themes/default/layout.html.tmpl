@@ -75,6 +75,70 @@
             gap: 2rem;
             align-items: flex-start;
         }
+        #nav-sidebar {
+            width: 250px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 2rem;
+            max-height: calc(100vh - 4rem);
+            overflow-y: auto;
+            font-size: 0.9em;
+            order: -1;
+        }
+        #nav-sidebar ul {
+            list-style: none;
+            padding-left: 0;
+            margin: 0;
+        }
+        #nav-sidebar ul ul {
+            padding-left: 1rem;
+        }
+        #nav-sidebar li {
+            margin-bottom: 0.15rem;
+        }
+        #nav-sidebar a {
+            color: var(--pico-muted-color);
+            text-decoration: none;
+            display: block;
+            padding: 3px 0.5rem;
+            border-radius: 4px;
+            transition: color 0.2s, background-color 0.2s;
+        }
+        #nav-sidebar a:hover {
+            color: var(--pico-color);
+            background-color: var(--pico-form-element-background-color);
+        }
+        #nav-sidebar a.active {
+            color: var(--pico-primary);
+            font-weight: bold;
+            background-color: var(--pico-primary-focus);
+        }
+        #nav-sidebar details {
+            border: none;
+            padding: 0;
+            margin: 0;
+        }
+        #nav-sidebar summary {
+            color: var(--pico-color);
+            font-weight: 600;
+            padding: 3px 0.5rem;
+            cursor: pointer;
+            font-size: 0.95em;
+            list-style: none;
+        }
+        #nav-sidebar summary::before {
+            content: "\25b6";
+            display: inline-block;
+            margin-right: 0.4em;
+            font-size: 0.7em;
+            transition: transform 0.2s;
+        }
+        #nav-sidebar details[open] > summary::before {
+            transform: rotate(90deg);
+        }
+        #nav-sidebar summary::-webkit-details-marker {
+            display: none;
+        }
         #toc-sidebar {
             width: 250px;
             flex-shrink: 0;
@@ -162,6 +226,9 @@
             .page-layout {
                 flex-direction: column;
             }
+            #nav-sidebar {
+                display: none;
+            }
             #toc-sidebar {
                 display: none;
                 position: fixed;
@@ -227,8 +294,17 @@
         </header>
 
         <main class="container-fluid">
+            {{- $nav := navigation .Page.Path }}
             {{- $toc := toc .Page.TOC }}
             <div class="page-layout">
+                {{- if $nav }}
+                <aside id="nav-sidebar">
+                    <nav aria-label="Page navigation">
+                        <header><strong>Navigation</strong></header>
+                        {{ $nav }}
+                    </nav>
+                </aside>
+                {{- end }}
                 {{- if $toc }}
                 <aside id="toc-sidebar">
                     <nav>
@@ -241,7 +317,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                 </button>
                 {{- end }}
-                
+
                 <article class="page-content">
                     {{ .Page.Content }}
                     {{- $editLink := editURL .Page.Path }}
