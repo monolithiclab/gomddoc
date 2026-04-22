@@ -5,9 +5,9 @@
         {{- $path := .Page.Path }}
         {{- range $langs }}
         {{- if .Active }}
-        <span class="lang-current">{{ .Code }}</span>
+        <span class="lang-current">{{ .Name }}</span>
         {{- else }}
-        <a href="/{{ .Code }}{{ $path }}">{{ .Code }}</a>
+        <a href="/{{ .Code }}{{ $path }}">{{ .Name }}</a>
         {{- end }}
         {{- end }}
       </div>

@@ -405,50 +405,27 @@ _Multi-language documentation sites with translated UI chrome._
 
 ### UI String Localization
 
-- [ ] **Locale file format**: Each theme ships a `locales/` directory with YAML files per language
-      (e.g., `locales/en.yml`, `locales/fr.yml`). Keys map to UI strings: navigation labels
-      ("Table of Contents", "Search", "On this page"), admonition titles ("Note", "Warning",
-      "Caution"), search placeholder text, pagination ("Next", "Previous"), and footer text.
-      Bundled themes include English by default. Sites can override or add languages via
-      `.gomddoc/locales/`. Low-medium complexity.
-- [ ] **`language` config integration**: Extend the existing `language` field in `SiteConfig`
-      (currently only sets `<html lang>`). When set to a non-English locale (e.g., `fr`), load
-      the matching locale file and use its strings in templates. Templates access strings via a
-      `{{ .T "key" }}` function. Missing keys fall back to English. Low complexity.
-- [ ] **Per-page language override**: Frontmatter `lang: fr` overrides the site-level language
-      for a specific page, loading that page's UI chrome in the specified language. Already
-      supported for `<html lang>` — extend to locale string selection. Low complexity.
+- [x] **Locale file format**: Three-layer YAML locale loading (built-in → theme → site overrides)
+      with BCP 47 filenames (e.g., `en-US.yml`, `fr-FR.yml`). Built-in `en-US.yml` ships with 20
+      UI string keys. Sites override via `.gomddoc/locales/`.
+- [x] **`language` config integration**: Default language changed to BCP 47 `en-US`. Templates
+      access strings via `{{ .T "key" }}` with fallback chain: requested lang → default → raw key.
+      `locale.Bundle` manages loading and lookup.
+- [x] **Per-page language override**: Frontmatter `lang` overrides site-level language for
+      `<html lang>` and locale string selection via `TemplateContext.Lang()`.
 
 ### Multi-Language Content
 
-- [ ] **Content tree per language**: Convention-based content organization with language subtrees
-      (e.g., `docs/en/`, `docs/fr/`) or language suffixes (e.g., `guide.en.md`, `guide.fr.md`).
-      Configure via `languages` map in site config:
-
-      ```yaml
-      languages:
-        en:
-          name: English
-          content_dir: docs/en  # or use suffix mode
-          default: true
-        fr:
-          name: Français
-          content_dir: docs/fr
-      ```
-
-      The default language is served at `/` (no prefix). Other languages are served at `/{lang}/`
-      (e.g., `/fr/guide`). Each language gets its own navigation tree, search index, metadata
-      index, and sitemap. Medium-high complexity.
-- [ ] **Language switcher**: Theme component showing available languages for the current page.
-      Links to the equivalent page in other languages when it exists, or to the language root
-      when it doesn't. All 8 bundled themes include the switcher. Low-medium complexity.
-- [ ] **`hreflang` tags**: `<link rel="alternate" hreflang="fr" href="/fr/guide">` on every
-      page that has translations. Includes `x-default` pointing to the default language. Critical
-      for multilingual SEO — tells search engines which version to show per locale. Low complexity
-      once content tree mapping exists.
-- [ ] **Per-language sitemap**: Each language gets its own sitemap (`/sitemap-en.xml`,
-      `/sitemap-fr.xml`) plus a sitemap index (`/sitemap.xml`) that references them.
-      `hreflang` entries in sitemaps as an alternative to HTML tags. Low complexity.
+- [x] **Content tree per language**: BCP 47 directories at content root (e.g., `fr-FR/`).
+      Default language served at `/`, others at `/{lang}/`. Each language gets its own Provider
+      (SubdirProvider), metadata index, search index, and navigation tree. Auto-detected from
+      directory names matching BCP 47 pattern.
+- [x] **Language switcher**: `lang-switcher.html.tmpl` partial in default theme. Shows active
+      language as text, others as links to `/{lang}/` prefixed paths.
+- [x] **`hreflang` tags**: `hreflang.html.tmpl` partial renders `<link rel="alternate">` tags
+      with `x-default` for the default language. Included via `head-shared.html.tmpl`.
+- [x] **Per-language sitemap**: Per-language routes at `/{lang}/sitemap.xml` and `/{lang}/feed.xml`.
+      Build mode generates `sitemap-index.xml` referencing per-language sitemaps.
 
 ## Phase 13: Theme Marketplace
 

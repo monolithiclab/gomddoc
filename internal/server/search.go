@@ -66,6 +66,11 @@ func (h *SearchHandler) SearchEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// When language is resolved from Accept-Language, the response varies by it.
+	if h.knownLangs != nil {
+		w.Header().Add("Vary", "Accept-Language")
+	}
+
 	results := index.Search(q, limit)
 	writeJSON(w, http.StatusOK, results)
 }

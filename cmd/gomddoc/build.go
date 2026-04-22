@@ -19,7 +19,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/locale"
@@ -92,7 +91,7 @@ func (b *BuildCmd) Run() error {
 		}
 	}()
 
-	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
+	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{
 		EnableCache:      true,
 		EnableNavigation: true, // needed for prev/next page links
 		EnableMetadata:   true, // needed for SEO and redirect generation
@@ -101,23 +100,16 @@ func (b *BuildCmd) Run() error {
 		return fmt.Errorf("build pipeline: %w", err)
 	}
 
+	pipeline := lp.Default
+	bundle := lp.Bundle
+	detectedLangs := lp.Languages
+
 	contentRoot, err := prov.RootFS(context.Background())
 	if err != nil {
 		return fmt.Errorf("build root fs: %w", err)
 	}
 
-	// Load locale bundle for i18n support
-	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
-	bundle, err := locale.LoadBundle(cfg.Site.Language, assetsFS, "locales")
-	if err != nil {
-		return fmt.Errorf("load locale bundle: %w", err)
-	}
-	if err := bundle.MergeFrom(contentRoot, config.ConfigDirName+"/locales"); err != nil {
-		slog.Warn("Failed to merge site locale overrides", slog.Any("error", err))
-	}
-
-	// Detect languages and build language info for multi-language sites
-	detectedLangs := locale.DetectLanguages(contentRoot)
+	// Build language info for multi-language sites
 	var languageInfos []tmpl.LanguageInfo
 	if len(detectedLangs) > 0 {
 		languageInfos = make([]tmpl.LanguageInfo, 0, len(detectedLangs)+1)
@@ -173,6 +165,8 @@ func (b *BuildCmd) Run() error {
 
 	// Build non-default languages into subdirectories
 	for _, lang := range detectedLangs {
+		langPipe := lp.ByLang[lang]
+
 		langStats, langErr := b.walkAndBuildLang(contentRoot, pipeline.Registry, pipeline.EnricherRegistry, pipeline.TemplateRenderer, &cfg.Site, bundle, languageInfos, lang)
 		if langErr != nil {
 			slog.Warn("Failed to build language", slog.String("lang", lang), slog.Any("error", langErr))
@@ -192,8 +186,22 @@ func (b *BuildCmd) Run() error {
 			slog.Warn("Failed to write 404 page for language", slog.String("lang", lang), slog.Any("error", langWriteErr))
 		}
 
-		// TODO: Generate per-language sitemap.xml and feed.xml once per-language
-		// metadata indexes are available in the build pipeline.
+		// Generate per-language sitemap and feed
+		if langPipe != nil && langPipe.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
+			langSitemapData, sErr := server.GenerateSitemap(context.Background(), langPipe.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, langPipe.Provider, langPipe.Resolver)
+			if sErr != nil {
+				slog.Warn("Failed to generate sitemap for language", slog.String("lang", lang), slog.Any("error", sErr))
+			} else if wErr := b.writeOutputFile(path.Join(lang, "sitemap.xml"), langSitemapData); wErr != nil {
+				slog.Warn("Failed to write sitemap for language", slog.String("lang", lang), slog.Any("error", wErr))
+			}
+
+			langFeedData, fErr := server.GenerateFeed(context.Background(), langPipe.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, langPipe.Provider, cfg.Site.Meta.Title, langPipe.Resolver)
+			if fErr != nil {
+				slog.Warn("Failed to generate feed for language", slog.String("lang", lang), slog.Any("error", fErr))
+			} else if wErr := b.writeOutputFile(path.Join(lang, "feed.xml"), langFeedData); wErr != nil {
+				slog.Warn("Failed to write feed for language", slog.String("lang", lang), slog.Any("error", wErr))
+			}
+		}
 	}
 
 	// Generate sitemap-index.xml when multiple languages exist

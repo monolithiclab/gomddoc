@@ -44,10 +44,11 @@ graph TD
 
 ```go
 type Provider interface {
-    ReadFile(ctx context.Context, path string) (content []byte, mimeType string, error)
+    ReadFile(ctx context.Context, path string) (content []byte, mimeType string, err error)
     Stat(ctx context.Context, path string) (fs.FileInfo, error)
     DefaultIndex() string
-    Close() error
+    RootFS(ctx context.Context) (fs.FS, error)
+    io.Closer
 }
 ```
 
@@ -68,9 +69,9 @@ The `internal/resolve` package provides the `PathResolver` component that sits b
 - **Build mode**: Generates directory-based URLs (`guide/index.html`) for static host compatibility
 
 ```go
-type PathResolver interface {
-    ResolvePath(ctx context.Context, requestPath string) (*ResolveResult, error)
-    BuildOutputPath(sourcePath string) string
+type PathResolver struct {
+    toReal  map[string]string // extensionless -> real file path
+    toClean map[string]string // real file path -> extensionless
 }
 
 type ResolveResult struct {
@@ -167,9 +168,12 @@ type Enricher interface {
 
 type EnrichmentData struct {
     Metadata    map[string]any
+    Features    map[string]bool // Page-level feature overrides from frontmatter
     TOC         *TOCNode
     Navigation  *NavTree
     RelatedDocs []RelatedDoc
+    PrevPage    *PageLink       // Previous page in navigation order
+    NextPage    *PageLink       // Next page in navigation order
 }
 ```
 
@@ -251,7 +255,7 @@ type NavNode struct {
 ```
 
 The navigation generator walks `Provider.RootFS()` to build a tree of all `.md` files, extracting titles from
-`# heading` lines (skipping YAML frontmatter). Directories are sorted first, then files alphabetically.
+`# heading` lines (skipping YAML frontmatter). All entries (directories and files) are sorted alphabetically and interleaved.
 The default index file (e.g., `README.md`) is excluded from the tree. Empty directories are pruned.
 
 Navigation data flows through the enricher pipeline: the `MarkdownEnricher` calls a `NavBuilder` function
@@ -379,8 +383,9 @@ Middleware is applied in two layers using `RouteGroup` for structured route regi
 
 4. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception)
 5. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
-6. **BlockHiddenPaths** — Returns 404 for dot-prefixed path segments (except `.well-known` per RFC 8615). Uses `provider.IsHiddenPath()` — the same check applied by MCP tools to ensure consistent path restrictions across all entry points.
-7. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
+6. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsHiddenPath()` — the same check applied by MCP tools to ensure consistent path restrictions across all entry points.
+7. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/docs/guide.md` → `/docs/guide`) via 301.
+8. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
 
 **Route groups:**
 
@@ -392,7 +397,7 @@ Middleware is applied in two layers using `RouteGroup` for structured route regi
 | auth → api | `/api` | _(inherits auth)_ | `/tags`, `/tags/{tag}`, `/search` |
 | auth → mcp | `/_mcp` | _(inherits auth)_ | MCP Streamable HTTP endpoint |
 | auth → debug | `/debug/pprof` | _(inherits auth)_ | `/`, `/cmdline`, `/profile`, `/symbol`, `/trace` |
-| auth → content | | Compression, MethodFilter, BlockHiddenPaths, Metrics | `/` (catch-all) |
+| auth → content | | Compression, MethodFilter, ContentExclusion, ExtensionRedirect, Metrics | `/` (catch-all) |
 
 ### 13. Theme System
 
@@ -459,6 +464,50 @@ dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output
 3. **`<gmd-heading-anchor>`** — Shadow DOM. Renders heading anchor links (`#`) revealed on hover. Controlled by `heading_anchors` feature toggle.
 
 **Convention:** All custom elements use the `gmd-` prefix. Themes override behavior by providing their own `.mjs` file in theme assets.
+
+### 15. Internationalization and Localization
+
+**Responsibility:** UI string translation (l10n) and multi-language content serving (i18n)
+
+**Locale Bundle** (`internal/locale/`):
+
+Three-layer YAML locale file loading: built-in (`cmd/gomddoc/assets/locales/`) → theme (`locales/`) → site (`.gomddoc/locales/`). Each file is named by BCP 47 code (e.g., `en-US.yml`, `fr-FR.yml`). The bundle provides `T(lang, key)` for string lookup with fallback chain: requested language → default language → raw key.
+
+Templates call `{{ .T "key" }}` which delegates to the bound `tFunc`. JavaScript strings are passed via `data-` attributes on `<html>` (e.g., `data-search-placeholder`, `data-copy-label`).
+
+**Multi-Language Content:**
+
+Each non-default language lives under a BCP 47 directory at the content root (e.g., `fr-FR/`). The default language is served at `/`, others at `/{lang}/`. Each language gets its own pipeline instance:
+
+| Component | Per-Language Instance |
+|-----------|----------------------|
+| `Provider` | `SubdirProvider` scoped to `{lang}/` subtree |
+| `metadata.Index` | Independent frontmatter index |
+| `search.Index` | Independent full-text index |
+| Navigation | Independent nav tree |
+
+**Language Detection:**
+
+- **Serve mode**: URL prefix matching via `RouteGroup.Subgroup("/{lang}", ...)` with prefix stripping
+- **Build mode**: File path prefix detection via `locale.ExtractLangFromPath()`
+- **API endpoints**: `?lang=` query param > `Accept-Language` header > config default
+
+**Multi-Language Routes** (added to route table):
+
+| Group | Prefix | Middleware | Routes |
+|-------|--------|-----------|--------|
+| auth → lang content | `/{lang}` | Compression, MethodFilter, ContentExclusion, ExtensionRedirect, Metrics | `/{lang}/` (catch-all per language) |
+
+Per-language `/{lang}/sitemap.xml` and `/{lang}/feed.xml` routes are also registered.
+
+**Build Output:**
+
+`gomddoc build` detects language directories at the content root and runs `walkAndBuildToDir` per language with an `outputPrefix` of `{lang}/`. Generates a `sitemap-index.xml` referencing per-language sitemaps when multiple languages are present.
+
+**Theme Support:**
+
+- `hreflang.html.tmpl` — Renders `<link rel="alternate" hreflang="...">` tags
+- `lang-switcher.html.tmpl` — Language picker showing active language as text, others as links
 
 ## Data Flow
 
@@ -630,11 +679,11 @@ Environment variables are applied via reflection-based walking of the struct tre
 
 ## Testing
 
-### Coverage (as of 2026-03-23)
+### Coverage (as of 2026-04-08)
 
-Overall statement coverage: **80.2%**
+Overall statement coverage: **87.1%**
 
-*Note: Overall coverage includes `cmd/gomddoc` which tests via external binary execution (integration tests
+*Note: `cmd/gomddoc` is at 70.5% because some paths test via external binary execution (integration tests
 that don't count toward Go's coverage instrumentation). Internal packages average ~90%+ coverage.*
 
 ### Test Strategy

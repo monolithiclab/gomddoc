@@ -89,14 +89,3 @@ func TestExtractLangFromPath(t *testing.T) {
 		})
 	}
 }
-
-func TestToBCP47(t *testing.T) {
-	t.Parallel()
-
-	if got := ToBCP47("fr-FR"); got != "fr-FR" {
-		t.Errorf("got %q, want %q", got, "fr-FR")
-	}
-	if got := ToBCP47("en-US"); got != "en-US" {
-		t.Errorf("got %q, want %q", got, "en-US")
-	}
-}

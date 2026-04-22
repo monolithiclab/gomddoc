@@ -55,9 +55,6 @@ type LanguagePipeline struct {
 	Languages []string             // all non-default language codes
 }
 
-// TODO: wire setupLanguagePipelines into setupServer (Task 10).
-var _ = setupLanguagePipelines
-
 // setupLanguagePipelines builds the default pipeline and per-language pipelines
 // for each BCP 47 directory found in the content root. It also loads the locale
 // bundle from embedded assets and merges site-level overrides from .gomddoc/locales/.
@@ -294,7 +291,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		return nil, err
 	}
 
-	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
+	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{
 		EnableCache:      !cfg.Server.DevMode,
 		EnableNavigation: true,
 		EnableMetadata:   true,
@@ -304,6 +301,8 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		_ = prov.Close()
 		return nil, err
 	}
+
+	pipeline := lp.Default
 
 	mcpServer := mcp.NewServer(mcp.ServerDeps{
 		Provider:        prov,
@@ -315,6 +314,16 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		SiteName:        cfg.Site.Meta.Title,
 		Version:         version,
 	})
+
+	// Build per-language pipeline configs for the server.
+	langPipelineConfigs := make(map[string]server.LangPipelineConfig, len(lp.ByLang))
+	for lang, langPipe := range lp.ByLang {
+		langPipelineConfigs[lang] = server.LangPipelineConfig{
+			SearchIndex: langPipe.SearchIndex,
+			MetaIndex:   langPipe.MetaIndex,
+			Provider:    langPipe.Provider,
+		}
+	}
 
 	serverConfig := server.HTTPServerConfig{
 		Config:           cfg,
@@ -330,6 +339,10 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		StaticFS:         pipeline.StaticFS,
 		AuthStore:        opts.AuthStore,
 		MCPHandler:       mcpServer.HTTPHandler(),
+		LangPipelines:    langPipelineConfigs,
+		DefaultLang:      cfg.Site.Language,
+		LocaleBundle:     lp.Bundle,
+		AllLanguages:     lp.Languages,
 	}
 
 	httpServer := server.NewHTTPServer(serverConfig)

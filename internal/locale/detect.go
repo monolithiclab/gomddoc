@@ -57,8 +57,3 @@ func ExtractLangFromPath(urlPath string) (lang, rest string) {
 	}
 	return "", urlPath
 }
-
-// ToBCP47 returns the string as-is (already BCP 47 format with dash).
-func ToBCP47(lang string) string {
-	return lang
-}

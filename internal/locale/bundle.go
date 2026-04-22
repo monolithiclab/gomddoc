@@ -1,10 +1,12 @@
 package locale
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
 	"path"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -37,12 +39,13 @@ func (b *Bundle) DefaultLang() string {
 	return b.defaultLang
 }
 
-// Languages returns all loaded language codes.
+// Languages returns all loaded language codes in sorted order.
 func (b *Bundle) Languages() []string {
 	langs := make([]string, 0, len(b.strings))
 	for lang := range b.strings {
 		langs = append(langs, lang)
 	}
+	slices.Sort(langs)
 	return langs
 }
 
@@ -80,7 +83,10 @@ func (b *Bundle) MergeFrom(fsys fs.FS, dir string) error {
 func (b *Bundle) loadFrom(fsys fs.FS, dir string) error {
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
-		return nil // directory doesn't exist — not an error
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil // directory doesn't exist — not an error
+		}
+		return fmt.Errorf("read locale dir %s: %w", dir, err)
 	}
 
 	for _, entry := range entries {
