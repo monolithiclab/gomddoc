@@ -24,6 +24,6 @@ var headingWithIDPattern = regexp.MustCompile(
 // are left unchanged.
 func addHeadingAnchors(html []byte) []byte {
 	return headingWithIDPattern.ReplaceAll(html, []byte(
-		`${1}${4} <a href="#${3}" class="heading-anchor" aria-hidden="true">#</a>${5}`,
+		`${1}${4} <a href="#${3}" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a>${5}`,
 	))
 }
