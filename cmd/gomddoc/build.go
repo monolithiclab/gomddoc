@@ -319,13 +319,14 @@ func (b *BuildCmd) buildFile(
 	templateCtx := &tmpl.TemplateContext{
 		Site: siteConfig,
 		Page: tmpl.PageContext{
-			Content:  template.HTML(renderResult.Content), // #nosec G203
-			Path:     "/" + filePath,
-			Meta:     metadata,
-			Features: config.MergeFeatures(siteConfig.Theme.Features, enrichment.Features),
-			TOC:      enrichment.TOC,
-			PrevPage: enrichment.PrevPage,
-			NextPage: enrichment.NextPage,
+			Content:    template.HTML(renderResult.Content), // #nosec G203
+			Path:       "/" + filePath,
+			Meta:       metadata,
+			Features:   config.MergeFeatures(siteConfig.Theme.Features, enrichment.Features),
+			TOC:        enrichment.TOC,
+			Navigation: enrichment.Navigation,
+			PrevPage:   enrichment.PrevPage,
+			NextPage:   enrichment.NextPage,
 		},
 	}
 
