@@ -70,17 +70,17 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 		)
 	}
 
-	var providerOpts []provider.GitProviderOption
+	var gitCfg provider.GitProviderConfig
 	if cfg.Server.GitSSHKey != "" {
-		providerOpts = append(providerOpts, provider.WithSSHKeyFile(cfg.Server.GitSSHKey))
+		gitCfg.SSHKeyFile = cfg.Server.GitSSHKey
 	}
 	if s.GitStorageDir != "" {
 		h := sha256.Sum256([]byte(s.Dir))
 		subdir := filepath.Join(s.GitStorageDir, hex.EncodeToString(h[:8]))
-		providerOpts = append(providerOpts, provider.WithStorageFactory(provider.DiskStorageFactory(subdir)))
+		gitCfg.StorageFactory = provider.DiskStorageFactory(subdir)
 	}
 
-	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, providerOpts...)
+	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, gitCfg)
 	if err != nil {
 		return nil, err
 	}

@@ -55,39 +55,13 @@ func DiskStorageFactory(dir string) StorageFactory {
 	}
 }
 
-// GitProviderOption configures optional GitProvider settings.
-type GitProviderOption func(*GitProvider)
-
-// WithStorageFactory sets a custom storage factory.
-// Default is MemoryStorageFactory() for in-memory ephemeral storage.
-func WithStorageFactory(factory StorageFactory) GitProviderOption {
-	return func(g *GitProvider) {
-		g.storageFactory = factory
-	}
-}
-
-// WithCloneTimeout sets the timeout for clone operations.
-// Default is 60 seconds.
-func WithCloneTimeout(timeout time.Duration) GitProviderOption {
-	return func(g *GitProvider) {
-		g.cloneTimeout = timeout
-	}
-}
-
-// WithMaxFileSize sets the maximum file size to serve.
-// Default is 50 MB.
-func WithMaxFileSize(size int64) GitProviderOption {
-	return func(g *GitProvider) {
-		g.maxFileSize = size
-	}
-}
-
-// WithSSHKeyFile sets the path to the SSH private key file.
-// If provided, this key will be prioritized over the SSH agent and default keys.
-func WithSSHKeyFile(path string) GitProviderOption {
-	return func(g *GitProvider) {
-		g.sshKeyFile = path
-	}
+// GitProviderConfig holds optional configuration for GitProvider.
+// Zero values use defaults: memory storage, 60s clone timeout, 50MB max file size.
+type GitProviderConfig struct {
+	StorageFactory StorageFactory // Custom storage backend (default: memory)
+	CloneTimeout   time.Duration  // Clone operation timeout (default: 60s)
+	MaxFileSize    int64          // Maximum file size to serve (default: 50MB)
+	SSHKeyFile     string         // Path to SSH private key file
 }
 
 // GitProvider implements Provider for remote Git repositories.
@@ -128,14 +102,9 @@ type GitProvider struct {
 // The provider clones lazily on first ReadFile/Stat call, not at construction.
 // This allows fast startup and proper error reporting with HTTP context.
 //
-// Options:
-//   - WithStorageFactory: Custom storage backend (default: memory)
-//   - WithCloneTimeout: Clone operation timeout (default: 60s)
-//   - WithMaxFileSize: Maximum file size to serve (default: 50MB)
-//
 // Errors:
 //   - ErrInvalidGitURL: URL is malformed or uses unsupported scheme
-func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, opts ...GitProviderOption) (*GitProvider, error) {
+func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, cfg GitProviderConfig) (*GitProvider, error) {
 	if defaultIndex == "" {
 		return nil, fmt.Errorf("defaultIndex must not be empty")
 	}
@@ -155,8 +124,17 @@ func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, opts ...GitProvi
 		auth:           nil, // Authentication set up in ensureCloned
 	}
 
-	for _, opt := range opts {
-		opt(g)
+	if cfg.StorageFactory != nil {
+		g.storageFactory = cfg.StorageFactory
+	}
+	if cfg.CloneTimeout > 0 {
+		g.cloneTimeout = cfg.CloneTimeout
+	}
+	if cfg.MaxFileSize > 0 {
+		g.maxFileSize = cfg.MaxFileSize
+	}
+	if cfg.SSHKeyFile != "" {
+		g.sshKeyFile = cfg.SSHKeyFile
 	}
 
 	return g, nil

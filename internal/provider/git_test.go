@@ -158,7 +158,7 @@ func TestNewGitProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, err := NewGitProvider(tt.gitURL, tt.defaultIndex, tt.dirIndex)
+			p, err := NewGitProvider(tt.gitURL, tt.defaultIndex, tt.dirIndex, GitProviderConfig{})
 
 			if tt.wantErr {
 				if err == nil {
@@ -190,13 +190,13 @@ func TestNewGitProvider(t *testing.T) {
 func TestGitProviderOptions(t *testing.T) {
 	t.Parallel()
 
-	t.Run("WithCloneTimeout", func(t *testing.T) {
+	t.Run("CloneTimeout", func(t *testing.T) {
 		t.Parallel()
 		p, err := NewGitProvider(
 			"git+https://github.com/user/repo",
 			"README.md",
 			false,
-			WithCloneTimeout(30*time.Second),
+			GitProviderConfig{CloneTimeout: 30 * time.Second},
 		)
 		if err != nil {
 			t.Fatalf("NewGitProvider() error = %v", err)
@@ -206,13 +206,13 @@ func TestGitProviderOptions(t *testing.T) {
 		}
 	})
 
-	t.Run("WithMaxFileSize", func(t *testing.T) {
+	t.Run("MaxFileSize", func(t *testing.T) {
 		t.Parallel()
 		p, err := NewGitProvider(
 			"git+https://github.com/user/repo",
 			"README.md",
 			false,
-			WithMaxFileSize(100*1024*1024),
+			GitProviderConfig{MaxFileSize: 100 * 1024 * 1024},
 		)
 		if err != nil {
 			t.Fatalf("NewGitProvider() error = %v", err)
@@ -222,14 +222,13 @@ func TestGitProviderOptions(t *testing.T) {
 		}
 	})
 
-	t.Run("WithStorageFactory", func(t *testing.T) {
+	t.Run("StorageFactory", func(t *testing.T) {
 		t.Parallel()
-		// Just ensure the option is applied without error
 		p, err := NewGitProvider(
 			"git+https://github.com/user/repo",
 			"README.md",
 			false,
-			WithStorageFactory(MemoryStorageFactory()),
+			GitProviderConfig{StorageFactory: MemoryStorageFactory()},
 		)
 		if err != nil {
 			t.Fatalf("NewGitProvider() error = %v", err)
@@ -688,7 +687,7 @@ func TestClassifyCloneError(t *testing.T) {
 func TestGitProvider_Close(t *testing.T) {
 	t.Parallel()
 
-	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false)
+	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, GitProviderConfig{})
 	if err != nil {
 		t.Fatalf("NewGitProvider() error = %v", err)
 	}
@@ -986,14 +985,14 @@ var _ = plumbing.HEAD
 // Ensure we import fs for interface checks
 var _ fs.FileInfo = (*gitFileInfo)(nil)
 
-func TestGitProviderOptions_WithSSHKeyFile(t *testing.T) {
+func TestGitProviderOptions_SSHKeyFile(t *testing.T) {
 	t.Parallel()
 
 	p, err := NewGitProvider(
 		"git+https://github.com/user/repo",
 		"README.md",
 		false,
-		WithSSHKeyFile("/path/to/key"),
+		GitProviderConfig{SSHKeyFile: "/path/to/key"},
 	)
 	if err != nil {
 		t.Fatalf("NewGitProvider() error = %v", err)
@@ -1046,7 +1045,7 @@ func TestGitProvider_RootFS_Mocked(t *testing.T) {
 func TestGitProvider_EnsureCloned_AlreadyClosed(t *testing.T) {
 	t.Parallel()
 
-	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false)
+	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, GitProviderConfig{})
 	if err != nil {
 		t.Fatalf("NewGitProvider() error = %v", err)
 	}
