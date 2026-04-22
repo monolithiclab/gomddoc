@@ -244,6 +244,16 @@ func (sc *SiteConfig) Validate() error {
 		slog.Warn("Empty theme name, using default")
 	}
 
+	if sc.EditURL != "" {
+		u, err := url.Parse(sc.EditURL)
+		if err != nil {
+			return fmt.Errorf("invalid edit_url: %w", err)
+		}
+		if u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https" {
+			return fmt.Errorf("edit_url must use http or https scheme, got %q", u.Scheme)
+		}
+	}
+
 	if sc.Meta.Domain != "" {
 		if strings.Contains(sc.Meta.Domain, "://") {
 			return fmt.Errorf("domain should not include protocol: %s", sc.Meta.Domain)

@@ -962,6 +962,41 @@ func TestSiteConfig_Validate(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "valid editURL with https",
+			setup: func(sc *SiteConfig) {
+				sc.EditURL = "https://github.com/org/repo/edit/main"
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid editURL relative path",
+			setup: func(sc *SiteConfig) {
+				sc.EditURL = "/edit"
+			},
+			wantErr: false,
+		},
+		{
+			name: "editURL with javascript scheme rejected",
+			setup: func(sc *SiteConfig) {
+				sc.EditURL = "javascript:alert(1)"
+			},
+			wantErr: true,
+		},
+		{
+			name: "editURL with data scheme rejected",
+			setup: func(sc *SiteConfig) {
+				sc.EditURL = "data:text/html,<script>alert(1)</script>"
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty editURL valid",
+			setup: func(sc *SiteConfig) {
+				sc.EditURL = ""
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
