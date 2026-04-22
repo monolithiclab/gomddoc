@@ -123,8 +123,8 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 	return &serveSetupResult{
 		httpServer: httpServer,
 		cleanup: func() {
-			if err := prov.Close(); err != nil {
-				slog.Error("Failed to close provider", slog.Any("error", err))
+			if closeErr := prov.Close(); closeErr != nil {
+				slog.Error("Failed to close provider", slog.Any("error", closeErr))
 			}
 		},
 	}, nil
