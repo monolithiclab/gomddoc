@@ -20,6 +20,16 @@ import (
 // when no index file exists. Returns "" if no page is found.
 type RedirectFinder func(dirPath string) string
 
+// HandlerConfig holds the dependencies for creating an HTTP content handler.
+type HandlerConfig struct {
+	Provider         provider.Provider
+	Registry         renderer.RendererRegistry
+	EnricherRegistry enricher.EnricherRegistry
+	TemplateRenderer tmpl.Renderer
+	SiteConfig       *config.SiteConfig
+	RedirectFinder   RedirectFinder
+}
+
 // Handler holds dependencies for HTTP request handling
 type Handler struct {
 	provider         provider.Provider
@@ -31,21 +41,14 @@ type Handler struct {
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
-func NewHandler(
-	provider provider.Provider,
-	registry renderer.RendererRegistry,
-	enricherRegistry enricher.EnricherRegistry,
-	templateRenderer tmpl.Renderer,
-	siteConfig *config.SiteConfig,
-	redirectFinder RedirectFinder,
-) *Handler {
+func NewHandler(cfg HandlerConfig) *Handler {
 	return &Handler{
-		provider:         provider,
-		registry:         registry,
-		enricherRegistry: enricherRegistry,
-		templateRenderer: templateRenderer,
-		siteConfig:       siteConfig,
-		redirectFinder:   redirectFinder,
+		provider:         cfg.Provider,
+		registry:         cfg.Registry,
+		enricherRegistry: cfg.EnricherRegistry,
+		templateRenderer: cfg.TemplateRenderer,
+		siteConfig:       cfg.SiteConfig,
+		redirectFinder:   cfg.RedirectFinder,
 	}
 }
 

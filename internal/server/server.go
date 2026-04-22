@@ -105,7 +105,14 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		debug.HandleFunc("GET /trace", pprof.Trace)
 	}
 
-	handler := NewHandler(opts.Provider, opts.Registry, opts.EnricherRegistry, opts.TemplateRenderer, &cfg.Site, opts.RedirectFinder)
+	handler := NewHandler(HandlerConfig{
+		Provider:         opts.Provider,
+		Registry:         opts.Registry,
+		EnricherRegistry: opts.EnricherRegistry,
+		TemplateRenderer: opts.TemplateRenderer,
+		SiteConfig:       &cfg.Site,
+		RedirectFinder:   opts.RedirectFinder,
+	})
 
 	// Content handler with content-specific middleware (outermost first)
 	content := auth.Subgroup("",

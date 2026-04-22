@@ -35,7 +35,13 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+	})
 
 	tests := []struct {
 		name           string
@@ -161,7 +167,13 @@ func TestHandlerErrorResponses(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+	})
 
 	req := httptest.NewRequest("GET", "/nonexistent/deeply/nested/file.md", nil)
 	w := httptest.NewRecorder()
@@ -192,7 +204,13 @@ func TestHandlerCacheHeaders(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+	})
 
 	req := httptest.NewRequest("GET", "/test.md", nil)
 	w := httptest.NewRecorder()
@@ -218,7 +236,13 @@ func TestHandler304IncludesContentType(t *testing.T) {
 
 	siteConfig := config.NewSiteConfig(".")
 	prov := newMemoryProvider(files, "README.md", false)
-	handler := NewHandler(prov, setupTestRegistry(), setupTestEnricherRegistry(), setupTestRenderer(), &siteConfig, nil)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		SiteConfig:       &siteConfig,
+	})
 
 	tests := []struct {
 		name     string
@@ -274,7 +298,13 @@ func TestHandlerForbiddenDirectory(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false) // dirIndex=false
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+	})
 
 	req := httptest.NewRequest("GET", "/testdir", nil)
 	w := httptest.NewRecorder()
@@ -303,7 +333,14 @@ func TestHandlerDirectoryRedirect(t *testing.T) {
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
 	redirectFinder := redirectFinderFromFS(files, "README.md")
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, redirectFinder)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+		RedirectFinder:   redirectFinder,
+	})
 
 	req := httptest.NewRequest("GET", "/docs", nil)
 	w := httptest.NewRecorder()
@@ -378,7 +415,13 @@ func TestHandlerLayoutSelection(t *testing.T) {
 			}
 
 			prov := newMemoryProvider(files, "README.md", false)
-			handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
+			handler := NewHandler(HandlerConfig{
+				Provider:         prov,
+				Registry:         registry,
+				EnricherRegistry: setupTestEnricherRegistry(),
+				TemplateRenderer: rend,
+				SiteConfig:       &siteConfig,
+			})
 
 			req := httptest.NewRequest("GET", "/test.md", nil)
 			w := httptest.NewRecorder()
@@ -412,7 +455,14 @@ func TestHandlerDirectoryRedirect_EmptyDir(t *testing.T) {
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
 	redirectFinder := redirectFinderFromFS(files, "README.md")
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, redirectFinder)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         registry,
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+		RedirectFinder:   redirectFinder,
+	})
 
 	req := httptest.NewRequest("GET", "/empty", nil)
 	w := httptest.NewRecorder()
