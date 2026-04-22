@@ -28,11 +28,6 @@ func TestStripFrontmatter(t *testing.T) {
 			want:  "# Hello\n\nContent",
 		},
 		{
-			name:  "with BOM and frontmatter",
-			input: "\xef\xbb\xbf---\ntitle: Test\n---\nBody",
-			want:  "Body",
-		},
-		{
 			name:  "unclosed frontmatter",
 			input: "---\ntitle: Test\nNo closing",
 			want:  "---\ntitle: Test\nNo closing",

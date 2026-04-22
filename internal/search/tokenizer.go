@@ -10,8 +10,7 @@ import (
 // stripFrontmatter removes YAML frontmatter delimited by --- from markdown content,
 // returning only the body. If no frontmatter is found, the original content is returned.
 func stripFrontmatter(content []byte) []byte {
-	trimmed := bytes.TrimLeft(content, "\xef\xbb\xbf") // strip BOM
-	trimmed = bytes.TrimLeftFunc(trimmed, func(r rune) bool { return r == ' ' || r == '\t' })
+	trimmed := bytes.TrimLeftFunc(content, func(r rune) bool { return r == ' ' || r == '\t' })
 
 	delimiter := []byte("---")
 	if !bytes.HasPrefix(trimmed, delimiter) {
