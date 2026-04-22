@@ -179,6 +179,22 @@ func TestValidate_Directory(t *testing.T) {
 			dir:       "/nonexistent/path/that/does/not/exist",
 			wantError: true,
 		},
+		// Git URLs skip filesystem validation
+		{
+			name:      "git protocol URL skips validation",
+			dir:       "git://github.com/user/repo",
+			wantError: false,
+		},
+		{
+			name:      "git+ssh URL skips validation",
+			dir:       "git+ssh://git@github.com/org/docs#main",
+			wantError: false,
+		},
+		{
+			name:      "git+https URL skips validation",
+			dir:       "git+https://github.com/user/docs#develop:docs",
+			wantError: false,
+		},
 	}
 
 	for _, tt := range tests {

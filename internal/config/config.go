@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -103,13 +104,17 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("port must be between 1 and 65535, got: %s", portStr)
 	}
 
-	// Validate directory exists and is accessible
-	info, err := os.Stat(c.Dir)
-	if err != nil {
-		return fmt.Errorf("directory validation failed: %w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("path is not a directory: %s", c.Dir)
+	// Skip filesystem validation for Git URLs
+	// Git URL validation happens at provider construction time
+	if !isGitURL(c.Dir) {
+		// Validate directory exists and is accessible
+		info, err := os.Stat(c.Dir)
+		if err != nil {
+			return fmt.Errorf("directory validation failed: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("path is not a directory: %s", c.Dir)
+		}
 	}
 
 	// Validate shutdown timeout (negative is invalid, warn if too long)
@@ -181,4 +186,13 @@ func (c *Config) Validate() error {
 // This converts MaxHeaderMB (megabytes) to bytes for use with http.Server.
 func (c *Config) MaxHeaderBytes() int {
 	return c.MaxHeaderMB << 20
+}
+
+// isGitURL checks if a string is a Git URL.
+// Returns true for URLs starting with git://, git+ssh://, or git+https://.
+// This is a local copy to avoid circular imports with the provider package.
+func isGitURL(s string) bool {
+	return strings.HasPrefix(s, "git://") ||
+		strings.HasPrefix(s, "git+ssh://") ||
+		strings.HasPrefix(s, "git+https://")
 }
