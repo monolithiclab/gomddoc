@@ -24,7 +24,14 @@ func DetectMIME(path string) string {
 
 // NormalizeMimeType strips parameters from MIME types.
 // Example: "text/html; charset=utf-8" -> "text/html"
+//
+// Fast-path: if the input contains no semicolon, it is already
+// parameter-free and returned without calling mime.ParseMediaType
+// (which allocates a map[string]string for parameters).
 func NormalizeMimeType(mimeType string) string {
+	if !strings.Contains(mimeType, ";") {
+		return strings.TrimSpace(mimeType)
+	}
 	mediaType, _, err := mime.ParseMediaType(mimeType)
 	if err != nil || mediaType == "" {
 		return strings.TrimSpace(mimeType)

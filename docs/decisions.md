@@ -232,6 +232,28 @@ Extracted from completed spec files before deletion.
 - **robots.txt handler**: Always registered (useful even without domain). `Sitemap:` directive only included when domain is set.
 - **Build integration**: `robots.txt` always generated. `sitemap.xml` only generated when `Meta.Domain` is configured. Uses same `GenerateSitemap`/`GenerateRobotsTxt` functions as serve handlers.
 
+## Allocation Reduction (Phase 4)
+
+**Goal**: Minimize heap allocations on the request hot path, targeting zero-alloc for ETag checks and content negotiation.
+
+**Key decisions**:
+- **Inline FNV-64a**: Replaced `hash/fnv` package with 3-line inline computation in `generateETag()`. Eliminates `hash.Hash` interface allocation. Combined with `strconv.AppendUint` into a `[20]byte` stack buffer (replacing `fmt.Sprintf`), reduces from 2+ to 1 allocation (the returned string).
+- **Hand-rolled Accept parser**: Replaced `mime.ParseMediaType()` in `ParseAccept()` with manual semicolon/slash scanning. `mime.ParseMediaType` allocates a `map[string]string` for parameters on every call — unnecessary for Accept headers where only `q=` matters. New parser uses `strings.IndexByte` for type/subtype splitting (zero-alloc) and `strings.SplitSeq` iterator for parameters.
+- **`strings.IndexByte` over `strings.Split`**: Throughout `Matches()`, `inputMatchScore()`, `outputMatchScore()`. `strings.Split` allocates a `[]string` slice; `IndexByte` returns an index for substring slicing (zero-alloc).
+- **Stack-allocated candidate array**: `Registry.Get()` uses `var candidateBuf [8]candidate` instead of `var candidates []candidate`. For typical registries (≤8 renderers), avoids heap allocation entirely.
+- **`NormalizeMimeType` fast-path**: Skip `mime.ParseMediaType` when input has no semicolon (common case for pre-normalized MIME types from `Provider.ReadFile`).
+- **Compression buffer pool**: `sync.Pool` for `compressionWriter.buf` byte slices. Acquired on request start, returned in `Close()`. Avoids per-request 4KB buffer allocation.
+
+**Results** (allocs/op):
+| Path | Before | After |
+|------|--------|-------|
+| `generateETag` | 2+ | 1 |
+| `checkETag` | 0 | 0 |
+| `ParseAccept` (single) | 5+ | 2 |
+| `ParseAccept` (browser) | 12+ | 4 |
+| `Matches` | 1 | 0 |
+| `Registry.Get` | 5-12 | 0 |
+
 ## Full-Text Search (Decision Pending)
 
 **Options analyzed** (not yet implemented):

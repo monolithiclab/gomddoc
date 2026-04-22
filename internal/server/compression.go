@@ -19,6 +19,15 @@ var gzipWriterPool = sync.Pool{
 	},
 }
 
+// bufPool reuses byte buffers for compression buffering, avoiding
+// per-request allocation of the compressionWriter.buf slice.
+var bufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 4096)
+		return &b
+	},
+}
+
 // compressedContentTypes lists MIME type prefixes that are already compressed
 // and should not be compressed again.
 var skipCompressionTypes = []string{
@@ -53,8 +62,11 @@ func Compression(next http.Handler) http.Handler {
 			return
 		}
 
+		bp := bufPool.Get().(*[]byte)
 		cw := &compressionWriter{
 			ResponseWriter: w,
+			buf:            (*bp)[:0],
+			bufPtr:         bp,
 		}
 		defer cw.Close()
 
@@ -104,6 +116,7 @@ func shouldSkipContentType(ct string) bool {
 type compressionWriter struct {
 	http.ResponseWriter
 	buf        []byte
+	bufPtr     *[]byte // pool pointer for returning the buffer
 	gzw        *gzip.Writer
 	statusCode int
 	decided    bool // whether we have committed to compress or not
@@ -182,8 +195,11 @@ func (cw *compressionWriter) writeDecided(b []byte) (int, error) {
 
 // Close finalizes the response. If data was buffered but never reached the
 // threshold, it is written uncompressed. If gzip was active, the gzip stream
-// is closed and the writer returned to the pool.
+// is closed and the writer returned to the pool. The buffer is always
+// returned to the pool.
 func (cw *compressionWriter) Close() {
+	defer cw.returnBuf()
+
 	// If we never decided (small response), flush raw
 	if !cw.decided && len(cw.buf) > 0 {
 		if cw.statusCode == 0 {
@@ -206,6 +222,16 @@ func (cw *compressionWriter) Close() {
 		_ = cw.gzw.Close()
 		gzipWriterPool.Put(cw.gzw)
 		cw.gzw = nil
+	}
+}
+
+// returnBuf returns the buffer to the pool for reuse.
+func (cw *compressionWriter) returnBuf() {
+	if cw.bufPtr != nil {
+		*cw.bufPtr = cw.buf[:0]
+		bufPool.Put(cw.bufPtr)
+		cw.bufPtr = nil
+		cw.buf = nil
 	}
 }
 

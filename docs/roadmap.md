@@ -25,14 +25,24 @@ of current capabilities, see `docs/architecture.md`.
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
 7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO).
 
+**Phase 4 note:** Benchmarks, pprof, and allocation reduction are complete. CI benchmark
+tracking is deferred until a CI pipeline is established. Partial clones are blocked by
+go-git library limitations.
+
 ## Phase 4: Performance and Scaling
 
 - [ ] **Partial clones**: `git clone --filter=blob:none` when upstream library support matures.
 - [ ] **CI benchmark tracking**: Run benchmarks in CI with `go test -bench -benchmem`. Use
       `benchstat` to detect regressions against the baseline. Fail CI on >10% degradation.
-- [ ] **Allocation reduction**: Profile and reduce allocations in the request hot path
-      (provider → enricher → renderer → template → compress → serve). Target zero-alloc for
-      ETag checks and content negotiation.
+      Deferred until CI pipeline is established. Makefile targets (`bench-save`, `bench-compare`)
+      support local regression detection.
+- [x] **Allocation reduction**: Profiled and reduced allocations in the request hot path.
+      ETag generation: inline FNV-64a + `strconv.AppendUint` (1 alloc, down from 2+).
+      ETag checking: zero allocs. Content negotiation: hand-rolled Accept parser replacing
+      `mime.ParseMediaType` (2-4 allocs, down from 5-12). `Matches()`: zero allocs.
+      Registry lookup: zero allocs (down from 5-12) via `strings.IndexByte` and stack-allocated
+      candidate arrays. Compression: `sync.Pool` for buffers. `NormalizeMimeType`: fast-path
+      for parameter-free MIME types.
 
 ## Phase 5: Search and Discovery
 

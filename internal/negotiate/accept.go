@@ -1,7 +1,6 @@
 package negotiate
 
 import (
-	"mime"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,37 +37,13 @@ func ParseAccept(acceptHeader string) []MediaType {
 		return []MediaType{{Type: "*", Subtype: "*", Q: 1.0}}
 	}
 
-	var types []MediaType
+	types := make([]MediaType, 0, 8)
 	for part := range strings.SplitSeq(acceptHeader, ",") {
-		mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
-		if err != nil {
-			continue // Skip invalid entries
-		}
-
-		// Parse quality factor
-		q := 1.0
-		if qStr, ok := params["q"]; ok {
-			if parsed, err := strconv.ParseFloat(qStr, 64); err == nil {
-				q = parsed
-			}
-		}
-
-		// Split into type and subtype
-		parts := strings.Split(mediaType, "/")
-		if len(parts) != 2 {
-			continue // Invalid MIME type format
-		}
-
-		// Per HTTP spec, q=0 means "not acceptable" — skip these entries
-		if q == 0 {
+		mt, ok := parseMediaEntry(strings.TrimSpace(part))
+		if !ok || mt.Q == 0 {
 			continue
 		}
-
-		types = append(types, MediaType{
-			Type:    parts[0],
-			Subtype: parts[1],
-			Q:       q,
-		})
+		types = append(types, mt)
 	}
 
 	// Stable sort preserves client preference order for equal q-values
@@ -77,6 +52,45 @@ func ParseAccept(acceptHeader string) []MediaType {
 	})
 
 	return types
+}
+
+// parseMediaEntry parses a single Accept entry like "text/html;q=0.9"
+// without allocating maps. Returns the parsed MediaType and whether
+// parsing succeeded.
+func parseMediaEntry(s string) (MediaType, bool) {
+	// Separate media type from parameters at first semicolon.
+	mediaType := s
+	q := 1.0
+	if before, after, ok := strings.Cut(s, ";"); ok {
+		mediaType = strings.TrimSpace(before)
+		q = parseQValue(after)
+	}
+
+	// Split type/subtype at slash.
+	slash := strings.IndexByte(mediaType, '/')
+	if slash <= 0 || slash >= len(mediaType)-1 {
+		return MediaType{}, false
+	}
+
+	return MediaType{
+		Type:    mediaType[:slash],
+		Subtype: mediaType[slash+1:],
+		Q:       q,
+	}, true
+}
+
+// parseQValue extracts the q= quality factor from a semicolon-separated
+// parameter string. Returns 1.0 if no q parameter is found.
+func parseQValue(params string) float64 {
+	for param := range strings.SplitSeq(params, ";") {
+		p := strings.TrimSpace(param)
+		if len(p) >= 3 && (p[0] == 'q' || p[0] == 'Q') && p[1] == '=' {
+			if v, err := strconv.ParseFloat(p[2:], 64); err == nil {
+				return v
+			}
+		}
+	}
+	return 1.0
 }
 
 // Matches checks if this MediaType matches the given MIME type.
@@ -88,8 +102,8 @@ func ParseAccept(acceptHeader string) []MediaType {
 //
 // The mimeType parameter should be normalized (no charset or other parameters).
 func (mt MediaType) Matches(mimeType string) bool {
-	parts := strings.Split(mimeType, "/")
-	if len(parts) != 2 {
+	before, after, ok := strings.Cut(mimeType, "/")
+	if !ok {
 		return false
 	}
 
@@ -99,7 +113,7 @@ func (mt MediaType) Matches(mimeType string) bool {
 	}
 
 	// Type must match
-	if mt.Type != parts[0] {
+	if mt.Type != before {
 		return false
 	}
 
@@ -109,5 +123,5 @@ func (mt MediaType) Matches(mimeType string) bool {
 	}
 
 	// Exact match required
-	return mt.Subtype == parts[1]
+	return mt.Subtype == after
 }

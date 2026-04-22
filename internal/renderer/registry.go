@@ -74,7 +74,9 @@ func (r *DefaultRegistry) Get(inputMimeType string, accepted []negotiate.MediaTy
 		entry      registryEntry
 		inputScore int // exact=3, type/*=2, */*=1
 	}
-	var candidates []candidate
+	// Stack-allocated array avoids heap allocation for typical registries (≤8 renderers).
+	var candidateBuf [8]candidate
+	candidates := candidateBuf[:0]
 	for _, entry := range r.entries {
 		score := inputMatchScore(entry.renderer.InputMimeTypes(), normalized)
 		if score > 0 {
@@ -153,14 +155,16 @@ func (r *DefaultRegistry) AvailableOutputTypes(inputMimeType string) []string {
 //	exact=3, type/*=2, */*=1
 func inputMatchScore(inputTypes []string, mimeType string) int {
 	best := 0
-	parts := strings.SplitN(mimeType, "/", 2)
+	slash := strings.IndexByte(mimeType, '/')
 	for _, it := range inputTypes {
 		switch {
 		case it == mimeType:
 			return 3 // Exact match — best possible
 		case it == "*/*" && best < 1:
 			best = 1
-		case len(parts) == 2 && it == parts[0]+"/*" && best < 2:
+		case slash > 0 && best < 2 && len(it) == slash+2 &&
+			it[slash] == '/' && it[slash+1] == '*' &&
+			it[:slash] == mimeType[:slash]:
 			best = 2
 		}
 	}
@@ -173,21 +177,21 @@ func inputMatchScore(inputTypes []string, mimeType string) int {
 //
 //	exact=3, type/*=2, */*=1
 func outputMatchScore(accepted negotiate.MediaType, outputType string) int {
-	parts := strings.SplitN(outputType, "/", 2)
-	if len(parts) != 2 {
+	slash := strings.IndexByte(outputType, '/')
+	if slash <= 0 {
 		return 0
 	}
 
 	if accepted.Type == "*" {
 		return 1
 	}
-	if accepted.Type != parts[0] {
+	if accepted.Type != outputType[:slash] {
 		return 0
 	}
 	if accepted.Subtype == "*" {
 		return 2
 	}
-	if accepted.Subtype == parts[1] {
+	if accepted.Subtype == outputType[slash+1:] {
 		return 3
 	}
 	return 0

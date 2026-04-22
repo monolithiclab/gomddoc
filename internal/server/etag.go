@@ -1,20 +1,31 @@
 package server
 
 import (
-	"fmt"
-	"hash/fnv"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
-// generateETag creates a weak ETag from content using FNV-64a hash.
+// generateETag creates a weak ETag from content using inline FNV-64a hash.
 // Returns a quoted hex string, e.g. W/"a1b2c3d4e5f6".
 // Uses weak validator (W/) since content may be served with different
 // transfer encodings (e.g., gzip compression).
+//
+// Inlines FNV-64a to avoid hash.Hash interface allocation. Uses a
+// stack-allocated buffer with strconv.AppendUint instead of fmt.Sprintf,
+// reducing heap allocations to one (the returned string).
 func generateETag(content []byte) string {
-	h := fnv.New64a()
-	h.Write(content) // #nosec G104 -- fnv hash.Write never returns an error
-	return fmt.Sprintf(`W/"%x"`, h.Sum64())
+	// FNV-64a: offset basis and prime per spec.
+	var hash uint64 = 14695981039346656037
+	for _, b := range content {
+		hash ^= uint64(b)
+		hash *= 1099511628211
+	}
+	// W/"<hex>" — max 20 bytes (W/" + 16 hex digits + closing quote).
+	var buf [20]byte
+	buf[0], buf[1], buf[2] = 'W', '/', '"'
+	hex := strconv.AppendUint(buf[:3], hash, 16)
+	return string(append(hex, '"'))
 }
 
 // checkETag checks whether the request's If-None-Match header matches
