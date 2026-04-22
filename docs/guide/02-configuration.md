@@ -6,74 +6,123 @@ author: "nicolasm"
 
 # Configuration
 
-gomddoc uses a tiered configuration system. This allows you to set defaults, override them with environment variables for deployment, and use CLI flags for immediate control.
+gomddoc uses a two-layer configuration system to separate **how the server runs** from **how the content looks**.
 
-**Priority (Highest to Lowest):**
-1.  **CLI Flags**
-2.  **Environment Variables**
-3.  **Config File** (`.gomddoc/config.yml`)
-4.  **Defaults**
+1.  **Runtime Configuration:** Controls the HTTP server process, networking, and core behavior. Configured via CLI flags or environment variables.
+2.  **Site Configuration:** Controls the website metadata and theme. Configured via a `.gomddoc/config.yml` file or environment variables.
 
-## 1. CLI Flags
+---
 
-These control **how** the server runs (operational settings).
+## 1. Runtime Configuration
 
-| Flag | Description | Default |
-| :--- | :--- | :--- |
-| `-d` | Path to content (Local dir or Git URL) | `.` |
-| `-p` | HTTP Port to listen on | `:8080` |
-| `-dev` | Enable Development Mode (Hot Reload) | `false` |
-| `--git-key-file` | Path to SSH private key for Git auth | `""` |
+These settings affect the `gomddoc` process itself. They are typically set by the person deploying or running the application.
 
-Example:
-```bash
-gomddoc -d ./docs -p :9090 -dev
-```
+### Basic Options
 
-## 2. Environment Variables
+**Content Directory (`-d`)**
+Sets the source of your documentation. This can be a local path (e.g., `./docs`) or a Git URL (e.g., `git+https://...`).
+*   **CLI Flag:** `-d`
+*   **Env Var:** `GOMDDOC_DIR`
+*   **Default:** `.` (Current directory)
 
-Useful for containerized environments (Docker, Kubernetes).
+**Server Port (`-p`)**
+Sets the network address and port the server listens on.
+*   **CLI Flag:** `-p`
+*   **Env Var:** `GOMDDOC_PORT`
+*   **Default:** `:8080`
 
-### Application Config
-Controls server behavior.
+**Development Mode (`-dev`)**
+Enables development features: activates hot-reloading for `.gomddoc/config.yml` and theme templates, and disables all response caching.
+*   **CLI Flag:** `-dev`
+*   **Env Var:** `GOMDDOC_DEV_MODE`
+*   **Default:** `false`
 
-| Variable | Maps to Flag | Description |
-| :--- | :--- | :--- |
-| `GOMDDOC_PORT` | `-p` | Server port (e.g., `:8080`) |
-| `GOMDDOC_DIR` | `-d` | Content directory or Git URL |
-| `GOMDDOC_DEV_MODE` | `-dev` | `true` or `false` |
-| `GOMDDOC_GIT_SSH_KEY_FILE` | `--git-key-file` | Path to private SSH key |
-| `GOMDDOC_SHUTDOWN_TIMEOUT` | N/A | Graceful shutdown duration (e.g., `5s`) |
+**Git SSH Key (`--git-key-file`)**
+The absolute path to a private SSH key file used for authenticating with private Git repositories.
+*   **CLI Flag:** `--git-key-file`
+*   **Env Var:** `GOMDDOC_GIT_SSH_KEY_FILE`
+*   **Default:** Empty (Anonymous access only)
 
-### Site Config
-Overrides settings usually found in `config.yml`.
+### Process & Security
 
-| Variable | Maps to Config Field |
-| :--- | :--- |
-| `GOMDDOC_META_TITLE` | `meta.title` |
-| `GOMDDOC_META_DOMAIN` | `meta.domain` |
-| `GOMDDOC_THEME_NAME` | `theme.name` |
+**Shutdown Timeout**
+The maximum duration to wait for active requests to finish before the server forcefully exits during a shutdown signal.
+*   **Env Var:** `GOMDDOC_SHUTDOWN_TIMEOUT`
+*   **Default:** `1s`
 
-## 3. Configuration File (`.gomddoc/config.yml`)
+**Default Index**
+The filename gomddoc looks for when a directory is requested (e.g., `/api/`).
+*   **Env Var:** `GOMDDOC_SERVER_DEFAULT_INDEX`
+*   **Default:** `README.md`
 
-This file controls **what** is displayed (site presentation). It must be placed inside a `.gomddoc` folder at the root of your content directory.
+**Directory Listings**
+If enabled, gomddoc will generate a Markdown list of files when a directory is requested and no index file is found.
+*   **Env Var:** `GOMDDOC_SERVER_DIR_INDEX`
+*   **Default:** `false` (Returns 403 Forbidden for security)
 
-**File:** `/path/to/docs/.gomddoc/config.yml`
+### Network Tuning
 
-```yaml
-meta:
-  title: "My Project Docs"       # Overrides default directory-based title
-  description: "Official API documentation"
-  domain: "docs.example.com"     # Used for canonical URLs
+**Read Header Timeout**
+The maximum time allowed to read request headers. This is a critical setting for mitigating Slowloris attacks.
+*   **Env Var:** `GOMDDOC_READ_HEADER_TIMEOUT`
+*   **Default:** `5s` (Max: `60s`)
 
-theme:
-  name: "default"                # Currently the only built-in theme
-```
+**Write Timeout**
+The maximum duration before timing out writes of the response.
+*   **Env Var:** `GOMDDOC_WRITE_TIMEOUT`
+*   **Default:** `30s` (Max: `5m`)
 
-## 4. Defaults
+**Idle Timeout**
+The maximum amount of time to wait for the next request when keep-alives are enabled.
+*   **Env Var:** `GOMDDOC_IDLE_TIMEOUT`
+*   **Default:** `120s` (Max: `10m`)
 
-If nothing is configured:
-*   **Port:** `:8080`
-*   **Directory:** Current working directory (`.`)
-*   **Title:** The capitalized name of the root directory (e.g., serving `./my-project` yields title "My-project").
-*   **Theme:** `default`
+**Max Header Size**
+The maximum allowed size of request headers in Megabytes.
+*   **Env Var:** `GOMDDOC_MAX_HEADER_MB`
+*   **Default:** `1` (1MB) (Max: `10`)
+
+---
+
+## 2. Site Configuration
+
+These settings control the presentation of your documentation. You define these in a `.gomddoc/config.yml` file located at the root of your content directory.
+
+### Section: Meta
+
+**Title**
+The name of your documentation site. It appears in browser tabs and the site header.
+*   **YAML:** `meta.title`
+*   **Env Var:** `GOMDDOC_META_TITLE`
+*   **Default:** The capitalized name of your content directory.
+
+**Description**
+A short summary of your site, used for the HTML `<meta name="description">` SEO tag.
+*   **YAML:** `meta.description`
+*   **Env Var:** `GOMDDOC_META_DESCRIPTION`
+*   **Default:** Empty.
+
+**Domain**
+The primary domain name for your site (e.g., `docs.example.com`). Used for internal validation and canonical URL generation.
+*   **YAML:** `meta.domain`
+*   **Env Var:** `GOMDDOC_META_DOMAIN`
+*   **Default:** Empty.
+
+### Section: Theme
+
+**Theme Name**
+Selects the visual theme to apply. gomddoc looks for a folder with this name in the internal or local `assets/themes/` directory.
+*   **YAML:** `theme.name`
+*   **Env Var:** `GOMDDOC_THEME_NAME`
+*   **Default:** `default`
+
+---
+
+## Priority Order
+
+When a setting is defined in multiple places, gomddoc follows this strict priority order:
+
+1.  **CLI Flags:** Always take precedence.
+2.  **Environment Variables:** Override configuration files.
+3.  **Config File:** Values defined in `.gomddoc/config.yml`.
+4.  **Defaults:** Hardcoded fallback values.
