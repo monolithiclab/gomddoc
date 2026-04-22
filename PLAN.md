@@ -593,9 +593,9 @@ type MetricsCollector interface {
 }
 ```
 
-**Prometheus Metrics**
+**Prometheus Metrics** (DONE - WU-10)
 
-- Standard HTTP metrics: duration, status codes, request size
+- ~~Standard HTTP metrics: duration, status codes, request size~~ DONE
 - Application metrics: processing time, cache ratios
 - Content metrics: page views, unique visitors
 - System metrics: memory, goroutines, GC duration

@@ -10,6 +10,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server defines the interface for HTTP servers
@@ -37,21 +38,22 @@ func NewHTTPServer(
 	// Create handler with new signature
 	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site)
 
-	// Apply middleware chain to content handler (outermost first)
+	// Apply middleware chain (outermost first, innermost closest to handler)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)
+	h = Metrics(h)                                       // Innermost: measure actual handler time
 	h = BlockHiddenPaths(h)                              // Block all hidden files/directories
 	h = MethodFilter(http.MethodGet, http.MethodHead)(h) // Only allow GET and HEAD
 	h = Compression(h)                                   // Gzip responses >= 1KB when client accepts
 	h = RequestID(h)                                     // Assign unique request ID for tracing
 	h = SecurityHeaders(h)                               // Must be outermost so headers are set first
 
-	// Health endpoints bypass all middleware
+	// Health and metrics endpoints bypass content middleware
 	healthHandler := NewHealthHandler(provider)
 
-	// Route health endpoints before middleware-wrapped content handler
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", healthHandler.LiveHandler)
 	mux.HandleFunc("GET /health/ready", healthHandler.ReadyHandler)
+	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/", h)
 
 	server := &http.Server{
