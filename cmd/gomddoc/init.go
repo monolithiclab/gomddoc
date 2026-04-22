@@ -14,7 +14,7 @@ import (
 // InitCmd holds all flags for the init subcommand.
 type InitCmd struct {
 	Dir   string `arg:"" optional:"" default:"." help:"Directory to initialize."`
-	Theme string `name:"theme" short:"t" default:"default" help:"Theme to use (default, academic, gitbook, material, midnight, minimal, nord, ocean)."`
+	Theme string `name:"theme" short:"t" default:"default" help:"Theme name."`
 }
 
 // Run executes the init command.
