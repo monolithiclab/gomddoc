@@ -61,5 +61,5 @@ func (h *AssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _ = w.Write(content)
+	_, _ = w.Write(content) // #nosec G705 -- serves static theme assets from controlled embedded/overlay FS, not user content
 }
