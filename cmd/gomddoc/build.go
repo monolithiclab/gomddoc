@@ -109,6 +109,11 @@ func (b *BuildCmd) Run() error {
 		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
+	// Generate redirect HTML files for redirect_from frontmatter
+	if err := b.generateRedirectFiles(prov, &cfg.Site); err != nil {
+		return fmt.Errorf("generate redirect files: %w", err)
+	}
+
 	// Generate 404.html for static host compatibility (Netlify, GitHub Pages, Cloudflare Pages)
 	errorContent, err := b.renderErrorPage(http.StatusNotFound, pipeline.TemplateRenderer, &cfg.Site)
 	if err != nil {
@@ -379,6 +384,42 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 			return fmt.Errorf("write feed.xml: %w", err)
 		}
 		slog.Debug("Generated", slog.String("file", "feed.xml"))
+	}
+
+	return nil
+}
+
+// generateRedirectFiles builds redirect HTML files from redirect_from frontmatter.
+func (b *BuildCmd) generateRedirectFiles(prov provider.Provider, siteConfig *config.SiteConfig) error {
+	contentRoot, err := prov.RootFS(context.Background())
+	if err != nil {
+		return fmt.Errorf("get content root for redirects: %w", err)
+	}
+
+	idx, err := metadata.BuildIndex(context.Background(), contentRoot)
+	if err != nil {
+		return fmt.Errorf("build metadata index for redirects: %w", err)
+	}
+
+	redirects := server.BuildRedirectMap(idx)
+	if len(redirects) == 0 {
+		return nil
+	}
+
+	for source, target := range redirects {
+		html := server.GenerateRedirectHTML(target)
+		// Write as source/index.html so the URL matches without extension
+		outPath := strings.TrimPrefix(source, "/")
+		if outPath == "" {
+			continue
+		}
+		if !strings.Contains(path.Base(outPath), ".") {
+			outPath = path.Join(outPath, "index.html")
+		}
+		if err := b.writeOutputFile(outPath, html); err != nil {
+			return fmt.Errorf("write redirect %s: %w", source, err)
+		}
+		slog.Debug("Generated redirect", slog.String("from", source), slog.String("to", target))
 	}
 
 	return nil

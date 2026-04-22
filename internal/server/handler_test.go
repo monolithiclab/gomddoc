@@ -443,6 +443,36 @@ func TestHandlerLayoutSelection(t *testing.T) {
 	}
 }
 
+func TestHandlerURLRedirect(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"test.md": &fstest.MapFile{Data: []byte("# Test")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		SiteConfig:       &siteConfig,
+		URLRedirects:     URLRedirectMap{"/old-page": "/test.md"},
+	})
+
+	req := httptest.NewRequest("GET", "/old-page", nil)
+	w := httptest.NewRecorder()
+	handler.ServeContent(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusMovedPermanently)
+	}
+	if loc := w.Header().Get("Location"); loc != "/test.md" {
+		t.Errorf("Location = %q, want %q", loc, "/test.md")
+	}
+}
+
 func TestHandlerDirectoryRedirect_EmptyDir(t *testing.T) {
 	t.Parallel()
 

@@ -44,6 +44,7 @@ type HTTPServerConfig struct {
 	MetaIndex        *metadata.Index  // nil disables metadata API
 	SearchIndex      *search.Index    // nil disables search API
 	RedirectFinder   RedirectFinder   // nil disables redirect lookup
+	URLRedirects     URLRedirectMap   // nil disables URL redirects
 	StaticFS         fs.FS            // nil disables static asset serving
 	AuthStore        *CredentialStore // nil disables basic auth
 	MCPHandler       http.Handler     // nil disables MCP endpoint at /_mcp/
@@ -120,6 +121,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		TemplateRenderer: opts.TemplateRenderer,
 		SiteConfig:       &cfg.Site,
 		RedirectFinder:   opts.RedirectFinder,
+		URLRedirects:     opts.URLRedirects,
 	})
 
 	// Content handler with content-specific middleware (outermost first)

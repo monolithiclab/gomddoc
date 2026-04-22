@@ -29,6 +29,7 @@ type HandlerConfig struct {
 	TemplateRenderer tmpl.Renderer
 	SiteConfig       *config.SiteConfig
 	RedirectFinder   RedirectFinder
+	URLRedirects     URLRedirectMap
 }
 
 // Handler holds dependencies for HTTP request handling
@@ -39,6 +40,7 @@ type Handler struct {
 	templateRenderer tmpl.Renderer
 	siteConfig       *config.SiteConfig
 	redirectFinder   RedirectFinder
+	urlRedirects     URLRedirectMap
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
@@ -50,6 +52,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		templateRenderer: cfg.TemplateRenderer,
 		siteConfig:       cfg.SiteConfig,
 		redirectFinder:   cfg.RedirectFinder,
+		urlRedirects:     cfg.URLRedirects,
 	}
 }
 
@@ -62,6 +65,14 @@ func NewHandler(cfg HandlerConfig) *Handler {
 //  4. Render content with enrichment data
 //  5. Serve as HTML (wrapped in template) or raw (passthrough)
 func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
+	// 0. Check URL redirects before reading files
+	if h.urlRedirects != nil {
+		if target, ok := h.urlRedirects[r.URL.Path]; ok {
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+	}
+
 	// 1. Read file + get MIME type
 	content, mimeType, err := h.provider.ReadFile(r.Context(), r.URL.Path)
 	if err != nil {

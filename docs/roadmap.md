@@ -144,9 +144,10 @@ _Enhances competitiveness and closes remaining gaps._
 
 ### 9d: SEO Long-Term (P3)
 
-- [ ] **Redirect support**: Frontmatter `redirect_from: [/old-url]` and/or `_redirects` file.
-      In `serve` mode, 301 responses. In `build` mode, generate redirect HTML or `_redirects`
-      file for static hosts. Medium complexity.
+- [x] **Redirect support**: Frontmatter `redirect_from: [/old-url]` enables reverse redirects.
+      In `serve` mode, 301 responses via redirect map built at startup. In `build` mode,
+      generates HTML files with `<meta http-equiv="refresh">` for universal static host
+      compatibility. Redirect map is zero-cost per request.
 - [x] **Atom feed**: Generate `/feed.xml` (Atom format) listing the 20 most recently modified
       pages. Served dynamically in `serve` mode and generated during `build`. Requires
       `meta.domain`. Excludes `robots: noindex` pages. Autodiscovery `<link>` in all themes.

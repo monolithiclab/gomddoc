@@ -38,6 +38,7 @@ type Pipeline struct {
 	MetaIndex        *metadata.Index
 	SearchIndex      *search.Index
 	RedirectFinder   server.RedirectFinder
+	URLRedirects     server.URLRedirectMap
 	StaticFS         fs.FS
 	Provider         provider.Provider
 }
@@ -100,6 +101,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		}
 		enricherOpts.MetaIndex = metaIndex
 		p.MetaIndex = metaIndex
+		p.URLRedirects = server.BuildRedirectMap(metaIndex)
 	}
 
 	if opts.EnableSearch {
@@ -223,6 +225,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		MetaIndex:        pipeline.MetaIndex,
 		SearchIndex:      pipeline.SearchIndex,
 		RedirectFinder:   pipeline.RedirectFinder,
+		URLRedirects:     pipeline.URLRedirects,
 		StaticFS:         pipeline.StaticFS,
 		AuthStore:        opts.AuthStore,
 		MCPHandler:       mcpServer.HTTPHandler(),
