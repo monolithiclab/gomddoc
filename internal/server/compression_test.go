@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -134,10 +135,46 @@ func TestCompression_VaryHeaderAlwaysSet(t *testing.T) {
 
 			handler.ServeHTTP(w, req)
 
-			if vary := w.Header().Get("Vary"); vary != "Accept-Encoding" {
-				t.Errorf("Vary = %q, want %q", vary, "Accept-Encoding")
+			// Vary header should contain Accept-Encoding (may also contain other values)
+			varyValues := w.Header().Values("Vary")
+			found := slices.Contains(varyValues, "Accept-Encoding")
+			if !found {
+				t.Errorf("Vary header values %v should contain %q", varyValues, "Accept-Encoding")
 			}
 		})
+	}
+}
+
+func TestCompression_VaryHeaderPreservesExisting(t *testing.T) {
+	t.Parallel()
+	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", "Accept")
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("body"))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	varyValues := w.Header().Values("Vary")
+	hasAccept := false
+	hasAcceptEncoding := false
+	for _, v := range varyValues {
+		if v == "Accept" {
+			hasAccept = true
+		}
+		if v == "Accept-Encoding" {
+			hasAcceptEncoding = true
+		}
+	}
+	if !hasAccept {
+		t.Errorf("Vary header should preserve existing Accept value, got %v", varyValues)
+	}
+	if !hasAcceptEncoding {
+		t.Errorf("Vary header should include Accept-Encoding, got %v", varyValues)
 	}
 }
 
@@ -392,8 +429,10 @@ func TestCompression_HeadRequest(t *testing.T) {
 		t.Error("HEAD requests should not be compressed")
 	}
 
-	if vary := w.Header().Get("Vary"); vary != "Accept-Encoding" {
-		t.Errorf("Vary = %q, want %q", vary, "Accept-Encoding")
+	varyValues := w.Header().Values("Vary")
+	found := slices.Contains(varyValues, "Accept-Encoding")
+	if !found {
+		t.Errorf("Vary header values %v should contain %q", varyValues, "Accept-Encoding")
 	}
 }
 

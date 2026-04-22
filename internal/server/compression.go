@@ -56,8 +56,9 @@ var skipCompressionTypes = []string{
 // are never re-compressed.
 func Compression(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Always set Vary so caches know the response depends on Accept-Encoding
-		w.Header().Set("Vary", "Accept-Encoding")
+		// Always add Vary so caches know the response depends on Accept-Encoding.
+		// Use Add (not Set) to preserve any existing Vary values from other middleware.
+		w.Header().Add("Vary", "Accept-Encoding")
 
 		// Skip compression for HEAD requests (body is discarded anyway)
 		// and for clients that don't accept gzip

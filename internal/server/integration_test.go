@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -173,6 +174,12 @@ func TestIntegration_ContentServing(t *testing.T) {
 				}
 				if contentLength := w.Header().Get("Content-Length"); contentLength == "" {
 					t.Error("Content-Length header should be set")
+				}
+				// Content-negotiated responses must include Vary: Accept
+				varyValues := w.Header().Values("Vary")
+				hasVaryAccept := slices.Contains(varyValues, "Accept")
+				if !hasVaryAccept {
+					t.Errorf("Vary header %v should contain Accept", varyValues)
 				}
 			}
 		})

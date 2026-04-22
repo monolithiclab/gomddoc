@@ -131,7 +131,9 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Serve based on selected output MIME type
+	// 5. Serve based on selected output MIME type.
+	// Set Vary: Accept so caches distinguish responses by content negotiation.
+	w.Header().Add("Vary", "Accept")
 	outputNormalized := negotiate.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
 		h.serveHTML(w, r, renderResult.Content, enrichment)
