@@ -1,3 +1,9 @@
+---
+title: "Gomddoc User Guide"
+description: "Comprehensive user guide for gomddoc, covering features, configuration, and usage."
+author: "nicolasm"
+---
+
 # Gomddoc User Guide
 
 **gomddoc** is a high-performance, production-ready HTTP server designed to serve Markdown documentation as rendered HTML. It bridges the gap between static files and dynamic serving, supporting content from local directories or remote Git repositories with zero build steps.

@@ -1,3 +1,9 @@
+---
+title: "Theming & Assets Guide"
+description: "Guide on how to customize themes and manage assets in gomddoc."
+author: "nicolasm"
+---
+
 # Theming & Assets
 
 gomddoc uses an **Overlay Filesystem** to handle assets. This means you can "overlay" your own custom files on top of the built-in defaults without replacing everything.

@@ -1,3 +1,9 @@
+---
+title: "Content Sources Guide"
+description: "Documentation on configuring local and Git-based content sources."
+author: "nicolasm"
+---
+
 # Content Sources
 
 gomddoc abstracts the source of your documentation. Whether files are on your local disk or in a remote repository, gomddoc serves them seamlessly.

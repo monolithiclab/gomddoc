@@ -1,3 +1,9 @@
+---
+title: "Gomddoc Evolution Roadmap"
+description: "Strategic roadmap for the evolution of gomddoc from a server to a documentation platform."
+author: "nicolasm"
+---
+
 # PLAN2: Gomddoc Evolution Roadmap
 
 ## Overview

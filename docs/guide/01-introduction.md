@@ -1,3 +1,9 @@
+---
+title: "Introduction & Quick Start"
+description: "Introduction to gomddoc and a quick start guide for new users."
+author: "nicolasm"
+---
+
 # Introduction & Quick Start
 
 ## What is gomddoc?

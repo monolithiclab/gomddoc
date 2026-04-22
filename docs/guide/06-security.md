@@ -1,3 +1,9 @@
+---
+title: "Security Features Guide"
+description: "Overview of gomddoc's security features, including path traversal protection and hidden file blocking."
+author: "nicolasm"
+---
+
 # Security
 
 gomddoc is designed to be secure enough to be exposed to the internet, although running it behind a reverse proxy (like Nginx or Cloudflare) is recommended for TLS and DDoS protection.

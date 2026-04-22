@@ -1,3 +1,9 @@
+---
+title: "Gomddoc Architecture"
+description: "High-level architectural overview of the gomddoc HTTP server."
+author: "nicolasm"
+---
+
 # Gomddoc Architecture
 
 ## Overview

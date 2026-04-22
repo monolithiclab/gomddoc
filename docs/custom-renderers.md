@@ -1,3 +1,9 @@
+---
+title: "Custom Renderers Guide"
+description: "Guide on creating and registering custom content renderers for gomddoc."
+author: "nicolasm"
+---
+
 # Custom Renderers Guide
 
 This guide shows how to create custom renderers for gomddoc to support additional content types and transformations.

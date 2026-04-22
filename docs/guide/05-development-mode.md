@@ -1,3 +1,9 @@
+---
+title: "Development Mode Guide"
+description: "Instructions for using gomddoc's development mode with hot reload."
+author: "nicolasm"
+---
+
 # Development Mode
 
 For rapid iteration, gomddoc includes a development mode.

@@ -1,3 +1,9 @@
+---
+title: "Configuration Guide"
+description: "Detailed guide on configuring gomddoc via CLI flags, environment variables, and config files."
+author: "nicolasm"
+---
+
 # Configuration
 
 gomddoc uses a tiered configuration system. This allows you to set defaults, override them with environment variables for deployment, and use CLI flags for immediate control.
