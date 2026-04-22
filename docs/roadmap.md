@@ -72,17 +72,11 @@ go-git library limitations.
 
 _Usability improvements to the serve, build, and preview subcommands._
 
-- [ ] **Prevent build output inside content directory**: `gomddoc build` should detect when the
-      output directory (`-o`) is inside or overlaps with the content source directory and fail with
-      a clear error. Currently nothing prevents `gomddoc build docs/ -o docs/build/`, which would
-      cause the builder to index its own output on subsequent runs, leading to duplicated or
-      recursive content. Validate at startup that the resolved output path is not a descendant of
-      the resolved content path. Low complexity.
-- [ ] **Remove `--dev` from `serve`**: The `--dev` flag on `serve` overlaps with the `preview`
-      subcommand's purpose. `preview` already enables dev-mode behavior (no caching, verbose
-      logging, auto-open browser). Remove `--dev` from `serve` to clarify the mental model:
-      `serve` is production, `preview` is development. Migrate any `--dev`-only behavior that
-      `preview` doesn't already cover. Low complexity.
+- [x] **Guard build output directory**: `gomddoc build` fails if the output directory already
+      exists, preventing stale content accumulation. Use `--force` / `-f` to remove the existing
+      output and rebuild cleanly. Low complexity.
+- [x] **Remove `--dev` from `serve`**: `serve` is always production mode. `preview` is the
+      designated dev command (no caching, template re-parsing, verbose logging).
 - [ ] **Autoreload in `preview`**: Automatically reload the browser when content files change.
       Inject a small script into rendered pages that connects via Server-Sent Events (SSE) to
       a `/_preview/events` endpoint. The server watches the content directory with `fsnotify`
@@ -358,7 +352,7 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus (Phase 9b):** Post-launch SEO (sitemap lastmod, Git timestamps).
+**Immediate focus:** Phase 9c SEO polish, tag components, distribution/CI pipeline.
 **Deferred:** CI benchmark tracking (Phase 4, needs CI pipeline), build-mode search (Phase 5, Pagefind).
 
 ## Deferred (Not Planned)

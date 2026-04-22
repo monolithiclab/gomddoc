@@ -9,7 +9,6 @@ func TestServeCmd_EnvTags(t *testing.T) {
 	t.Parallel()
 	assertEnvTag[ServeCmd](t, "Dir", "GOMDDOC_SERVER_DIR")
 	assertEnvTag[ServeCmd](t, "Port", "GOMDDOC_SERVER_PORT")
-	assertEnvTag[ServeCmd](t, "DevMode", "GOMDDOC_SERVER_DEV_MODE")
 	assertEnvTag[ServeCmd](t, "Domain", "GOMDDOC_DOMAIN")
 	assertEnvTag[ServeCmd](t, "GitSSHKey", "GOMDDOC_SERVER_GIT_SSH_KEY")
 	assertEnvTag[ServeCmd](t, "Pprof", "GOMDDOC_SERVER_PPROF")

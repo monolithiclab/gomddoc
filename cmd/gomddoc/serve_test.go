@@ -60,9 +60,8 @@ func TestServeCmd_Setup(t *testing.T) {
 	writeTestFile(t, srcDir, "README.md", "# Test Serve")
 
 	cmd := &ServeCmd{
-		Dir:     srcDir,
-		Port:    ":0",
-		DevMode: true,
+		Dir:  srcDir,
+		Port: ":0",
 	}
 
 	result, err := cmd.setup()
@@ -129,9 +128,8 @@ func TestServeCmd_Setup_ProductionMode(t *testing.T) {
 	writeTestFile(t, srcDir, "README.md", "# Prod Mode Test")
 
 	cmd := &ServeCmd{
-		Dir:     srcDir,
-		Port:    ":0",
-		DevMode: false,
+		Dir:  srcDir,
+		Port: ":0",
 	}
 
 	result, err := cmd.setup()
@@ -190,9 +188,6 @@ func TestServeCmd_Defaults(t *testing.T) {
 	}
 	if cmd.Port != "" {
 		t.Errorf("Port default = %q, want empty (Kong sets ':8080')", cmd.Port)
-	}
-	if cmd.DevMode {
-		t.Error("DevMode should default to false")
 	}
 }
 

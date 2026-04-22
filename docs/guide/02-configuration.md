@@ -31,7 +31,6 @@ gomddoc serve [DIR] [flags]
 |----------|---------|---------|-------------|
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory or Git URL |
 | `-p, --port` | `GOMDDOC_SERVER_PORT` | `:8080` | Listen address (`:auto` for auto-assign) |
-| `--dev` | `GOMDDOC_SERVER_DEV_MODE` | `false` | Dev mode (no caching, verbose logs) |
 | `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
 | `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
 | `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
