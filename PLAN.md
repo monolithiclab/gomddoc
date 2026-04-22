@@ -469,6 +469,14 @@ type PerformanceOptimizer interface {
 
 ### 6.1 Development Tools
 
+**GitHub-Style Admonitions** (COMPLETED)
+
+- [x] Post-processor for blockquote-based admonition syntax
+- [x] Five admonition types: NOTE, TIP, IMPORTANT, WARNING, CAUTION
+- [x] Case-insensitive type markers
+- [x] CSS styles in default theme
+- [x] Comprehensive test coverage
+
 **Hot Reload System**
 
 - File system watching with debouncing

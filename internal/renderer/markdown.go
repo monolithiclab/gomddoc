@@ -94,6 +94,9 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 		return nil, err
 	}
 
+	// Post-process: transform GitHub-style admonition blockquotes
+	rendered := TransformAdmonitions(buf.Bytes())
+
 	// Convert TOC
 	var tocNode *TOCNode
 	if tocItems != nil {
@@ -101,7 +104,7 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 	}
 
 	return &RenderResult{
-		Content:  buf.Bytes(),
+		Content:  rendered,
 		MimeType: "text/html; charset=utf-8",
 		Metadata: metadata,
 		TOC:      tocNode,
