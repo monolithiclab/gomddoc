@@ -3,7 +3,9 @@ package template
 import (
 	"html/template"
 	"log/slog"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -42,7 +44,10 @@ func buildThemeVarsCSS(vars map[string]string) template.CSS {
 	var b strings.Builder
 	b.WriteString(":root {\n")
 	varsWritten := 0
-	for k, v := range vars {
+	// Sorted for deterministic output (stable ETags). Declaration order does not
+	// matter: CSS custom properties resolve var() references at computed-value time.
+	for _, k := range slices.Sorted(maps.Keys(vars)) {
+		v := vars[k]
 		if !validThemeVarKey.MatchString(k) {
 			slog.Warn("skipping theme var with invalid key (only a-z/0-9 allowed)", "key", k)
 			continue
