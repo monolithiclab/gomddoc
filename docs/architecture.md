@@ -197,6 +197,7 @@ Exposed via JSON API:
 The `gomddoc build` command reuses the same provider → renderer → template pipeline as `serve`. It walks
 `contentRoot` via `fs.WalkDir`, renders `.md` files through the full pipeline (markdown → template → HTML),
 copies non-markdown files as-is, and generates `index.html` alongside `README.html` for clean URLs.
+File processing is parallelized with an `errgroup` worker pool bounded by `runtime.NumCPU()`.
 
 ### 9. Middleware Chain
 

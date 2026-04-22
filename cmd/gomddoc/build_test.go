@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -132,6 +133,48 @@ func TestBuildCmd_CreatesOutputDirectory(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(outDir, "page.html")); os.IsNotExist(err) {
 		t.Error("Expected page.html to exist in nested output directory")
+	}
+}
+
+func TestBuildCmd_ParallelBuildProcessesAllFiles(t *testing.T) {
+	binary := buildTestBinary(t)
+	srcDir := t.TempDir()
+	outDir := t.TempDir()
+
+	// Create many markdown and non-markdown files to exercise parallelism.
+	const numMarkdown = 20
+	const numAssets = 10
+	for i := range numMarkdown {
+		writeTestFile(t, srcDir, fmt.Sprintf("page-%03d.md", i), fmt.Sprintf("# Page %d\n\nContent for page %d.", i, i))
+	}
+	for i := range numAssets {
+		writeTestFile(t, srcDir, fmt.Sprintf("asset-%03d.css", i), fmt.Sprintf("body { color: #%03d; }", i))
+	}
+
+	cmd := exec.Command(binary, "build", "--dir", srcDir, "--output", outDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build failed: %v\n%s", err, output)
+	}
+
+	// Verify all markdown files were rendered.
+	for i := range numMarkdown {
+		htmlFile := fmt.Sprintf("page-%03d.html", i)
+		content := readTestFile(t, outDir, htmlFile)
+		expected := fmt.Sprintf("Page %d", i)
+		if !strings.Contains(content, expected) {
+			t.Errorf("Expected %q in %s", expected, htmlFile)
+		}
+	}
+
+	// Verify all asset files were copied.
+	for i := range numAssets {
+		cssFile := fmt.Sprintf("asset-%03d.css", i)
+		content := readTestFile(t, outDir, cssFile)
+		expected := fmt.Sprintf("body { color: #%03d; }", i)
+		if content != expected {
+			t.Errorf("Expected %q in %s, got %q", expected, cssFile, content)
+		}
 	}
 }
 

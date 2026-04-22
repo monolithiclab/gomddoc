@@ -8,8 +8,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/common"
@@ -28,11 +32,12 @@ type BuildCmd struct {
 }
 
 // buildStats tracks statistics for the build process.
+// All fields use atomic types for safe concurrent updates during parallel builds.
 type buildStats struct {
-	markdownFiles int
-	copiedFiles   int
-	skippedFiles  int
-	totalBytes    int64
+	markdownFiles atomic.Int64
+	copiedFiles   atomic.Int64
+	skippedFiles  atomic.Int64
+	totalBytes    atomic.Int64
 }
 
 // Run executes the build command.
@@ -83,10 +88,10 @@ func (b *BuildCmd) Run() error {
 
 	elapsed := time.Since(start)
 	slog.Info("Build complete",
-		slog.Int("markdown_files", stats.markdownFiles),
-		slog.Int("copied_files", stats.copiedFiles),
-		slog.Int("skipped_files", stats.skippedFiles),
-		slog.Int64("total_bytes", stats.totalBytes),
+		slog.Int64("markdown_files", stats.markdownFiles.Load()),
+		slog.Int64("copied_files", stats.copiedFiles.Load()),
+		slog.Int64("skipped_files", stats.skippedFiles.Load()),
+		slog.Int64("total_bytes", stats.totalBytes.Load()),
 		slog.Duration("elapsed", elapsed),
 	)
 
@@ -94,6 +99,8 @@ func (b *BuildCmd) Run() error {
 }
 
 // walkAndBuild walks the content root and generates the static site.
+// Files are collected first via fs.WalkDir, then processed in parallel
+// using an errgroup worker pool bounded by runtime.NumCPU().
 func (b *BuildCmd) walkAndBuild(
 	contentRoot fs.FS,
 	registry renderer.RendererRegistry,
@@ -101,42 +108,54 @@ func (b *BuildCmd) walkAndBuild(
 	siteConfig *config.SiteConfig,
 ) (*buildStats, error) {
 	stats := &buildStats{}
-	ctx := context.Background()
 
-	return stats, fs.WalkDir(contentRoot, ".", func(filePath string, d fs.DirEntry, err error) error {
+	// Collect all file paths first, skipping hidden files/directories.
+	var filePaths []string
+	err := fs.WalkDir(contentRoot, ".", func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("walk %s: %w", filePath, err)
 		}
 
-		// Skip hidden files and directories
 		name := d.Name()
 		if strings.HasPrefix(name, ".") && name != "." {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
-			stats.skippedFiles++
+			stats.skippedFiles.Add(1)
 			return nil
 		}
 
-		if d.IsDir() {
-			return nil
-		}
-
-		mimeType := common.DetectMIME(filePath)
-		normalized := renderer.NormalizeMimeType(mimeType)
-
-		if normalized == "text/markdown" {
-			if err := b.buildMarkdownFile(ctx, contentRoot, filePath, registry, templateRenderer, siteConfig, stats); err != nil {
-				return err
-			}
-		} else {
-			if err := b.copyFile(contentRoot, filePath, stats); err != nil {
-				return err
-			}
+		if !d.IsDir() {
+			filePaths = append(filePaths, filePath)
 		}
 
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Process files in parallel with a bounded worker pool.
+	g, ctx := errgroup.WithContext(context.Background())
+	g.SetLimit(runtime.NumCPU())
+
+	for _, fp := range filePaths {
+		g.Go(func() error {
+			mimeType := common.DetectMIME(fp)
+			normalized := renderer.NormalizeMimeType(mimeType)
+
+			if normalized == "text/markdown" {
+				return b.buildMarkdownFile(ctx, contentRoot, fp, registry, templateRenderer, siteConfig, stats)
+			}
+			return b.copyFile(contentRoot, fp, stats)
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return stats, nil
 }
 
 // buildMarkdownFile renders a markdown file to HTML and writes it to the output directory.
@@ -196,7 +215,7 @@ func (b *BuildCmd) buildMarkdownFile(
 	if err := b.writeOutputFile(htmlPath, rendered); err != nil {
 		return err
 	}
-	stats.totalBytes += int64(len(rendered))
+	stats.totalBytes.Add(int64(len(rendered)))
 
 	// For README.md files, also write index.html in the same directory
 	baseName := strings.ToLower(filepath.Base(filePath))
@@ -205,10 +224,10 @@ func (b *BuildCmd) buildMarkdownFile(
 		if err := b.writeOutputFile(indexPath, rendered); err != nil {
 			return err
 		}
-		stats.totalBytes += int64(len(rendered))
+		stats.totalBytes.Add(int64(len(rendered)))
 	}
 
-	stats.markdownFiles++
+	stats.markdownFiles.Add(1)
 	slog.Debug("Built", slog.String("file", filePath), slog.String("output", htmlPath))
 
 	return nil
@@ -225,8 +244,8 @@ func (b *BuildCmd) copyFile(contentRoot fs.FS, filePath string, stats *buildStat
 		return err
 	}
 
-	stats.copiedFiles++
-	stats.totalBytes += int64(len(content))
+	stats.copiedFiles.Add(1)
+	stats.totalBytes.Add(int64(len(content)))
 	slog.Debug("Copied", slog.String("file", filePath))
 
 	return nil
