@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io/fs"
 	"mime"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -746,6 +748,89 @@ func TestMemoryStorageFactory(t *testing.T) {
 	}
 	if storage == nil {
 		t.Error("MemoryStorageFactory() returned nil storage")
+	}
+}
+
+func TestDiskStorageFactory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dir     func(t *testing.T) string
+		wantErr bool
+	}{
+		{
+			name: "creates directory and returns valid storage",
+			dir: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "git-cache")
+			},
+			wantErr: false,
+		},
+		{
+			name: "works with existing directory",
+			dir: func(t *testing.T) string {
+				return t.TempDir()
+			},
+			wantErr: false,
+		},
+		{
+			name: "works with nested path",
+			dir: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "a", "b", "c")
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := tt.dir(t)
+			factory := DiskStorageFactory(dir)
+			stor, err := factory()
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("DiskStorageFactory() error = nil, want error")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("DiskStorageFactory() error = %v, want nil", err)
+			}
+			if stor == nil {
+				t.Fatal("DiskStorageFactory() returned nil storage")
+			}
+
+			// Verify directory was created
+			info, err := os.Stat(dir)
+			if err != nil {
+				t.Fatalf("directory not created: %v", err)
+			}
+			if !info.IsDir() {
+				t.Error("path is not a directory")
+			}
+		})
+	}
+}
+
+func TestDiskStorageFactory_MultipleCalls(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "git-cache")
+	factory := DiskStorageFactory(dir)
+
+	// Call factory multiple times — should succeed each time
+	for i := range 3 {
+		stor, err := factory()
+		if err != nil {
+			t.Fatalf("call %d: DiskStorageFactory() error = %v", i, err)
+		}
+		if stor == nil {
+			t.Fatalf("call %d: DiskStorageFactory() returned nil storage", i)
+		}
 	}
 }
 

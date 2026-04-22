@@ -3,17 +3,22 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/cache"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 	"github.com/go-git/go-git/v5/storage/memory"
 
 	"github.com/monolithiclab/gomddoc/internal/common"
@@ -34,6 +39,19 @@ type StorageFactory func() (storage.Storer, error)
 func MemoryStorageFactory() StorageFactory {
 	return func() (storage.Storer, error) {
 		return memory.NewStorage(), nil
+	}
+}
+
+// DiskStorageFactory returns a factory that creates disk-based storage
+// at the given directory path. The directory is created if it does not exist.
+// This is suitable for large repositories where in-memory storage would cause
+// out-of-memory errors.
+func DiskStorageFactory(dir string) StorageFactory {
+	return func() (storage.Storer, error) {
+		if err := os.MkdirAll(dir, 0750); err != nil {
+			return nil, fmt.Errorf("create storage dir: %w", err)
+		}
+		return filesystem.NewStorage(osfs.New(dir), cache.NewObjectLRUDefault()), nil
 	}
 }
 

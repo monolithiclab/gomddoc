@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"golang.org/x/sync/errgroup"
@@ -19,10 +22,11 @@ import (
 
 // ServeCmd holds all flags for the serve subcommand.
 type ServeCmd struct {
-	Dir       string `name:"dir" short:"d" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory or Git URL."`
-	Port      string `name:"port" short:"p" default:":8080" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port)."`
-	DevMode   bool   `name:"dev" default:"false" env:"GOMDDOC_SERVER_DEV_MODE" help:"Enable development mode (no caching, verbose logging)."`
-	GitSSHKey string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
+	Dir           string `name:"dir" short:"d" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory or Git URL."`
+	Port          string `name:"port" short:"p" default:":8080" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port)."`
+	DevMode       bool   `name:"dev" default:"false" env:"GOMDDOC_SERVER_DEV_MODE" help:"Enable development mode (no caching, verbose logging)."`
+	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
+	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
 }
 
 // Run executes the serve command.
@@ -39,6 +43,13 @@ func (s *ServeCmd) Run() error {
 	var providerOpts []provider.GitProviderOption
 	if cfg.Server.GitSSHKey != "" {
 		providerOpts = append(providerOpts, provider.WithSSHKeyFile(cfg.Server.GitSSHKey))
+	}
+	if s.GitStorageDir != "" {
+		// Hash the dir/URL to create a unique subdirectory per provider,
+		// avoiding filesystem path issues with special characters.
+		h := sha256.Sum256([]byte(s.Dir))
+		subdir := filepath.Join(s.GitStorageDir, hex.EncodeToString(h[:8]))
+		providerOpts = append(providerOpts, provider.WithStorageFactory(provider.DiskStorageFactory(subdir)))
 	}
 
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, providerOpts...)
