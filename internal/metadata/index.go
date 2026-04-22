@@ -1,0 +1,231 @@
+package metadata
+
+import (
+	"bytes"
+	"fmt"
+	"io/fs"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// PageInfo holds metadata extracted from a Markdown file's frontmatter.
+type PageInfo struct {
+	Path        string         `json:"path"`
+	Title       string         `json:"title,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
+	Date        time.Time      `json:"date,omitempty"`
+	Meta        map[string]any `json:"meta,omitempty"`
+}
+
+// Index aggregates metadata from all Markdown files in a content root.
+type Index struct {
+	pages []PageInfo
+	byTag map[string][]int // tag -> page indices
+}
+
+// BuildIndex walks the given filesystem, extracts frontmatter from all
+// Markdown files, and builds a metadata index. Hidden directories and
+// files (starting with '.') are skipped. Parse errors on individual
+// files are logged but do not cause the build to fail.
+func BuildIndex(rootFS fs.FS) (*Index, error) {
+	idx := &Index{
+		byTag: make(map[string][]int),
+	}
+
+	err := fs.WalkDir(rootFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("walk error at %s: %w", path, err)
+		}
+
+		name := d.Name()
+
+		// Skip hidden directories and files
+		if strings.HasPrefix(name, ".") && path != "." {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		// Only process Markdown files
+		if ext := filepath.Ext(name); ext != ".md" && ext != ".markdown" {
+			return nil
+		}
+
+		content, readErr := fs.ReadFile(rootFS, path)
+		if readErr != nil {
+			return nil // skip unreadable files
+		}
+
+		fm, parseErr := extractFrontmatter(content)
+		if parseErr != nil || fm == nil {
+			return nil // skip files without valid frontmatter
+		}
+
+		page := PageInfo{
+			Path: "/" + path,
+			Meta: make(map[string]any),
+		}
+
+		// Extract known fields
+		if v, ok := fm["title"]; ok {
+			if s, ok := v.(string); ok {
+				page.Title = s
+			}
+		}
+		if v, ok := fm["description"]; ok {
+			if s, ok := v.(string); ok {
+				page.Description = s
+			}
+		}
+		if v, ok := fm["date"]; ok {
+			switch d := v.(type) {
+			case time.Time:
+				page.Date = d
+			case string:
+				if t, err := time.Parse(time.DateOnly, d); err == nil {
+					page.Date = t
+				}
+			}
+		}
+		if v, ok := fm["tags"]; ok {
+			if tags, ok := v.([]any); ok {
+				for _, tag := range tags {
+					if s, ok := tag.(string); ok {
+						page.Tags = append(page.Tags, strings.ToLower(s))
+					}
+				}
+			}
+		}
+
+		// Store remaining fields in Meta
+		knownKeys := map[string]bool{"title": true, "description": true, "date": true, "tags": true}
+		for k, v := range fm {
+			if !knownKeys[k] {
+				page.Meta[k] = v
+			}
+		}
+		if len(page.Meta) == 0 {
+			page.Meta = nil
+		}
+
+		pageIdx := len(idx.pages)
+		idx.pages = append(idx.pages, page)
+
+		for _, tag := range page.Tags {
+			idx.byTag[tag] = append(idx.byTag[tag], pageIdx)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building metadata index: %w", err)
+	}
+
+	return idx, nil
+}
+
+// AllPages returns all indexed pages.
+func (idx *Index) AllPages() []PageInfo {
+	result := make([]PageInfo, len(idx.pages))
+	copy(result, idx.pages)
+	return result
+}
+
+// AllTags returns all unique tags, sorted alphabetically.
+func (idx *Index) AllTags() []string {
+	tags := make([]string, 0, len(idx.byTag))
+	for tag := range idx.byTag {
+		tags = append(tags, tag)
+	}
+	slices.Sort(tags)
+	return tags
+}
+
+// ByTag returns all pages with the given tag. The tag is matched
+// case-insensitively. Returns nil if no pages match.
+func (idx *Index) ByTag(tag string) []PageInfo {
+	indices, ok := idx.byTag[strings.ToLower(tag)]
+	if !ok {
+		return nil
+	}
+	result := make([]PageInfo, len(indices))
+	for i, pageIdx := range indices {
+		result[i] = idx.pages[pageIdx]
+	}
+	return result
+}
+
+// frontmatter delimiter
+var fmDelimiter = []byte("---")
+
+// extractFrontmatter extracts YAML frontmatter from Markdown content.
+// Frontmatter must be delimited by --- at the start of the file.
+// Returns nil, nil if no frontmatter is found.
+func extractFrontmatter(content []byte) (map[string]any, error) {
+	content = bytes.TrimLeft(content, "\xef\xbb\xbf") // strip BOM
+
+	if !bytes.HasPrefix(bytes.TrimLeftFunc(content, isSpace), fmDelimiter) {
+		return nil, nil
+	}
+
+	// Find opening delimiter
+	start := bytes.Index(content, fmDelimiter)
+	if start < 0 {
+		return nil, nil
+	}
+	afterOpen := start + len(fmDelimiter)
+
+	// Must be followed by newline
+	if afterOpen >= len(content) || (content[afterOpen] != '\n' && content[afterOpen] != '\r') {
+		return nil, nil
+	}
+	afterOpen++ // skip newline
+
+	// Find closing delimiter
+	rest := content[afterOpen:]
+	closeIdx := -1
+	for i := 0; i < len(rest); {
+		lineEnd := bytes.IndexByte(rest[i:], '\n')
+		var line []byte
+		if lineEnd < 0 {
+			line = rest[i:]
+		} else {
+			line = rest[i : i+lineEnd]
+		}
+		line = bytes.TrimRight(line, "\r")
+		if bytes.Equal(bytes.TrimSpace(line), fmDelimiter) {
+			closeIdx = i
+			break
+		}
+		if lineEnd < 0 {
+			break
+		}
+		i += lineEnd + 1
+	}
+
+	if closeIdx < 0 {
+		return nil, nil
+	}
+
+	yamlContent := rest[:closeIdx]
+	var result map[string]any
+	if err := yaml.Unmarshal(yamlContent, &result); err != nil {
+		return nil, fmt.Errorf("parsing frontmatter YAML: %w", err)
+	}
+
+	return result, nil
+}
+
+func isSpace(r rune) bool {
+	return r == ' ' || r == '\t'
+}

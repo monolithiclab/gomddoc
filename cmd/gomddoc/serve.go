@@ -13,6 +13,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/server"
@@ -92,7 +93,12 @@ func (s *ServeCmd) Run() error {
 		return err
 	}
 
-	httpServer := server.NewHTTPServer(cfg, prov, registry, templateRenderer)
+	metaIndex, err := metadata.BuildIndex(contentRoot)
+	if err != nil {
+		slog.Warn("Failed to build metadata index", slog.Any("error", err))
+	}
+
+	httpServer := server.NewHTTPServer(cfg, prov, registry, templateRenderer, metaIndex)
 
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()

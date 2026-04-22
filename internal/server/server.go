@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template"
@@ -35,6 +36,7 @@ func NewHTTPServer(
 	provider provider.Provider,
 	registry renderer.RendererRegistry,
 	templateRenderer template.Renderer,
+	metaIndex *metadata.Index,
 ) *HTTPServer {
 	// Create handler with new signature
 	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site)
@@ -55,6 +57,13 @@ func NewHTTPServer(
 	mux.HandleFunc("GET /health/live", healthHandler.LiveHandler)
 	mux.HandleFunc("GET /health/ready", healthHandler.ReadyHandler)
 	mux.Handle("/metrics", promhttp.Handler())
+
+	if metaIndex != nil {
+		metaHandler := NewMetadataHandler(metaIndex)
+		mux.HandleFunc("GET /api/tags", metaHandler.TagsHandler)
+		mux.HandleFunc("GET /api/tags/{tag}", metaHandler.TagPagesHandler)
+	}
+
 	mux.Handle("/", h)
 
 	server := &http.Server{
