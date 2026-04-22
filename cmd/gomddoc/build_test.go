@@ -351,7 +351,7 @@ func TestBuildCmd_Run(t *testing.T) {
 	t.Parallel()
 
 	srcDir := t.TempDir()
-	outDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
 
 	writeTestFile(t, srcDir, "README.md", "# Build Run Test\n\nContent.")
 	writeTestFile(t, srcDir, "style.css", "body{color:red}")
@@ -417,7 +417,7 @@ func TestBuildCmd_Run_WithFrontmatter(t *testing.T) {
 	t.Parallel()
 
 	srcDir := t.TempDir()
-	outDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
 
 	writeTestFile(t, srcDir, "page.md", "---\ntitle: Custom Title\ntags: [go, docs]\n---\n# Page\n\nContent.")
 
@@ -435,31 +435,33 @@ func TestBuildCmd_Run_WithFrontmatter(t *testing.T) {
 func TestBuildCmd_Run_NonexistentDir(t *testing.T) {
 	t.Parallel()
 
-	cmd := &BuildCmd{Dir: "/nonexistent/dir", Output: t.TempDir()}
+	cmd := &BuildCmd{Dir: "/nonexistent/dir", Output: filepath.Join(t.TempDir(), "out")}
 	if err := cmd.Run(); err == nil {
 		t.Error("Run() with nonexistent dir should return error")
 	}
 }
 
-func TestBuildCmd_Run_ReadOnlyOutput(t *testing.T) {
+func TestBuildCmd_Run_ReadOnlyParent(t *testing.T) {
 	t.Parallel()
 
 	srcDir := t.TempDir()
 	writeTestFile(t, srcDir, "README.md", "# Test")
 
-	outDir := filepath.Join(t.TempDir(), "readonly")
-	if err := os.MkdirAll(outDir, 0750); err != nil {
+	// Make parent read-only so the output dir can't be created
+	parent := filepath.Join(t.TempDir(), "locked")
+	if err := os.MkdirAll(parent, 0750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(outDir, 0444); err != nil {
+	if err := os.Chmod(parent, 0444); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(outDir, 0750) })
+	t.Cleanup(func() { _ = os.Chmod(parent, 0750) })
 
+	outDir := filepath.Join(parent, "out")
 	cmd := &BuildCmd{Dir: srcDir, Output: outDir}
 	err := cmd.Run()
 	if err == nil {
-		t.Error("Run() with read-only output should return error")
+		t.Error("Run() with read-only parent should return error")
 	}
 }
 
@@ -499,6 +501,9 @@ func TestBuildCmd_Defaults(t *testing.T) {
 	}
 	if cmd.Output != "" {
 		t.Errorf("Output default = %q, want empty (Kong sets 'build/site')", cmd.Output)
+	}
+	if cmd.Force {
+		t.Error("Force should default to false")
 	}
 }
 
@@ -604,7 +609,7 @@ func TestBuildCmd_Run_WithSubdirectories(t *testing.T) {
 	t.Parallel()
 
 	srcDir := t.TempDir()
-	outDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
 
 	writeTestFile(t, srcDir, "README.md", "# Root")
 	writeTestFile(t, filepath.Join(srcDir, "api"), "endpoints.md", "# API Endpoints")
@@ -640,7 +645,7 @@ func TestBuildCmd_Run_ProviderError(t *testing.T) {
 	// A valid config dir but that has a bad .gomddoc config to trigger pipeline errors
 	srcDir := t.TempDir()
 	// Empty dir with no markdown: Run should still succeed
-	cmd := &BuildCmd{Dir: srcDir, Output: t.TempDir()}
+	cmd := &BuildCmd{Dir: srcDir, Output: filepath.Join(t.TempDir(), "out")}
 	// No README.md: provider will still work but no files to process
 	if err := cmd.Run(); err != nil {
 		// This may or may not error depending on whether empty dirs are ok
@@ -652,17 +657,25 @@ func TestBuildCmd_Run_MultipleRuns(t *testing.T) {
 	t.Parallel()
 
 	srcDir := t.TempDir()
-	outDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
 	writeTestFile(t, srcDir, "README.md", "# First Run")
 
 	cmd := &BuildCmd{Dir: srcDir, Output: outDir}
 
-	// Run twice to verify idempotent behavior
+	// First run: output dir does not exist — should succeed
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("first Run() error = %v", err)
 	}
+
+	// Second run without --force: should fail because output dir exists
+	if err := cmd.Run(); err == nil {
+		t.Error("second Run() without --force should return error")
+	}
+
+	// Second run with --force: should succeed
+	cmd.Force = true
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("second Run() error = %v", err)
+		t.Fatalf("second Run() with --force error = %v", err)
 	}
 
 	htmlContent := readTestFile(t, outDir, "index.html")
@@ -719,6 +732,86 @@ func TestWalkAndBuild_EmptyFS(t *testing.T) {
 	}
 	if stats.copiedFiles.Load() != 0 {
 		t.Errorf("copiedFiles = %d, want 0", stats.copiedFiles.Load())
+	}
+}
+
+func TestGuardOutputDir(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T, output string) // pre-create output state
+		force     bool
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name:    "output does not exist",
+			setup:   func(t *testing.T, output string) {},
+			wantErr: false,
+		},
+		{
+			name: "output exists without force",
+			setup: func(t *testing.T, output string) {
+				if err := os.MkdirAll(output, 0750); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantErr:   true,
+			errSubstr: "already exists",
+		},
+		{
+			name: "output exists with force",
+			setup: func(t *testing.T, output string) {
+				if err := os.MkdirAll(output, 0750); err != nil {
+					t.Fatal(err)
+				}
+				writeTestFile(t, output, "stale.html", "<p>old</p>")
+			},
+			force:   true,
+			wantErr: false,
+		},
+		{
+			name: "output is a file not dir",
+			setup: func(t *testing.T, output string) {
+				if err := os.WriteFile(output, []byte("not a dir"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantErr:   true,
+			errSubstr: "not a directory",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			output := filepath.Join(t.TempDir(), "out")
+			tt.setup(t, output)
+
+			b := &BuildCmd{Output: output, Force: tt.force}
+			err := b.guardOutputDir()
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("guardOutputDir() = nil, want error")
+				} else if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Errorf("error = %q, want substring %q", err, tt.errSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("guardOutputDir() = %v, want nil", err)
+			}
+
+			// With force, verify old content was removed
+			if tt.force {
+				if _, statErr := os.Stat(filepath.Join(output, "stale.html")); !os.IsNotExist(statErr) {
+					t.Error("stale.html should have been removed by --force")
+				}
+			}
+		})
 	}
 }
 

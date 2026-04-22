@@ -31,6 +31,7 @@ import (
 type BuildCmd struct {
 	Dir    string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown source directory or Git URL."`
 	Output string `name:"output" short:"o" default:"build/site" env:"GOMDDOC_BUILD_OUTPUT" help:"Output directory for generated static site."`
+	Force  bool   `name:"force" short:"f" default:"false" env:"GOMDDOC_BUILD_FORCE" help:"Overwrite output directory if it already exists."`
 }
 
 // buildStats tracks statistics for the build process.
@@ -45,6 +46,10 @@ type buildStats struct {
 // Run executes the build command.
 func (b *BuildCmd) Run() error {
 	start := time.Now()
+
+	if err := b.guardOutputDir(); err != nil {
+		return err
+	}
 
 	cfg, err := config.NewFromDir(b.Dir)
 	if err != nil {
@@ -103,6 +108,27 @@ func (b *BuildCmd) Run() error {
 		slog.Duration("elapsed", elapsed),
 	)
 
+	return nil
+}
+
+// guardOutputDir checks whether the output directory already exists.
+// If it does and --force is not set, an error is returned.
+// If --force is set, the existing directory is removed for a clean build.
+func (b *BuildCmd) guardOutputDir() error {
+	info, err := os.Stat(b.Output)
+	if err != nil {
+		return nil // does not exist — nothing to guard
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("output path %q exists but is not a directory", b.Output)
+	}
+	if !b.Force {
+		return fmt.Errorf("output directory %q already exists; use --force to overwrite", b.Output)
+	}
+	if err := os.RemoveAll(b.Output); err != nil {
+		return fmt.Errorf("remove existing output directory: %w", err)
+	}
+	slog.Info("Removed existing output directory", slog.String("path", b.Output))
 	return nil
 }
 

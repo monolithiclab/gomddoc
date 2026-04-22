@@ -65,8 +65,10 @@ gomddoc build [DIR] [flags]
 |----------|---------|---------|-------------|
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Markdown source directory or Git URL |
 | `-o, --output` | `GOMDDOC_BUILD_OUTPUT` | `build/site` | Output directory |
+| `-f, --force` | `GOMDDOC_BUILD_FORCE` | `false` | Overwrite output directory if it exists |
 
 **Build behavior:**
+- The build fails if the output directory already exists (prevents stale content). Use `--force` to remove it and rebuild cleanly.
 - Markdown files are rendered to HTML through the full template pipeline
 - `README.md` files generate both `README.html` and `index.html` for clean URLs (unless `index.md` exists in the same directory)
 - Non-markdown files (images, CSS, JS) are copied as-is

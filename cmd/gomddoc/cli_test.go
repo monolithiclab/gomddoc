@@ -18,6 +18,7 @@ func TestBuildCmd_EnvTags(t *testing.T) {
 	t.Parallel()
 	assertEnvTag[BuildCmd](t, "Dir", "GOMDDOC_SERVER_DIR")
 	assertEnvTag[BuildCmd](t, "Output", "GOMDDOC_BUILD_OUTPUT")
+	assertEnvTag[BuildCmd](t, "Force", "GOMDDOC_BUILD_FORCE")
 }
 
 func TestPreviewCmd_EnvTags(t *testing.T) {
