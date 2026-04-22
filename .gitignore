@@ -1,0 +1,5 @@
+.claude/
+build/
+cover.out
+docs/.gomddoc/
+GEMINI.md
