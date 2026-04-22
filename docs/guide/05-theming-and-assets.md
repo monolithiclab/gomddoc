@@ -189,15 +189,16 @@ Seven custom functions are available in templates:
 
 When creating a custom theme, ensure it supports these features for parity with built-in themes:
 
-- **Light/dark mode toggle** with `data-theme` attribute and `prefers-color-scheme` CSS fallback
+- **Light/dark mode toggle** via `{{ inlineJSAsset "theme-toggle.mjs" }}` — manages `data-theme` attribute, localStorage, and `prefers-color-scheme` fallback. Customize button content with `data-light`/`data-dark` text attributes or `[data-show-theme]` children for SVG icons.
 - **Navigation sidebar** via `{{ navigation .Page.Path }}`
-- **Table of contents** via `{{ template "toc" . }}` partial with `toc-item` recursive template and scroll highlighting
+- **Table of contents** via `{{ template "toc" . }}` partial with `toc-item` recursive template
+- **TOC scroll highlighting** via `{{ inlineJSAsset "toc-highlight.mjs" }}` — tracks scroll position, sets `.active` class on matching TOC link
 - **Breadcrumbs** via `{{ breadcrumbs .Page.Path }}`
 - **Search button** with `id="search-toggle"` in the header
 - **Search modal** via `{{ inlineJSAsset "search.mjs" }}` — uses CSS custom properties for styling
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`
 - **Color chip web component** via `{{ inlineJSAsset "color-chip.mjs" }}`
-- **Copy-to-clipboard** on code blocks
+- **Copy-to-clipboard** via `{{ inlineJSAsset "code-copy.mjs" }}` — creates `.copy-btn` on code blocks, customize text with `data-copy-label`/`data-copied-label` on `<html>`
 - **Heading anchors** (`.heading-anchor` class, revealed on hover)
 - **Touch accessibility** with `@media (hover: none)` for copy buttons and heading anchors
 - **KaTeX** CSS and auto-render scripts for math rendering
