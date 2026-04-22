@@ -104,6 +104,16 @@ func TestCheckETag(t *testing.T) {
 			ifNoneMatch: `  W/"abc123"  `,
 			want:        true,
 		},
+		{
+			name:        "weak comparison: strong matches weak",
+			ifNoneMatch: `"abc123"`,
+			want:        true,
+		},
+		{
+			name:        "weak comparison: strong in list matches weak",
+			ifNoneMatch: `"other", "abc123", "another"`,
+			want:        true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -118,6 +128,73 @@ func TestCheckETag(t *testing.T) {
 			got := checkETag(req, etag)
 			if got != tt.want {
 				t.Errorf("checkETag() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckETag_StrongETag(t *testing.T) {
+	t.Parallel()
+
+	// Server sends a strong ETag (without W/ prefix)
+	etag := `"abc123"`
+
+	tests := []struct {
+		name        string
+		ifNoneMatch string
+		want        bool
+	}{
+		{
+			name:        "strong matches strong",
+			ifNoneMatch: `"abc123"`,
+			want:        true,
+		},
+		{
+			name:        "weak matches strong",
+			ifNoneMatch: `W/"abc123"`,
+			want:        true,
+		},
+		{
+			name:        "no match",
+			ifNoneMatch: `"different"`,
+			want:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.Header.Set("If-None-Match", tt.ifNoneMatch)
+
+			got := checkETag(req, etag)
+			if got != tt.want {
+				t.Errorf("checkETag() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripWeakPrefix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{`W/"abc"`, `"abc"`},
+		{`"abc"`, `"abc"`},
+		{`W/`, ``},
+		{``, ``},
+		{`w/"abc"`, `w/"abc"`}, // lowercase w is not a valid weak prefix
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := stripWeakPrefix(tt.input); got != tt.want {
+				t.Errorf("stripWeakPrefix(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

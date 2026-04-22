@@ -30,8 +30,12 @@ func generateETag(content []byte) string {
 }
 
 // checkETag checks whether the request's If-None-Match header matches
-// the provided etag. Returns true if the client's cached version is
-// still valid (caller should return 304 Not Modified).
+// the provided etag using weak comparison per RFC 9110 §8.8.3.2.
+// Returns true if the client's cached version is still valid (caller
+// should return 304 Not Modified).
+//
+// Weak comparison: two ETags are equivalent if their opaque-tags match,
+// regardless of whether either is tagged as weak. So W/"abc" matches "abc".
 func checkETag(r *http.Request, etag string) bool {
 	ifNoneMatch := r.Header.Get("If-None-Match")
 	if ifNoneMatch == "" {
@@ -43,15 +47,27 @@ func checkETag(r *http.Request, etag string) bool {
 		return true
 	}
 
+	// Weak comparison: strip W/ prefix to compare opaque-tags
+	etagOpaque := stripWeakPrefix(etag)
+
 	// Check each comma-separated value
 	for value := range strings.SplitSeq(ifNoneMatch, ",") {
-		candidate := strings.TrimSpace(value)
-		if candidate == etag {
+		candidate := stripWeakPrefix(strings.TrimSpace(value))
+		if candidate == etagOpaque {
 			return true
 		}
 	}
 
 	return false
+}
+
+// stripWeakPrefix removes the W/ weak validator prefix from an ETag value.
+// W/"abc" -> "abc", "abc" -> "abc".
+func stripWeakPrefix(etag string) string {
+	if len(etag) >= 2 && etag[0] == 'W' && etag[1] == '/' {
+		return etag[2:]
+	}
+	return etag
 }
 
 // serveWithETag generates an ETag, sets cache headers, handles conditional
