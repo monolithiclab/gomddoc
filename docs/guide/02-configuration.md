@@ -35,7 +35,7 @@ gomddoc serve [DIR] [flags]
 | `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
 | `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
 | `--pprof` | `GOMDDOC_SERVER_PPROF` | `false` | Enable profiling endpoints |
-| `--basic-auth` | `GOMDDOC_SERVER_BASIC_AUTH` | | HTTP Basic Auth (`user:password`) |
+| `--basic-auth-file` | `GOMDDOC_SERVER_BASIC_AUTH_FILE` | | Path to htpasswd file (bcrypt only) |
 
 ### `preview`
 

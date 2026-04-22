@@ -41,10 +41,11 @@ type HTTPServerConfig struct {
 	Registry         renderer.RendererRegistry
 	EnricherRegistry enricher.EnricherRegistry
 	TemplateRenderer template.Renderer
-	MetaIndex        *metadata.Index // nil disables metadata API
-	SearchIndex      *search.Index   // nil disables search API
-	RedirectFinder   RedirectFinder  // nil disables redirect lookup
-	StaticFS         fs.FS           // nil disables static asset serving
+	MetaIndex        *metadata.Index  // nil disables metadata API
+	SearchIndex      *search.Index    // nil disables search API
+	RedirectFinder   RedirectFinder   // nil disables redirect lookup
+	StaticFS         fs.FS            // nil disables static asset serving
+	AuthStore        *CredentialStore // nil disables basic auth
 }
 
 // NewHTTPServer creates a new HTTP server with the given dependencies.
@@ -58,8 +59,11 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	h = BlockHiddenPaths(h)                              // Block all hidden files/directories
 	h = MethodFilter(http.MethodGet, http.MethodHead)(h) // Only allow GET and HEAD
 	h = Compression(h)                                   // Gzip responses >= 1KB when client accepts
-	h = RequestID(h)                                     // Assign unique request ID for tracing
-	h = SecurityHeaders(h)                               // Must be outermost so headers are set first
+	if opts.AuthStore != nil {
+		h = BasicAuth(opts.AuthStore, "gomddoc")(h)
+	}
+	h = RequestID(h)       // Assign unique request ID for tracing
+	h = SecurityHeaders(h) // Must be outermost so headers are set first
 
 	// Health and metrics endpoints bypass content middleware
 	healthHandler := NewHealthHandler(opts.Provider)

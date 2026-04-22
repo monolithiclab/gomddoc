@@ -8,6 +8,31 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
+// BasicAuth returns middleware that enforces HTTP Basic Authentication
+// using a CredentialStore for credential validation. The realm is used
+// in the WWW-Authenticate header.
+func BasicAuth(store *CredentialStore, realm string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, pass, ok := r.BasicAuth()
+			if !ok {
+				w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			if !store.Validate(user, pass) {
+				slog.Debug("Basic auth failed", text.Safe("remote", r.RemoteAddr)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
+				w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // MethodFilter returns middleware that only allows the specified HTTP methods.
 // Responds with 405 Method Not Allowed and an Allow header for disallowed methods.
 func MethodFilter(allowedMethods ...string) func(http.Handler) http.Handler {

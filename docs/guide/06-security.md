@@ -11,21 +11,24 @@ gomddoc is designed to be secure enough to be exposed to the internet, although 
 
 ## 1. HTTP Basic Authentication
 
-gomddoc supports HTTP Basic Authentication to restrict access to your documentation. Enable it via the `--basic-auth` flag or environment variable:
+gomddoc supports HTTP Basic Authentication via htpasswd files with bcrypt-hashed passwords. Passwords are never passed as CLI arguments or environment variables — they stay hashed on disk.
 
 ```bash
-# Via CLI flag
-gomddoc serve --basic-auth admin:secretpassword
+# Create an htpasswd file with bcrypt hashing (-B flag)
+htpasswd -Bc .htpasswd admin
+htpasswd -B .htpasswd viewer
 
-# Via environment variable
-GOMDDOC_SERVER_BASIC_AUTH=admin:secretpassword gomddoc serve
+# Start the server
+gomddoc serve --basic-auth-file .htpasswd
 ```
+
+Only bcrypt hashes (`$2y$`, `$2a$`, `$2b$`) are supported. Comments (`#`) and blank lines are allowed in the file.
 
 When enabled:
 
 - All content requests require valid credentials. Unauthenticated requests receive `401 Unauthorized` with a `WWW-Authenticate` header prompting the browser to show a login dialog.
 - **Health endpoints (`/health/live`, `/health/ready`) bypass authentication** — they are registered outside the middleware chain so container orchestrators can probe without credentials.
-- Credentials are compared using constant-time comparison (via SHA-256 hashing + `crypto/subtle`) to prevent timing attacks.
+- Passwords are verified using `bcrypt.CompareHashAndPassword`, which is constant-time by design.
 
 > [!WARNING]
 > Basic Auth transmits credentials in base64 (not encrypted). Always use it behind a TLS-terminating reverse proxy (nginx, Cloudflare, etc.) or over HTTPS to prevent credential interception.

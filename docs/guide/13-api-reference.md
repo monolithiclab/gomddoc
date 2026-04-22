@@ -166,7 +166,7 @@ All content requests pass through this middleware chain (outermost to innermost)
 
 1. **SecurityHeaders** — sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`
 2. **RequestID** — assigns a unique request ID (trusts upstream `X-Request-ID` if present)
-3. **BasicAuth** — HTTP Basic Authentication (only when `--basic-auth` is configured)
+3. **BasicAuth** — HTTP Basic Authentication (only when `--basic-auth-file` is configured)
 4. **Compression** — gzip for responses >= 1KB (skips pre-compressed types like images)
 5. **MethodFilter** — allows GET and HEAD only, returns 405 for others
 6. **BlockHiddenPaths** — blocks dotfiles except `/.well-known/`

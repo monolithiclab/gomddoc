@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -23,6 +24,7 @@ type ServeCmd struct {
 	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
 	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
 	Pprof         bool   `name:"pprof" default:"false" env:"GOMDDOC_SERVER_PPROF" help:"Enable pprof profiling endpoints at /debug/pprof/."`
+	BasicAuthFile string `name:"basic-auth-file" default:"" env:"GOMDDOC_SERVER_BASIC_AUTH_FILE" help:"Path to htpasswd file for HTTP Basic Auth (bcrypt hashes only)."`
 }
 
 // resolvePort resolves the port, handling auto-port assignment.
@@ -89,7 +91,7 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 		return nil, err
 	}
 
-	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
+	serverConfig := server.HTTPServerConfig{
 		Config:           cfg,
 		Provider:         prov,
 		Registry:         pipeline.Registry,
@@ -99,7 +101,19 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 		SearchIndex:      pipeline.SearchIndex,
 		RedirectFinder:   pipeline.RedirectFinder,
 		StaticFS:         pipeline.StaticFS,
-	})
+	}
+
+	if s.BasicAuthFile != "" {
+		authStore, err := loadAuthStore(s.BasicAuthFile)
+		if err != nil {
+			_ = prov.Close()
+			return nil, err
+		}
+		serverConfig.AuthStore = authStore
+		slog.Info("Basic authentication enabled", slog.Int("users", authStore.Len()))
+	}
+
+	httpServer := server.NewHTTPServer(serverConfig)
 
 	return &serveSetupResult{
 		httpServer: httpServer,
@@ -123,4 +137,18 @@ func (s *ServeCmd) Run() error {
 	defer sigCancel()
 
 	return runUntilCancelled(sigCtx, result.httpServer)
+}
+
+// loadAuthStore parses an htpasswd file into a CredentialStore.
+func loadAuthStore(path string) (*server.CredentialStore, error) {
+	f, err := os.Open(path) // #nosec G304 -- user-specified config file path
+	if err != nil {
+		return nil, fmt.Errorf("opening htpasswd file: %w", err)
+	}
+	defer f.Close()
+	store, err := server.ParseHTPasswd(f)
+	if err != nil {
+		return nil, fmt.Errorf("parsing htpasswd file: %w", err)
+	}
+	return store, nil
 }

@@ -3,7 +3,10 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestSecurityHeaders(t *testing.T) {
@@ -129,6 +132,113 @@ func TestMethodFilter(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	store, err := ParseHTPasswd(strings.NewReader("admin:" + mustHash(t, "secret")))
+	if err != nil {
+		t.Fatalf("failed to create credential store: %v", err)
+	}
+
+	handler := BasicAuth(store, "test")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+
+	tests := []struct {
+		name           string
+		user           string
+		pass           string
+		setAuth        bool
+		expectedStatus int
+	}{
+		{"no credentials", "", "", false, http.StatusUnauthorized},
+		{"valid credentials", "admin", "secret", true, http.StatusOK},
+		{"wrong password", "admin", "wrong", true, http.StatusUnauthorized},
+		{"wrong username", "wrong", "secret", true, http.StatusUnauthorized},
+		{"wrong both", "wrong", "wrong", true, http.StatusUnauthorized},
+		{"empty username", "", "secret", true, http.StatusUnauthorized},
+		{"empty password", "admin", "", true, http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest("GET", "/test", nil)
+			if tt.setAuth {
+				req.SetBasicAuth(tt.user, tt.pass)
+			}
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Status = %d, want %d", w.Code, tt.expectedStatus)
+			}
+
+			if tt.expectedStatus == http.StatusUnauthorized {
+				auth := w.Header().Get("WWW-Authenticate")
+				if auth != `Basic realm="test"` {
+					t.Errorf("WWW-Authenticate = %q, want %q", auth, `Basic realm="test"`)
+				}
+				// Verify response body is present
+				if w.Body.Len() == 0 {
+					t.Error("401 response should have a body")
+				}
+			}
+		})
+	}
+}
+
+func TestBasicAuth_MultipleUsers(t *testing.T) {
+	t.Parallel()
+
+	input := strings.NewReader("admin:" + mustHash(t, "adminpass") + "\nviewer:" + mustHash(t, "viewerpass"))
+	store, err := ParseHTPasswd(input)
+	if err != nil {
+		t.Fatalf("failed to parse htpasswd: %v", err)
+	}
+
+	handler := BasicAuth(store, "test")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	tests := []struct {
+		name           string
+		user           string
+		pass           string
+		expectedStatus int
+	}{
+		{"admin valid", "admin", "adminpass", http.StatusOK},
+		{"viewer valid", "viewer", "viewerpass", http.StatusOK},
+		{"admin wrong pass", "admin", "viewerpass", http.StatusUnauthorized},
+		{"viewer wrong pass", "viewer", "adminpass", http.StatusUnauthorized},
+		{"unknown user", "unknown", "adminpass", http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.SetBasicAuth(tt.user, tt.pass)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Status = %d, want %d", w.Code, tt.expectedStatus)
+			}
+		})
+	}
+}
+
+func mustHash(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("bcrypt hash failed: %v", err)
+	}
+	return string(hash)
 }
 
 func TestBlockHiddenPaths_ResponseFormat(t *testing.T) {
