@@ -128,6 +128,7 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 	setDocFeatures(doc.(*ast.Document), merged)
 
 	var buf bytes.Buffer
+	buf.Grow(len(content) * 2)
 	if err := m.md.Renderer().Render(&buf, content, doc); err != nil {
 		return nil, err
 	}

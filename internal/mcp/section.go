@@ -118,4 +118,3 @@ func slugifyHeading(text string) string {
 	s := b.String()
 	return strings.TrimRight(s, "-")
 }
-
