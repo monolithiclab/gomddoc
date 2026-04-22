@@ -41,38 +41,11 @@ func resolvePort(port string) (string, error) {
 	return resolved, nil
 }
 
-// serveSetupResult holds the assembled server and cleanup function.
-type serveSetupResult struct {
-	httpServer *server.HTTPServer
-	cleanup    func()
-}
-
 // setup creates the provider, pipeline, and HTTP server without starting it.
-func (s *ServeCmd) setup() (*serveSetupResult, error) {
-	port, err := resolvePort(s.Port)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg, err := config.NewFromServeArgs(s.Dir, port, s.DevMode, s.GitSSHKey)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.Server.Pprof = s.Pprof
-
-	if cfg.Server.DevMode {
-		slog.Info("Development mode enabled",
-			slog.String("dir", cfg.Server.Dir),
-			slog.String("port", cfg.Server.Port),
-			slog.String("theme", cfg.Site.Theme.Name),
-			slog.Bool("pprof", cfg.Server.Pprof),
-		)
-	}
-
+func (s *ServeCmd) setup() (*setupResult, error) {
 	var gitCfg provider.GitProviderConfig
-	if cfg.Server.GitSSHKey != "" {
-		gitCfg.SSHKeyFile = cfg.Server.GitSSHKey
+	if s.GitSSHKey != "" {
+		gitCfg.SSHKeyFile = s.GitSSHKey
 	}
 	if s.GitStorageDir != "" {
 		h := sha256.Sum256([]byte(s.Dir))
@@ -80,54 +53,25 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 		gitCfg.StorageFactory = provider.DiskStorageFactory(subdir)
 	}
 
-	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, gitCfg)
-	if err != nil {
-		return nil, err
-	}
-
-	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
-		EnableCache:      !cfg.Server.DevMode,
-		EnableNavigation: true,
-		EnableMetadata:   true,
-		EnableSearch:     true,
-	})
-	if err != nil {
-		_ = prov.Close()
-		return nil, err
-	}
-
-	serverConfig := server.HTTPServerConfig{
-		Config:           cfg,
-		Provider:         pipeline.Provider,
-		Registry:         pipeline.Registry,
-		EnricherRegistry: pipeline.EnricherRegistry,
-		TemplateRenderer: pipeline.TemplateRenderer,
-		MetaIndex:        pipeline.MetaIndex,
-		SearchIndex:      pipeline.SearchIndex,
-		RedirectFinder:   pipeline.RedirectFinder,
-		StaticFS:         pipeline.StaticFS,
-	}
-
+	var authStore *server.CredentialStore
 	if s.BasicAuthFile != "" {
-		authStore, err := loadAuthStore(s.BasicAuthFile)
+		var err error
+		authStore, err = loadAuthStore(s.BasicAuthFile)
 		if err != nil {
-			_ = prov.Close()
 			return nil, err
 		}
-		serverConfig.AuthStore = authStore
 		slog.Info("Basic authentication enabled", slog.Int("users", authStore.Len()))
 	}
 
-	httpServer := server.NewHTTPServer(serverConfig)
-
-	return &serveSetupResult{
-		httpServer: httpServer,
-		cleanup: func() {
-			if closeErr := prov.Close(); closeErr != nil {
-				slog.Error("Failed to close provider", slog.Any("error", closeErr))
-			}
-		},
-	}, nil
+	return setupServer(ServerSetupOptions{
+		Dir:       s.Dir,
+		Port:      s.Port,
+		DevMode:   s.DevMode,
+		GitSSHKey: s.GitSSHKey,
+		Pprof:     s.Pprof,
+		GitCfg:    gitCfg,
+		AuthStore: authStore,
+	})
 }
 
 // Run executes the serve command.
