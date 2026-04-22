@@ -1,0 +1,15 @@
+{{ define "lang-switcher" }}
+{{- $langs := .Languages }}
+{{- if gt (len $langs) 1 }}
+      <div class="lang-switcher">
+        {{- $path := .Page.Path }}
+        {{- range $langs }}
+        {{- if .Active }}
+        <span class="lang-current">{{ .Code }}</span>
+        {{- else }}
+        <a href="/{{ .Code }}{{ $path }}">{{ .Code }}</a>
+        {{- end }}
+        {{- end }}
+      </div>
+{{- end }}
+{{- end }}

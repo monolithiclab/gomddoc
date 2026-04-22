@@ -15,7 +15,7 @@
 
 {{ define "nav" }}
 {{- if and .Page.Navigation .Page.Navigation.Items }}
-      <aside id="nav-sidebar" aria-label="Site navigation">
+      <aside id="nav-sidebar" aria-label="{{ .T "aria_site_nav" }}">
         <nav>
           <ul>{{ range .Page.Navigation.Items }}{{ template "nav-item" . }}{{ end }}</ul>
         </nav>

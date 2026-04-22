@@ -159,12 +159,23 @@
   `;
   document.head.appendChild(style);
 
+  // Read localized strings from <html> data attributes
+  const root = document.documentElement;
+  const i18n = {
+    placeholder: root.getAttribute('data-search-placeholder') || 'Search documentation...',
+    noResults: root.getAttribute('data-search-no-results') || 'No results found',
+    navigate: root.getAttribute('data-search-navigate') || 'Navigate',
+    open: root.getAttribute('data-search-open') || 'Open',
+    close: root.getAttribute('data-search-close') || 'Close',
+    ariaLabel: root.getAttribute('data-search-aria') || 'Search documentation',
+  };
+
   // Create modal DOM
   const modal = document.createElement('div');
   modal.id = 'search-modal';
   modal.setAttribute('role', 'dialog');
   modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-label', 'Search documentation');
+  modal.setAttribute('aria-label', i18n.ariaLabel);
   modal.innerHTML = `
     <div class="search-backdrop"></div>
     <div class="search-dialog">
@@ -174,15 +185,15 @@
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="search" id="search-input" placeholder="Search documentation..."
+        <input type="search" id="search-input" placeholder="${i18n.placeholder}"
                autocomplete="off" aria-label="Search query">
         <kbd class="search-shortcut">Esc</kbd>
       </div>
       <div id="search-results" role="listbox" aria-label="Search results"></div>
       <div class="search-footer">
-        <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> Navigate</span>
-        <span><kbd>&crarr;</kbd> Open</span>
-        <span><kbd>Esc</kbd> Close</span>
+        <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> ${i18n.navigate}</span>
+        <span><kbd>&crarr;</kbd> ${i18n.open}</span>
+        <span><kbd>Esc</kbd> ${i18n.close}</span>
       </div>
     </div>
   `;
@@ -240,7 +251,7 @@
     activeIndex = -1;
 
     if (currentResults.length === 0) {
-      resultsContainer.innerHTML = '<div class="search-empty">No results found</div>';
+      resultsContainer.innerHTML = '<div class="search-empty">' + i18n.noResults + '</div>';
       return;
     }
 

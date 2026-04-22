@@ -1,18 +1,19 @@
 {{ define "header" }}
   <header class="site-header">
     <div class="site-title">
-      <button id="nav-toggle" aria-label="Toggle navigation">☰</button>
+      <button id="nav-toggle" aria-label="{{ .T "aria_toggle_nav" }}">☰</button>
       <a href="/">{{ .Site.Meta.Title }}</a>
     </div>
     <div class="header-controls">
       {{- if .Feature "search" }}
-      <button id="search-toggle" aria-label="Search documentation" title="Search (Ctrl+K)">
+      <button id="search-toggle" aria-label="{{ .T "aria_search" }}" title="{{ .T "search_shortcut" }}">
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
       </button>
       {{- end }}
       {{- if .Feature "dark_mode" }}
-      <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+      <button id="theme-toggle" aria-label="{{ .T "aria_toggle_theme" }}">🌙</button>
       {{- end }}
+      {{ template "lang-switcher" . }}
     </div>
   </header>
 {{ end }}

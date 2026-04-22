@@ -27,6 +27,7 @@
         {{ else if .Site.Meta.Description }}<meta name="twitter:description" content="{{ .Site.Meta.Description }}">{{ end }}
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="description" content="{{ .Site.Meta.Description }}">
+        {{ template "hreflang" . }}
 {{- end }}
 
 {{ define "head-katex" }}

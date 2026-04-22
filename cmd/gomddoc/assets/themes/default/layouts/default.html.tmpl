@@ -1,5 +1,14 @@
 <!DOCTYPE html>
-<html lang="{{ if .Page.Meta.lang }}{{ .Page.Meta.lang }}{{ else }}{{ .Site.Language }}{{ end }}">
+<html lang="{{ .Lang }}"
+      data-copy-label="{{ .T "copy" }}"
+      data-copied-label="{{ .T "copied" }}"
+      data-copy-aria="{{ .T "aria_copy_code" }}"
+      data-search-placeholder="{{ .T "search_placeholder" }}"
+      data-search-no-results="{{ .T "search_no_results" }}"
+      data-search-navigate="{{ .T "search_navigate" }}"
+      data-search-open="{{ .T "search_open" }}"
+      data-search-close="{{ .T "search_close" }}"
+      data-search-aria="{{ .T "aria_search" }}">
 {{ template "head" . }}
 <body>
   {{ template "header" . }}
@@ -9,7 +18,7 @@
       <div class="content-area">
         {{- $crumbs := breadcrumbs .Page.Path }}
         {{- if gt (len $crumbs) 1 }}
-        <nav aria-label="Breadcrumb" class="breadcrumb-bar">
+        <nav aria-label="{{ .T "aria_breadcrumb" }}" class="breadcrumb-bar">
           <ul>
             {{- range $crumbs }}
             <li><a href="{{ .Path }}">{{ .Label }}</a></li>

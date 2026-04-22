@@ -20,13 +20,14 @@
   var root = document.documentElement;
   var copyLabel = root.getAttribute('data-copy-label') || 'Copy';
   var copiedLabel = root.getAttribute('data-copied-label') || 'Copied!';
+  var copyAria = root.getAttribute('data-copy-aria') || 'Copy code to clipboard';
 
   document.querySelectorAll('pre > code').forEach(function(codeBlock) {
     var pre = codeBlock.parentNode;
     var btn = document.createElement('button');
     btn.className = 'copy-btn';
     btn.textContent = copyLabel;
-    btn.setAttribute('aria-label', 'Copy code to clipboard');
+    btn.setAttribute('aria-label', copyAria);
 
     btn.addEventListener('click', function() {
       navigator.clipboard.writeText(codeBlock.textContent).then(function() {

@@ -11,14 +11,14 @@
 {{- if .Feature "toc" }}
 {{- $items := toc .Page.TOC }}
 {{- if $items }}
-          <aside id="toc-sidebar" aria-label="Table of Contents">
+          <aside id="toc-sidebar" aria-label="{{ .T "aria_toc" }}">
             <nav>
-              <header>On this page</header>
+              <header>{{ .T "toc_title" }}</header>
               <ul>{{ range $items }}{{ template "toc-item" . }}{{ end }}</ul>
             </nav>
           </aside>
           <div id="toc-overlay" aria-hidden="true"></div>
-          <button id="toc-toggle" aria-label="Toggle table of contents">
+          <button id="toc-toggle" aria-label="{{ .T "aria_toggle_toc" }}">
             <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="3" y1="12" x2="21" y2="12"></line>
               <line x1="3" y1="6" x2="21" y2="6"></line>
