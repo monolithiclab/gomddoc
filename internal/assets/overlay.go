@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"slices"
 )
 
 // Ensure OverlayFS implements these interfaces at compile time
@@ -165,12 +166,21 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		}
 	}
 
-	// If we found entries in at least one filesystem, return them
+	// If we found entries in at least one filesystem, return them sorted by name
 	if len(seenEntries) > 0 {
 		result := make([]fs.DirEntry, 0, len(seenEntries))
 		for _, entry := range seenEntries {
 			result = append(result, entry)
 		}
+		slices.SortFunc(result, func(a, b fs.DirEntry) int {
+			if a.Name() < b.Name() {
+				return -1
+			}
+			if a.Name() > b.Name() {
+				return 1
+			}
+			return 0
+		})
 		return result, nil
 	}
 

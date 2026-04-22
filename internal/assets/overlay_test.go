@@ -165,7 +165,7 @@ func TestOverlayFS_ReadDir(t *testing.T) {
 		name        string
 		filesystems []fstest.MapFS
 		path        string
-		wantFiles   []string
+		wantFiles   []string // Must be sorted by name
 		wantErr     error
 	}{
 		{
@@ -239,14 +239,10 @@ func TestOverlayFS_ReadDir(t *testing.T) {
 				t.Errorf("ReadDir() returned %d entries, want %d", len(entries), len(tt.wantFiles))
 			}
 
-			names := make(map[string]bool)
-			for _, entry := range entries {
-				names[entry.Name()] = true
-			}
-
-			for _, want := range tt.wantFiles {
-				if !names[want] {
-					t.Errorf("ReadDir() missing file %q", want)
+			// Verify entries are sorted by name
+			for i, entry := range entries {
+				if entry.Name() != tt.wantFiles[i] {
+					t.Errorf("ReadDir()[%d] = %q, want %q", i, entry.Name(), tt.wantFiles[i])
 				}
 			}
 		})
