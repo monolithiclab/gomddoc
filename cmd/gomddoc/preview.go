@@ -12,19 +12,21 @@ import (
 
 // PreviewCmd holds all flags for the preview subcommand.
 type PreviewCmd struct {
-	Dir    string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory to preview."`
-	Port   string `name:"port" short:"p" default:":auto" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port). Defaults to auto-assigned port."`
-	Domain string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
-	Open   bool   `name:"open" default:"false" env:"GOMDDOC_PREVIEW_OPEN" help:"Open the browser automatically on startup."`
+	Dir      string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory to preview."`
+	Port     string `name:"port" short:"p" default:":auto" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port). Defaults to auto-assigned port."`
+	Domain   string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
+	Open     bool   `name:"open" default:"false" env:"GOMDDOC_PREVIEW_OPEN" help:"Open the browser automatically on startup."`
+	DirIndex bool   `name:"dir-index" default:"false" env:"GOMDDOC_DIR_INDEX" help:"Enable auto-generated directory listings when no index file exists."`
 }
 
 // setup creates the provider, pipeline, and HTTP server without starting it.
 func (p *PreviewCmd) setup() (*setupResult, error) {
 	return setupServer(ServerSetupOptions{
-		Dir:     p.Dir,
-		Port:    p.Port,
-		Domain:  p.Domain,
-		DevMode: true,
+		Dir:      p.Dir,
+		Port:     p.Port,
+		Domain:   p.Domain,
+		DevMode:  true,
+		DirIndex: p.DirIndex,
 	})
 }
 

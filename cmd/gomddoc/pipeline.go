@@ -152,6 +152,7 @@ type ServerSetupOptions struct {
 	Port      string
 	Domain    string
 	DevMode   bool
+	DirIndex  bool
 	GitSSHKey string
 	Pprof     bool
 	GitCfg    provider.GitProviderConfig
@@ -179,6 +180,10 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 	}
 
 	cfg.Server.Pprof = opts.Pprof
+
+	if opts.DirIndex {
+		cfg.Site.DirIndex = true
+	}
 
 	if opts.Domain != "" {
 		cfg.Site.Meta.Domain = opts.Domain

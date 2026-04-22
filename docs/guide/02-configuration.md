@@ -51,6 +51,7 @@ gomddoc preview [DIR] [flags]
 | `-p, --port` | `GOMDDOC_SERVER_PORT` | `:auto` | Listen address (auto-assigns from 8080) |
 | `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
 | `--open` | `GOMDDOC_PREVIEW_OPEN` | `false` | Auto-open browser on startup |
+| `--dir-index` | `GOMDDOC_DIR_INDEX` | `false` | Enable directory listings when no index file exists |
 
 Preview enables dev mode (no caching, template re-parsing on every request) and defaults to automatic port assignment.
 
