@@ -95,9 +95,11 @@ func TestParseAccept(t *testing.T) {
 				t.Fatalf("ParseAccept() returned %d types, want %d", len(result), len(tt.wantOrder))
 			}
 
-			for i, want := range tt.wantOrder {
-				if result[i].String() != want {
-					t.Errorf("ParseAccept() result[%d].String() = %q, want %q", i, result[i].String(), want)
+			if len(tt.wantOrder) > 0 {
+				for i, want := range tt.wantOrder {
+					if result[i].String() != want {
+						t.Errorf("ParseAccept() result[%d].String() = %q, want %q", i, result[i].String(), want)
+					}
 				}
 			}
 		})
@@ -137,6 +139,12 @@ func TestMediaType_Matches(t *testing.T) {
 			mimeType:  "application/json",
 			want:      false,
 		},
+		{
+			name:      "mismatch application/xhtml+xml vs application/xml",
+			mediaType: MediaType{Type: "application", Subtype: "xhtml+xml"},
+			mimeType:  "application/xml",
+			want:      false,
+		},
 		// Wildcard */* matches everything
 		{
 			name:      "wildcard */* matches text/html",
@@ -148,6 +156,12 @@ func TestMediaType_Matches(t *testing.T) {
 			name:      "wildcard */* matches */*",
 			mediaType: MediaType{Type: "*", Subtype: "*"},
 			mimeType:  "*/*",
+			want:      true,
+		},
+		{
+			name:      "wildcard */* matches text/*",
+			mediaType: MediaType{Type: "*", Subtype: "*"},
+			mimeType:  "text/*",
 			want:      true,
 		},
 		// Type wildcards
@@ -168,6 +182,12 @@ func TestMediaType_Matches(t *testing.T) {
 			name:      "invalid mime type - no slash",
 			mediaType: MediaType{Type: "text", Subtype: "html"},
 			mimeType:  "texthtml",
+			want:      false,
+		},
+		{
+			name:      "invalid mime type - too many slashes",
+			mediaType: MediaType{Type: "text", Subtype: "html"},
+			mimeType:  "text/html/extra",
 			want:      false,
 		},
 		{

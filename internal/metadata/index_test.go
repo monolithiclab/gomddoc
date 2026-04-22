@@ -7,6 +7,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/monolithiclab/gomddoc/internal/testutil/markdown"
 )
 
 func TestExtractFrontmatter(t *testing.T) {
@@ -20,13 +22,13 @@ func TestExtractFrontmatter(t *testing.T) {
 	}{
 		{
 			name:    "valid frontmatter",
-			content: "---\ntitle: Hello\n---\n# Body",
+			content: markdown.ValidFrontmatterWithBody,
 			wantKey: "title",
-			wantVal: "Hello",
+			wantVal: "Hello World",
 		},
 		{
 			name:    "no frontmatter",
-			content: "# Just a heading",
+			content: markdown.SimpleHeading,
 			wantNil: true,
 		},
 		{
@@ -47,7 +49,7 @@ func TestExtractFrontmatter(t *testing.T) {
 		},
 		{
 			name:    "invalid YAML",
-			content: "---\n: :\n  - [\n---\nbody",
+			content: markdown.MalformedFrontmatter,
 			wantErr: true,
 		},
 		{

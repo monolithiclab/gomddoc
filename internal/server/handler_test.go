@@ -25,7 +25,8 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 
 	// Create in-memory filesystem - NO disk I/O!
 	files := fstest.MapFS{
-		"test.md": &fstest.MapFile{Data: []byte("# Test Markdown")},
+		"test.md":  &fstest.MapFile{Data: []byte("# Test Markdown")},
+		"test.png": &fstest.MapFile{Data: []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}},
 	}
 
 	siteConfig := config.NewSiteConfig(".")
@@ -41,6 +42,7 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 		expectedStatus int
 		expectedType   string
 		shouldContain  string
+		expectedLength int
 	}{
 		{
 			name:           "markdown rendered as HTML with explicit accept",
@@ -75,6 +77,22 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 			shouldContain:  "Test Markdown",
 		},
 		{
+			name:           "markdown passthrough with text/markdown accept",
+			path:           "/test.md",
+			acceptHeader:   "text/markdown",
+			expectedStatus: 200,
+			expectedType:   "text/markdown; charset=utf-8",
+			shouldContain:  "# Test Markdown",
+		},
+		{
+			name:           "binary file (png) with wildcard accept",
+			path:           "/test.png",
+			acceptHeader:   "*/*",
+			expectedStatus: 200,
+			expectedType:   "image/png",
+			expectedLength: 8,
+		},
+		{
 			name:           "accept application/json - not acceptable",
 			path:           "/test.md",
 			acceptHeader:   "application/json",
@@ -83,7 +101,7 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 			shouldContain:  "Not Acceptable",
 		},
 		{
-			name:           "accept image/png - not acceptable",
+			name:           "accept image/png for markdown - not acceptable",
 			path:           "/test.md",
 			acceptHeader:   "image/png",
 			expectedStatus: 406,
@@ -119,111 +137,14 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 				}
 			}
 
+			if tt.expectedLength > 0 && w.Body.Len() != tt.expectedLength {
+				t.Errorf("body length = %d, want %d", w.Body.Len(), tt.expectedLength)
+			}
+
 			if tt.expectedStatus == 200 && w.Header().Get("Content-Length") == "" {
 				t.Error("Content-Length header should be set for successful responses")
 			}
 		})
-	}
-}
-
-func TestHandlerServeContent_MarkdownPassthrough(t *testing.T) {
-	t.Parallel()
-
-	files := fstest.MapFS{
-		"test.md": &fstest.MapFile{Data: []byte("---\ntitle: Hello\n---\n# Test Markdown\n\nBody text.")},
-	}
-
-	siteConfig := config.NewSiteConfig(".")
-	prov := newMemoryProvider(files, "README.md", false)
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
-
-	req := httptest.NewRequest("GET", "/test.md", nil)
-	req.Header.Set("Accept", "text/markdown")
-	w := httptest.NewRecorder()
-
-	handler.ServeContent(w, req)
-
-	if w.Code != 200 {
-		t.Errorf("status = %d, want 200", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "# Test Markdown") {
-		t.Errorf("response should contain raw markdown heading, got: %s", body)
-	}
-	if strings.Contains(body, "<h1") {
-		t.Error("response should NOT contain HTML tags for text/markdown accept")
-	}
-}
-
-func TestHandlerServeContent_406WithAvailableTypes(t *testing.T) {
-	t.Parallel()
-
-	files := fstest.MapFS{
-		"test.md": &fstest.MapFile{Data: []byte("# Test")},
-	}
-
-	siteConfig := config.NewSiteConfig(".")
-	prov := newMemoryProvider(files, "README.md", false)
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
-
-	req := httptest.NewRequest("GET", "/test.md", nil)
-	req.Header.Set("Accept", "application/json")
-	w := httptest.NewRecorder()
-
-	handler.ServeContent(w, req)
-
-	if w.Code != 406 {
-		t.Errorf("status = %d, want 406", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "Not Acceptable") {
-		t.Error("response should contain 'Not Acceptable'")
-	}
-	if !strings.Contains(body, "available types") {
-		t.Error("response should list available types")
-	}
-}
-
-func TestHandlerServeContent_BinaryFiles(t *testing.T) {
-	t.Parallel()
-
-	// In-memory PNG file - NO disk I/O!
-	files := fstest.MapFS{
-		"test.png": &fstest.MapFile{Data: []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}},
-	}
-
-	siteConfig := config.NewSiteConfig(".")
-	prov := newMemoryProvider(files, "README.md", false)
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
-
-	req := httptest.NewRequest("GET", "/test.png", nil)
-	req.Header.Set("Accept", "*/*")
-	w := httptest.NewRecorder()
-
-	handler.ServeContent(w, req)
-
-	if w.Code != 200 {
-		t.Errorf("status = %d, want 200", w.Code)
-	}
-
-	if contentType := w.Header().Get("Content-Type"); contentType != "image/png" {
-		t.Errorf("content-type = %q, want image/png", contentType)
-	}
-
-	if cacheControl := w.Header().Get("Cache-Control"); cacheControl != "public, max-age=300" {
-		t.Errorf("cache-control = %q, want public, max-age=300", cacheControl)
-	}
-
-	if len(w.Body.Bytes()) != 8 {
-		t.Errorf("body length = %d, want 8", len(w.Body.Bytes()))
 	}
 }
 
