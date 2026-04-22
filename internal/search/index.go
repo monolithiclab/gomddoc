@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"math"
-	"path/filepath"
+	stdpath "path"
 	"runtime"
 	"slices"
 	"strings"
@@ -72,7 +72,7 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 			return nil
 		}
 
-		if ext := filepath.Ext(d.Name()); ext != ".md" && ext != ".markdown" {
+		if ext := stdpath.Ext(d.Name()); ext != ".md" && ext != ".markdown" {
 			return nil
 		}
 

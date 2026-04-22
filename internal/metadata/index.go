@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"path/filepath"
+	stdpath "path"
 	"runtime"
 	"slices"
 	"strings"
@@ -57,7 +57,7 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, excludePatterns []string) (*I
 		}
 
 		// Only collect Markdown files
-		if ext := filepath.Ext(d.Name()); ext != ".md" && ext != ".markdown" {
+		if ext := stdpath.Ext(d.Name()); ext != ".md" && ext != ".markdown" {
 			return nil
 		}
 

@@ -2,7 +2,7 @@ package negotiate
 
 import (
 	"mime"
-	"path/filepath"
+	stdpath "path"
 	"strings"
 )
 
@@ -15,7 +15,7 @@ func init() {
 // It uses mime.TypeByExtension and defaults to "application/octet-stream"
 // if the extension is unknown.
 func DetectMIME(path string) string {
-	mimeType := mime.TypeByExtension(filepath.Ext(path))
+	mimeType := mime.TypeByExtension(stdpath.Ext(path))
 	if mimeType == "" {
 		return "application/octet-stream"
 	}
