@@ -10,6 +10,7 @@
     </head>
     <body>
         <header class="container-fluid">
+            <hgroup>
             <nav>
                 <ul>
                     <li>{{ .Title }}</li>
@@ -18,18 +19,18 @@
                     <li><a href="/">Home</a></li>
                 </ul>
             </nav>
+            {{- if gt (len .Breadcrumbs) 1 }}
+            <nav aria-label="breadcrumb">
+                <ul>
+                    {{- range $path, $name := .Breadcrumbs }}
+                    <li><a href="{{ $path }}">{{ $name }}</a></li>
+                    {{- end }}
+                </ul>
+            </nav>
+            {{- end }}
+            </hgroup>
         </header>
         <main class="container-fluid">
-            <aside>
-                <nav>
-                    <ul>
-                        <li>
-                            <a href="/">Root</a>
-                        </li>
-                        <li><a href="/">Core</a></li>
-                    </ul>
-                </nav>
-            </aside>
             <article>{{ .Content }}</article>
         </main>
     </body>

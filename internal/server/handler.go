@@ -54,6 +54,7 @@ func (h *Handler) ServeMarkdown(w http.ResponseWriter, r *http.Request) {
 		Theme: tmpl.ThemeOptions{
 			BaseURL: "/assets/themes/default",
 		},
+		Breadcrumbs: tmpl.GenerateBreadcrumbs(h.provider, filename),
 	}
 
 	// Render the template

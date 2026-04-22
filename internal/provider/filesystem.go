@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"io/fs"
 	"os"
 	"path"
 	"strings"
@@ -47,6 +48,19 @@ func (f *FilesystemProvider) ReadFile(filename string) ([]byte, error) {
 	}
 
 	return f.root.ReadFile(filename)
+}
+
+// Stat returns a FileInfo describing the named file
+func (f *FilesystemProvider) Stat(filename string) (fs.FileInfo, error) {
+	if filename == "/" {
+		filename = "."
+	} else {
+		// Clean the path first, then remove leading slash to make it relative
+		filename = path.Clean(filename)
+		filename = strings.TrimPrefix(filename, "/")
+	}
+
+	return f.root.Stat(filename)
 }
 
 // DefaultIndex returns the configured default index file
