@@ -89,6 +89,60 @@ Extracted from completed spec files before deletion.
 - Example: `NewMarkdownRenderer(MarkdownOptions{ColorChips: true})` — empty struct gives defaults
 - **Constructor pattern**: `config.NewFromServeArgs(dir, port, devMode, gitSSHKey)` replaced `Load()` + `ParseFlags()`
 
+## Disk-Based Git Storage
+
+**Chosen**: `DiskStorageFactory` using `go-git/v5/storage/filesystem` with LRU object cache
+
+**Alternatives considered**:
+- **Always in-memory**: Simple but OOMs on large repos (50MB+ object databases)
+- **Persistent disk cache with invalidation**: More complex, requires tracking remote HEAD changes
+- **SQLite-backed storage**: Would add CGO dependency
+
+**Why filesystem.Storage**: Uses go-git's native `filesystem.Storage` with `cache.NewObjectLRUDefault()`. Zero new deps (go-billy already in go.mod). URL-hashed subdirectories under `--git-storage-dir` isolate per-repo caches. Factory pattern (`StorageFactory`) keeps memory storage as default for small repos.
+
+## Auto-Navigation Sidebar
+
+**Chosen**: FS-walking navigation generator with template function rendering
+
+**Alternatives considered**:
+- **Config-driven navigation** (manual YAML sidebar definition): Precise control but high maintenance burden, doesn't scale with directory changes
+- **Handler-level generation** (generate in handler, pass via PageContext): Works but couples handler to navigation package
+- **Client-side JS navigation** (fetch navigation JSON, render in browser): Extra HTTP request, flicker on load
+
+**Why FS-walking + template function**: Navigation generator walks `Provider.RootFS()` to build a `NavNode` tree, marks active path, and renders via `{{ navigation .Page.Path }}` template function. Same pattern as breadcrumbs — no handler changes needed. Uses `<details>/<summary>` for collapsible directories. Title extracted from first `# heading` in each `.md` file (skipping frontmatter). Directories without renderable children are pruned.
+
+## Metadata Indexing
+
+**Chosen**: Lightweight YAML frontmatter parser with in-memory index + JSON API
+
+**Alternatives considered**:
+- **goldmark-meta reuse** (full markdown parse per file): Correct but 10-100x slower — parses entire markdown just to extract frontmatter
+- **Database-backed index** (SQLite/bbolt): Persistent but adds complexity and deps for a read-only use case
+- **No aggregation** (per-page only): Simplest but blocks tag-based discovery features
+
+**Why lightweight parser**: Custom `extractFrontmatter()` finds `---` delimiters and calls `yaml.Unmarshal` — no goldmark needed. Index built at startup by walking `RootFS()`. Tags normalized to lowercase. API: `GET /api/tags` (all tags) and `GET /api/tags/{tag}` (pages by tag). Routes registered before the catch-all handler in `server.go`.
+
+## Static Site Generation (`gomddoc build`)
+
+**Chosen**: Walk-and-render approach reusing the serve pipeline
+
+**Alternatives considered**:
+- **HTTP crawling** (start server, crawl with HTTP client): Handles all edge cases but slow, complex, requires port allocation
+- **Separate rendering pipeline**: Duplicates serve logic, diverges over time
+- **Template-only output** (skip template wrapping, output raw HTML): Simpler but useless without styling
+
+**Why walk-and-render**: Reuses the exact same provider → renderer → template pipeline as `serve.go`. Walks `contentRoot` with `fs.WalkDir`, renders `.md` files through the full pipeline, copies non-markdown files as-is. Generates `index.html` alongside `README.html` for clean URLs. Config reused via `NewFromServeArgs` with dummy port. Trade-off: `deriveTitle()` duplicated from `server/handler.go` (unexported) — acceptable for 10 lines vs adding a shared package.
+
+## Full-Text Search (Decision Pending)
+
+**Options analyzed** (not yet implemented):
+- **Option A — Bleve** (server-side, Go-native): Rich queries, fuzzy matching. Heavy deps (~20+ transitive), increases binary size.
+- **Option B — Pagefind** (client-side, build-time): Zero server cost, tiny JS, excellent relevance. Requires `gomddoc build` first. External binary dep.
+- **Option C — Stdlib inverted index**: Zero deps, simple. No fuzzy matching, basic relevance.
+- **Option D — Lunr.js** (client-side): Established but aging, larger index files than Pagefind.
+
+**Recommendation**: Option C for `gomddoc serve` (keeps zero-external-deps philosophy), Option B for `gomddoc build` (as optional post-build step).
+
 ## Deferred / Discarded Ideas
 
 | Idea | Status | Reason |

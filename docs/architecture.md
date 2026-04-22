@@ -73,9 +73,13 @@ type Provider interface {
 **Implementations:**
 
 - **FilesystemProvider** — Local filesystem via `os.DirFS()` with path traversal protection
-- **GitProvider** — Remote Git repositories via go-git with in-memory clone
+- **GitProvider** — Remote Git repositories via go-git with configurable storage backend
 
 Both providers share a common `normalizePath()` function for converting request paths to fs-compatible paths.
+
+**Git Storage Backends:**
+- **MemoryStorageFactory** (default) — In-memory clone for fast startup and small repos
+- **DiskStorageFactory** — Filesystem-backed storage via `--git-storage-dir` for large repos that would OOM with in-memory storage. Uses URL-hashed subdirectories for isolation.
 
 **Key Features:**
 - stdlib `fs.FS` compatible paths (forward slashes, no leading `/`)
@@ -149,11 +153,60 @@ type Renderer interface {
 - Production mode: `CachedTemplateStore` (sync.Map cache)
 - Dev mode: `PassthroughTemplateStore` (always re-parse)
 - Breadcrumb generation from URL paths
+- Auto-navigation sidebar from directory structure
 - TOC generation from heading structure
 - Buffer pool with 64KB cap to prevent memory bloat
 - File handle validation at startup
 
-### 6. Middleware Chain
+### 6. Navigation Layer
+
+**Responsibility:** Auto-generated sidebar navigation from content structure
+
+```go
+type NavNode struct {
+    Label    string
+    Path     string
+    IsDir    bool
+    IsActive bool
+    IsOpen   bool
+    Children []*NavNode
+}
+```
+
+The navigation generator walks `Provider.RootFS()` to build a tree of all `.md` files, extracting titles from
+`# heading` lines (skipping YAML frontmatter). Directories are sorted first, then files alphabetically.
+The default index file (e.g., `README.md`) is excluded from the tree. Empty directories are pruned.
+
+Rendered via the `{{ navigation .Page.Path }}` template function as nested `<details>/<summary>` elements
+for collapsible directories with `<a>` links for files.
+
+### 7. Metadata Index
+
+**Responsibility:** Aggregate frontmatter metadata across all pages
+
+```go
+type Index struct {
+    pages []PageInfo
+    byTag map[string][]int
+}
+```
+
+Built at startup by walking `RootFS()` and parsing YAML frontmatter (lightweight `---` delimiter parser,
+no full goldmark render). Provides `AllPages()`, `AllTags()`, and `ByTag(tag)` lookups.
+
+Exposed via JSON API:
+- `GET /api/tags` — All tags (sorted)
+- `GET /api/tags/{tag}` — Pages with the given tag
+
+### 8. Static Site Generator
+
+**Responsibility:** Build static HTML from content for deployment to static hosts
+
+The `gomddoc build` command reuses the same provider → renderer → template pipeline as `serve`. It walks
+`contentRoot` via `fs.WalkDir`, renders `.md` files through the full pipeline (markdown → template → HTML),
+copies non-markdown files as-is, and generates `index.html` alongside `README.html` for clean URLs.
+
+### 9. Middleware Chain
 
 **Order (outermost to innermost):**
 
@@ -272,7 +325,7 @@ type PathError struct {
 
 ### Loading Priority (highest wins)
 
-1. CLI flags (`-d`, `-p`, `-dev`, `--git-key-file`)
+1. CLI flags (`-d`, `-p`, `-dev`, `--git-key-file`, `--git-storage-dir`)
 2. Environment variables (`GOMDDOC_SERVER_*`, `GOMDDOC_SITE_*`)
 3. Config file (`.gomddoc/config.yml`)
 4. Defaults
@@ -305,20 +358,25 @@ Environment variables are applied via reflection-based walking of the struct tre
 
 ## Testing
 
-### Coverage (as of 2026-03-09)
+### Coverage (as of 2026-03-18)
 
-| Package                    | Coverage |
-| -------------------------- | -------- |
-| internal/common            | 100.0%   |
-| internal/renderer          | 96.8%    |
-| internal/text              | 95.2%    |
-| internal/template          | 93.3%    |
-| internal/server            | 92.8%    |
-| internal/template/breadcrumb | 92.0% |
-| internal/config            | 82.4%    |
-| internal/assets            | 80.8%    |
-| internal/provider          | 67.5%    |
-| **Overall**                | **78.1%** |
+| Package                      | Coverage |
+| ---------------------------- | -------- |
+| internal/common              | 100.0%   |
+| internal/template/navigation | 96.7%    |
+| internal/renderer            | 95.3%    |
+| internal/text                | 95.2%    |
+| internal/template            | 94.0%    |
+| internal/metadata            | 92.9%    |
+| internal/template/breadcrumb | 92.0%    |
+| internal/server              | 86.7%    |
+| internal/config              | 83.8%    |
+| internal/assets              | 81.7%    |
+| internal/provider            | 58.3%    |
+| **Overall**                  | **73.2%** |
+
+*Note: Overall coverage includes `cmd/gomddoc` which tests via external binary execution (integration tests
+that don't count toward Go's coverage instrumentation). Internal packages average ~88% coverage.*
 
 ### Test Strategy
 
@@ -362,6 +420,10 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | `path` not `filepath` for fs.FS | `io/fs` spec requires forward slashes; `filepath` breaks on Windows |
 | Clone timeout via context | Standard Go pattern; `git.CloneContext()` respects cancellation |
 | SSH fail-closed | Security: no TOFU fallback; require known_hosts for host key verification |
+| StorageFactory abstraction | Swap memory/disk storage without changing GitProvider; default memory for small repos |
+| Navigation via template func | Same pattern as breadcrumbs; no handler changes; `{{ navigation .Page.Path }}` |
+| Lightweight frontmatter parser | 10-100x faster than full goldmark render for metadata-only extraction |
+| Build reuses serve pipeline | Single source of truth for rendering; no divergence between serve and build output |
 
 ## Glossary
 
@@ -375,3 +437,6 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Template Wrapping**: Adding HTML layout around rendered content
 - **TOC**: Table of Contents extracted from heading structure
 - **Overlay FS**: Layered filesystem where user assets override embedded defaults
+- **Navigation Tree**: Auto-generated sidebar from directory structure (`NavNode` tree)
+- **Metadata Index**: Aggregated frontmatter data across all pages for tag-based discovery
+- **Static Site Generation**: `gomddoc build` output for deployment to static hosts

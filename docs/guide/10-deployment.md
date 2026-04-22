@@ -1,5 +1,28 @@
 # Deployment
 
+gomddoc supports two deployment models: **dynamic serving** via `gomddoc serve` (container-based) and **static site generation** via `gomddoc build` (deploy to any static host).
+
+## Static Site Deployment
+
+Generate a static site and deploy to any static host:
+
+```bash
+gomddoc build -d ./docs -o ./public
+```
+
+This walks your content directory, renders all markdown through the full template pipeline (with navigation,
+breadcrumbs, TOC, and styling), copies non-markdown files as-is, and generates `index.html` files alongside
+`README.html` for clean URLs.
+
+The output is a self-contained directory ready for:
+
+- **GitHub Pages**: Push `./public` to a `gh-pages` branch
+- **Netlify/Vercel**: Point the build output to `./public`
+- **S3 + CloudFront**: Sync `./public` to an S3 bucket
+- **Any static file server**: Serve `./public` with nginx, caddy, etc.
+
+## Container Deployment
+
 gomddoc ships with a multi-stage Dockerfile that produces a minimal, secure container image suitable for production deployment.
 
 ## Docker Image

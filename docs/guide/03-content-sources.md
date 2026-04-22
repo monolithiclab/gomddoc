@@ -28,7 +28,8 @@ gomddoc -d /path/to/docs
 
 ## 2. Git Repositories
 
-gomddoc can clone a repository into **memory** and serve it. No files are written to disk. The repository is cloned
+gomddoc can clone a repository and serve it. By default the clone is held **in memory** (no files written to disk).
+For large repositories, use `--git-storage-dir` to clone to disk instead (see below). The repository is cloned
 lazily on first request (not at startup), using a shallow clone for speed.
 
 ### URL Syntax
@@ -102,3 +103,24 @@ gomddoc -d "git+ssh://git@gitlab.company.com/group/project.git"
 - **Git LFS:** LFS pointer files are detected and return a 501 Not Implemented error.
 - **Lifecycle:** The provider is safe for concurrent use. Calling `Close()` marks the provider as closed; subsequent
   reads return an error rather than risking nil pointer dereferences.
+
+### Disk-Based Storage
+
+By default, Git repositories are cloned into memory. For large repositories (monorepos, repos with many files),
+this can cause out-of-memory errors. Use `--git-storage-dir` to clone to disk instead:
+
+```bash
+gomddoc serve \
+  -d "git+https://github.com/large-org/monorepo.git#main:docs" \
+  --git-storage-dir /var/cache/gomddoc
+```
+
+Or via environment variable:
+
+```bash
+export GOMDDOC_SERVER_GIT_STORAGE_DIR=/var/cache/gomddoc
+gomddoc serve -d "git+https://github.com/large-org/monorepo.git"
+```
+
+Each repository URL gets a unique subdirectory (SHA-256 hash of the URL), so multiple repos can safely share the
+same cache directory. The cache persists across restarts — subsequent startups skip the clone if the cache exists.

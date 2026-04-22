@@ -42,6 +42,12 @@ The absolute path to a private SSH key file used for authenticating with private
 *   **Env Var:** `GOMDDOC_SERVER_GIT_SSH_KEY`
 *   **Default:** Empty (Anonymous access only)
 
+**Git Storage Directory**
+Directory for disk-based Git clone storage. When set, repositories are cloned to disk instead of memory, preventing OOM errors on large repos. Each repo URL gets a unique subdirectory.
+*   **CLI Flag:** `--git-storage-dir`
+*   **Env Var:** `GOMDDOC_SERVER_GIT_STORAGE_DIR`
+*   **Default:** Empty (in-memory storage)
+
 ### Network Tuning (`SERVER.HTTP`)
 
 Advanced settings to tune the HTTP server timeouts and limits.

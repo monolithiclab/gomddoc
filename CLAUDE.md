@@ -35,12 +35,13 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 
 ```
 gomddoc/
-├── cmd/gomddoc/           # CLI entry point (Kong), serve subcommand
+├── cmd/gomddoc/           # CLI entry point (Kong), serve + build subcommands
 ├── internal/
 │   ├── config/            # Configuration (NewFromServeArgs, validation, YAML, env overrides)
-│   ├── provider/          # Content providers (filesystem, git)
+│   ├── metadata/          # Frontmatter indexing, tag API
+│   ├── provider/          # Content providers (filesystem, git with memory/disk storage)
 │   ├── renderer/          # Content renderers (markdown, passthrough)
-│   ├── template/          # Template rendering, caching, breadcrumbs
+│   ├── template/          # Template rendering, caching, breadcrumbs, navigation
 │   ├── server/            # HTTP server, handlers, middleware, content negotiation
 │   └── assets/            # Overlay filesystem for theme overrides
 ├── assets/                # Embedded themes and templates
