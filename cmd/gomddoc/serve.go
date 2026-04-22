@@ -108,7 +108,6 @@ func (s *ServeCmd) Run() error {
 
 	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS,
 		template.WithBreadcrumbGenerator(breadcrumbGen),
-		template.WithNavigationGenerator(navGen),
 	)
 	if !cfg.Server.DevMode {
 		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
@@ -125,10 +124,12 @@ func (s *ServeCmd) Run() error {
 
 	enricherRegistry := enricher.NewDefaultEnricherRegistry()
 	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{
-		MetaIndex: metaIndex,
+		MetaIndex:  metaIndex,
+		NavBuilder: navBuilderAdapter(navGen),
 	}))
 
-	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, navGen)
+	redirectFinder := redirectFinderAdapter(navGen)
+	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, redirectFinder)
 
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer sigCancel()
@@ -145,4 +146,41 @@ func (s *ServeCmd) Run() error {
 	})
 
 	return g.Wait()
+}
+
+// redirectFinderAdapter wraps a navigation.Generator into a server.RedirectFinder,
+// finding the first page under a directory for redirect when no index exists.
+func redirectFinderAdapter(navGen *navigation.Generator) server.RedirectFinder {
+	return func(dirPath string) string {
+		tree := navGen.Generate(dirPath)
+		return navigation.FindFirstPage(tree)
+	}
+}
+
+// navBuilderAdapter wraps a navigation.Generator into an enricher.NavBuilder,
+// converting NavNode trees to enricher.NavItem slices.
+func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
+	return func(currentPath string) []enricher.NavItem {
+		root := navGen.Generate(currentPath)
+		if root == nil {
+			return nil
+		}
+		return convertNavNodes(root.Children)
+	}
+}
+
+// convertNavNodes converts navigation.NavNode children to enricher.NavItem slices.
+func convertNavNodes(nodes []*navigation.NavNode) []enricher.NavItem {
+	items := make([]enricher.NavItem, len(nodes))
+	for i, node := range nodes {
+		items[i] = enricher.NavItem{
+			Title:    node.Label,
+			Path:     node.Path,
+			IsDir:    node.IsDir,
+			Active:   node.IsActive,
+			Open:     node.IsOpen,
+			Children: convertNavNodes(node.Children),
+		}
+	}
+	return items
 }

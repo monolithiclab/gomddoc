@@ -73,7 +73,6 @@ func (p *PreviewCmd) Run() error {
 
 	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS,
 		template.WithBreadcrumbGenerator(breadcrumbGen),
-		template.WithNavigationGenerator(navGen),
 	)
 
 	if err := templateRenderer.ValidateDefaultTheme(); err != nil {
@@ -87,10 +86,12 @@ func (p *PreviewCmd) Run() error {
 
 	enricherRegistry := enricher.NewDefaultEnricherRegistry()
 	enricherRegistry.Register(enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{
-		MetaIndex: metaIndex,
+		MetaIndex:  metaIndex,
+		NavBuilder: navBuilderAdapter(navGen),
 	}))
 
-	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, navGen)
+	redirectFinder := redirectFinderAdapter(navGen)
+	httpServer := server.NewHTTPServer(cfg, prov, registry, enricherRegistry, templateRenderer, metaIndex, redirectFinder)
 
 	url := server.ListenURL(cfg.Server.Port)
 	fmt.Printf("Preview: %s\n", url)

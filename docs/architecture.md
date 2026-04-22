@@ -150,7 +150,7 @@ renderers receive the same enrichment data.
 
 | Enricher | MIME Types | Extracts |
 | --- | --- | --- |
-| **MarkdownEnricher** | `text/markdown` | Frontmatter, TOC, related docs via metadata index |
+| **MarkdownEnricher** | `text/markdown` | Frontmatter, TOC, navigation, related docs via metadata index |
 | **NoOpEnricher** | _(fallback)_ | Empty `EnrichmentData{}` |
 
 The `EnricherRegistry` is MIME-type-keyed and always returns an enricher (`Get()` never returns nil).
@@ -191,7 +191,7 @@ type Renderer interface {
 |----------|-----------|---------|
 | `breadcrumbs` | `breadcrumbs(path) → []Breadcrumb` | Path-based breadcrumb navigation |
 | `toc` | `toc(tocTree, [min, max]) → HTML` | Nested `<ul>` table of contents (default: h1-h2) |
-| `navigation` | `navigation(currentPath) → HTML` | Auto-generated sidebar from directory structure |
+| `navigation` | `navigation(navTree) → HTML` | Sidebar from enrichment `NavTree` |
 | `editURL` | `editURL(pagePath) → string` | Combines `edit_url` config with page path |
 | `inlineAsset` | `inlineAsset(name) → JS` | Loads asset from theme dir → shared dir fallback |
 
@@ -216,7 +216,10 @@ The navigation generator walks `Provider.RootFS()` to build a tree of all `.md` 
 `# heading` lines (skipping YAML frontmatter). Directories are sorted first, then files alphabetically.
 The default index file (e.g., `README.md`) is excluded from the tree. Empty directories are pruned.
 
-Rendered via the `{{ navigation .Page.Path }}` template function as nested `<details>/<summary>` elements
+Navigation data flows through the enricher pipeline: the `MarkdownEnricher` calls a `NavBuilder` function
+(injected at startup to avoid import cycles) that builds the navigation tree. The tree is stored in
+`EnrichmentData.Navigation` and passed to the template layer via `PageContext.Navigation`. The
+`{{ navigation .Page.Navigation }}` template function renders it as nested `<details>/<summary>` elements
 for collapsible directories with `<a>` links for files.
 
 ### 8. Metadata Index
@@ -462,7 +465,7 @@ Environment variables are applied via reflection-based walking of the struct tre
 
 ### Coverage (as of 2026-03-23)
 
-Overall statement coverage: **80.6%**
+Overall statement coverage: **80.2%**
 
 *Note: Overall coverage includes `cmd/gomddoc` which tests via external binary execution (integration tests
 that don't count toward Go's coverage instrumentation). Internal packages average ~90%+ coverage.*
@@ -512,7 +515,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Clone timeout via context | Standard Go pattern; `git.CloneContext()` respects cancellation |
 | SSH fail-closed | Security: no TOFU fallback; require known_hosts for host key verification |
 | StorageFactory abstraction | Swap memory/disk storage without changing GitProvider; default memory for small repos |
-| Navigation via template func | Same pattern as breadcrumbs; no handler changes; `{{ navigation .Page.Path }}` |
+| Navigation via enricher | Navigation tree built by enricher (via NavBuilder injection), passed to template in PageContext |
 | Lightweight frontmatter parser | 10-100x faster than full goldmark render for metadata-only extraction |
 | Build reuses serve pipeline | Single source of truth for rendering; no divergence between serve and build output |
 | Color chip as web component | Shadow DOM encapsulation prevents theme CSS conflicts; `::part()` allows per-theme styling |

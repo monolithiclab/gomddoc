@@ -14,7 +14,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
-	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // Renderer defines the interface for template rendering
@@ -34,10 +33,11 @@ type TemplateContext struct {
 }
 
 type PageContext struct {
-	Content template.HTML
-	Path    string            // Current request path
-	Meta    map[string]any    // Extracted metadata (e.g., front matter)
-	TOC     *enricher.TOCNode // Table of Contents
+	Content    template.HTML
+	Path       string            // Current request path
+	Meta       map[string]any    // Extracted metadata (e.g., front matter)
+	TOC        *enricher.TOCNode // Table of Contents
+	Navigation *enricher.NavTree // Navigation tree (populated by enricher)
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects
@@ -58,10 +58,9 @@ var bufferPool = sync.Pool{
 // IMPORTANT: Do not mutate siteConfig after construction if using concurrently.
 type HTMLRenderer struct {
 	assetsFS      fs.FS
-	siteConfig    *config.SiteConfig    // For theme name (NOT full Config - security)
-	cache         TemplateCache         // Injected dependency (strategy pattern)
-	breadcrumbGen breadcrumb.Generator  // Optional breadcrumb generator
-	navGen        *navigation.Generator // Optional navigation generator
+	siteConfig    *config.SiteConfig   // For theme name (NOT full Config - security)
+	cache         TemplateCache        // Injected dependency (strategy pattern)
+	breadcrumbGen breadcrumb.Generator // Optional breadcrumb generator
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
@@ -72,13 +71,6 @@ type RendererOption func(*HTMLRenderer)
 func WithCache(cache TemplateCache) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.cache = cache
-	}
-}
-
-// WithNavigationGenerator sets the navigation tree generator for the renderer
-func WithNavigationGenerator(gen *navigation.Generator) RendererOption {
-	return func(r *HTMLRenderer) {
-		r.navGen = gen
 	}
 }
 
@@ -235,14 +227,50 @@ func (h *HTMLRenderer) generateEditURL(pagePath string) string {
 	return base + pagePath
 }
 
-// generateNavigation generates the navigation tree HTML for the given path.
-// Returns empty HTML if no navigation generator is configured.
-func (h *HTMLRenderer) generateNavigation(currentPath string) template.HTML {
-	if h.navGen == nil {
+// generateNavigation renders the navigation tree from enrichment data as HTML.
+// Returns empty HTML if no navigation data is available.
+func (h *HTMLRenderer) generateNavigation(navTree *enricher.NavTree) template.HTML {
+	if navTree == nil || len(navTree.Items) == 0 {
 		return ""
 	}
-	root := h.navGen.Generate(currentPath)
-	return template.HTML(navigation.RenderNavTree(root)) // #nosec G203
+	var buf bytes.Buffer
+	renderNavItems(&buf, navTree.Items)
+	return template.HTML(buf.String()) // #nosec G203
+}
+
+// renderNavItems renders enricher.NavItem slices as HTML with nested <ul>/<li> elements.
+// Directories use <details>/<summary> for collapsible sections.
+// Files use <a> links with class="active" when Active is true.
+func renderNavItems(buf *bytes.Buffer, items []enricher.NavItem) {
+	buf.WriteString("<ul>")
+	for _, item := range items {
+		buf.WriteString("<li>")
+		if item.IsDir {
+			buf.WriteString("<details")
+			if item.Open {
+				buf.WriteString(" open")
+			}
+			buf.WriteString("><summary>")
+			buf.WriteString(template.HTMLEscapeString(item.Title))
+			buf.WriteString("</summary>")
+			if len(item.Children) > 0 {
+				renderNavItems(buf, item.Children)
+			}
+			buf.WriteString("</details>")
+		} else {
+			buf.WriteString(`<a href="`)
+			buf.WriteString(template.HTMLEscapeString(item.Path))
+			buf.WriteString(`"`)
+			if item.Active {
+				buf.WriteString(` class="active"`)
+			}
+			buf.WriteString(">")
+			buf.WriteString(template.HTMLEscapeString(item.Title))
+			buf.WriteString("</a>")
+		}
+		buf.WriteString("</li>")
+	}
+	buf.WriteString("</ul>")
 }
 
 // generateBreadcrumbs generates breadcrumbs for the given path

@@ -13,7 +13,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template"
-	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -40,9 +39,9 @@ func NewHTTPServer(
 	enricherRegistry enricher.EnricherRegistry,
 	templateRenderer template.Renderer,
 	metaIndex *metadata.Index,
-	navGen *navigation.Generator,
+	redirectFinder RedirectFinder,
 ) *HTTPServer {
-	handler := NewHandler(provider, registry, enricherRegistry, templateRenderer, &cfg.Site, navGen)
+	handler := NewHandler(provider, registry, enricherRegistry, templateRenderer, &cfg.Site, redirectFinder)
 
 	// Apply middleware chain (outermost first, innermost closest to handler)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)

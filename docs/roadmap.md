@@ -55,6 +55,19 @@ See `docs/architecture.md` for detailed architecture and `docs/guide/` for user 
 - [ ] **Partial clones**: `git clone --filter=blob:none` when upstream library support matures.
 - [x] **Auto-port assignment**: `--port :auto` (or `-p :auto`) scans for an available port starting from
       8080. Works in any mode, not just dev. Port discovery via sequential `net.Listen` scan.
+- [ ] **Profiling and benchmarks**: Add comprehensive benchmarks and `pprof` integration for
+      data-driven performance optimization.
+  - [ ] **Benchmark suite**: Table-driven benchmarks for hot-path functions: markdown rendering
+        (`MarkdownRenderer.Render`), enrichment (`MarkdownEnricher.Enrich`), content negotiation
+        (`DefaultRegistry.Get`), template rendering (`HTMLRenderer.Render`), and compression
+        (`CompressResponseWriter`). Include small, medium, and large document sizes.
+  - [ ] **`pprof` endpoint**: Expose `/debug/pprof/` behind a `--pprof` flag (disabled by default,
+        never in production). CPU, heap, goroutine, and mutex profiles available at runtime.
+  - [ ] **CI benchmark tracking**: Run benchmarks in CI with `go test -bench -benchmem`. Use
+        `benchstat` to detect regressions against the baseline. Fail CI on >10% degradation.
+  - [ ] **Allocation reduction**: Profile and reduce allocations in the request hot path
+        (provider → enricher → renderer → template → compress → serve). Target zero-alloc for
+        ETag checks and content negotiation.
 
 ## Phase 5: Search and Discovery (Partial)
 
@@ -118,17 +131,20 @@ receive enrichment data and focus solely on content transformation.
 - [x] **TOCNode moved**: From `renderer` to `enricher` package. Template package imports `enricher` directly.
 - [x] **Renderer cleanup**: MarkdownRenderer removed metadata/TOC extraction (still parses markdown for
       HTML + post-processing). MarkdownPassthroughRenderer simplified to just frontmatter stripping.
+- [x] **Navigation via enricher**: Navigation tree generation moved from template layer into the enricher
+      pipeline. `MarkdownEnricher` accepts a `NavBuilder` function (wraps `navigation.Generator` to avoid
+      import cycles), stores the tree in `EnrichmentData.Navigation`, and passes it to templates via
+      `PageContext.Navigation`. Template `{{ navigation .Page.Navigation }}` renders from the enriched data.
+      Handler uses a `RedirectFinder` closure for dir-no-index redirects, breaking the server→navigation
+      import dependency.
 
-### 6c: Additional Renderers
+### 6c: Additional Renderers (Partial)
 
 _Expand format support for technical documentation._
 
-- [ ] **AsciiDoc support**: Renderer for `.adoc` files (popular in technical writing).
-- [ ] **OpenAPI renderer**: Render `swagger.yaml` / `openapi.json` as interactive API docs.
 - [x] **KaTeX math rendering**: Client-side via CDN with `$...$` (inline) and `$$...$$` (display) delimiters.
       Auto-render extension scans page content on load.
 - [x] **Mermaid diagrams**: Client-side via CDN with fenced `mermaid` code blocks. Theme-aware (dark/light).
-- [ ] **Server-side Mermaid/KaTeX**: Native rendering without client-side JS dependency.
 
 ## Phase 7: Static Site Generation (Partial)
 
@@ -137,6 +153,7 @@ _Expand format support for technical documentation._
 - [ ] **Sitemap generation**: Generate `sitemap.xml` during build with `<url>` entries for all rendered
       pages. Include `<lastmod>` from Git commit dates (filesystem provider falls back to file mtime).
       Respects `base_url` from site config for absolute URLs. Excludes hidden files and non-HTML outputs.
+      See also Phase 9a for dynamic `/sitemap.xml` in serve mode.
 - [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
 - [ ] **Static host compatibility**: Output structure compatible with S3, Netlify, Cloudflare Pages.
 
@@ -250,22 +267,191 @@ using the overlay filesystem to allow themes to override shared resources.
 - [ ] **Build mode**: `gomddoc build` copies the resolved static overlay into the output `_assets/`
       directory. Shared and theme statics are merged with the same override precedence.
 
-## Phase 9: Enterprise Features
+## Phase 9: SEO and Discoverability
+
+_Technical SEO features to compete with MkDocs Material, Docusaurus, and Hugo for search rankings.
+gomddoc's server-rendered HTML with no client-side framework is a natural Core Web Vitals advantage —
+these items close the gap on crawl management, structured data, and social sharing.
+See `docs/seo-competitive-analysis.md` for full competitive analysis._
+
+### 9a: Pre-Launch SEO (P0)
+
+_Must ship before public launch. These are table-stakes features that every documentation tool provides._
+
+- [ ] **Canonical URLs**: Add `<link rel="canonical" href="...">` to every page's `<head>`.
+      Constructed from `domain` config + page path. Prevents duplicate content penalties when
+      content is accessible via multiple URLs (trailing slash, `README.md` vs `index.html`).
+      Expose `canonicalURL` in `TemplateContext` or as a template function. Low complexity.
+- [ ] **XML sitemap**: _Already planned in Phase 7._ Additionally, serve `/sitemap.xml` dynamically
+      in `serve` mode (not just `build`). Include `<lastmod>` from Git commit dates (see Git-based
+      timestamps below).
+- [ ] **`robots.txt`**: Serve `/robots.txt` with `Sitemap:` directive and sensible defaults
+      (allow all, block `/_assets/`, `/api/`, `/.well-known/`). In `build` mode, write file to
+      output directory. In `serve` mode, serve from a dedicated handler. Low complexity.
+- [ ] **Open Graph meta tags**: Add `og:title`, `og:description`, `og:url`, `og:type` ("article"),
+      `og:site_name` to every page. Add corresponding `twitter:card` (summary) tags. All data
+      already available from frontmatter and site config. Optional `og:image` (see P1 social
+      images). Add to theme `head.html.tmpl` partials. Low complexity.
+
+### 9b: Post-Launch SEO (P1)
+
+_High-impact features that differentiate gomddoc from competitors._
+
+- [ ] **JSON-LD structured data**: Inject `<script type="application/ld+json">` with Schema.org
+      markup. Per-page `TechArticle` schema (headline, datePublished, dateModified, author,
+      description). `BreadcrumbList` schema matching breadcrumb navigation. `WebSite` schema on
+      index page (with `SearchAction` when search is implemented). Most documentation tools lack
+      this — competitive advantage for rich snippets. Medium complexity.
+- [ ] **Auto-generated meta description**: When frontmatter `description` is missing, extract
+      first ~160 characters of rendered text (strip Markdown/HTML, truncate at word boundary).
+      Ensures every page has a reasonable description without requiring frontmatter. Low complexity.
+- [ ] **Git-based timestamps**: Expose `datePublished` (first commit date) and `dateModified`
+      (last commit date) per page from Git provider. Filesystem provider falls back to mtime.
+      Used in JSON-LD, sitemap `<lastmod>`, and optionally displayed in UI ("Last updated on...").
+      Cache at startup or lazily to avoid per-request Git operations. Medium complexity.
+- [ ] **Social preview image generation**: Auto-generate OG images (1200×630 PNG) per page from
+      title, description, and site branding. Used as `og:image`. Build-time only (too expensive
+      for serve mode). MkDocs Material's most popular feature. High complexity — requires image
+      generation in Go (e.g., `fogleman/gg`).
+
+### 9c: SEO Polish (P2)
+
+_Enhances competitiveness and closes remaining gaps._
+
+- [ ] **Per-page `robots` meta tag**: Frontmatter `robots: noindex` or `robots: noindex, nofollow`
+      controls per-page indexing. Site-wide default via config. Needed for draft pages or pages
+      that shouldn't appear in search results. Low complexity.
+- [ ] **HTML `lang` attribute**: Add `lang` attribute to `<html>` tag (e.g., `<html lang="en">`).
+      Configurable via `language` field in `SiteConfig`, default `"en"`. Lighthouse flags its
+      absence. Low complexity.
+- [ ] **Related pages via tags**: Display "Related pages" section at page bottom, populated from
+      shared frontmatter tags. Enricher already computes `RelatedDocs` via `ByTag()` — expose
+      via template function or enrich into `PageContext`. Strong internal linking signal. Medium
+      complexity (enricher done, needs template integration).
+- [ ] **404 page with navigation**: Custom 404 page including site navigation and suggested pages.
+      In `build` mode, output `404.html` (convention for Netlify, GitHub Pages, Cloudflare Pages).
+      Low complexity.
+- [ ] **Heading anchor slug stability**: Document and test the slug algorithm for long-term URL
+      stability. Ensure GitHub-compatible slugs. Support frontmatter `id` override per heading.
+      Low complexity.
+
+### 9d: SEO Long-Term (P3)
+
+- [ ] **Redirect support**: Frontmatter `redirect_from: [/old-url]` and/or `_redirects` file.
+      In `serve` mode, 301 responses. In `build` mode, generate redirect HTML or `_redirects`
+      file for static hosts. Medium complexity.
+- [ ] **RSS/Atom feed**: Generate `/feed.xml` listing recently modified pages. Minor SEO impact
+      but aids content discoverability. Medium complexity.
+- [ ] **Preconnect/preload resource hints**: Add `<link rel="preconnect">` for external domains
+      (Google Fonts, KaTeX/Mermaid CDNs) and `<link rel="preload">` for critical resources in
+      theme `<head>`. Improves LCP. Low complexity.
+- [ ] **Image dimension attributes**: Post-process rendered HTML to add `width`/`height` to
+      `<img>` tags that lack them. Prevents CLS (Core Web Vitals). Reads dimensions from content
+      provider. Medium complexity.
+- [ ] **`<link rel="next/prev">`**: Sequential page links derived from navigation order. Minor
+      crawl efficiency signal. Low complexity.
+
+## Phase 10: MCP Interface — AI-Native Documentation Access
+
+_Expose documentation content via the [Model Context Protocol](https://modelcontextprotocol.io) so AI
+models (Claude, GPT, Copilot, etc.) can directly read, search, and navigate documentation. This turns
+gomddoc into an AI-queryable knowledge base — a strategic differentiator no other documentation tool
+offers natively._
+
+**Why MCP over HTTP APIs:** MCP is purpose-built for AI tool use. Models discover capabilities via
+the protocol, not by reading API docs. A single `gomddoc mcp` command or SSE endpoint makes every
+document instantly available to any MCP-compatible client (Claude Desktop, Cursor, Windsurf, custom
+agents) with zero configuration on the model side.
+
+**Architecture fit:** The MCP server is a thin adapter over existing gomddoc internals. No new parsing
+logic — it reuses Provider (file I/O), Enricher (metadata/TOC extraction), and Metadata Index (tag
+queries) directly. New package: `internal/mcp/`.
+
+```
+MCP Client (Claude, etc.)
+    ↕ JSON-RPC (stdio or SSE)
+internal/mcp/server.go
+    ↓ adapts to existing interfaces
+Provider → Enricher → Metadata Index → Navigation
+```
+
+### 10a: Core MCP Server
+
+_Minimum viable MCP server with file access and metadata._
+
+- [ ] **`internal/mcp/` package**: MCP server implementation using a Go MCP SDK (e.g.,
+      `github.com/mark3labs/mcp-go`). Implements the MCP server protocol with resource and
+      tool capabilities. Stateless — instantiated with Provider, EnricherRegistry, and
+      metadata Index references.
+- [ ] **`gomddoc mcp` subcommand**: stdio transport for local use. Speaks MCP JSON-RPC over
+      stdin/stdout. Works with Claude Desktop (`claude_desktop_config.json`), Cursor, and any
+      MCP-compatible client. Kong subcommand with same `--dir`/`--git-url` flags as `serve`.
+- [ ] **Resource: `docs://list`**: List all documentation files in the content tree. Returns
+      paths, titles (from frontmatter or filename), and MIME types. Backed by `Provider.RootFS`
+      + `fs.WalkDir`. Supports optional `path` parameter to list a subdirectory.
+- [ ] **Resource: `docs://{path}`**: Read a specific file's content. Returns raw markdown with
+      frontmatter stripped (clean content for model consumption). Backed by `Provider.ReadFile` +
+      frontmatter stripping (reuses `MarkdownPassthroughRenderer` logic). Non-markdown files
+      returned as-is.
+- [ ] **Tool: `get_page_metadata`**: Extract structured metadata for a file — title, description,
+      tags, TOC structure, related documents. Backed by `EnricherRegistry.Get(mime).Enrich()`.
+      Returns JSON with `metadata`, `toc`, and `related_docs` fields.
+- [ ] **Tool: `list_tags`**: List all tags across the documentation. Backed by
+      `metadata.Index.AllTags()`. Returns sorted string array.
+- [ ] **Tool: `search_by_tag`**: Find all pages with a given tag. Backed by
+      `metadata.Index.ByTag()`. Returns array of `{path, title, description}`.
+- [ ] **Tool: `list_pages`**: List all indexed pages with metadata. Backed by
+      `metadata.Index.AllPages()`. Supports optional tag filter. Returns array of `PageInfo`.
+
+### 10b: Advanced MCP Capabilities
+
+_Richer AI interactions — search, navigation context, and batch access._
+
+- [ ] **SSE transport**: HTTP-based MCP endpoint at `/_mcp/` on the existing server. Enables
+      remote MCP access without stdio. Shares the server's Provider and metadata instances.
+      Protected by the same middleware (auth, rate limiting) as other endpoints.
+- [ ] **Tool: `search`**: Full-text search across all documentation. Backed by Phase 5 search
+      index (when available). Returns ranked results with snippets. Falls back to tag search
+      if full-text search is not configured.
+- [ ] **Tool: `get_navigation`**: Get the navigation tree for a given path — what sections exist,
+      what's adjacent. Backed by `navigation.Generator.Generate()`. Helps models understand
+      documentation structure and find relevant sections.
+- [ ] **Tool: `get_section`**: Read a specific section of a document by heading ID. Extracts
+      content between two headings using the TOC structure. Useful for targeted retrieval
+      without loading entire documents.
+- [ ] **Tool: `find_related`**: Find documents related to a given page via shared tags, same
+      directory, or similar metadata. Backed by `EnricherRegistry` + `metadata.Index`.
+      Returns ranked list with relevance reason.
+- [ ] **Batch resource reads**: Support reading multiple files in a single request. Reduces
+      round trips for models that need context from several documents simultaneously.
+
+### 10c: MCP for Static Sites
+
+_MCP capabilities for `gomddoc build` output, enabling AI access to pre-built documentation._
+
+- [ ] **`gomddoc mcp --built-dir`**: Serve MCP from a `gomddoc build` output directory.
+      Uses filesystem provider over the built output. Metadata index built from rendered HTML
+      or a pre-generated `metadata.json` manifest.
+- [ ] **Build-time manifest**: `gomddoc build` generates `_mcp/manifest.json` containing all
+      page metadata, tags, TOC structures, and relationships. Enables lightweight MCP serving
+      without re-parsing content.
+
+## Phase 11: Enterprise Features
 
 - [ ] **S3 provider**: Serve content directly from S3 buckets (for non-git use cases).
 - [ ] **Authentication**: OIDC/OAuth middleware for private documentation.
 - [ ] **Branch switching**: UI dropdown to switch between Git branches/tags.
 
-## Phase 10: Git Workflow Integration
+## Phase 12: Git Workflow Integration
 
 - [ ] **Webhooks**: Endpoint to trigger `git fetch` on push events (cache invalidation).
 - [ ] **PR preview**: Serve content from PR branches for review.
 
-## Phase 11: Theme Marketplace
+## Phase 13: Theme Marketplace
 
 _Enable community theme sharing via a GitHub-based registry._
 
-### 11a: Theme Registry
+### 13a: Theme Registry
 
 - [ ] **Default marketplace repository**: A GitHub repository (e.g. `gomddoc/themes`) acts as the theme
       registry. Contains an `index.json` manifest listing available themes with name, description, author,
@@ -276,7 +462,7 @@ _Enable community theme sharing via a GitHub-based registry._
 - [ ] **Custom registries**: Users can configure alternative marketplace URLs in `.gomddoc/config.yml`
       via `theme_registry: https://github.com/org/custom-themes` for private or corporate theme registries.
 
-### 11b: `gomddoc theme` Subcommand
+### 13b: `gomddoc theme` Subcommand
 
 - [ ] **`gomddoc theme list`**: Fetch and display available themes from the marketplace. Shows name,
       category, author, and short description in a table. Supports `--json` output.
@@ -298,6 +484,7 @@ _Enable community theme sharing via a GitHub-based registry._
 | `gomddoc build`         | Static site generation                               | Done    |
 | `gomddoc preview`       | Quick local preview with auto-open browser           | Done    |
 | `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Done    |
+| `gomddoc mcp`            | MCP server for AI-native documentation access        | Planned |
 | `gomddoc validate`      | Validate config and check for broken links           | Planned |
 | `gomddoc theme list`    | List available themes from the marketplace           | Planned |
 | `gomddoc theme search`  | Search themes by name, category, or keyword          | Planned |
@@ -310,7 +497,10 @@ _Enable community theme sharing via a GitHub-based registry._
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
 **Immediate focus (Phase 8):** Theme folder restructuring (partials, page types, static assets) and theme variables.
-**Next up (Phase 5 & 6c):** Full-text search for content discovery, and expanding renderer support (AsciiDoc, OpenAPI).
+**Pre-launch (Phase 9a):** Canonical URLs, robots.txt, Open Graph — table-stakes SEO before public release.
+**Next up (Phase 4 & 5):** Profiling/benchmarks for data-driven optimization, full-text search for content discovery.
+**Then (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
+**High-value (Phase 10a):** MCP interface — low complexity (thin adapter over existing layers), high differentiation.
 
 ## Deferred (Not Planned)
 
@@ -323,3 +513,10 @@ These features were considered but deprioritized to keep gomddoc focused:
 - i18n/multi-language — out of scope for now
 - VS Code extension
 - Plugin architecture / dynamic renderer loading
+- AsciiDoc renderer (`.adoc` support) — niche demand, adds CGO or subprocess dependency
+- OpenAPI renderer (interactive API docs) — better served by dedicated tools (Swagger UI, Redoc)
+- Server-side Mermaid/KaTeX rendering — client-side CDN approach works well, avoids heavy dependencies
+- SEO content analysis / keyword scoring (Yoast-style — content strategy, not technical SEO)
+- AMP (deprecated as ranking signal by Google)
+- News/video sitemaps (documentation sites don't need these)
+- WebP/AVIF image conversion (belongs in CI/CD pipeline, not documentation server)

@@ -15,9 +15,12 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
-	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
+
+// RedirectFinder returns the first page path under a directory for redirect
+// when no index file exists. Returns "" if no page is found.
+type RedirectFinder func(dirPath string) string
 
 // Handler holds dependencies for HTTP request handling
 type Handler struct {
@@ -26,7 +29,7 @@ type Handler struct {
 	enricherRegistry enricher.EnricherRegistry
 	templateRenderer tmpl.Renderer
 	siteConfig       *config.SiteConfig
-	navGen           *navigation.Generator
+	redirectFinder   RedirectFinder
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
@@ -36,7 +39,7 @@ func NewHandler(
 	enricherRegistry enricher.EnricherRegistry,
 	templateRenderer tmpl.Renderer,
 	siteConfig *config.SiteConfig,
-	navGen *navigation.Generator,
+	redirectFinder RedirectFinder,
 ) *Handler {
 	return &Handler{
 		provider:         provider,
@@ -44,7 +47,7 @@ func NewHandler(
 		enricherRegistry: enricherRegistry,
 		templateRenderer: templateRenderer,
 		siteConfig:       siteConfig,
-		navGen:           navGen,
+		redirectFinder:   redirectFinder,
 	}
 }
 
@@ -62,8 +65,8 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// When a directory has no index file, redirect to the first page
 		// in the navigation tree instead of returning 403.
-		if errors.Is(err, provider.ErrDirListingDisabled) && h.navGen != nil {
-			if target := h.findRedirectTarget(r.URL.Path); target != "" {
+		if errors.Is(err, provider.ErrDirListingDisabled) && h.redirectFinder != nil {
+			if target := h.redirectFinder(r.URL.Path); target != "" {
 				http.Redirect(w, r, target, http.StatusFound)
 				return
 			}
@@ -133,10 +136,11 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	context := &tmpl.TemplateContext{
 		Site: h.siteConfig,
 		Page: tmpl.PageContext{
-			Content: template.HTML(htmlContent), // #nosec G203
-			Path:    r.URL.Path,
-			Meta:    metadata,
-			TOC:     enrichment.TOC,
+			Content:    template.HTML(htmlContent), // #nosec G203
+			Path:       r.URL.Path,
+			Meta:       metadata,
+			TOC:        enrichment.TOC,
+			Navigation: enrichment.Navigation,
 		},
 	}
 
@@ -186,13 +190,6 @@ func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byt
 			slog.String("request_id", GetRequestID(r.Context())),
 			slog.Any("error", writeErr))
 	}
-}
-
-// findRedirectTarget uses the navigation generator to find the first page
-// under the given directory path for redirect when no index exists.
-func (h *Handler) findRedirectTarget(dirPath string) string {
-	tree := h.navGen.Generate(dirPath)
-	return navigation.FindFirstPage(tree)
 }
 
 // handleError handles errors and sends appropriate HTTP responses.

@@ -10,7 +10,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
-	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 func TestNewHTMLRenderer(t *testing.T) {
@@ -727,13 +726,7 @@ func TestEditURLInTemplate(t *testing.T) {
 func TestNavigationFunction(t *testing.T) {
 	t.Parallel()
 
-	// Content filesystem with markdown files
-	contentFS := fstest.MapFS{
-		"guide.md":        {Data: []byte("# Getting Started")},
-		"docs/install.md": {Data: []byte("# Installation")},
-	}
-
-	templateContent := `{{ navigation .Page.Path }}`
+	templateContent := `{{ navigation .Page.Navigation }}`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/nav.html.tmpl": {
 			Data: []byte(templateContent),
@@ -741,14 +734,20 @@ func TestNavigationFunction(t *testing.T) {
 	}
 
 	siteConfig := config.NewSiteConfig(".")
-	navGen := navigation.NewGenerator(contentFS, "README.md")
-
-	r := NewHTMLRenderer(&siteConfig, testFS, WithNavigationGenerator(navGen))
+	r := NewHTMLRenderer(&siteConfig, testFS)
 
 	ctx := &TemplateContext{
 		Site: &siteConfig,
 		Page: PageContext{
 			Path: "/guide.md",
+			Navigation: &enricher.NavTree{
+				Items: []enricher.NavItem{
+					{Title: "Getting Started", Path: "/guide.md", Active: true},
+					{Title: "Docs", Path: "/docs/", IsDir: true, Open: true, Children: []enricher.NavItem{
+						{Title: "Installation", Path: "/docs/install.md"},
+					}},
+				},
+			},
 		},
 	}
 
@@ -771,10 +770,10 @@ func TestNavigationFunction(t *testing.T) {
 	}
 }
 
-func TestNavigationFunction_NilGenerator(t *testing.T) {
+func TestNavigationFunction_NilNavTree(t *testing.T) {
 	t.Parallel()
 
-	templateContent := `[{{ navigation .Page.Path }}]`
+	templateContent := `[{{ navigation .Page.Navigation }}]`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/nav_nil.html.tmpl": {
 			Data: []byte(templateContent),
@@ -782,13 +781,13 @@ func TestNavigationFunction_NilGenerator(t *testing.T) {
 	}
 
 	siteConfig := config.NewSiteConfig(".")
-	// No navigation generator configured
 	r := NewHTMLRenderer(&siteConfig, testFS)
 
 	ctx := &TemplateContext{
 		Site: &siteConfig,
 		Page: PageContext{
 			Path: "/test",
+			// Navigation is nil
 		},
 	}
 
@@ -798,7 +797,7 @@ func TestNavigationFunction_NilGenerator(t *testing.T) {
 	}
 
 	if string(result) != "[]" {
-		t.Errorf("Expected empty navigation without generator, got %q", string(result))
+		t.Errorf("Expected empty navigation without nav tree, got %q", string(result))
 	}
 }
 

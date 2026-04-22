@@ -10,6 +10,16 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
+// redirectFinderFromFS creates a RedirectFinder using a navigation.Generator,
+// mirroring the adapter pattern used in cmd/gomddoc/serve.go.
+func redirectFinderFromFS(files fstest.MapFS, defaultIndex string) RedirectFinder {
+	navGen := navigation.NewGenerator(files, defaultIndex)
+	return func(dirPath string) string {
+		tree := navGen.Generate(dirPath)
+		return navigation.FindFirstPage(tree)
+	}
+}
+
 func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 	t.Parallel()
 
@@ -315,8 +325,8 @@ func TestHandlerDirectoryRedirect(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	navGen := navigation.NewGenerator(files, "README.md")
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, navGen)
+	redirectFinder := redirectFinderFromFS(files, "README.md")
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, redirectFinder)
 
 	req := httptest.NewRequest("GET", "/docs", nil)
 	w := httptest.NewRecorder()
@@ -344,8 +354,8 @@ func TestHandlerDirectoryRedirect_EmptyDir(t *testing.T) {
 	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
-	navGen := navigation.NewGenerator(files, "README.md")
-	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, navGen)
+	redirectFinder := redirectFinderFromFS(files, "README.md")
+	handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, redirectFinder)
 
 	req := httptest.NewRequest("GET", "/empty", nil)
 	w := httptest.NewRecorder()
