@@ -118,6 +118,10 @@ func NewFromServeArgs(dir, port string, devMode bool, gitSSHKey string) (*Config
 	// 4. Re-apply environment overrides for site-level settings (env > file)
 	cfg.Site.ApplyEnvOverrides()
 
+	slog.Info("Loaded site configuration",
+		slog.String("title", cfg.Site.Meta.Title),
+		slog.String("theme", cfg.Site.Theme.Name))
+
 	// 5. Validate
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -191,11 +195,6 @@ func (sc *SiteConfig) LoadFromFile(rootDir string) error {
 	if err := yaml.Unmarshal(data, sc); err != nil {
 		return fmt.Errorf("parse config.yml: %w", err)
 	}
-
-	slog.Info("Loaded site configuration",
-		slog.String("path", path),
-		slog.String("title", sc.Meta.Title),
-		slog.String("theme", sc.Theme.Name))
 
 	return nil
 }
