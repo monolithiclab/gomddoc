@@ -13,8 +13,10 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	"github.com/monolithiclab/gomddoc/internal/template"
@@ -39,6 +41,7 @@ type Pipeline struct {
 	SearchIndex      *search.Index
 	RedirectFinder   server.RedirectFinder
 	URLRedirects     server.URLRedirectMap
+	Resolver         *resolve.PathResolver
 	StaticFS         fs.FS
 	Provider         provider.Provider
 }
@@ -78,9 +81,15 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 
 	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
 
+	resolver := resolve.Build(contentRoot, cfg.Site.StripExtensions, func(mimeType string) bool {
+		_, _, err := registry.Get(mimeType, []negotiate.MediaType{{Type: "text", Subtype: "html", Q: 1.0}})
+		return err == nil
+	})
+
 	p := &Pipeline{
 		Registry:         registry,
 		TemplateRenderer: templateRenderer,
+		Resolver:         resolver,
 		StaticFS:         staticFS,
 		Provider:         provider.NewOverlayProvider(prov, staticFS),
 	}
@@ -236,6 +245,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		SearchIndex:      pipeline.SearchIndex,
 		RedirectFinder:   pipeline.RedirectFinder,
 		URLRedirects:     pipeline.URLRedirects,
+		Resolver:         pipeline.Resolver,
 		StaticFS:         pipeline.StaticFS,
 		AuthStore:        opts.AuthStore,
 		MCPHandler:       mcpServer.HTTPHandler(),

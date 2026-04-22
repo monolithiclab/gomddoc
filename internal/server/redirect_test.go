@@ -1,9 +1,13 @@
 package server
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
 
 func TestBuildRedirectMap_RedirectFrom(t *testing.T) {
@@ -109,5 +113,133 @@ func TestGenerateRedirectHTML(t *testing.T) {
 		if !strings.Contains(html, c.contains) {
 			t.Errorf("%s: should contain %q", c.name, c.contains)
 		}
+	}
+}
+
+func TestExtensionRedirect(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":       &fstest.MapFile{Data: []byte("# Guide")},
+		"docs/intro.md":  &fstest.MapFile{Data: []byte("# Intro")},
+		"image.jpg":      &fstest.MapFile{Data: []byte{0xFF, 0xD8}},
+	}
+
+	resolver := resolve.Build(files, []string{".md"}, func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	})
+
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	tests := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantLoc    string
+	}{
+		{
+			name:       "md extension redirects to clean URL",
+			path:       "/guide.md",
+			wantStatus: http.StatusMovedPermanently,
+			wantLoc:    "/guide",
+		},
+		{
+			name:       "nested md extension redirects",
+			path:       "/docs/intro.md",
+			wantStatus: http.StatusMovedPermanently,
+			wantLoc:    "/docs/intro",
+		},
+		{
+			name:       "no extension passes through",
+			path:       "/guide",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "non-stripped extension passes through",
+			path:       "/image.jpg",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "directory request passes through",
+			path:       "/docs/",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "root request passes through",
+			path:       "/",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "unknown md file passes through",
+			path:       "/nonexistent.md",
+			wantStatus: http.StatusOK,
+		},
+	}
+
+	middleware := ExtensionRedirect(resolver, []string{".md"})
+	handler := middleware(okHandler)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+			if tt.wantLoc != "" {
+				if loc := w.Header().Get("Location"); loc != tt.wantLoc {
+					t.Errorf("Location = %q, want %q", loc, tt.wantLoc)
+				}
+			}
+		})
+	}
+}
+
+func TestExtensionRedirect_NilResolver(t *testing.T) {
+	t.Parallel()
+
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	middleware := ExtensionRedirect(nil, []string{".md"})
+	handler := middleware(okHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/guide.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (nil resolver should pass through)", w.Code, http.StatusOK)
+	}
+}
+
+func TestExtensionRedirect_EmptyStripExts(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
+	}
+	resolver := resolve.Build(files, []string{".md"}, func(string) bool { return true })
+
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	middleware := ExtensionRedirect(resolver, nil)
+	handler := middleware(okHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/guide.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (empty strip exts should pass through)", w.Code, http.StatusOK)
 	}
 }

@@ -2,8 +2,12 @@ package server
 
 import (
 	"fmt"
+	"net/http"
+	"path"
+	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
 
 // URLRedirectMap maps source paths to target paths for URL redirects.
@@ -41,6 +45,40 @@ func BuildRedirectMap(index *metadata.Index) URLRedirectMap {
 	}
 
 	return redirects
+}
+
+// ExtensionRedirect returns middleware that 301-redirects requests with
+// strippable extensions to their canonical extensionless URL.
+func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string) func(http.Handler) http.Handler {
+	// Build a set for fast lookup.
+	extSet := make(map[string]bool, len(stripExts))
+	for _, ext := range stripExts {
+		extSet[ext] = true
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if resolver == nil || len(extSet) == 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			ext := path.Ext(r.URL.Path)
+			if !extSet[ext] {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Strip leading "/" to get the fs-relative path.
+			realPath := strings.TrimPrefix(r.URL.Path, "/")
+			if cleanPath, found := resolver.CleanPath(realPath); found {
+				http.Redirect(w, r, "/"+cleanPath, http.StatusMovedPermanently)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // GenerateRedirectHTML produces a minimal HTML page that redirects to targetURL

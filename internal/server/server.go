@@ -14,6 +14,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -46,8 +47,9 @@ type HTTPServerConfig struct {
 	RedirectFinder   RedirectFinder   // nil disables redirect lookup
 	URLRedirects     URLRedirectMap   // nil disables URL redirects
 	StaticFS         fs.FS            // nil disables static asset serving
-	AuthStore        *CredentialStore // nil disables basic auth
-	MCPHandler       http.Handler     // nil disables MCP endpoint at /_mcp/
+	AuthStore        *CredentialStore    // nil disables basic auth
+	MCPHandler       http.Handler        // nil disables MCP endpoint at /_mcp/
+	Resolver         *resolve.PathResolver // nil disables extension stripping
 }
 
 // NewHTTPServer creates a new HTTP server with the given dependencies.
@@ -122,14 +124,16 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		SiteConfig:       &cfg.Site,
 		RedirectFinder:   opts.RedirectFinder,
 		URLRedirects:     opts.URLRedirects,
+		Resolver:         opts.Resolver,
 	})
 
 	// Content handler with content-specific middleware (outermost first)
 	content := auth.Subgroup("",
 		Compression, // Gzip responses >= 1KB when client accepts
-		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead), // Only allow GET and HEAD
-		ContentExclusion(cfg.Site.Exclude),                         // Block hidden files and user-configured exclusions
-		Metrics,                                                    // Innermost: measure actual handler time
+		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),          // Only allow GET and HEAD
+		ContentExclusion(cfg.Site.Exclude),                                  // Block hidden files and user-configured exclusions
+		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions),          // Redirect .md URLs to clean URLs
+		Metrics,                                                            // Innermost: measure actual handler time
 	)
 	content.HandleFunc("/", handler.ServeContent)
 

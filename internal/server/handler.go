@@ -13,6 +13,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
@@ -30,6 +31,7 @@ type HandlerConfig struct {
 	SiteConfig       *config.SiteConfig
 	RedirectFinder   RedirectFinder
 	URLRedirects     URLRedirectMap
+	Resolver         *resolve.PathResolver
 }
 
 // Handler holds dependencies for HTTP request handling
@@ -41,6 +43,7 @@ type Handler struct {
 	siteConfig       *config.SiteConfig
 	redirectFinder   RedirectFinder
 	urlRedirects     URLRedirectMap
+	resolver         *resolve.PathResolver
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
@@ -53,6 +56,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		siteConfig:       cfg.SiteConfig,
 		redirectFinder:   cfg.RedirectFinder,
 		urlRedirects:     cfg.URLRedirects,
+		resolver:         cfg.Resolver,
 	}
 }
 
@@ -75,6 +79,13 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Read file + get MIME type
 	content, mimeType, err := h.provider.ReadFile(r.Context(), r.URL.Path)
+	if err != nil && errors.Is(err, provider.ErrNotFound) && h.resolver != nil {
+		// Try resolver for extensionless paths
+		cleanPath := strings.TrimPrefix(r.URL.Path, "/")
+		if realPath, found := h.resolver.Resolve(cleanPath); found {
+			content, mimeType, err = h.provider.ReadFile(r.Context(), "/"+realPath)
+		}
+	}
 	if err != nil {
 		// When a directory has no index file, redirect to the first page
 		// in the navigation tree instead of returning 403.

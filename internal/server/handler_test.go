@@ -8,6 +8,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
@@ -470,6 +471,72 @@ func TestHandlerURLRedirect(t *testing.T) {
 	}
 	if loc := w.Header().Get("Location"); loc != "/test.md" {
 		t.Errorf("Location = %q, want %q", loc, "/test.md")
+	}
+}
+
+func TestHandlerResolverFallback(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":      &fstest.MapFile{Data: []byte("# Guide")},
+		"docs/intro.md": &fstest.MapFile{Data: []byte("# Intro")},
+	}
+
+	resolver := resolve.Build(files, []string{".md"}, func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	})
+
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		SiteConfig:       &siteConfig,
+		Resolver:         resolver,
+	})
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedStatus int
+		shouldContain  string
+	}{
+		{
+			name:           "extensionless path resolves via resolver",
+			path:           "/guide",
+			expectedStatus: 200,
+			shouldContain:  "Guide",
+		},
+		{
+			name:           "nested extensionless path resolves",
+			path:           "/docs/intro",
+			expectedStatus: 200,
+			shouldContain:  "Intro",
+		},
+		{
+			name:           "unknown extensionless path returns 404",
+			path:           "/nonexistent",
+			expectedStatus: 404,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest("GET", tt.path, nil)
+			w := httptest.NewRecorder()
+			handler.ServeContent(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.expectedStatus)
+			}
+			if tt.shouldContain != "" && !strings.Contains(w.Body.String(), tt.shouldContain) {
+				t.Errorf("response should contain %q, got %q", tt.shouldContain, w.Body.String())
+			}
+		})
 	}
 }
 
