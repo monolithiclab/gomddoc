@@ -29,13 +29,15 @@ type FeedHandler struct {
 	provider     provider.Provider
 	siteTitle    string
 	resolver     *resolve.PathResolver
+	pathPrefix   string // e.g. "/fr-FR" for per-language feeds
 
 	mu     sync.Mutex
 	cached []byte
 }
 
 // NewFeedHandler creates a new FeedHandler.
-func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string, resolver *resolve.PathResolver) *FeedHandler {
+// pathPrefix is prepended to all page paths (empty for default language).
+func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string, resolver *resolve.PathResolver, pathPrefix string) *FeedHandler {
 	return &FeedHandler{
 		index:        index,
 		domain:       domain,
@@ -43,6 +45,7 @@ func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov pro
 		provider:     prov,
 		siteTitle:    siteTitle,
 		resolver:     resolver,
+		pathPrefix:   pathPrefix,
 	}
 }
 
@@ -69,7 +72,7 @@ func (h *FeedHandler) getOrGenerate() ([]byte, error) {
 		return h.cached, nil
 	}
 
-	out, err := GenerateFeed(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver)
+	out, err := GenerateFeed(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver, h.pathPrefix)
 	if err != nil {
 		slog.Error("Failed to generate feed", slog.Any("error", err))
 		return nil, err
@@ -108,7 +111,8 @@ type atomEntry struct {
 // GenerateFeed produces the Atom feed XML bytes.
 // When prov is non-nil, each entry includes an updated time from the file's modification time.
 // When resolver is non-nil, URLs use extensionless paths.
-func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string, resolver *resolve.PathResolver) ([]byte, error) {
+// pathPrefix is prepended to all page paths (e.g. "/fr-FR" for per-language feeds).
+func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string, resolver *resolve.PathResolver, pathPrefix string) ([]byte, error) {
 	var contentRoot fs.FS
 	if prov != nil {
 		if root, err := prov.RootFS(ctx); err == nil {
@@ -159,7 +163,7 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 	for _, c := range candidates {
 		pagePath := resolvedPagePath(c.page.Path, defaultIndex, resolver)
 
-		loc := seo.PageURL(domain, pagePath, defaultIndex)
+		loc := seo.PageURL(domain, pathPrefix+pagePath, defaultIndex)
 		if loc == "" {
 			continue
 		}
@@ -186,8 +190,8 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 		feedUpdated = candidates[0].modTime.Format(time.RFC3339)
 	}
 
-	selfURL := seo.PageURL(domain, "/feed.xml", "")
-	altURL := seo.PageURL(domain, "/", "")
+	selfURL := seo.PageURL(domain, pathPrefix+"/feed.xml", "")
+	altURL := seo.PageURL(domain, pathPrefix+"/", "")
 
 	feed := atomFeed{
 		XMLNS:   "http://www.w3.org/2005/Atom",

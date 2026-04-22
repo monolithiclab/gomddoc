@@ -31,7 +31,7 @@ func TestSitemapHandler(t *testing.T) {
 	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
-	handler := NewSitemapHandler(idx, "https://docs.example.com", "README.md", prov, nil)
+	handler := NewSitemapHandler(idx, "https://docs.example.com", "README.md", prov, nil, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
 	w := httptest.NewRecorder()
@@ -69,7 +69,7 @@ func TestGenerateSitemap(t *testing.T) {
 	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
-	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil, "")
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
-	data, err := GenerateSitemap(context.Background(), idx, "", "README.md", prov, nil)
+	data, err := GenerateSitemap(context.Background(), idx, "", "README.md", prov, nil, "")
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
 	t.Parallel()
 	idx := buildTestIndex(t, sitemapNoindexFS)
 	prov := newMemoryProvider(sitemapNoindexFS, "README.md", false)
-	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil, "")
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
 func TestGenerateSitemap_NilProvider(t *testing.T) {
 	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)
-	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", nil, nil)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", nil, nil, "")
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestGenerateSitemap_WithResolver(t *testing.T) {
 	}
 	resolver := resolve.Build(sitemapTestFS, []string{".md"}, hasRenderer)
 
-	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, resolver)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, resolver, "")
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}

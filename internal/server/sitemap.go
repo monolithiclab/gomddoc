@@ -25,19 +25,22 @@ type SitemapHandler struct {
 	defaultIndex string
 	provider     provider.Provider
 	resolver     *resolve.PathResolver
+	pathPrefix   string // e.g. "/fr-FR" for per-language sitemaps
 
 	mu     sync.Mutex
 	cached []byte
 }
 
 // NewSitemapHandler creates a new SitemapHandler.
-func NewSitemapHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver) *SitemapHandler {
+// pathPrefix is prepended to all page paths (empty for default language).
+func NewSitemapHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver, pathPrefix string) *SitemapHandler {
 	return &SitemapHandler{
 		index:        index,
 		domain:       domain,
 		defaultIndex: defaultIndex,
 		provider:     prov,
 		resolver:     resolver,
+		pathPrefix:   pathPrefix,
 	}
 }
 
@@ -77,7 +80,7 @@ func (h *SitemapHandler) getOrGenerate() ([]byte, error) {
 		return h.cached, nil
 	}
 
-	out, err := GenerateSitemap(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver)
+	out, err := GenerateSitemap(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver, h.pathPrefix)
 	if err != nil {
 		slog.Error("Failed to generate sitemap", slog.Any("error", err))
 		return nil, err
@@ -89,7 +92,8 @@ func (h *SitemapHandler) getOrGenerate() ([]byte, error) {
 // GenerateSitemap produces the sitemap XML bytes.
 // When prov is non-nil, each entry includes a <lastmod> from the file's modification time.
 // When resolver is non-nil, URLs use extensionless paths.
-func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver) ([]byte, error) {
+// pathPrefix is prepended to all page paths (e.g. "/fr-FR" for per-language sitemaps).
+func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver, pathPrefix string) ([]byte, error) {
 	var contentRoot fs.FS
 	if prov != nil {
 		if root, err := prov.RootFS(ctx); err == nil {
@@ -107,7 +111,7 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 
 		pagePath := resolvedPagePath(page.Path, defaultIndex, resolver)
 
-		loc := seo.PageURL(domain, pagePath, defaultIndex)
+		loc := seo.PageURL(domain, pathPrefix+pagePath, defaultIndex)
 		if loc != "" {
 			entry := sitemapURL{Loc: loc}
 			if contentRoot != nil {

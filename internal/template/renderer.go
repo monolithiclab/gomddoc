@@ -38,9 +38,48 @@ type Renderer interface {
 
 // LanguageInfo holds display information for a language.
 type LanguageInfo struct {
-	Code   string // BCP 47 code, e.g. "fr-FR"
-	Name   string // Display name, e.g. "Français"
-	Active bool   // Whether this is the current page's language
+	Code    string // BCP 47 code, e.g. "fr-FR"
+	Name    string // Display name, e.g. "Français"
+	Active  bool   // Whether this is the current page's language
+	Default bool   // Whether this is the site's default language (served without URL prefix)
+}
+
+// LanguageNamer resolves BCP 47 codes to display names.
+type LanguageNamer interface {
+	LanguageName(lang string) string
+}
+
+// BuildLanguageInfos builds the full list of LanguageInfo entries for the
+// language switcher. The default language is listed first, followed by
+// non-default languages in the order they appear.
+func BuildLanguageInfos(namer LanguageNamer, defaultLang string, langs []string) []LanguageInfo {
+	infos := make([]LanguageInfo, 0, len(langs)+1)
+	infos = append(infos, LanguageInfo{
+		Code:    defaultLang,
+		Name:    namer.LanguageName(defaultLang),
+		Default: true,
+	})
+	for _, lang := range langs {
+		infos = append(infos, LanguageInfo{
+			Code: lang,
+			Name: namer.LanguageName(lang),
+		})
+	}
+	return infos
+}
+
+// WithActiveLang returns a copy of infos with the Active flag set for the
+// matching language code. Returns nil if infos is empty.
+func WithActiveLang(infos []LanguageInfo, activeLang string) []LanguageInfo {
+	if len(infos) == 0 {
+		return nil
+	}
+	out := make([]LanguageInfo, len(infos))
+	copy(out, infos)
+	for i := range out {
+		out[i].Active = out[i].Code == activeLang
+	}
+	return out
 }
 
 // TemplateContext holds the data passed to templates

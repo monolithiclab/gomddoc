@@ -141,10 +141,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	}
 
 	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, opts.Resolver)
+		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, opts.Resolver, "")
 		auth.Handle("GET /sitemap.xml", sitemapHandler)
 
-		feedHandler := NewFeedHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, cfg.Site.Meta.Title, opts.Resolver)
+		feedHandler := NewFeedHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, cfg.Site.Meta.Title, opts.Resolver, "")
 		auth.Handle("GET /feed.xml", feedHandler)
 	}
 
@@ -152,10 +152,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	for lang, lp := range opts.LangPipelines {
 		prefix := "/" + lang
 		if lp.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-			langSitemapHandler := NewSitemapHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, opts.Resolver)
+			langSitemapHandler := NewSitemapHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, opts.Resolver, prefix)
 			auth.Handle("GET "+prefix+"/sitemap.xml", langSitemapHandler)
 
-			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, opts.Resolver)
+			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, opts.Resolver, prefix)
 			auth.Handle("GET "+prefix+"/feed.xml", langFeedHandler)
 		}
 	}
@@ -173,13 +173,13 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	// Build language info for the language switcher (only when multiple languages exist)
 	var allLanguageInfos []template.LanguageInfo
 	if len(opts.AllLanguages) > 0 && opts.LocaleBundle != nil {
-		allLanguageInfos = buildLanguageInfos(opts.LocaleBundle, opts.DefaultLang, opts.AllLanguages)
+		allLanguageInfos = template.BuildLanguageInfos(opts.LocaleBundle, opts.DefaultLang, opts.AllLanguages)
 	}
 
 	// Per-language content handlers (must be registered before the default catch-all)
 	for lang, lp := range opts.LangPipelines {
-		langTFunc := makeTFunc(opts.LocaleBundle, lang)
-		langInfos := withActiveLang(allLanguageInfos, lang)
+		langTFunc := opts.LocaleBundle.TFunc(lang)
+		langInfos := template.WithActiveLang(allLanguageInfos, lang)
 
 		langHandler := NewHandler(HandlerConfig{
 			Provider:         lp.Provider,
@@ -204,8 +204,11 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		langContent.HandleFunc("/", langHandler.ServeContent)
 	}
 
-	defaultTFunc := makeTFunc(opts.LocaleBundle, opts.DefaultLang)
-	defaultLangInfos := withActiveLang(allLanguageInfos, opts.DefaultLang)
+	var defaultTFunc func(string) string
+	if opts.LocaleBundle != nil {
+		defaultTFunc = opts.LocaleBundle.TFunc(opts.DefaultLang)
+	}
+	defaultLangInfos := template.WithActiveLang(allLanguageInfos, opts.DefaultLang)
 
 	handler := NewHandler(HandlerConfig{
 		Provider:         opts.Provider,
@@ -286,47 +289,4 @@ func (s *HTTPServer) Shutdown(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, s.config.Server.HTTP.ShutdownTimeout)
 	defer cancel()
 	return s.server.Shutdown(shutdownCtx)
-}
-
-// buildLanguageInfos builds the full list of LanguageInfo entries for the
-// language switcher. The default language is listed first, followed by
-// non-default languages in the order they appear.
-func buildLanguageInfos(bundle *locale.Bundle, defaultLang string, langs []string) []template.LanguageInfo {
-	infos := make([]template.LanguageInfo, 0, len(langs)+1)
-	infos = append(infos, template.LanguageInfo{
-		Code: defaultLang,
-		Name: bundle.LanguageName(defaultLang),
-	})
-	for _, lang := range langs {
-		infos = append(infos, template.LanguageInfo{
-			Code: lang,
-			Name: bundle.LanguageName(lang),
-		})
-	}
-	return infos
-}
-
-// withActiveLang returns a copy of infos with the Active flag set for the
-// matching language code. Returns nil if infos is empty.
-func withActiveLang(infos []template.LanguageInfo, activeLang string) []template.LanguageInfo {
-	if len(infos) == 0 {
-		return nil
-	}
-	out := make([]template.LanguageInfo, len(infos))
-	copy(out, infos)
-	for i := range out {
-		out[i].Active = out[i].Code == activeLang
-	}
-	return out
-}
-
-// makeTFunc creates a translation function bound to a specific language.
-// Returns nil if the bundle is nil (single-language sites).
-func makeTFunc(bundle *locale.Bundle, lang string) func(string) string {
-	if bundle == nil {
-		return nil
-	}
-	return func(key string) string {
-		return bundle.T(lang, key)
-	}
 }

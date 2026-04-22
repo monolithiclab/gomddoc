@@ -26,7 +26,7 @@ func TestGenerateFeed(t *testing.T) {
 	idx := buildTestIndex(t, feedTestFS)
 	prov := newMemoryProvider(feedTestFS, "README.md", false)
 
-	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", nil)
+	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", nil, "")
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestGenerateFeed_ExcludesNoindex(t *testing.T) {
 	idx := buildTestIndex(t, sitemapNoindexFS)
 	prov := newMemoryProvider(sitemapNoindexFS, "README.md", false)
 
-	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", nil)
+	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", nil, "")
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestGenerateFeed_LimitsEntries(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Test", nil)
+	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Test", nil, "")
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestGenerateFeed_EmptyIndex(t *testing.T) {
 	emptyFS := fstest.MapFS{}
 	idx := buildTestIndex(t, emptyFS)
 
-	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Empty Site", nil)
+	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Empty Site", nil, "")
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestFeedHandler_ServeHTTP(t *testing.T) {
 
 	idx := buildTestIndex(t, feedTestFS)
 	prov := newMemoryProvider(feedTestFS, "README.md", false)
-	handler := NewFeedHandler(idx, "https://docs.example.com", "README.md", prov, "Test Site", nil)
+	handler := NewFeedHandler(idx, "https://docs.example.com", "README.md", prov, "Test Site", nil, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/feed.xml", nil)
 	w := httptest.NewRecorder()
@@ -163,7 +163,7 @@ func TestGenerateFeed_WithResolver(t *testing.T) {
 	}
 	resolver := resolve.Build(feedTestFS, []string{".md"}, hasRenderer)
 
-	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", resolver)
+	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", resolver, "")
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}

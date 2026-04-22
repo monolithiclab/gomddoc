@@ -1802,3 +1802,134 @@ func TestTemplateContext_LangFallbackToSiteConfig(t *testing.T) {
 		t.Errorf("Lang() = %q, want %q", got, "en-US")
 	}
 }
+
+// stubNamer implements LanguageNamer for testing.
+type stubNamer struct {
+	names map[string]string
+}
+
+func (s stubNamer) LanguageName(lang string) string {
+	if name, ok := s.names[lang]; ok {
+		return name
+	}
+	return lang
+}
+
+func TestBuildLanguageInfos(t *testing.T) {
+	t.Parallel()
+
+	namer := stubNamer{names: map[string]string{
+		"en-US": "English",
+		"fr-FR": "Français",
+		"de-DE": "Deutsch",
+	}}
+
+	tests := []struct {
+		name        string
+		defaultLang string
+		langs       []string
+		wantLen     int
+		wantFirst   LanguageInfo
+	}{
+		{
+			name:        "single non-default language",
+			defaultLang: "en-US",
+			langs:       []string{"fr-FR"},
+			wantLen:     2,
+			wantFirst:   LanguageInfo{Code: "en-US", Name: "English", Default: true},
+		},
+		{
+			name:        "multiple non-default languages",
+			defaultLang: "en-US",
+			langs:       []string{"fr-FR", "de-DE"},
+			wantLen:     3,
+			wantFirst:   LanguageInfo{Code: "en-US", Name: "English", Default: true},
+		},
+		{
+			name:        "no non-default languages",
+			defaultLang: "en-US",
+			langs:       nil,
+			wantLen:     1,
+			wantFirst:   LanguageInfo{Code: "en-US", Name: "English", Default: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			infos := BuildLanguageInfos(namer, tt.defaultLang, tt.langs)
+			if len(infos) != tt.wantLen {
+				t.Fatalf("len = %d, want %d", len(infos), tt.wantLen)
+			}
+			if infos[0] != tt.wantFirst {
+				t.Errorf("first = %+v, want %+v", infos[0], tt.wantFirst)
+			}
+			// Non-default entries should not have Default set
+			for _, info := range infos[1:] {
+				if info.Default {
+					t.Errorf("non-default language %q has Default=true", info.Code)
+				}
+			}
+		})
+	}
+}
+
+func TestWithActiveLang(t *testing.T) {
+	t.Parallel()
+
+	base := []LanguageInfo{
+		{Code: "en-US", Name: "English", Default: true},
+		{Code: "fr-FR", Name: "Français"},
+		{Code: "de-DE", Name: "Deutsch"},
+	}
+
+	tests := []struct {
+		name       string
+		activeLang string
+		wantActive string
+	}{
+		{"default language active", "en-US", "en-US"},
+		{"non-default language active", "fr-FR", "fr-FR"},
+		{"another non-default", "de-DE", "de-DE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := WithActiveLang(base, tt.activeLang)
+
+			// Should not mutate the original
+			for _, info := range base {
+				if info.Active {
+					t.Fatal("WithActiveLang mutated original slice")
+				}
+			}
+
+			activeCount := 0
+			for _, info := range result {
+				if info.Active {
+					activeCount++
+					if info.Code != tt.wantActive {
+						t.Errorf("active code = %q, want %q", info.Code, tt.wantActive)
+					}
+				}
+				// Default flag should be preserved
+				if info.Code == "en-US" && !info.Default {
+					t.Error("Default flag not preserved for en-US")
+				}
+			}
+			if activeCount != 1 {
+				t.Errorf("active count = %d, want 1", activeCount)
+			}
+		})
+	}
+}
+
+func TestWithActiveLang_Empty(t *testing.T) {
+	t.Parallel()
+
+	result := WithActiveLang(nil, "en-US")
+	if result != nil {
+		t.Errorf("WithActiveLang(nil) = %v, want nil", result)
+	}
+}

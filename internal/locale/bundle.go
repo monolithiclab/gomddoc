@@ -49,6 +49,13 @@ func (b *Bundle) Languages() []string {
 	return langs
 }
 
+// TFunc returns a translation function bound to the given language.
+func (b *Bundle) TFunc(lang string) func(string) string {
+	return func(key string) string {
+		return b.T(lang, key)
+	}
+}
+
 // LanguageName returns the display name for a language code.
 // Falls back to the code itself if language_name is not set.
 func (b *Bundle) LanguageName(lang string) string {

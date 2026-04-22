@@ -53,6 +53,19 @@ type buildStats struct {
 	totalBytes    atomic.Int64
 }
 
+// buildContext holds shared dependencies for building files, eliminating
+// parameter sprawl across walkAndBuild, buildFile, and copyFile.
+type buildContext struct {
+	registry         renderer.RendererRegistry
+	enricherRegistry enricher.EnricherRegistry
+	templateRenderer *tmpl.HTMLRenderer
+	siteConfig       *config.SiteConfig
+	bundle           *locale.Bundle
+	languageInfos    []tmpl.LanguageInfo // shared across all pages (Active set per-walk)
+	lang             string              // resolved language for this walk
+	tFunc            func(string) string // translation function bound to lang
+}
+
 // Run executes the build command.
 func (b *BuildCmd) Run() error {
 	start := time.Now()
@@ -112,22 +125,23 @@ func (b *BuildCmd) Run() error {
 	// Build language info for multi-language sites
 	var languageInfos []tmpl.LanguageInfo
 	if len(detectedLangs) > 0 {
-		languageInfos = make([]tmpl.LanguageInfo, 0, len(detectedLangs)+1)
-		languageInfos = append(languageInfos, tmpl.LanguageInfo{
-			Code: cfg.Site.Language,
-			Name: bundle.LanguageName(cfg.Site.Language),
-		})
-		for _, lang := range detectedLangs {
-			languageInfos = append(languageInfos, tmpl.LanguageInfo{
-				Code: lang,
-				Name: bundle.LanguageName(lang),
-			})
-		}
+		languageInfos = tmpl.BuildLanguageInfos(bundle, cfg.Site.Language, detectedLangs)
 	}
 
 	slog.Info("Building static site", slog.String("source", b.Dir), slog.String("output", b.Output))
 
-	stats, err := b.walkAndBuild(contentRoot, pipeline.Registry, pipeline.EnricherRegistry, pipeline.TemplateRenderer, &cfg.Site, bundle, languageInfos)
+	bc := &buildContext{
+		registry:         pipeline.Registry,
+		enricherRegistry: pipeline.EnricherRegistry,
+		templateRenderer: pipeline.TemplateRenderer,
+		siteConfig:       &cfg.Site,
+		bundle:           bundle,
+		languageInfos:    tmpl.WithActiveLang(languageInfos, cfg.Site.Language),
+		lang:             cfg.Site.Language,
+		tFunc:            bundle.TFunc(cfg.Site.Language),
+	}
+
+	stats, err := b.walkAndBuild(contentRoot, bc)
 	if err != nil {
 		return err
 	}
@@ -155,7 +169,7 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate 404.html for static host compatibility (Netlify, GitHub Pages, Cloudflare Pages)
-	errorContent, err := b.renderErrorPage(http.StatusNotFound, pipeline.TemplateRenderer, &cfg.Site, bundle, cfg.Site.Language)
+	errorContent, err := b.renderErrorPage(http.StatusNotFound, bc)
 	if err != nil {
 		return fmt.Errorf("render 404 page: %w", err)
 	}
@@ -167,7 +181,18 @@ func (b *BuildCmd) Run() error {
 	for _, lang := range detectedLangs {
 		langPipe := lp.ByLang[lang]
 
-		langStats, langErr := b.walkAndBuildLang(contentRoot, pipeline.Registry, pipeline.EnricherRegistry, pipeline.TemplateRenderer, &cfg.Site, bundle, languageInfos, lang)
+		langBC := &buildContext{
+			registry:         bc.registry,
+			enricherRegistry: bc.enricherRegistry,
+			templateRenderer: bc.templateRenderer,
+			siteConfig:       bc.siteConfig,
+			bundle:           bundle,
+			languageInfos:    tmpl.WithActiveLang(languageInfos, lang),
+			lang:             lang,
+			tFunc:            bundle.TFunc(lang),
+		}
+
+		langStats, langErr := b.walkAndBuildLang(contentRoot, langBC, lang)
 		if langErr != nil {
 			slog.Warn("Failed to build language", slog.String("lang", lang), slog.Any("error", langErr))
 			continue
@@ -177,7 +202,7 @@ func (b *BuildCmd) Run() error {
 		stats.totalBytes.Add(langStats.totalBytes.Load())
 
 		// Generate per-language 404 page
-		langErrorContent, langErrPage := b.renderErrorPage(http.StatusNotFound, pipeline.TemplateRenderer, &cfg.Site, bundle, lang)
+		langErrorContent, langErrPage := b.renderErrorPage(http.StatusNotFound, langBC)
 		if langErrPage != nil {
 			slog.Warn("Failed to render 404 page for language", slog.String("lang", lang), slog.Any("error", langErrPage))
 			continue
@@ -188,14 +213,14 @@ func (b *BuildCmd) Run() error {
 
 		// Generate per-language sitemap and feed
 		if langPipe != nil && langPipe.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-			langSitemapData, sErr := server.GenerateSitemap(context.Background(), langPipe.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, langPipe.Provider, langPipe.Resolver)
+			langSitemapData, sErr := server.GenerateSitemap(context.Background(), langPipe.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, langPipe.Provider, langPipe.Resolver, "/"+lang)
 			if sErr != nil {
 				slog.Warn("Failed to generate sitemap for language", slog.String("lang", lang), slog.Any("error", sErr))
 			} else if wErr := b.writeOutputFile(path.Join(lang, "sitemap.xml"), langSitemapData); wErr != nil {
 				slog.Warn("Failed to write sitemap for language", slog.String("lang", lang), slog.Any("error", wErr))
 			}
 
-			langFeedData, fErr := server.GenerateFeed(context.Background(), langPipe.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, langPipe.Provider, cfg.Site.Meta.Title, langPipe.Resolver)
+			langFeedData, fErr := server.GenerateFeed(context.Background(), langPipe.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, langPipe.Provider, cfg.Site.Meta.Title, langPipe.Resolver, "/"+lang)
 			if fErr != nil {
 				slog.Warn("Failed to generate feed for language", slog.String("lang", lang), slog.Any("error", fErr))
 			} else if wErr := b.writeOutputFile(path.Join(lang, "feed.xml"), langFeedData); wErr != nil {
@@ -282,57 +307,24 @@ func isDirEmpty(path string) (bool, error) {
 }
 
 // walkAndBuild walks the content root and generates the static site.
-// Files are collected first via fs.WalkDir, then processed in parallel
-// using an errgroup worker pool bounded by runtime.NumCPU().
-func (b *BuildCmd) walkAndBuild(
-	contentRoot fs.FS,
-	registry renderer.RendererRegistry,
-	enricherRegistry enricher.EnricherRegistry,
-	templateRenderer *tmpl.HTMLRenderer,
-	siteConfig *config.SiteConfig,
-	bundle *locale.Bundle,
-	languageInfos []tmpl.LanguageInfo,
-) (*buildStats, error) {
-	return b.walkAndBuildToDir(contentRoot, registry, enricherRegistry, templateRenderer, siteConfig, bundle, languageInfos, "")
+func (b *BuildCmd) walkAndBuild(contentRoot fs.FS, bc *buildContext) (*buildStats, error) {
+	return b.walkAndBuildToDir(contentRoot, bc, "")
 }
 
 // walkAndBuildLang builds a single non-default language into its subdirectory.
-// It creates a sub-FS rooted at the language directory and writes output
-// files prefixed with the language code (e.g., "fr/page/index.html").
-func (b *BuildCmd) walkAndBuildLang(
-	contentRoot fs.FS,
-	registry renderer.RendererRegistry,
-	enricherRegistry enricher.EnricherRegistry,
-	templateRenderer *tmpl.HTMLRenderer,
-	siteConfig *config.SiteConfig,
-	bundle *locale.Bundle,
-	languageInfos []tmpl.LanguageInfo,
-	lang string,
-) (*buildStats, error) {
+func (b *BuildCmd) walkAndBuildLang(contentRoot fs.FS, bc *buildContext, lang string) (*buildStats, error) {
 	langFS, err := fs.Sub(contentRoot, lang)
 	if err != nil {
 		return nil, fmt.Errorf("create sub-FS for language %s: %w", lang, err)
 	}
-	return b.walkAndBuildToDir(langFS, registry, enricherRegistry, templateRenderer, siteConfig, bundle, languageInfos, lang)
+	return b.walkAndBuildToDir(langFS, bc, lang)
 }
 
 // walkAndBuildToDir is the shared implementation for walkAndBuild and walkAndBuildLang.
 // When outputPrefix is non-empty, all output files are written under that subdirectory.
-func (b *BuildCmd) walkAndBuildToDir(
-	contentRoot fs.FS,
-	registry renderer.RendererRegistry,
-	enricherRegistry enricher.EnricherRegistry,
-	templateRenderer *tmpl.HTMLRenderer,
-	siteConfig *config.SiteConfig,
-	bundle *locale.Bundle,
-	languageInfos []tmpl.LanguageInfo,
-	outputPrefix string,
-) (*buildStats, error) {
+func (b *BuildCmd) walkAndBuildToDir(contentRoot fs.FS, bc *buildContext, outputPrefix string) (*buildStats, error) {
 	stats := &buildStats{}
 
-	// Collect all file paths first, skipping hidden files/directories.
-	// Also track which directories contain an index.md so we know whether
-	// DefaultIndex (e.g. README.md) should become index.html or keep its name.
 	var filePaths []string
 	dirsWithIndexMD := make(map[string]bool)
 	err := fs.WalkDir(contentRoot, ".", func(filePath string, d fs.DirEntry, err error) error {
@@ -340,7 +332,7 @@ func (b *BuildCmd) walkAndBuildToDir(
 			return fmt.Errorf("walk %s: %w", filePath, err)
 		}
 
-		if skip, skipErr := provider.SkipWalkEntry(filePath, d.Name(), d.IsDir(), siteConfig.Exclude); skip {
+		if skip, skipErr := provider.SkipWalkEntry(filePath, d.Name(), d.IsDir(), bc.siteConfig.Exclude); skip {
 			if !d.IsDir() {
 				stats.skippedFiles.Add(1)
 			}
@@ -360,12 +352,9 @@ func (b *BuildCmd) walkAndBuildToDir(
 		return nil, err
 	}
 
-	// Process files in parallel with a bounded worker pool.
 	g, ctx := errgroup.WithContext(context.Background())
 	g.SetLimit(runtime.NumCPU())
 
-	// Build accepts only HTML output — this selects the markdown→HTML renderer
-	// for markdown files and falls through to copy for everything else.
 	htmlAccept := []negotiate.MediaType{{Type: "text", Subtype: "html", Q: 1.0}}
 
 	for _, fp := range filePaths {
@@ -373,12 +362,11 @@ func (b *BuildCmd) walkAndBuildToDir(
 			mimeType := negotiate.DetectMIME(fp)
 			normalized := negotiate.NormalizeMimeType(mimeType)
 
-			contentRenderer, _, err := registry.Get(normalized, htmlAccept)
+			contentRenderer, _, err := bc.registry.Get(normalized, htmlAccept)
 			if err != nil {
-				// No HTML renderer for this type → copy as-is
 				return b.copyFile(contentRoot, fp, outputPrefix, stats)
 			}
-			return b.buildFile(ctx, contentRoot, fp, contentRenderer, enricherRegistry, normalized, templateRenderer, siteConfig, dirsWithIndexMD, outputPrefix, stats, bundle, languageInfos)
+			return b.buildFile(ctx, contentRoot, fp, contentRenderer, normalized, bc, dirsWithIndexMD, outputPrefix, stats)
 		})
 	}
 
@@ -397,22 +385,18 @@ func (b *BuildCmd) buildFile(
 	contentRoot fs.FS,
 	filePath string,
 	contentRenderer renderer.ContentRenderer,
-	enricherRegistry enricher.EnricherRegistry,
 	mimeType string,
-	templateRenderer *tmpl.HTMLRenderer,
-	siteConfig *config.SiteConfig,
+	bc *buildContext,
 	dirsWithIndexMD map[string]bool,
 	outputPrefix string,
 	stats *buildStats,
-	bundle *locale.Bundle,
-	languageInfos []tmpl.LanguageInfo,
 ) error {
 	content, err := fs.ReadFile(contentRoot, filePath)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", filePath, err)
 	}
 
-	enrichment, err := enricherRegistry.Get(mimeType).Enrich(ctx, content, "/"+filePath)
+	enrichment, err := bc.enricherRegistry.Get(mimeType).Enrich(ctx, content, "/"+filePath)
 	if err != nil {
 		return fmt.Errorf("enrich %s: %w", filePath, err)
 	}
@@ -422,7 +406,6 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("render %s: %w", filePath, err)
 	}
 
-	// Build metadata with title fallback
 	metadata := enrichment.Metadata
 	if metadata == nil {
 		metadata = make(map[string]any)
@@ -431,56 +414,33 @@ func (b *BuildCmd) buildFile(
 		metadata["title"] = text.DeriveTitle("/" + filePath)
 	}
 
-	// Determine language from file path or fall back to site default
-	lang, _ := locale.ExtractLangFromPath("/" + filePath)
-	if lang == "" {
-		lang = siteConfig.Language
-	}
-
-	// Build per-page language infos with active flag
-	var pageLanguageInfos []tmpl.LanguageInfo
-	if len(languageInfos) > 0 {
-		pageLanguageInfos = make([]tmpl.LanguageInfo, len(languageInfos))
-		copy(pageLanguageInfos, languageInfos)
-		for i := range pageLanguageInfos {
-			pageLanguageInfos[i].Active = pageLanguageInfos[i].Code == lang
-		}
-	}
-
-	tFunc := func(key string) string {
-		return bundle.T(lang, key)
-	}
-
 	templateCtx := &tmpl.TemplateContext{
-		Site: siteConfig,
+		Site: bc.siteConfig,
 		Page: tmpl.PageContext{
 			Content:    template.HTML(renderResult.Content), // #nosec G203
 			Path:       "/" + filePath,
 			Meta:       metadata,
-			Features:   config.MergeFeatures(siteConfig.Theme.Features, enrichment.Features),
+			Features:   config.MergeFeatures(bc.siteConfig.Theme.Features, enrichment.Features),
 			TOC:        enrichment.TOC,
 			Navigation: enrichment.Navigation,
 			PrevPage:   enrichment.PrevPage,
 			NextPage:   enrichment.NextPage,
 		},
 	}
-	templateCtx.WithI18n(lang, tFunc, pageLanguageInfos)
+	templateCtx.WithI18n(bc.lang, bc.tFunc, bc.languageInfos)
 
-	templateName := tmpl.ResolveLayout(templateRenderer, metadata)
-	rendered, err := templateRenderer.Render(ctx, templateName, templateCtx)
+	templateName := tmpl.ResolveLayout(bc.templateRenderer, metadata)
+	rendered, err := bc.templateRenderer.Render(ctx, templateName, templateCtx)
 	if err != nil {
 		return fmt.Errorf("template render %s: %w", filePath, err)
 	}
 
-	// Determine the output path. When strip_extensions is active, use pretty
-	// URLs (guide.md -> guide/index.html). Otherwise, the DefaultIndex file
-	// (e.g. README.md) becomes index.html unless an index.md exists in the same directory.
 	var htmlPath string
-	if len(siteConfig.StripExtensions) > 0 {
-		htmlPath = prettyOutputPath(filePath, siteConfig.DefaultIndex, dirsWithIndexMD)
+	if len(bc.siteConfig.StripExtensions) > 0 {
+		htmlPath = prettyOutputPath(filePath, bc.siteConfig.DefaultIndex, dirsWithIndexMD)
 	} else {
 		htmlPath = strings.TrimSuffix(filePath, path.Ext(filePath)) + ".html"
-		if server.IsDefaultIndex(filePath, siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
+		if server.IsDefaultIndex(filePath, bc.siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
 			htmlPath = path.Join(path.Dir(filePath), "index.html")
 		}
 	}
@@ -560,7 +520,7 @@ func (b *BuildCmd) generateSEOFiles(idx *metadata.Index, siteConfig *config.Site
 
 	// Generate sitemap.xml only if domain is configured
 	if siteConfig.Meta.Domain != "" {
-		sitemapData, err := server.GenerateSitemap(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, resolver)
+		sitemapData, err := server.GenerateSitemap(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, resolver, "")
 		if err != nil {
 			return fmt.Errorf("generate sitemap: %w", err)
 		}
@@ -570,7 +530,7 @@ func (b *BuildCmd) generateSEOFiles(idx *metadata.Index, siteConfig *config.Site
 		}
 		slog.Debug("Generated", slog.String("file", "sitemap.xml"))
 
-		feedData, err := server.GenerateFeed(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, siteConfig.Meta.Title, resolver)
+		feedData, err := server.GenerateFeed(context.Background(), idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex, prov, siteConfig.Meta.Title, resolver, "")
 		if err != nil {
 			return fmt.Errorf("generate feed: %w", err)
 		}
@@ -695,30 +655,24 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 }
 
 // renderErrorPage renders an error page through the template engine.
-// The lang parameter specifies the language for i18n translations.
-func (b *BuildCmd) renderErrorPage(statusCode int, templateRenderer tmpl.Renderer, siteConfig *config.SiteConfig, bundle *locale.Bundle, lang string) ([]byte, error) {
+func (b *BuildCmd) renderErrorPage(statusCode int, bc *buildContext) ([]byte, error) {
 	statusTitle := http.StatusText(statusCode)
 
-	errorMeta := map[string]any{
-		"title":         statusTitle,
-		"robots":        "noindex",
-		"error_code":    statusCode,
-		"error_title":   statusTitle,
-		"error_message": server.StatusMessage(statusCode),
-	}
 	ctx := &tmpl.TemplateContext{
-		Site: siteConfig,
+		Site: bc.siteConfig,
 		Page: tmpl.PageContext{
-			Path:     "/" + strconv.Itoa(statusCode),
-			Meta:     errorMeta,
-			Features: config.MergeFeatures(siteConfig.Theme.Features),
+			Path: "/" + strconv.Itoa(statusCode),
+			Meta: map[string]any{
+				"title":         statusTitle,
+				"robots":        "noindex",
+				"error_code":    statusCode,
+				"error_title":   statusTitle,
+				"error_message": server.StatusMessage(statusCode),
+			},
+			Features: config.MergeFeatures(bc.siteConfig.Theme.Features),
 		},
 	}
+	ctx.WithI18n(bc.lang, bc.tFunc, nil)
 
-	tFunc := func(key string) string {
-		return bundle.T(lang, key)
-	}
-	ctx.WithI18n(lang, tFunc, nil)
-
-	return templateRenderer.Render(context.Background(), "error.html.tmpl", ctx)
+	return bc.templateRenderer.Render(context.Background(), "error.html.tmpl", ctx)
 }

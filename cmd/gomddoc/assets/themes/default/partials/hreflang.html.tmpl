@@ -3,7 +3,7 @@
 {{- if gt (len $langs) 1 }}
 {{- $path := .Page.Path }}
 {{- range $langs }}
-{{- if .Active }}
+{{- if .Default }}
         <link rel="alternate" hreflang="{{ .Code }}" href="{{ $path }}">
         <link rel="alternate" hreflang="x-default" href="{{ $path }}">
 {{- else }}
