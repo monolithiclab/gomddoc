@@ -2,6 +2,7 @@ package template
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -18,7 +19,8 @@ import (
 // Renderer defines the interface for template rendering
 type Renderer interface {
 	// Render renders a template with the given data
-	Render(templateName string, data any) ([]byte, error)
+	// The context can be used for cancellation, timeouts, and request-scoped values
+	Render(ctx context.Context, templateName string, data any) ([]byte, error)
 }
 
 // TemplateContext holds the data passed to templates
@@ -145,15 +147,30 @@ func NewHTMLRenderer(assetsFS fs.FS, siteConfig *config.SiteConfig, cache Templa
 // Render renders an HTML template with the given data
 // Cache behavior is determined by the injected TemplateCache implementation
 // No conditional logic needed - PassthroughTemplateStore always returns nil (cache miss)
-func (h *HTMLRenderer) Render(templateName string, data any) ([]byte, error) {
+// The context is checked before expensive operations for cancellation support
+func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any) ([]byte, error) {
 	theme := h.siteConfig.Theme.Name
 	templatePath := fmt.Sprintf("assets/themes/%s/%s", theme, templateName)
+
+	// Check context before starting
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
 
 	// Try cache first (returns nil if PassthroughTemplateStore)
 	tmpl := h.cache.Get(templatePath)
 
 	var err error
 	if tmpl == nil {
+		// Check context again before expensive template parsing
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		// Cache miss or dev mode - parse template
 		tmpl, err = h.parseTemplate(templateName, templatePath)
 		if err != nil {

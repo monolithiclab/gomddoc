@@ -60,8 +60,8 @@ func (h *Handler) ServeMarkdown(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	// Render the template
-	renderedHTML, err := h.renderer.Render("layout.html.tmpl", context)
+	// Render the template with request context for cancellation support
+	renderedHTML, err := h.renderer.Render(r.Context(), "layout.html.tmpl", context)
 	if err != nil {
 		slog.Error("Cannot render template", slog.Any("error", err))
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")

@@ -1,6 +1,7 @@
 package template
 
 import (
+	"context"
 	"html/template"
 	"io/fs"
 	"strings"
@@ -127,7 +128,7 @@ func TestHTMLRendererRender(t *testing.T) {
 		},
 	}
 
-	result, err := renderer.Render("layout.html.tmpl", ctx)
+	result, err := renderer.Render(context.Background(), "layout.html.tmpl", ctx)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -172,13 +173,13 @@ func TestTemplateCache(t *testing.T) {
 	}
 
 	// First render - should parse and cache
-	result1, err := renderer.Render("test.html.tmpl", ctx)
+	result1, err := renderer.Render(context.Background(), "test.html.tmpl", ctx)
 	if err != nil {
 		t.Fatalf("First render failed: %v", err)
 	}
 
 	// Second render - should use cache
-	result2, err := renderer.Render("test.html.tmpl", ctx)
+	result2, err := renderer.Render(context.Background(), "test.html.tmpl", ctx)
 	if err != nil {
 		t.Fatalf("Second render failed: %v", err)
 	}
@@ -190,6 +191,44 @@ func TestTemplateCache(t *testing.T) {
 
 	if !strings.Contains(string(result1), "Test") {
 		t.Error("Expected rendered template to contain 'Test'")
+	}
+}
+
+func TestRenderWithContextCancellation(t *testing.T) {
+	// Create test filesystem
+	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
+	testFS := fstest.MapFS{
+		"assets/themes/default/test.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test"
+	cache := NewTemplateCache(true) // Dev mode - no caching, always parses
+	renderer := NewHTMLRenderer(testFS, siteConfig, cache)
+
+	ctx := &TemplateContext{
+		Site: siteConfig,
+		Page: PageContext{
+			Breadcrumbs: map[string]string{
+				"/": "Home",
+			},
+		},
+	}
+
+	// Create a cancelled context
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel() // Immediately cancel
+
+	// Attempt to render with cancelled context
+	_, err := renderer.Render(cancelledCtx, "test.html.tmpl", ctx)
+	if err == nil {
+		t.Fatal("Expected error when rendering with cancelled context")
+	}
+
+	if err != context.Canceled {
+		t.Errorf("Expected context.Canceled error, got: %v", err)
 	}
 }
 
