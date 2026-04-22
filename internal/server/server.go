@@ -41,6 +41,7 @@ func NewHTTPServer(
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)
 	h = BlockHiddenPaths(h) // Block all hidden files/directories (., .git, .env, etc.)
 	// Exception: .well-known/ is allowed (IETF RFC 8615)
+	h = RequestID(h)       // Assign unique request ID for tracing
 	h = SecurityHeaders(h) // Must be last so headers are set first
 
 	server := &http.Server{
