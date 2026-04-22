@@ -94,31 +94,16 @@ func (f *FilesystemProvider) ReadFile(_ context.Context, requestPath string) ([]
 }
 
 // handleDirectory processes directory requests with default index fallback and optional listing.
-func (f *FilesystemProvider) handleDirectory(cleanPath, requestPath string) ([]byte, string, error) {
-	// Try default index file first (always)
-	indexPath := path.Join(cleanPath, f.defaultIndex)
-	if cleanPath == "." {
+func (f *FilesystemProvider) handleDirectory(dirPath, requestPath string) ([]byte, string, error) {
+	indexPath := path.Join(dirPath, f.defaultIndex)
+	if dirPath == "." {
 		indexPath = f.defaultIndex
 	}
 
-	if content, err := fs.ReadFile(f.root, indexPath); err == nil {
-		mimeType := negotiate.DetectMIME(f.defaultIndex)
-		return content, mimeType, nil
-	}
-
-	// Directory listing disabled (secure by default)
-	if !f.dirIndex {
-		return nil, "", &PathError{Op: "list", Path: requestPath, Err: ErrDirListingDisabled}
-	}
-
-	// Generate directory listing
-	entries, err := fs.ReadDir(f.root, cleanPath)
-	if err != nil {
-		return nil, "", &PathError{Op: "list", Path: requestPath, Err: err}
-	}
-
-	content := GenerateMarkdownListing(requestPath, entries)
-	return content, "text/markdown; charset=utf-8", nil
+	return handleDirectory(requestPath, f.defaultIndex, f.dirIndex,
+		func() ([]byte, error) { return fs.ReadFile(f.root, indexPath) },
+		func() ([]fs.DirEntry, error) { return fs.ReadDir(f.root, dirPath) },
+	)
 }
 
 // Stat returns a FileInfo describing the named file

@@ -408,43 +408,33 @@ func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]b
 
 // handleDirectoryLocked processes directory requests.
 // Must be called with g.mu held for reading.
-func (g *GitProvider) handleDirectoryLocked(cleanPath, requestPath string) ([]byte, string, error) {
+func (g *GitProvider) handleDirectoryLocked(dirPath, requestPath string) ([]byte, string, error) {
 	// Determine which tree to use
 	var dirTree *object.Tree
-	if cleanPath == "." {
+	if dirPath == "." {
 		dirTree = g.tree
 	} else {
 		var err error
-		dirTree, err = g.tree.Tree(cleanPath)
+		dirTree, err = g.tree.Tree(dirPath)
 		if err != nil {
 			return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
 		}
 	}
 
-	// Try default index file
-	indexFile, err := dirTree.File(g.defaultIndex)
-	if err == nil {
-		content, err := indexFile.Contents()
-		if err != nil {
-			return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
-		}
-		mimeType := negotiate.DetectMIME(g.defaultIndex)
-		return []byte(content), mimeType, nil
-	}
-
-	// Directory listing disabled
-	if !g.dirIndex {
-		return nil, "", &PathError{Op: "list", Path: requestPath, Err: ErrDirListingDisabled}
-	}
-
-	// Generate directory listing
-	entries, err := g.listDirectoryLocked(dirTree)
-	if err != nil {
-		return nil, "", &PathError{Op: "list", Path: requestPath, Err: err}
-	}
-
-	content := GenerateMarkdownListing(requestPath, entries)
-	return content, "text/markdown; charset=utf-8", nil
+	return handleDirectory(requestPath, g.defaultIndex, g.dirIndex,
+		func() ([]byte, error) {
+			indexFile, err := dirTree.File(g.defaultIndex)
+			if err != nil {
+				return nil, err
+			}
+			content, err := indexFile.Contents()
+			if err != nil {
+				return nil, err
+			}
+			return []byte(content), nil
+		},
+		func() ([]fs.DirEntry, error) { return g.listDirectoryLocked(dirTree) },
+	)
 }
 
 // listDirectoryLocked creates fs.DirEntry slice from a tree.
