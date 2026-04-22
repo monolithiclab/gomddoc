@@ -114,6 +114,15 @@ func TestGenerateRedirectHTML(t *testing.T) {
 			t.Errorf("%s: should contain %q", c.name, c.contains)
 		}
 	}
+
+	// Verify XSS is prevented by HTML escaping.
+	xss := string(GenerateRedirectHTML(`"><script>alert(1)</script>`))
+	if strings.Contains(xss, "<script>") {
+		t.Error("GenerateRedirectHTML should escape HTML in target URL")
+	}
+	if !strings.Contains(xss, "&lt;script&gt;") {
+		t.Error("GenerateRedirectHTML should contain escaped script tag")
+	}
 }
 
 func TestExtensionRedirect(t *testing.T) {

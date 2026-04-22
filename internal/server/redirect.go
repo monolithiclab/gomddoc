@@ -1,7 +1,8 @@
 package server
 
 import (
-	"fmt"
+	"bytes"
+	"html/template"
 	"net/http"
 	"path"
 	"strings"
@@ -91,20 +92,27 @@ func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string) func(
 	}
 }
 
-// GenerateRedirectHTML produces a minimal HTML page that redirects to targetURL
-// via meta refresh. Compatible with all static hosts.
-func GenerateRedirectHTML(targetURL string) []byte {
-	return fmt.Appendf(nil, `<!DOCTYPE html>
+// redirectTemplate is the HTML template for redirect pages.
+// Parsed once at init to avoid per-call overhead.
+var redirectTemplate = template.Must(template.New("redirect").Parse(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=%[1]s">
-<link rel="canonical" href="%[1]s">
+<meta http-equiv="refresh" content="0; url={{.}}">
+<link rel="canonical" href="{{.}}">
 <title>Redirect</title>
 </head>
 <body>
-<p>This page has moved to <a href="%[1]s">%[1]s</a>.</p>
+<p>This page has moved to <a href="{{.}}">{{.}}</a>.</p>
 </body>
 </html>
-`, targetURL)
+`))
+
+// GenerateRedirectHTML produces a minimal HTML page that redirects to targetURL
+// via meta refresh. Compatible with all static hosts. The URL is HTML-escaped
+// to prevent XSS via crafted redirect targets.
+func GenerateRedirectHTML(targetURL string) []byte {
+	var buf bytes.Buffer
+	_ = redirectTemplate.Execute(&buf, targetURL) // #nosec G104 -- template is static, cannot fail
+	return buf.Bytes()
 }
