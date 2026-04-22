@@ -82,6 +82,7 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 		EnableCache:      !cfg.Server.DevMode,
 		EnableNavigation: true,
 		EnableMetadata:   true,
+		EnableSearch:     true,
 	})
 	if err != nil {
 		_ = prov.Close()
@@ -95,6 +96,7 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 		EnricherRegistry: pipeline.EnricherRegistry,
 		TemplateRenderer: pipeline.TemplateRenderer,
 		MetaIndex:        pipeline.MetaIndex,
+		SearchIndex:      pipeline.SearchIndex,
 		RedirectFinder:   pipeline.RedirectFinder,
 		StaticFS:         pipeline.StaticFS,
 	})

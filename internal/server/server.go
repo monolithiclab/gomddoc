@@ -14,6 +14,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -41,6 +42,7 @@ type HTTPServerConfig struct {
 	EnricherRegistry enricher.EnricherRegistry
 	TemplateRenderer template.Renderer
 	MetaIndex        *metadata.Index // nil disables metadata API
+	SearchIndex      *search.Index   // nil disables search API
 	RedirectFinder   RedirectFinder  // nil disables redirect lookup
 	StaticFS         fs.FS           // nil disables static asset serving
 }
@@ -71,6 +73,11 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		metaHandler := NewMetadataHandler(opts.MetaIndex)
 		mux.HandleFunc("GET /api/tags", metaHandler.TagsHandler)
 		mux.HandleFunc("GET /api/tags/{tag}", metaHandler.TagPagesHandler)
+	}
+
+	if opts.SearchIndex != nil {
+		searchHandler := NewSearchHandler(opts.SearchIndex)
+		mux.HandleFunc("GET /api/search", searchHandler.SearchEndpoint)
 	}
 
 	robotsHandler := NewRobotsHandler(cfg.Site.Meta.Domain)

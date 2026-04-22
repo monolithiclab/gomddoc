@@ -13,6 +13,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	"github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
@@ -24,6 +25,7 @@ type PipelineOptions struct {
 	EnableCache      bool // enable template caching (production mode)
 	EnableNavigation bool // enable navigation tree and redirect finder
 	EnableMetadata   bool // enable metadata index for tag API
+	EnableSearch     bool // enable full-text search index
 }
 
 // Pipeline holds the assembled rendering pipeline components.
@@ -32,6 +34,7 @@ type Pipeline struct {
 	EnricherRegistry enricher.EnricherRegistry
 	TemplateRenderer *template.HTMLRenderer
 	MetaIndex        *metadata.Index
+	SearchIndex      *search.Index
 	RedirectFinder   server.RedirectFinder
 	StaticFS         fs.FS
 }
@@ -91,6 +94,15 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		}
 		enricherOpts.MetaIndex = metaIndex
 		p.MetaIndex = metaIndex
+	}
+
+	if opts.EnableSearch {
+		searchIdx, searchErr := search.BuildIndex(context.Background(), contentRoot, p.MetaIndex)
+		if searchErr != nil {
+			slog.Warn("Failed to build search index", slog.Any("error", searchErr))
+		} else {
+			p.SearchIndex = searchIdx
+		}
 	}
 
 	enricherRegistry := enricher.NewDefaultEnricherRegistry()

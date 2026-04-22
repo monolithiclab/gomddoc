@@ -243,6 +243,27 @@ Exposed via JSON API:
 - `GET /api/tags` — All tags (sorted)
 - `GET /api/tags/{tag}` — Pages with the given tag
 
+### 9. Search Index
+
+**Responsibility:** Full-text search across all documentation pages
+
+```go
+type Index struct {
+    docs     []document
+    inverted map[string][]posting
+    docCount int
+    avgDL    float64
+}
+```
+
+Built at startup alongside the metadata index using the same 3-phase concurrent pattern. Tokenizes
+markdown content (stripped of syntax) into an inverted index. Ranking uses TF-IDF with title (3x) and
+description (1.5x) boosts. Queries use AND semantics. Snippet generation highlights matched terms with
+`<mark>` tags.
+
+Exposed via JSON API:
+- `GET /api/search?q=<query>&limit=<n>` — Full-text search with ranked results
+
 ### 9. Static Site Generator
 
 **Responsibility:** Build static HTML from content for deployment to static hosts

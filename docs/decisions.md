@@ -254,15 +254,25 @@ Extracted from completed spec files before deletion.
 | `Matches` | 1 | 0 |
 | `Registry.Get` | 5-12 | 0 |
 
-## Full-Text Search (Decision Pending)
+## Full-Text Search (Phase 5)
 
-**Options analyzed** (not yet implemented):
+**Chosen: Option C — Stdlib inverted index** for `gomddoc serve` mode.
+
+**Options analyzed:**
 - **Option A — Bleve** (server-side, Go-native): Rich queries, fuzzy matching. Heavy deps (~20+ transitive), increases binary size.
 - **Option B — Pagefind** (client-side, build-time): Zero server cost, tiny JS, excellent relevance. Requires `gomddoc build` first. External binary dep.
 - **Option C — Stdlib inverted index**: Zero deps, simple. No fuzzy matching, basic relevance.
 - **Option D — Lunr.js** (client-side): Established but aging, larger index files than Pagefind.
 
-**Recommendation**: Option C for `gomddoc serve` (keeps zero-external-deps philosophy), Option B for `gomddoc build` (as optional post-build step).
+**Why Option C:** Fits the zero-external-deps philosophy. The index is built at startup using the same
+3-phase concurrent pattern as `metadata.BuildIndex` (walk → tokenize in parallel → merge). Documents
+are tokenized by stripping markdown syntax and splitting on non-alphanumeric boundaries. Ranking uses
+TF-IDF with title (3x) and description (1.5x) boosts. Query semantics are AND (all terms must match).
+Snippets are generated with `<mark>` highlighting around query terms.
+
+**API:** `GET /api/search?q=<query>&limit=<n>` returns JSON array of `{path, title, description, snippet, score}`.
+
+**Build mode:** Option B (Pagefind) deferred as optional post-build step.
 
 ## Deferred / Discarded Ideas
 

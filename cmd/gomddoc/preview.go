@@ -47,6 +47,7 @@ func (p *PreviewCmd) setup() (*previewSetupResult, error) {
 		EnableCache:      false,
 		EnableNavigation: true,
 		EnableMetadata:   true,
+		EnableSearch:     true,
 	})
 	if err != nil {
 		_ = prov.Close()
@@ -60,6 +61,7 @@ func (p *PreviewCmd) setup() (*previewSetupResult, error) {
 		EnricherRegistry: pipeline.EnricherRegistry,
 		TemplateRenderer: pipeline.TemplateRenderer,
 		MetaIndex:        pipeline.MetaIndex,
+		SearchIndex:      pipeline.SearchIndex,
 		RedirectFinder:   pipeline.RedirectFinder,
 		StaticFS:         pipeline.StaticFS,
 	})

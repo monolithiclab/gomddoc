@@ -25,6 +25,9 @@ of current capabilities, see `docs/architecture.md`.
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
 7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO).
 
+**Phase 5 note:** Server-side full-text search (stdlib inverted index) is implemented for `serve`
+and `preview` modes. Client-side search UI in progress. Build-mode search (Pagefind) deferred.
+
 **Phase 4 note:** Benchmarks, pprof, and allocation reduction are complete. CI benchmark
 tracking is deferred until a CI pipeline is established. Partial clones are blocked by
 go-git library limitations.
@@ -46,8 +49,11 @@ go-git library limitations.
 
 ## Phase 5: Search and Discovery
 
-- [ ] **Full-text search**: Decision pending — Option C (stdlib inverted index) for serve, Option B (Pagefind)
-      for build. See `docs/decisions.md` for analysis.
+- [x] **Full-text search (serve)**: Stdlib inverted index (`internal/search/`) built at startup. TF-IDF ranking
+      with title/description boosts, AND query semantics, snippet generation with `<mark>` highlighting.
+      API: `GET /api/search?q=<query>&limit=<n>`. Enabled in `serve` and `preview` modes.
+- [ ] **Search UI**: Client-side search modal with keyboard navigation, shared across all themes.
+- [ ] **Full-text search (build)**: Option B (Pagefind) as optional post-build step.
 
 ## Phase 7: Static Site Generation
 
