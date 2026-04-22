@@ -18,6 +18,107 @@
         :root {
             --pico-font-size: 90%;
         }
+        .page-layout {
+            display: flex;
+            gap: 2rem;
+            align-items: flex-start;
+        }
+        #toc-sidebar {
+            width: 250px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 2rem;
+            max-height: calc(100vh - 4rem);
+            overflow-y: auto;
+            font-size: 0.9em;
+            padding-right: 1rem;
+        }
+        .page-content {
+            flex-grow: 1;
+            min-width: 0; /* Prevents overflow in flex items */
+        }
+        #toc-sidebar ul {
+            list-style: none;
+            padding-left: 1rem;
+            margin: 0;
+        }
+        #toc-sidebar ul ul {
+            padding-left: 1rem;
+        }
+        #toc-sidebar li {
+            margin-bottom: 0.25rem;
+        }
+        #toc-sidebar a {
+            color: var(--pico-muted-color);
+            text-decoration: none;
+            display: block;
+            padding: 2px 0;
+            transition: color 0.2s, padding-left 0.2s;
+        }
+        #toc-sidebar a:hover {
+            color: var(--pico-color);
+        }
+        #toc-sidebar a.active {
+            color: var(--pico-primary);
+            font-weight: bold;
+            border-left: 2px solid var(--pico-primary);
+            padding-left: 0.5rem;
+            margin-left: -0.6rem; /* visual compensation for border */
+        }
+        #toc-toggle {
+            display: none;
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 100;
+            padding: 0.5rem;
+            border-radius: 50%;
+            width: 3.5rem;
+            height: 3.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        @media (max-width: 992px) {
+            .page-layout {
+                flex-direction: column;
+            }
+            #toc-sidebar {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                bottom: 0;
+                width: 300px;
+                max-width: 80vw;
+                background: var(--pico-background-color);
+                z-index: 101;
+                padding: 2rem;
+                box-shadow: 5px 0 15px rgba(0,0,0,0.1);
+                border-right: 1px solid var(--pico-muted-border-color);
+            }
+            #toc-sidebar.show {
+                display: block;
+            }
+            #toc-toggle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            #toc-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 100;
+                backdrop-filter: blur(2px);
+            }
+            #toc-overlay.show {
+                display: block;
+            }
+        }
         </style>
     </head>
     <body>
@@ -25,7 +126,7 @@
             <hgroup>
             <nav>
                 <ul>
-                    <li>{{ .Site.Meta.Title }}</li>
+                    <li><strong>{{ .Site.Meta.Title }}</strong></li>
                 </ul>
                 <ul>
                     <li><a href="/">Home</a></li>
@@ -43,8 +144,88 @@
             {{- end }}
             </hgroup>
         </header>
+
         <main class="container-fluid">
-            <article>{{ .Page.Content }}</article>
+            {{- $toc := toc .Page.TOC }}
+            <div class="page-layout">
+                {{- if $toc }}
+                <aside id="toc-sidebar">
+                    <nav>
+                        <header><strong>Contents</strong></header>
+                        {{ $toc }}
+                    </nav>
+                </aside>
+                <div id="toc-overlay"></div>
+                <button id="toc-toggle" class="contrast" aria-label="Toggle Table of Contents">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+                {{- end }}
+                
+                <article class="page-content">
+                    {{ .Page.Content }}
+                </article>
+            </div>
         </main>
+
+        <script>
+            // Mobile TOC Toggle
+            const tocToggle = document.getElementById('toc-toggle');
+            const tocSidebar = document.getElementById('toc-sidebar');
+            const tocOverlay = document.getElementById('toc-overlay');
+            
+            if (tocToggle && tocSidebar) {
+                function toggleToc() {
+                    const isShown = tocSidebar.classList.contains('show');
+                    if (isShown) {
+                        tocSidebar.classList.remove('show');
+                        if (tocOverlay) tocOverlay.classList.remove('show');
+                    } else {
+                        tocSidebar.classList.add('show');
+                        if (tocOverlay) tocOverlay.classList.add('show');
+                    }
+                }
+
+                tocToggle.addEventListener('click', toggleToc);
+                if (tocOverlay) tocOverlay.addEventListener('click', toggleToc);
+                
+                // Close on link click
+                tocSidebar.querySelectorAll('a').forEach(link => {
+                    link.addEventListener('click', () => {
+                        if (window.innerWidth <= 992) {
+                            toggleToc();
+                        }
+                    });
+                });
+            }
+
+            // Scroll Highlighting
+            const observerOptions = {
+                root: null,
+                rootMargin: '-100px 0px -66%',
+                threshold: 0
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const id = entry.target.getAttribute('id');
+                        if (id) {
+                            document.querySelectorAll('#toc-sidebar a').forEach(link => {
+                                link.classList.remove('active');
+                                if (link.getAttribute('href') === '#' + id) {
+                                    link.classList.add('active');
+                                    // Scroll TOC to keep active item in view
+                                    link.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                                }
+                            });
+                        }
+                    }
+                });
+            }, observerOptions);
+
+            document.querySelectorAll('article h1[id], article h2[id], article h3[id]').forEach((section) => {
+                observer.observe(section);
+            });
+        </script>
     </body>
 </html>

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
@@ -34,6 +35,7 @@ type PageContext struct {
 	Content template.HTML
 	Path    string                 // Current request path
 	Meta    map[string]interface{} // Extracted metadata (e.g., front matter)
+	TOC     *renderer.TOCNode      // Table of Contents
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects
@@ -174,6 +176,7 @@ func (h *HTMLRenderer) parseTemplate(templateName, templatePath string) (*templa
 func (h *HTMLRenderer) funcMap() template.FuncMap {
 	return template.FuncMap{
 		"breadcrumbs": h.generateBreadcrumbs,
+		"toc":         h.generateTOC,
 	}
 }
 
@@ -183,6 +186,95 @@ func (h *HTMLRenderer) generateBreadcrumbs(path string) []breadcrumb.Breadcrumb 
 		return nil
 	}
 	return h.breadcrumbGen.Generate(path)
+}
+
+// generateTOC generates the Table of Contents HTML
+func (h *HTMLRenderer) generateTOC(toc *renderer.TOCNode, levels ...int) template.HTML {
+	if toc == nil || len(toc.Children) == 0 {
+		return ""
+	}
+
+	minLevel := 1
+	maxLevel := 2
+	if len(levels) > 0 {
+		minLevel = levels[0]
+	}
+	if len(levels) > 1 {
+		maxLevel = levels[1]
+	}
+
+	var buf bytes.Buffer
+	h.renderTOCNode(&buf, toc, minLevel, maxLevel)
+	return template.HTML(buf.String()) // #nosec G203
+}
+
+func (h *HTMLRenderer) renderTOCNode(buf *bytes.Buffer, node *renderer.TOCNode, minLevel, maxLevel int) {
+	// If this node is within range (or it's the root/container), render its children
+	// Root is level 0.
+
+	if node.Level > maxLevel {
+		return
+	}
+
+	hasVisibleChildren := false
+	for _, child := range node.Children {
+		if child.Level >= minLevel && child.Level <= maxLevel {
+			hasVisibleChildren = true
+			break
+		}
+		// If child is below minLevel, it might contain visible descendants?
+		// e.g. want h2, structure is h1 -> h2.
+		// If we don't traverse h1, we miss h2.
+		if child.Level < minLevel {
+			// Check if this child has visible descendants
+			if hasVisibleDescendants(child, minLevel, maxLevel) {
+				hasVisibleChildren = true
+				break
+			}
+		}
+	}
+
+	if !hasVisibleChildren {
+		return
+	}
+
+	buf.WriteString("<ul>")
+	for _, child := range node.Children {
+		if child.Level >= minLevel && child.Level <= maxLevel {
+			buf.WriteString("<li><a href=\"#")
+			buf.WriteString(child.ID)
+			buf.WriteString("\">")
+			buf.WriteString(child.Text) // Text should be escaped? It comes from Markdown parser, usually safe or needs HTML escaping. Goldmark returns bytes.
+			// child.Text is string. It might contain HTML entities.
+			// We should assume it's safe or escape it. Template.HTML function trusts the output.
+			// Let's escape it to be safe, but `template.HTMLEscapeString`?
+			// Wait, headers can contain formatting. `goldmark-toc` titles are bytes.
+			// We converted to string.
+			// If headers have `*bold*`, Goldmark renders them?
+			// `goldmark-toc` title is raw text usually? Or rendered HTML?
+			// `goldmark-toc` computes title from the AST node text. It might be plain text.
+			// Let's assume plain text for the link label for now.
+			buf.WriteString("</a>")
+			h.renderTOCNode(buf, child, minLevel, maxLevel)
+			buf.WriteString("</li>")
+		} else if child.Level < minLevel {
+			// Traverse transparently
+			h.renderTOCNode(buf, child, minLevel, maxLevel)
+		}
+	}
+	buf.WriteString("</ul>")
+}
+
+func hasVisibleDescendants(node *renderer.TOCNode, min, max int) bool {
+	for _, child := range node.Children {
+		if child.Level >= min && child.Level <= max {
+			return true
+		}
+		if child.Level < min && hasVisibleDescendants(child, min, max) {
+			return true
+		}
+	}
+	return false
 }
 
 // ClearCache clears the template cache (used in dev mode hot reload)

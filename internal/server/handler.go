@@ -99,14 +99,14 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 
 	// 6. Serve based on output MIME type
 	if finalNormalized == "text/html" {
-		h.serveHTML(w, r, renderResult.Content, renderResult.Metadata)
+		h.serveHTML(w, r, renderResult.Content, renderResult.Metadata, renderResult.TOC)
 	} else {
 		h.serveRaw(w, renderResult.Content, finalMimeType)
 	}
 }
 
 // serveHTML wraps HTML content in the site template and serves it.
-func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, metadata map[string]interface{}) {
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, metadata map[string]interface{}, toc *renderer.TOCNode) {
 	// Initialize metadata if nil
 	if metadata == nil {
 		metadata = make(map[string]interface{})
@@ -123,6 +123,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 			Content: template.HTML(htmlContent), // #nosec G203
 			Path:    r.URL.Path,
 			Meta:    metadata,
+			TOC:     toc,
 		},
 	}
 

@@ -7,6 +7,7 @@ require (
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/yuin/goldmark v1.7.16
 	github.com/yuin/goldmark-meta v1.1.0
+	go.abhg.dev/goldmark/toc v0.12.0
 	golang.org/x/crypto v0.47.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/text v0.33.0

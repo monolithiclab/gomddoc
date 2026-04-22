@@ -14,6 +14,17 @@ type RenderResult struct {
 	// Metadata is key-value pairs extracted from the content (e.g., front matter).
 	// This can be used by templates for title, description, tags, etc.
 	Metadata map[string]interface{}
+
+	// TOC is the table of contents extracted from the content.
+	TOC *TOCNode
+}
+
+// TOCNode represents a node in the table of contents.
+type TOCNode struct {
+	Level    int
+	Text     string
+	ID       string
+	Children []*TOCNode
 }
 
 // ContentRenderer transforms content from input MIME type to output MIME type.

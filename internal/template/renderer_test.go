@@ -8,6 +8,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
@@ -178,6 +179,110 @@ Path: {{ .Path }}, Label: {{ .Label }}|
 	// Normalize whitespace for comparison if needed, but template is compact
 	if !strings.Contains(strings.ReplaceAll(resultStr, "\n", ""), expectedCrumbs) {
 		t.Errorf("Expected breadcrumbs %q, got %q", expectedCrumbs, resultStr)
+	}
+}
+
+func TestTOCFunction(t *testing.T) {
+	// Template that uses the toc function
+	templateContent := `{{ toc .Page.TOC }}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/toc.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
+
+	tocRoot := &renderer.TOCNode{
+		Level: 0,
+		Children: []*renderer.TOCNode{
+			{Level: 1, Text: "H1", ID: "h1", Children: []*renderer.TOCNode{
+				{Level: 2, Text: "H2", ID: "h2"},
+			}},
+			{Level: 1, Text: "H1-2", ID: "h1-2"},
+		},
+	}
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			TOC: tocRoot,
+		},
+	}
+
+	result, err := rendererObj.Render(context.Background(), "toc.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	res := string(result)
+	// Expected: <ul><li><a href="#h1">H1</a><ul><li><a href="#h2">H2</a></li></ul></li><li><a href="#h1-2">H1-2</a></li></ul>
+
+	if !strings.Contains(res, `<a href="#h1">H1</a>`) {
+		t.Error("Missing H1 link")
+	}
+	if !strings.Contains(res, `<a href="#h2">H2</a>`) {
+		t.Error("Missing H2 link")
+	}
+}
+
+func TestTOCFunction_Filtering(t *testing.T) {
+	// Template filtering levels 2-3
+	templateContent := `{{ toc .Page.TOC 2 3 }}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/toc_filter.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
+
+	tocRoot := &renderer.TOCNode{
+		Level: 0,
+		Children: []*renderer.TOCNode{
+			{Level: 1, Text: "H1", ID: "h1", Children: []*renderer.TOCNode{
+				{Level: 2, Text: "H2", ID: "h2", Children: []*renderer.TOCNode{
+					{Level: 3, Text: "H3", ID: "h3"},
+					{Level: 4, Text: "H4", ID: "h4"},
+				}},
+			}},
+		},
+	}
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			TOC: tocRoot,
+		},
+	}
+
+	result, err := rendererObj.Render(context.Background(), "toc_filter.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	res := string(result)
+
+	// H1 (Level 1) should be skipped but traversed
+	if strings.Contains(res, ">H1<") {
+		t.Error("H1 should be skipped")
+	}
+
+	// H2 (Level 2) should be present
+	if !strings.Contains(res, ">H2<") {
+		t.Error("H2 should be present")
+	}
+
+	// H3 (Level 3) should be present
+	if !strings.Contains(res, ">H3<") {
+		t.Error("H3 should be present")
+	}
+
+	// H4 (Level 4) should be skipped
+	if strings.Contains(res, ">H4<") {
+		t.Error("H4 should be skipped")
 	}
 }
 

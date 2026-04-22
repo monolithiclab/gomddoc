@@ -3,6 +3,7 @@ package renderer
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"mime"
 
 	"github.com/yuin/goldmark"
@@ -10,6 +11,8 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/text"
+	"go.abhg.dev/goldmark/toc"
 )
 
 func init() {
@@ -70,16 +73,32 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 		return nil, err
 	}
 
-	var buf bytes.Buffer
+	// Create parser context to extract metadata
 	pCtx := parser.NewContext()
 
-	// Convert markdown to HTML
-	if err := m.md.Convert(content, &buf, parser.WithContext(pCtx)); err != nil {
+	// Parse the content
+	reader := text.NewReader(content)
+	doc := m.md.Parser().Parse(reader, parser.WithContext(pCtx))
+
+	// Extract TOC using goldmark-toc
+	tocItems, err := toc.Inspect(doc, content)
+	if err != nil {
+		slog.Warn("Failed to extract TOC", slog.Any("error", err))
+	}
+	// Extract metadata
+	metadata := meta.Get(pCtx)
+
+	// Render the document
+	var buf bytes.Buffer
+	if err := m.md.Renderer().Render(&buf, content, doc); err != nil {
 		return nil, err
 	}
 
-	// Extract metadata
-	metadata := meta.Get(pCtx)
+	// Convert TOC
+	var tocNode *TOCNode
+	if tocItems != nil {
+		tocNode = convertTOC(tocItems.Items)
+	}
 
 	// Check context after rendering
 	if err := ctx.Err(); err != nil {
@@ -90,5 +109,39 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 		Content:  buf.Bytes(),
 		MimeType: "text/html; charset=utf-8",
 		Metadata: metadata,
+		TOC:      tocNode,
 	}, nil
+}
+
+// convertTOC converts goldmark-toc Items to our internal TOCNode structure.
+func convertTOC(items toc.Items) *TOCNode {
+	if len(items) == 0 {
+		return nil
+	}
+
+	root := &TOCNode{
+		Level:    0,
+		Children: make([]*TOCNode, 0, len(items)),
+	}
+
+	for _, item := range items {
+		root.Children = append(root.Children, convertItem(item, 1))
+	}
+
+	return root
+}
+
+func convertItem(item *toc.Item, level int) *TOCNode {
+	node := &TOCNode{
+		Level:    level,
+		Text:     string(item.Title),
+		ID:       string(item.ID),
+		Children: make([]*TOCNode, 0, len(item.Items)),
+	}
+
+	for _, child := range item.Items {
+		node.Children = append(node.Children, convertItem(child, level+1))
+	}
+
+	return node
 }
