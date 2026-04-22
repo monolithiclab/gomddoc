@@ -292,7 +292,7 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"canonicalURL": func(pagePath string) string {
 			return seo.PageURL(h.siteConfig.Meta.Domain, pagePath, h.siteConfig.DefaultIndex)
 		},
-		"jsonLD": func(page PageContext) template.HTML {
+		"jsonLD": func(page PageContext) template.JS {
 			return h.generateJSONLD(page)
 		},
 		"assetURL": func(name string) string {
@@ -305,8 +305,8 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 	}
 }
 
-// generateJSONLD produces JSON-LD structured data script tags for a page.
-func (h *HTMLRenderer) generateJSONLD(page PageContext) template.HTML {
+// generateJSONLD produces JSON-LD structured data for a page.
+func (h *HTMLRenderer) generateJSONLD(page PageContext) template.JS {
 	cfg := seo.JSONLDConfig{
 		Domain:       h.siteConfig.Meta.Domain,
 		SiteName:     h.siteConfig.Meta.Title,
@@ -349,7 +349,7 @@ func (h *HTMLRenderer) generateJSONLD(page PageContext) template.HTML {
 	if raw == "" {
 		return ""
 	}
-	return template.HTML(`<script type="application/ld+json">` + raw + `</script>`) // #nosec G203 -- trusted JSON-LD output
+	return template.JS(raw) // #nosec G203 -- trusted JSON-LD output
 }
 
 // generateEditURL generates the full edit URL for a page by combining

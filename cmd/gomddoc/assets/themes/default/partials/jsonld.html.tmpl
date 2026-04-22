@@ -1,1 +1,1 @@
-{{ define "jsonld" }}{{ jsonLD .Page }}{{ end }}
+{{ define "jsonld" }}{{- $json := jsonLD .Page -}}{{- if $json -}}<script type="application/ld+json">{{ $json }}</script>{{- end -}}{{ end }}

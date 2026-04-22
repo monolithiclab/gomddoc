@@ -1341,10 +1341,14 @@ func TestLayoutSelectionRendering(t *testing.T) {
 func TestJSONLDFunction(t *testing.T) {
 	t.Parallel()
 
-	templateContent := `{{- jsonLD .Page -}}`
+	layoutContent := `{{ template "jsonld" . }}`
+	partialContent := `{{ define "jsonld" }}{{ $json := jsonLD .Page }}{{ if $json }}<script type="application/ld+json">{{ $json }}</script>{{ end }}{{ end }}`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/jsonld.html.tmpl": {
-			Data: []byte(templateContent),
+			Data: []byte(layoutContent),
+		},
+		"assets/themes/default/partials/jsonld.html.tmpl": {
+			Data: []byte(partialContent),
 		},
 	}
 
