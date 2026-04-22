@@ -98,7 +98,7 @@ first, then MarkdownRenderer (so HTML is the default for `Accept: */*`), then Pa
 After goldmark renders the Markdown to HTML, three post-processors run in sequence:
 
 1. **Heading Anchors** (`addHeadingAnchors()`) — Inserts `<a href="#id" class="heading-anchor" aria-hidden="true">#</a>` into headings with auto-generated IDs. Revealed on hover via CSS.
-2. **Admonitions** (`TransformAdmonitions()`) — Converts GitHub-style `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` blockquotes into `<div class="admonition admonition-{type}">` elements with styled titles.
+2. **Admonitions** (`transformAdmonitions()`) — Converts GitHub-style `[!NOTE]`/`[!TIP]`/`[!IMPORTANT]`/`[!WARNING]`/`[!CAUTION]` blockquotes into `<div class="admonition admonition-{type}">` elements with styled titles.
 3. **Color Chips** (`transformColorChips()`) — Replaces inline `<code>#HEX</code>` with `<color-chip>#HEX</color-chip>` web component elements. Controlled by global config (`color_chips`) and per-page frontmatter override.
 
 Each stage operates on the HTML string output of the previous stage. The pipeline is deterministic and

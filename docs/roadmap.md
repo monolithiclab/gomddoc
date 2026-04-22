@@ -66,6 +66,34 @@ go-git library limitations.
 - [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
 - [ ] **Static host compatibility**: Output structure compatible with S3, Netlify, Cloudflare Pages.
 
+## CLI and Developer Experience
+
+_Usability improvements to the serve, build, and preview subcommands._
+
+- [ ] **Prevent build output inside content directory**: `gomddoc build` should detect when the
+      output directory (`-o`) is inside or overlaps with the content source directory and fail with
+      a clear error. Currently nothing prevents `gomddoc build docs/ -o docs/build/`, which would
+      cause the builder to index its own output on subsequent runs, leading to duplicated or
+      recursive content. Validate at startup that the resolved output path is not a descendant of
+      the resolved content path. Low complexity.
+- [ ] **Remove `--dev` from `serve`**: The `--dev` flag on `serve` overlaps with the `preview`
+      subcommand's purpose. `preview` already enables dev-mode behavior (no caching, verbose
+      logging, auto-open browser). Remove `--dev` from `serve` to clarify the mental model:
+      `serve` is production, `preview` is development. Migrate any `--dev`-only behavior that
+      `preview` doesn't already cover. Low complexity.
+- [ ] **Autoreload in `preview`**: Automatically reload the browser when content files change.
+      Inject a small script into rendered pages that connects via Server-Sent Events (SSE) to
+      a `/_preview/events` endpoint. The server watches the content directory with `fsnotify`
+      and pushes reload events on file changes. SSE is simpler than WebSocket (no upgrade
+      handshake, native `EventSource` API, works through proxies). Only active in `preview`
+      mode — `serve` never injects the script. Medium complexity.
+- [ ] **`--domain` flag for serve/build/preview**: Add a `--domain` flag (and `GOMDDOC_DOMAIN`
+      env var) to all three subcommands as a convenient alternative to setting `meta.domain` in
+      `.gomddoc/config.yml`. CLI flag takes precedence over config file. Used for canonical URLs,
+      sitemap generation, Open Graph tags, and `robots.txt` Sitemap directive. Eliminates the
+      need for a config file in simple single-command deployments (e.g.,
+      `gomddoc serve --domain docs.example.com`). Low complexity.
+
 ## Phase 9: SEO and Discoverability
 
 _Technical SEO features to compete with MkDocs Material, Docusaurus, and Hugo for search rankings.
