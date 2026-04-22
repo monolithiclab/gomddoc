@@ -3,60 +3,13 @@ package template
 import (
 	"context"
 	"html/template"
-	"io/fs"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
-
-// testFSProvider wraps an fs.FS to implement provider.Provider for testing
-type testFSProvider struct {
-	fsys         fs.FS
-	defaultIndex string
-}
-
-// Ensure testFSProvider implements provider.Provider interface
-var _ provider.Provider = (*testFSProvider)(nil)
-
-// newTestFSProvider creates a new test provider from a filesystem
-func newTestFSProvider(fsys fs.FS, defaultIndex string) *testFSProvider {
-	return &testFSProvider{
-		fsys:         fsys,
-		defaultIndex: defaultIndex,
-	}
-}
-
-func (t *testFSProvider) ReadFile(path string) ([]byte, string, error) {
-	// Remove leading slash to make it relative for fs.FS
-	path = strings.TrimPrefix(path, "/")
-	content, err := fs.ReadFile(t.fsys, path)
-	if err != nil {
-		return nil, "", err
-	}
-	// Return generic text/plain MIME type for tests
-	return content, "text/plain", nil
-}
-
-func (t *testFSProvider) Stat(path string) (fs.FileInfo, error) {
-	// Remove leading slash to make it relative for fs.FS
-	if path == "/" {
-		path = "."
-	} else {
-		path = strings.TrimPrefix(path, "/")
-	}
-	return fs.Stat(t.fsys, path)
-}
-
-func (t *testFSProvider) DefaultIndex() string {
-	return t.defaultIndex
-}
-
-func (t *testFSProvider) Close() error {
-	return nil
-}
 
 func TestNewHTMLRenderer(t *testing.T) {
 	testFS := fstest.MapFS{
@@ -92,9 +45,9 @@ func TestTemplateContext(t *testing.T) {
 		Site: siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<p>Test content</p>"),
-			Breadcrumbs: []Breadcrumb{
-				{"/", "Home"},
-				{"/test", "Test"},
+			Breadcrumbs: []breadcrumb.Breadcrumb{
+				{Path: "/", Label: "Home"},
+				{Path: "/test", Label: "Test"},
 			},
 		},
 	}
@@ -147,8 +100,8 @@ func TestHTMLRendererRender(t *testing.T) {
 		Site: siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<h1>Hello World</h1>"),
-			Breadcrumbs: []Breadcrumb{
-				{"/", "Home"},
+			Breadcrumbs: []breadcrumb.Breadcrumb{
+				{Path: "/", Label: "Home"},
 			},
 		},
 	}
@@ -191,8 +144,8 @@ func TestTemplateCache(t *testing.T) {
 	ctx := &TemplateContext{
 		Site: siteConfig,
 		Page: PageContext{
-			Breadcrumbs: []Breadcrumb{
-				{"/", "Home"},
+			Breadcrumbs: []breadcrumb.Breadcrumb{
+				{Path: "/", Label: "Home"},
 			},
 		},
 	}
@@ -234,7 +187,7 @@ func TestRenderWithContextCancellation(t *testing.T) {
 
 	templateCtx := &TemplateContext{
 		Site: siteConfig,
-		Page: PageContext{Breadcrumbs: []Breadcrumb{{"/", "Home"}}},
+		Page: PageContext{Breadcrumbs: []breadcrumb.Breadcrumb{{Path: "/", Label: "Home"}}},
 	}
 
 	// Test with cancelled context
@@ -244,129 +197,5 @@ func TestRenderWithContextCancellation(t *testing.T) {
 	_, err := renderer.Render(ctx, "test.html.tmpl", templateCtx)
 	if err != context.Canceled {
 		t.Errorf("Render() with cancelled context: got error %v, want context.Canceled", err)
-	}
-}
-
-func TestGenerateBreadcrumbs(t *testing.T) {
-	tests := []struct {
-		name     string
-		filePath string
-		fsys     fs.FS
-		expected []Breadcrumb
-	}{
-		{
-			name:     "root file",
-			filePath: "README.md",
-			fsys: fstest.MapFS{
-				"README.md": {Data: []byte("# Readme")},
-			},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-				{"/README.md", "Readme"},
-			},
-		},
-		{
-			name:     "multi-level nested file",
-			filePath: "/docs/guide/setup.md",
-			fsys: fstest.MapFS{
-				"docs/guide/setup.md": {Data: []byte("# Setup Guide")},
-			},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-				{"/docs/", "Docs"},
-				{"/docs/guide/", "Guide"},
-				{"/docs/guide/setup.md", "Setup"},
-			},
-		},
-		{
-			name:     "directory without trailing slash",
-			filePath: "/howtos/core",
-			fsys: fstest.MapFS{
-				"howtos/core/README.md": {Data: []byte("# Core Documentation")},
-			},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-				{"/howtos/", "Howtos"},
-				{"/howtos/core/", "Core"},
-			},
-		},
-		{
-			name:     "directory with trailing slash",
-			filePath: "/howtos/core/",
-			fsys: fstest.MapFS{
-				"howtos/core/index.md": {Data: []byte("# Core Index")},
-			},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-				{"/howtos/", "Howtos"},
-				{"/howtos/core/", "Core"},
-			},
-		},
-		{
-			name:     "root directory",
-			filePath: "/",
-			fsys:     fstest.MapFS{},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-			},
-		},
-		{
-			name:     "excessively long path (DoS protection)",
-			filePath: "/" + strings.Repeat("a/", 1100) + "file.md", // ~3300 chars before clean, exceeds 2048 limit
-			fsys:     fstest.MapFS{},
-			expected: []Breadcrumb{
-				{"/", "Home"}, // Should only return root breadcrumb
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			provider := newTestFSProvider(tt.fsys, "README.md")
-			result := GenerateBreadcrumbs(provider, tt.filePath)
-
-			if len(result) != len(tt.expected) {
-				t.Errorf("Expected %d breadcrumbs, got %d", len(tt.expected), len(result))
-				t.Errorf("Expected: %v", tt.expected)
-				t.Errorf("Got: %v", result)
-				return
-			}
-
-			for i, expected := range tt.expected {
-				if result[i].Path != expected.Path {
-					t.Errorf("Breadcrumb %d: expected path %q, got %q", i, expected.Path, result[i].Path)
-				}
-				if result[i].Label != expected.Label {
-					t.Errorf("Breadcrumb %d: expected label %q, got %q", i, expected.Label, result[i].Label)
-				}
-			}
-		})
-	}
-}
-
-func BenchmarkGenerateBreadcrumbs(b *testing.B) {
-	testPaths := []string{
-		"README.md",
-		"docs/overview.md",
-		"references/subscription/billing/overview.md",
-		"documentation/tutorials/advanced/configuration/settings.md",
-		"api/v1/users/create.md",
-	}
-
-	// Create a filesystem with all test paths as files
-	fsys := fstest.MapFS{
-		"README.md":        {Data: []byte("# Readme")},
-		"docs/overview.md": {Data: []byte("# Overview")},
-		"references/subscription/billing/overview.md":                {Data: []byte("# Billing Overview")},
-		"documentation/tutorials/advanced/configuration/settings.md": {Data: []byte("# Settings")},
-		"api/v1/users/create.md":                                     {Data: []byte("# Create User")},
-	}
-
-	provider := newTestFSProvider(fsys, "README.md")
-
-	for b.Loop() {
-		for _, path := range testPaths {
-			GenerateBreadcrumbs(provider, path)
-		}
 	}
 }

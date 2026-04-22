@@ -8,12 +8,10 @@ import (
 	"io/fs"
 	"log/slog"
 	"path"
-	"strings"
 	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/provider"
-	"github.com/monolithiclab/gomddoc/internal/text"
+	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
 // Renderer defines the interface for template rendering
@@ -32,22 +30,10 @@ type TemplateContext struct {
 	Page PageContext
 }
 
-// Breadcrumb represents a single breadcrumb item in the navigation trail
-type Breadcrumb struct {
-	Path  string // URL path for the breadcrumb link
-	Label string // Display label for the breadcrumb
-}
-
 type PageContext struct {
 	Content     template.HTML
-	Breadcrumbs []Breadcrumb // Ordered slice of breadcrumbs
+	Breadcrumbs []breadcrumb.Breadcrumb // Ordered slice of breadcrumbs
 }
-
-const (
-	HomePath  = "/"
-	HomeLabel = "Home"
-	RootDir   = "."
-)
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects
 // This reduces GC pressure in high-traffic scenarios by reusing buffers
@@ -55,89 +41,6 @@ var bufferPool = sync.Pool{
 	New: func() any {
 		return new(bytes.Buffer)
 	},
-}
-
-// GenerateBreadcrumbs creates breadcrumb navigation from a file path using provider to determine file vs directory
-// Returns an ordered slice of breadcrumb items with path and label
-// Directories get trailing slashes in URLs, files don't
-// Example: "/howtos/core/test.md" → [{"/", "Home"}, {"/howtos/", "Howtos"}, {"/howtos/core/", "Core"}, {"/howtos/core/test.md", "Test"}]
-func GenerateBreadcrumbs(p provider.Provider, filepath string) []Breadcrumb {
-	const (
-		initialCapacity = 8
-		maxPathLength   = 2048
-	)
-	breadcrumbs := make([]Breadcrumb, 0, initialCapacity) // Pre-allocate with reasonable capacity
-
-	// Always include root
-	breadcrumbs = append(breadcrumbs, Breadcrumb{
-		Path:  HomePath,
-		Label: HomeLabel,
-	})
-
-	if len(filepath) > maxPathLength {
-		slog.Warn("Path exceeds maximum length for breadcrumb generation",
-			slog.Int("length", len(filepath)),
-			slog.Int("max", maxPathLength))
-		return breadcrumbs
-	}
-
-	// Clean the path but keep the full path including filename
-	filepath = strings.Trim(path.Clean(filepath), "/")
-
-	// If we're at root, return just the root breadcrumb
-	if filepath == RootDir || filepath == "" {
-		return breadcrumbs
-	}
-
-	// Use provider to determine if the target path is a file or directory
-	targetIsDir := false
-	if stat, err := p.Stat("/" + filepath); err == nil {
-		targetIsDir = stat.IsDir()
-	}
-
-	// Split the full path into segments
-	segments := strings.Split(filepath, "/")
-
-	// Build cumulative paths efficiently with strings.Builder
-	var pathBuilder strings.Builder
-	pathBuilder.Grow(len(filepath)) // Pre-allocate capacity
-
-	for i, segment := range segments {
-		pathBuilder.WriteByte('/')
-		pathBuilder.WriteString(segment)
-
-		currentPath := pathBuilder.String()
-		isLastSegment := i == len(segments)-1
-
-		// Determine if this segment should have a trailing slash
-		if isLastSegment {
-			// For the last segment, use the actual stat result
-			if targetIsDir {
-				currentPath += "/"
-			}
-			// If it's a file, no trailing slash
-		} else {
-			// All intermediate segments are directories - add trailing slash
-			currentPath += "/"
-		}
-
-		breadcrumbs = append(breadcrumbs, Breadcrumb{
-			Path:  currentPath,
-			Label: titleCase(basename(segment)),
-		})
-	}
-
-	return breadcrumbs
-}
-
-// basename strips the extension from a filename
-func basename(s string) string {
-	return strings.TrimSuffix(s, path.Ext(s))
-}
-
-// titleCase is a convenience wrapper around text.TitleCase
-func titleCase(s string) string {
-	return text.TitleCase(s)
 }
 
 // HTMLRenderer implements Renderer for HTML templates.
