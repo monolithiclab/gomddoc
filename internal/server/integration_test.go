@@ -287,8 +287,7 @@ func TestIntegration_ContextCancellation(t *testing.T) {
 
 	// Should return error status (499 for client closed request or 504 for timeout)
 	if w.Code != 499 && w.Code != 504 {
-		t.Logf("got status %d, expected 499 or 504 for context cancellation", w.Code)
-		// Not failing - context cancellation timing is non-deterministic
+		t.Errorf("got status %d, expected 499 or 504 for context cancellation", w.Code)
 	}
 }
 

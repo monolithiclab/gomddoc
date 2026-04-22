@@ -10,6 +10,8 @@ import (
 )
 
 func TestSecurityHeaders(t *testing.T) {
+	t.Parallel()
+
 	// Create a test handler
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -55,6 +57,8 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestContentExclusion_HiddenFiles(t *testing.T) {
+	t.Parallel()
+
 	handler := ContentExclusion(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -79,6 +83,7 @@ func TestContentExclusion_HiddenFiles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			req := httptest.NewRequest("GET", tt.path, nil)
 			w := httptest.NewRecorder()
 
@@ -242,6 +247,8 @@ func mustHash(t *testing.T, password string) string {
 }
 
 func TestContentExclusion_ResponseFormat(t *testing.T) {
+	t.Parallel()
+
 	handler := ContentExclusion(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))

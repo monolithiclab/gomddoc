@@ -20,6 +20,8 @@ import (
 )
 
 func TestNewHTTPServer(t *testing.T) {
+	t.Parallel()
+
 	// Create test config
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.DefaultIndex = "README.test.md"
@@ -103,6 +105,8 @@ func TestNewHTTPServer(t *testing.T) {
 }
 
 func TestHTTPServer_StartAndShutdown(t *testing.T) {
+	t.Parallel()
+
 	// Find an available port
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -189,6 +193,8 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 }
 
 func TestPprofEndpoints(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		pprof      bool
@@ -208,6 +214,8 @@ func TestPprofEndpoints(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := &config.Config{
 				Server: config.ServerConfig{
 					Port:  ":8080",
