@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/processor"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
@@ -13,17 +14,19 @@ import (
 
 // Handler holds dependencies for HTTP request handling
 type Handler struct {
-	provider  provider.Provider
-	processor processor.Processor
-	renderer  tmpl.Renderer
+	siteConfig *config.SiteConfig // Only site config, NOT full Config (security)
+	provider   provider.Provider
+	processor  processor.Processor
+	renderer   tmpl.Renderer
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
-func NewHandler(provider provider.Provider, processor processor.Processor, renderer tmpl.Renderer) *Handler {
+func NewHandler(siteConfig *config.SiteConfig, provider provider.Provider, processor processor.Processor, renderer tmpl.Renderer) *Handler {
 	return &Handler{
-		provider:  provider,
-		processor: processor,
-		renderer:  renderer,
+		siteConfig: siteConfig,
+		provider:   provider,
+		processor:  processor,
+		renderer:   renderer,
 	}
 }
 
@@ -48,13 +51,13 @@ func (h *Handler) ServeMarkdown(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prepare template context
+	// IMPORTANT: Only SiteConfig is exposed to templates, NOT Config (for security)
 	context := &tmpl.TemplateContext{
-		Title:   "Prose",
-		Content: template.HTML(string(processedContent)), // #nosec G203
-		Theme: tmpl.ThemeOptions{
-			BaseURL: "/assets/themes/default",
+		Site: h.siteConfig, // Expose SiteConfig (safe, doesn't include server internals)
+		Page: tmpl.PageContext{
+			Content:     template.HTML(string(processedContent)), // #nosec G203
+			Breadcrumbs: tmpl.GenerateBreadcrumbs(h.provider, filename),
 		},
-		Breadcrumbs: tmpl.GenerateBreadcrumbs(h.provider, filename),
 	}
 
 	// Render the template

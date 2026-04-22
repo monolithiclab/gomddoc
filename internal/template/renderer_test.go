@@ -7,6 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
@@ -48,52 +49,52 @@ func (t *testFSProvider) DefaultIndex() string {
 }
 
 func TestNewHTMLRenderer(t *testing.T) {
-	renderer := NewHTMLRenderer(nil)
+	siteConfig := config.NewSiteConfig(".")
+	cache := NewTemplateCache(false)
+	renderer := NewHTMLRenderer(nil, siteConfig, cache)
 	if renderer == nil {
 		t.Fatal("Renderer should not be nil")
 	}
 }
 
 func TestTemplateContext(t *testing.T) {
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test Title"
+	siteConfig.Meta.Description = "Test Description"
+
 	ctx := &TemplateContext{
-		Title:       "Test Title",
-		Description: "Test Description",
-		Content:     template.HTML("<p>Test content</p>"),
-		Theme: ThemeOptions{
-			BaseURL: "/assets/themes/default",
-		},
-		Breadcrumbs: map[string]string{
-			"/":     "Home",
-			"/test": "Test",
+		Site: siteConfig,
+		Page: PageContext{
+			Content: template.HTML("<p>Test content</p>"),
+			Breadcrumbs: map[string]string{
+				"/":     "Home",
+				"/test": "Test",
+			},
 		},
 	}
 
-	if ctx.Title != "Test Title" {
-		t.Errorf("Expected title 'Test Title', got %q", ctx.Title)
+	if ctx.Site.Meta.Title != "Test Title" {
+		t.Errorf("Expected title 'Test Title', got %q", ctx.Site.Meta.Title)
 	}
 
-	if ctx.Description != "Test Description" {
-		t.Errorf("Expected description 'Test Description', got %q", ctx.Description)
+	if ctx.Site.Meta.Description != "Test Description" {
+		t.Errorf("Expected description 'Test Description', got %q", ctx.Site.Meta.Description)
 	}
 
-	if string(ctx.Content) != "<p>Test content</p>" {
-		t.Errorf("Expected content '<p>Test content</p>', got %q", string(ctx.Content))
+	if string(ctx.Page.Content) != "<p>Test content</p>" {
+		t.Errorf("Expected content '<p>Test content</p>', got %q", string(ctx.Page.Content))
 	}
 
-	if ctx.Theme.BaseURL != "/assets/themes/default" {
-		t.Errorf("Expected theme base URL '/assets/themes/default', got %q", ctx.Theme.BaseURL)
+	if len(ctx.Page.Breadcrumbs) != 2 {
+		t.Errorf("Expected 2 breadcrumbs, got %d", len(ctx.Page.Breadcrumbs))
 	}
 
-	if len(ctx.Breadcrumbs) != 2 {
-		t.Errorf("Expected 2 breadcrumbs, got %d", len(ctx.Breadcrumbs))
+	if ctx.Page.Breadcrumbs["/"] != "Home" {
+		t.Errorf("Expected breadcrumb '/' to be 'Home', got %q", ctx.Page.Breadcrumbs["/"])
 	}
 
-	if ctx.Breadcrumbs["/"] != "Home" {
-		t.Errorf("Expected breadcrumb '/' to be 'Home', got %q", ctx.Breadcrumbs["/"])
-	}
-
-	if ctx.Breadcrumbs["/test"] != "Test" {
-		t.Errorf("Expected breadcrumb '/test' to be 'Test', got %q", ctx.Breadcrumbs["/test"])
+	if ctx.Page.Breadcrumbs["/test"] != "Test" {
+		t.Errorf("Expected breadcrumb '/test' to be 'Test', got %q", ctx.Page.Breadcrumbs["/test"])
 	}
 }
 
@@ -101,8 +102,8 @@ func TestHTMLRendererRender(t *testing.T) {
 	// Create an in-memory filesystem with the template
 	templateContent := `<!DOCTYPE html>
 <html>
-<head><title>{{.Title}}</title></head>
-<body>{{.Content}}</body>
+<head><title>{{.Site.Meta.Title}}</title></head>
+<body>{{.Page.Content}}</body>
 </html>`
 
 	testFS := fstest.MapFS{
@@ -111,17 +112,18 @@ func TestHTMLRendererRender(t *testing.T) {
 		},
 	}
 
-	renderer := NewHTMLRenderer(testFS)
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test Page"
+	cache := NewTemplateCache(false)
+	renderer := NewHTMLRenderer(testFS, siteConfig, cache)
 
 	ctx := &TemplateContext{
-		Title:       "Test Page",
-		Description: "A test page",
-		Content:     template.HTML("<h1>Hello World</h1>"),
-		Theme: ThemeOptions{
-			BaseURL: "/assets/themes/default",
-		},
-		Breadcrumbs: map[string]string{
-			"/": "Home",
+		Site: siteConfig,
+		Page: PageContext{
+			Content: template.HTML("<h1>Hello World</h1>"),
+			Breadcrumbs: map[string]string{
+				"/": "Home",
+			},
 		},
 	}
 
@@ -148,19 +150,24 @@ func TestHTMLRendererRender(t *testing.T) {
 
 func TestTemplateCache(t *testing.T) {
 	// Create test filesystem
-	templateContent := `<h1>{{.Title}}</h1>`
+	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
 	testFS := fstest.MapFS{
 		"assets/themes/default/test.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
 
-	renderer := NewHTMLRenderer(testFS)
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test"
+	cache := NewTemplateCache(false) // Production mode with caching
+	renderer := NewHTMLRenderer(testFS, siteConfig, cache)
 
 	ctx := &TemplateContext{
-		Title: "Test",
-		Breadcrumbs: map[string]string{
-			"/": "Home",
+		Site: siteConfig,
+		Page: PageContext{
+			Breadcrumbs: map[string]string{
+				"/": "Home",
+			},
 		},
 	}
 

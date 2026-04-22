@@ -7,6 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/processor"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
@@ -15,8 +16,8 @@ import (
 func setupTestRenderer() *tmpl.HTMLRenderer {
 	templateContent := `<!DOCTYPE html>
 <html>
-<head><title>{{.Title}}</title></head>
-<body>{{.Content}}</body>
+<head><title>{{.Site.Meta.Title}}</title></head>
+<body>{{.Page.Content}}</body>
 </html>`
 
 	testFS := fstest.MapFS{
@@ -25,11 +26,15 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 		},
 	}
 
-	return tmpl.NewHTMLRenderer(testFS)
+	siteConfig := config.NewSiteConfig(".")
+	cache := &tmpl.PassthroughTemplateStore{}
+
+	return tmpl.NewHTMLRenderer(testFS, siteConfig, cache)
 }
 
 func TestNewHandler(t *testing.T) {
 	// Create mock dependencies
+	siteConfig := config.NewSiteConfig(".")
 	prov, err := provider.NewFilesystemProvider(".", "README.md")
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
@@ -38,7 +43,7 @@ func TestNewHandler(t *testing.T) {
 	proc := processor.NewMarkdownProcessor()
 	rend := setupTestRenderer()
 
-	handler := NewHandler(prov, proc, rend)
+	handler := NewHandler(siteConfig, prov, proc, rend)
 	if handler == nil {
 		t.Fatal("Handler should not be nil")
 	}
@@ -53,6 +58,7 @@ func TestHandlerServeMarkdown(t *testing.T) {
 	defer os.Remove("test_handler.md")
 
 	// Setup dependencies
+	siteConfig := config.NewSiteConfig(".")
 	prov, err := provider.NewFilesystemProvider(".", "README.test.md")
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
@@ -60,7 +66,7 @@ func TestHandlerServeMarkdown(t *testing.T) {
 
 	proc := processor.NewMarkdownProcessor()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, proc, rend)
+	handler := NewHandler(siteConfig, prov, proc, rend)
 
 	tests := []struct {
 		name           string
@@ -94,6 +100,7 @@ func TestHandlerServeMarkdown(t *testing.T) {
 
 func TestHandlerErrorResponses(t *testing.T) {
 	// Setup dependencies
+	siteConfig := config.NewSiteConfig(".")
 	prov, err := provider.NewFilesystemProvider(".", "README.test.md")
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
@@ -101,7 +108,7 @@ func TestHandlerErrorResponses(t *testing.T) {
 
 	proc := processor.NewMarkdownProcessor()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, proc, rend)
+	handler := NewHandler(siteConfig, prov, proc, rend)
 
 	tests := []struct {
 		name           string
@@ -153,6 +160,7 @@ func TestHandlerCacheHeaders(t *testing.T) {
 	defer os.Remove("test_cache_handler.md")
 
 	// Setup dependencies
+	siteConfig := config.NewSiteConfig(".")
 	prov, err := provider.NewFilesystemProvider(".", "README.test.md")
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
@@ -160,7 +168,7 @@ func TestHandlerCacheHeaders(t *testing.T) {
 
 	proc := processor.NewMarkdownProcessor()
 	rend := setupTestRenderer()
-	handler := NewHandler(prov, proc, rend)
+	handler := NewHandler(siteConfig, prov, proc, rend)
 
 	req := httptest.NewRequest("GET", "/test_cache_handler.md", nil)
 	w := httptest.NewRecorder()

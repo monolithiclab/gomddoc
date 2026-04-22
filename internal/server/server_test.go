@@ -2,6 +2,7 @@ package server
 
 import (
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -12,11 +13,13 @@ import (
 
 func TestNewHTTPServer(t *testing.T) {
 	// Create test config
+	siteConfig := config.NewSiteConfig(".")
 	cfg := &config.Config{
 		DefaultIndex:    "README.test.md",
 		Dir:             ".",
 		Port:            ":8080",
 		ShutdownTimeout: 1 * time.Second,
+		Site:            siteConfig,
 	}
 
 	// Create dependencies
@@ -26,7 +29,22 @@ func TestNewHTTPServer(t *testing.T) {
 	}
 
 	proc := processor.NewMarkdownProcessor()
-	rend := template.NewHTMLRenderer(nil)
+
+	// Create test renderer with template
+	templateContent := `<!DOCTYPE html>
+<html>
+<head><title>{{.Site.Meta.Title}}</title></head>
+<body>{{.Page.Content}}</body>
+</html>`
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layout.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	cache := &template.PassthroughTemplateStore{}
+	rend := template.NewHTMLRenderer(testFS, siteConfig, cache)
 
 	server := NewHTTPServer(cfg, prov, proc, rend)
 	if server == nil {

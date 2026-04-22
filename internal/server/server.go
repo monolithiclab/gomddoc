@@ -30,7 +30,8 @@ type HTTPServer struct {
 
 // NewHTTPServer creates a new HTTP server with the given dependencies
 func NewHTTPServer(cfg *config.Config, provider provider.Provider, processor processor.Processor, renderer template.Renderer) *HTTPServer {
-	handler := NewHandler(provider, processor, renderer)
+	// Pass only SiteConfig to handler (not full Config for security)
+	handler := NewHandler(cfg.Site, provider, processor, renderer)
 
 	// Apply security headers middleware
 	secureHandler := SecurityHeaders(http.HandlerFunc(handler.ServeMarkdown))

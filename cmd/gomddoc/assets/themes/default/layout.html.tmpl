@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
     <head>
-        <title>{{ .Title }}</title>
+        <title>{{ .Site.Meta.Title }}</title>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="color-scheme" content="light dark">
-        <meta name="description" content="{{ .Description }}">
+        <meta name="description" content="{{ .Site.Meta.Description }}">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
         <script type="module">
             import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
@@ -25,16 +25,16 @@
             <hgroup>
             <nav>
                 <ul>
-                    <li>{{ .Title }}</li>
+                    <li>{{ .Site.Meta.Title }}</li>
                 </ul>
                 <ul>
                     <li><a href="/">Home</a></li>
                 </ul>
             </nav>
-            {{- if gt (len .Breadcrumbs) 1 }}
+            {{- if gt (len .Page.Breadcrumbs) 1 }}
             <nav aria-label="breadcrumb">
                 <ul>
-                    {{- range $path, $name := .Breadcrumbs }}
+                    {{- range $path, $name := .Page.Breadcrumbs }}
                     <li><a href="{{ $path }}">{{ $name }}</a></li>
                     {{- end }}
                 </ul>
@@ -43,7 +43,7 @@
             </hgroup>
         </header>
         <main class="container-fluid">
-            <article>{{ .Content }}</article>
+            <article>{{ .Page.Content }}</article>
         </main>
     </body>
 </html>

@@ -2,12 +2,15 @@ package template
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"path"
 	"strings"
 	"sync"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
@@ -18,17 +21,17 @@ type Renderer interface {
 	Render(templateName string, data any) ([]byte, error)
 }
 
-// ThemeOptions holds theme-specific configuration
-type ThemeOptions struct {
-	BaseURL string
-}
-
 // TemplateContext holds the data passed to templates
 type TemplateContext struct {
-	Title       string
-	Description string
+	// Site configuration (public, safe to expose)
+	Site *config.SiteConfig
+
+	// Page-specific data (namespaced for extensibility)
+	Page PageContext
+}
+
+type PageContext struct {
 	Content     template.HTML
-	Theme       ThemeOptions
 	Breadcrumbs map[string]string
 }
 
@@ -123,35 +126,42 @@ func titleCase(s string) string {
 
 // HTMLRenderer implements Renderer for HTML templates
 type HTMLRenderer struct {
-	assetsFS  fs.FS
-	templates sync.Map // Cache for parsed templates
+	assetsFS   fs.FS
+	siteConfig *config.SiteConfig // For theme name (NOT full Config - security)
+	cache      TemplateCache      // Injected dependency (strategy pattern)
 }
 
 // NewHTMLRenderer creates a new HTML template renderer
-func NewHTMLRenderer(assetsFS fs.FS) *HTMLRenderer {
+// Cache implementation is injected, allowing production vs dev mode behavior
+// Only SiteConfig is stored (NOT full Config) to prevent leaking operational settings to templates
+func NewHTMLRenderer(assetsFS fs.FS, siteConfig *config.SiteConfig, cache TemplateCache) *HTMLRenderer {
 	return &HTMLRenderer{
-		assetsFS: assetsFS,
+		assetsFS:   assetsFS,
+		siteConfig: siteConfig,
+		cache:      cache,
 	}
 }
 
 // Render renders an HTML template with the given data
+// Cache behavior is determined by the injected TemplateCache implementation
+// No conditional logic needed - PassthroughTemplateStore always returns nil (cache miss)
 func (h *HTMLRenderer) Render(templateName string, data any) ([]byte, error) {
-	templatePath := "assets/themes/default/" + templateName
+	theme := h.siteConfig.Theme.Name
+	templatePath := fmt.Sprintf("assets/themes/%s/%s", theme, templateName)
 
-	var tmpl *template.Template
+	// Try cache first (returns nil if PassthroughTemplateStore)
+	tmpl := h.cache.Get(templatePath)
+
 	var err error
-
-	// Check cache first
-	cached, ok := h.templates.Load(templatePath)
-	if ok {
-		tmpl = cached.(*template.Template)
-	} else {
-		// Parse and cache template
-		tmpl, err = template.New(templateName).ParseFS(h.assetsFS, templatePath)
+	if tmpl == nil {
+		// Cache miss or dev mode - parse template
+		tmpl, err = h.parseTemplate(templateName, templatePath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse template: %w", err)
 		}
-		h.templates.Store(templatePath, tmpl)
+
+		// Store in cache (no-op if PassthroughTemplateStore)
+		h.cache.Set(templatePath, tmpl)
 	}
 
 	// Execute template with pooled buffer to reduce GC pressure
@@ -170,4 +180,36 @@ func (h *HTMLRenderer) Render(templateName string, data any) ([]byte, error) {
 	result := make([]byte, buf.Len())
 	copy(result, buf.Bytes())
 	return result, nil
+}
+
+// parseTemplate parses a template with automatic fallback to default theme
+func (h *HTMLRenderer) parseTemplate(templateName, templatePath string) (*template.Template, error) {
+	tmpl, err := template.New(templateName).ParseFS(h.assetsFS, templatePath)
+	if err != nil && h.siteConfig.Theme.Name != config.DefaultThemeName {
+		// Fallback to default theme
+		slog.Warn("Theme template not found, falling back to default",
+			slog.String("theme", h.siteConfig.Theme.Name),
+			slog.String("template", templateName))
+		templatePath = path.Join("assets/themes/", config.DefaultThemeName, templateName)
+		tmpl, err = template.New(templateName).ParseFS(h.assetsFS, templatePath)
+	}
+	return tmpl, err
+}
+
+// ClearCache clears the template cache (used in dev mode hot reload)
+// Delegates to cache implementation (no-op for PassthroughTemplateStore)
+func (h *HTMLRenderer) ClearCache() {
+	h.cache.Clear()
+	slog.Info("[DEV] Template cache cleared")
+}
+
+// ValidateDefaultTheme checks that the default theme exists in the asset filesystem
+// This is a fatal error if missing, as the application cannot function without it
+func (h *HTMLRenderer) ValidateDefaultTheme() error {
+	defaultTemplate := path.Join("assets/themes/", config.DefaultThemeName, "layout.html.tmpl")
+	if _, err := h.assetsFS.Open(defaultTemplate); err != nil {
+		return fmt.Errorf("default theme not found: %w (this is a fatal error)", err)
+	}
+	slog.Debug("Default theme validated", slog.String("template", defaultTemplate))
+	return nil
 }
