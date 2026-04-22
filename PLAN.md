@@ -93,7 +93,7 @@ type DocumentProcessor interface {
 - Custom extensions: tables, task lists, footnotes, strikethrough
 - Math rendering via KaTeX integration
 - Mermaid diagram support
-- Syntax highlighting via Chroma (200+ languages)
+- ~~Syntax highlighting via Chroma (200+ languages)~~ DONE (WU-12)
 - Custom shortcodes: `{{< youtube "id" >}}`, `{{< tweet "id" >}}`
 - Auto-generated table of contents
 - Reading time estimation

@@ -73,7 +73,7 @@ func startCmd() int {
 
 	// Create renderer registry with markdown and passthrough renderers
 	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownRenderer())
+	registry.Register(renderer.NewMarkdownRenderer(cfg.Site.Highlighting.Theme))
 	registry.Register(renderer.NewPassthroughRenderer())
 
 	// Create breadcrumb generator

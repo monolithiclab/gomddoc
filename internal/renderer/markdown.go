@@ -7,6 +7,7 @@ import (
 	"mime"
 
 	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	meta "github.com/yuin/goldmark-meta"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
@@ -37,16 +38,27 @@ type MarkdownRenderer struct {
 
 // NewMarkdownRenderer creates a new markdown renderer with standard settings.
 //
+// The highlightTheme parameter controls the Chroma syntax highlighting style
+// applied to fenced code blocks. If empty, it defaults to "github".
+//
 // Configuration:
 //   - extension.GFM: Tables, strikethrough, linkify, task lists
 //   - meta.Meta: YAML front matter support
+//   - highlighting: Syntax highlighting via Chroma with the specified theme
 //   - parser.WithAutoHeadingID: Automatic ID generation for headings
 //   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
-func NewMarkdownRenderer() *MarkdownRenderer {
+func NewMarkdownRenderer(highlightTheme string) *MarkdownRenderer {
+	if highlightTheme == "" {
+		highlightTheme = "github"
+	}
+
 	md := goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,
 			meta.Meta,
+			highlighting.NewHighlighting(
+				highlighting.WithStyle(highlightTheme),
+			),
 		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),

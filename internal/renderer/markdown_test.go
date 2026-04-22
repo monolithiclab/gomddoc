@@ -7,7 +7,7 @@ import (
 )
 
 func TestMarkdownRenderer_SupportedMimeTypes(t *testing.T) {
-	renderer := NewMarkdownRenderer()
+	renderer := NewMarkdownRenderer("")
 	mimeTypes := renderer.SupportedMimeTypes()
 
 	if len(mimeTypes) != 1 {
@@ -61,7 +61,7 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			renderer := NewMarkdownRenderer()
+			renderer := NewMarkdownRenderer("")
 			result, err := renderer.Render(context.Background(), []byte(tt.input))
 
 			if err != nil {
@@ -89,7 +89,7 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 }
 
 func TestMarkdownRenderer_FrontMatter(t *testing.T) {
-	renderer := NewMarkdownRenderer()
+	renderer := NewMarkdownRenderer("")
 	input := `---
 title: Hello World
 tags: [a, b]
@@ -121,7 +121,7 @@ tags: [a, b]
 func TestMarkdownRenderer_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	renderer := NewMarkdownRenderer()
+	renderer := NewMarkdownRenderer("")
 	testContextCancellation(t, func(ctx context.Context) error {
 		_, err := renderer.Render(ctx, []byte("# Test"))
 		return err
@@ -129,7 +129,7 @@ func TestMarkdownRenderer_ContextCancellation(t *testing.T) {
 }
 
 func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
-	renderer := NewMarkdownRenderer()
+	renderer := NewMarkdownRenderer("")
 	ctx := context.Background()
 
 	// Test that renderer can be used concurrently
@@ -154,7 +154,7 @@ func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
 }
 
 func TestMarkdownRenderer_LargeContent(t *testing.T) {
-	renderer := NewMarkdownRenderer()
+	renderer := NewMarkdownRenderer("")
 
 	// Generate large markdown content
 	var builder strings.Builder
