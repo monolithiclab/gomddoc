@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
-	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
@@ -273,11 +272,8 @@ func TestIntegration_ContextCancellation(t *testing.T) {
 	})
 
 	// Create request with already-cancelled context
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-	defer cancel()
-
-	// Wait for context to cancel
-	time.Sleep(10 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	req := httptest.NewRequest("GET", "/large.md", nil)
 	req = req.WithContext(ctx)

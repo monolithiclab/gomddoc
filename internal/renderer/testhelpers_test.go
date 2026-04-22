@@ -3,7 +3,6 @@ package renderer
 import (
 	"context"
 	"testing"
-	"time"
 )
 
 // testContextCancellation is a shared helper for testing context cancellation
@@ -28,9 +27,8 @@ func testContextCancellation(t *testing.T, renderFunc func(context.Context) erro
 		{
 			name: "timeout context",
 			setupCtx: func() context.Context {
-				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-				defer cancel()
-				time.Sleep(2 * time.Millisecond) // Ensure timeout
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
 				return ctx
 			},
 			wantError: true,
