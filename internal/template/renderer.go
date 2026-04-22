@@ -61,6 +61,7 @@ type HTMLRenderer struct {
 	siteConfig    *config.SiteConfig   // For theme name (NOT full Config - security)
 	cache         TemplateCache        // Injected dependency (strategy pattern)
 	breadcrumbGen breadcrumb.Generator // Optional breadcrumb generator
+	themeVars     themeVarsCache       // Cached CSS custom properties from theme config
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
@@ -235,10 +236,11 @@ func (h *HTMLRenderer) parseGlob(tmpl *template.Template, glob string) (bool, er
 func (h *HTMLRenderer) funcMap() template.FuncMap {
 	themeDir := path.Join("assets", "themes", h.siteConfig.Theme.Name)
 	return template.FuncMap{
-		"breadcrumbs": h.generateBreadcrumbs,
-		"toc":         h.generateTOC,
-		"editURL":     h.generateEditURL,
-		"navigation":  h.generateNavigation,
+		"breadcrumbs":  h.generateBreadcrumbs,
+		"toc":          h.generateTOC,
+		"editURL":      h.generateEditURL,
+		"navigation":   h.generateNavigation,
+		"themeVarsCSS": h.generateThemeVarsCSS,
 		"inlineAsset": func(name string) (template.JS, error) {
 			// Search theme dir first, then shared (overlay semantics)
 			for _, dir := range []string{themeDir, "assets/shared"} {

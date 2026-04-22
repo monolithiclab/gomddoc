@@ -11,6 +11,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <style>
+    /* ===== Theme Variable Overrides ===== */
+    {{ themeVarsCSS }}
+
     /* ===== CSS Reset & Base ===== */
     *, *::before, *::after {
       box-sizing: border-box;
@@ -49,15 +52,15 @@
     /* ===== CSS Custom Properties (Light Mode) ===== */
     :root {
       /* Colors - Light Mode */
-      --color-bg: #ffffff;
+      --color-bg: var(--theme-bg, #ffffff);
       --color-bg-secondary: #f8fafc;
       --color-bg-tertiary: #f1f5f9;
-      --color-text: #1e293b;
+      --color-text: var(--theme-text, #1e293b);
       --color-text-secondary: #475569;
       --color-text-muted: #64748b;
       --color-border: #e2e8f0;
       --color-border-hover: #cbd5e1;
-      --color-primary: #2563eb;
+      --color-primary: var(--theme-primary, #2563eb);
       --color-primary-hover: #1d4ed8;
       --color-primary-bg: #eff6ff;
       --color-code-bg: #f6f8fa;
@@ -93,15 +96,15 @@
 
     /* ===== Dark Mode ===== */
     [data-theme="dark"] {
-      --color-bg: #13111C;
+      --color-bg: var(--theme-dark-bg, #13111C);
       --color-bg-secondary: #1C1A27;
       --color-bg-tertiary: #2D2B3A;
-      --color-text: #e2e8f0;
+      --color-text: var(--theme-dark-text, #e2e8f0);
       --color-text-secondary: #cbd5e1;
       --color-text-muted: #94a3b8;
       --color-border: #2D2B3A;
       --color-border-hover: #3E3C4D;
-      --color-primary: #818CF8;
+      --color-primary: var(--theme-dark-primary, #818CF8);
       --color-primary-hover: #6366F1;
       --color-primary-bg: #1e1b4b;
       --color-code-bg: #f6f8fa;
@@ -122,15 +125,15 @@
     /* Auto dark mode if no preference set */
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme]) {
-        --color-bg: #13111C;
+        --color-bg: var(--theme-dark-bg, #13111C);
         --color-bg-secondary: #1C1A27;
         --color-bg-tertiary: #2D2B3A;
-        --color-text: #e2e8f0;
+        --color-text: var(--theme-dark-text, #e2e8f0);
         --color-text-secondary: #cbd5e1;
         --color-text-muted: #94a3b8;
         --color-border: #2D2B3A;
         --color-border-hover: #3E3C4D;
-        --color-primary: #818CF8;
+        --color-primary: var(--theme-dark-primary, #818CF8);
         --color-primary-hover: #6366F1;
         --color-primary-bg: #1e1b4b;
         --color-code-bg: #f6f8fa;

@@ -985,3 +985,72 @@ func TestSiteConfig_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestSiteConfig_LoadFromFile_ThemeVars(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
+	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
+		t.Fatalf("Failed to create .gomddoc dir: %v", err)
+	}
+
+	configYAML := `theme:
+  name: "default"
+  vars:
+    primary: "#e63946"
+    background: "#fafafa"
+    dark-primary: "#ff6b6b"
+`
+	configPath := filepath.Join(gomddocDir, "config.yml")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	sc := NewSiteConfig(tmpDir)
+	if err := sc.LoadFromFile(tmpDir); err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+
+	if sc.Theme.Name != "default" {
+		t.Errorf("Theme.Name = %q, want %q", sc.Theme.Name, "default")
+	}
+
+	wantVars := map[string]string{
+		"primary":      "#e63946",
+		"background":   "#fafafa",
+		"dark-primary": "#ff6b6b",
+	}
+	for k, want := range wantVars {
+		if got := sc.Theme.Vars[k]; got != want {
+			t.Errorf("Theme.Vars[%q] = %q, want %q", k, got, want)
+		}
+	}
+}
+
+func TestSiteConfig_LoadFromFile_ThemeVarsNil(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
+	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
+		t.Fatalf("Failed to create .gomddoc dir: %v", err)
+	}
+
+	configYAML := `theme:
+  name: "default"
+`
+	configPath := filepath.Join(gomddocDir, "config.yml")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	sc := NewSiteConfig(tmpDir)
+	if err := sc.LoadFromFile(tmpDir); err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+
+	if sc.Theme.Vars != nil {
+		t.Errorf("Theme.Vars should be nil when not configured, got %v", sc.Theme.Vars)
+	}
+}

@@ -88,7 +88,8 @@ type MetaConfig struct {
 
 // ThemeConfig holds theme settings
 type ThemeConfig struct {
-	Name string `env:"NAME" yaml:"name"`
+	Name string            `env:"NAME" yaml:"name"`
+	Vars map[string]string `yaml:"vars"`
 }
 
 // HighlightConfig holds syntax highlighting settings
