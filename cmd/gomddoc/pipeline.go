@@ -11,6 +11,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
@@ -44,6 +45,82 @@ type Pipeline struct {
 	Resolver         *resolve.PathResolver
 	StaticFS         fs.FS
 	Provider         provider.Provider
+}
+
+// LanguagePipeline holds per-language pipeline instances.
+type LanguagePipeline struct {
+	Default   *Pipeline            // default language pipeline (root content)
+	ByLang    map[string]*Pipeline // non-default language pipelines keyed by BCP 47 code
+	Bundle    *locale.Bundle       // shared locale bundle
+	Languages []string             // all non-default language codes
+}
+
+// TODO: wire setupLanguagePipelines into setupServer (Task 10).
+var _ = setupLanguagePipelines
+
+// setupLanguagePipelines builds the default pipeline and per-language pipelines
+// for each BCP 47 directory found in the content root. It also loads the locale
+// bundle from embedded assets and merges site-level overrides from .gomddoc/locales/.
+func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts PipelineOptions) (*LanguagePipeline, error) {
+	// Build default pipeline.
+	defaultPipeline, err := setupPipeline(cfg, prov, opts)
+	if err != nil {
+		return nil, fmt.Errorf("default pipeline: %w", err)
+	}
+
+	// Load locale bundle from embedded assets.
+	contentRoot, err := prov.RootFS(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("content root: %w", err)
+	}
+	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
+
+	bundle, err := locale.LoadBundle(cfg.Site.Language, assetsFS, "locales")
+	if err != nil {
+		return nil, fmt.Errorf("load locale bundle: %w", err)
+	}
+
+	// Merge site-level locale overrides from .gomddoc/locales/.
+	if err := bundle.MergeFrom(contentRoot, config.ConfigDirName+"/locales"); err != nil {
+		slog.Warn("Failed to merge site locale overrides", slog.Any("error", err))
+	}
+
+	// Detect BCP 47 directories in the content root.
+	langs := locale.DetectLanguages(contentRoot)
+
+	lp := &LanguagePipeline{
+		Default:   defaultPipeline,
+		ByLang:    make(map[string]*Pipeline, len(langs)),
+		Bundle:    bundle,
+		Languages: langs,
+	}
+
+	// Build a pipeline for each detected language directory.
+	for _, lang := range langs {
+		subFS, err := fs.Sub(contentRoot, lang)
+		if err != nil {
+			slog.Warn("Failed to create sub-FS for language", slog.String("lang", lang), slog.Any("error", err))
+			continue
+		}
+
+		langProv, err := provider.NewFilesystemProviderFromFS(subFS, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude)
+		if err != nil {
+			slog.Warn("Failed to create provider for language", slog.String("lang", lang), slog.Any("error", err))
+			continue
+		}
+
+		langPipeline, err := setupPipeline(cfg, langProv, opts)
+		if err != nil {
+			_ = langProv.Close()
+			slog.Warn("Failed to build pipeline for language", slog.String("lang", lang), slog.Any("error", err))
+			continue
+		}
+
+		lp.ByLang[lang] = langPipeline
+		slog.Info("Built language pipeline", slog.String("lang", lang))
+	}
+
+	return lp, nil
 }
 
 // setupPipeline assembles the shared rendering pipeline from config and provider.
