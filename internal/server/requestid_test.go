@@ -72,6 +72,69 @@ func TestGetRequestID_MissingContext(t *testing.T) {
 	}
 }
 
+func TestRequestID_RejectsInvalidID(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		id   string
+	}{
+		{"control characters", "req\x00id"},
+		{"spaces", "req id 123"},
+		{"too long", strings.Repeat("a", maxRequestIDLen+1)},
+		{"special chars", "req<script>alert(1)</script>"},
+		{"newline injection", "valid-id\r\nX-Injected: true"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			handler := RequestID(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.Header.Set("X-Request-ID", tt.id)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			got := w.Header().Get("X-Request-ID")
+			if got == tt.id {
+				t.Errorf("Expected invalid ID %q to be replaced, but it was preserved", tt.id)
+			}
+			if got == "" {
+				t.Error("Expected a generated ID, got empty string")
+			}
+		})
+	}
+}
+
+func TestIsValidRequestID(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		id    string
+		valid bool
+	}{
+		{"abc-123", true},
+		{"ABC_def-789", true},
+		{strings.Repeat("x", maxRequestIDLen), true},
+		{"", false},
+		{strings.Repeat("x", maxRequestIDLen+1), false},
+		{"has spaces", false},
+		{"has.dots", false},
+		{"ctrl\x00char", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			t.Parallel()
+			if got := isValidRequestID(tt.id); got != tt.valid {
+				t.Errorf("isValidRequestID(%q) = %v, want %v", tt.id, got, tt.valid)
+			}
+		})
+	}
+}
+
 func TestRequestID_UniqueForConcurrentRequests(t *testing.T) {
 	t.Parallel()
 	handler := RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
