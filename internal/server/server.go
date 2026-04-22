@@ -10,6 +10,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server defines the interface for HTTP servers
@@ -37,15 +38,21 @@ func NewHTTPServer(
 	// Create handler with new signature
 	handler := NewHandler(provider, registry, templateRenderer, &cfg.Site)
 
-	// Apply middleware chain
+	// Apply middleware chain (innermost first)
 	var h http.Handler = http.HandlerFunc(handler.ServeContent)
+	h = Metrics(h)          // Innermost: measure actual handler time
 	h = BlockHiddenPaths(h) // Block all hidden files/directories (., .git, .env, etc.)
 	// Exception: .well-known/ is allowed (IETF RFC 8615)
-	h = SecurityHeaders(h) // Must be last so headers are set first
+	h = SecurityHeaders(h) // Outermost: headers are set first
+
+	// Use a ServeMux to route /metrics separately from content
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/", h)
 
 	server := &http.Server{
 		Addr:              cfg.Server.Port,
-		Handler:           h,
+		Handler:           mux,
 		ReadHeaderTimeout: cfg.Server.HTTP.ReadHeaderTimeout,
 		WriteTimeout:      cfg.Server.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.Server.HTTP.IdleTimeout,
