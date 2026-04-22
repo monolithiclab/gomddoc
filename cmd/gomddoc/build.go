@@ -18,6 +18,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
@@ -60,6 +61,7 @@ func (b *BuildCmd) Run() error {
 	}()
 
 	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownPassthroughRenderer())
 	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
 		HighlightTheme: cfg.Site.Highlighting.Theme,
 		ColorChips:     cfg.Site.ColorChips,
@@ -142,15 +144,21 @@ func (b *BuildCmd) walkAndBuild(
 	g, ctx := errgroup.WithContext(context.Background())
 	g.SetLimit(runtime.NumCPU())
 
+	// Build accepts only HTML output — this selects the markdown→HTML renderer
+	// for markdown files and falls through to copy for everything else.
+	htmlAccept := []negotiate.MediaType{{Type: "text", Subtype: "html", Q: 1.0}}
+
 	for _, fp := range filePaths {
 		g.Go(func() error {
 			mimeType := common.DetectMIME(fp)
 			normalized := renderer.NormalizeMimeType(mimeType)
 
-			if normalized == "text/markdown" {
-				return b.buildMarkdownFile(ctx, contentRoot, fp, registry, templateRenderer, siteConfig, stats)
+			contentRenderer, _, err := registry.Get(normalized, htmlAccept)
+			if err != nil {
+				// No HTML renderer for this type → copy as-is
+				return b.copyFile(contentRoot, fp, stats)
 			}
-			return b.copyFile(contentRoot, fp, stats)
+			return b.buildFile(ctx, contentRoot, fp, contentRenderer, templateRenderer, siteConfig, stats)
 		})
 	}
 
@@ -161,12 +169,12 @@ func (b *BuildCmd) walkAndBuild(
 	return stats, nil
 }
 
-// buildMarkdownFile renders a markdown file to HTML and writes it to the output directory.
-func (b *BuildCmd) buildMarkdownFile(
+// buildFile renders a file to HTML and writes it to the output directory.
+func (b *BuildCmd) buildFile(
 	ctx context.Context,
 	contentRoot fs.FS,
 	filePath string,
-	registry renderer.RendererRegistry,
+	contentRenderer renderer.ContentRenderer,
 	templateRenderer *tmpl.HTMLRenderer,
 	siteConfig *config.SiteConfig,
 	stats *buildStats,
@@ -174,14 +182,6 @@ func (b *BuildCmd) buildMarkdownFile(
 	content, err := fs.ReadFile(contentRoot, filePath)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", filePath, err)
-	}
-
-	mimeType := common.DetectMIME(filePath)
-	normalized := renderer.NormalizeMimeType(mimeType)
-
-	contentRenderer, err := registry.Get(normalized)
-	if err != nil {
-		return fmt.Errorf("get renderer for %s: %w", filePath, err)
 	}
 
 	renderResult, err := contentRenderer.Render(ctx, content)

@@ -41,9 +41,10 @@ gomddoc/
 │   ├── config/            # Configuration (NewFromServeArgs, validation, YAML, env overrides)
 │   ├── metadata/          # Frontmatter indexing, tag API
 │   ├── provider/          # Content providers (filesystem, git with memory/disk storage)
-│   ├── renderer/          # Content renderers (markdown, passthrough)
+│   ├── negotiate/         # Content negotiation (MediaType, ParseAccept, Matches)
+│   ├── renderer/          # Content renderers (markdown, markdown-passthrough, passthrough)
 │   ├── template/          # Template rendering, caching, breadcrumbs, navigation
-│   ├── server/            # HTTP server, handlers, middleware, content negotiation
+│   ├── server/            # HTTP server, handlers, middleware
 │   └── assets/            # Overlay filesystem for theme overrides
 ├── assets/                # Embedded themes and templates
 ├── docs/                  # Architecture, decisions, roadmap, user guide
@@ -54,8 +55,8 @@ gomddoc/
 
 ### Core patterns
 
-- **MIME-type based routing** with renderer registry (exact > type/_ > _/\*)
-- **Content negotiation** via HTTP Accept header with q-values
+- **Two-dimensional content negotiation**: renderer registry matches input MIME type + Accept header output type
+- **Content negotiation** via HTTP Accept header with q-values (negotiate before rendering)
 - **Options struct pattern** for constructors (e.g., `NewMarkdownRenderer(MarkdownOptions{...})`)
 - **Config/SiteConfig separation**: server config not exposed to templates (security)
 - **Config precedence**: CLI flags > env vars > `.gomddoc/config.yml` > defaults

@@ -116,6 +116,70 @@ func TestHandlerServeContent_ContentNegotiation(t *testing.T) {
 	}
 }
 
+func TestHandlerServeContent_MarkdownPassthrough(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"test.md": &fstest.MapFile{Data: []byte("---\ntitle: Hello\n---\n# Test Markdown\n\nBody text.")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	registry := setupTestRegistry()
+	rend := setupTestRenderer()
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+
+	req := httptest.NewRequest("GET", "/test.md", nil)
+	req.Header.Set("Accept", "text/markdown")
+	w := httptest.NewRecorder()
+
+	handler.ServeContent(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "# Test Markdown") {
+		t.Errorf("response should contain raw markdown heading, got: %s", body)
+	}
+	if strings.Contains(body, "<h1") {
+		t.Error("response should NOT contain HTML tags for text/markdown accept")
+	}
+}
+
+func TestHandlerServeContent_406WithAvailableTypes(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"test.md": &fstest.MapFile{Data: []byte("# Test")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	registry := setupTestRegistry()
+	rend := setupTestRenderer()
+	handler := NewHandler(prov, registry, rend, &siteConfig, nil)
+
+	req := httptest.NewRequest("GET", "/test.md", nil)
+	req.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.ServeContent(w, req)
+
+	if w.Code != 406 {
+		t.Errorf("status = %d, want 406", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Not Acceptable") {
+		t.Error("response should contain 'Not Acceptable'")
+	}
+	if !strings.Contains(body, "available types") {
+		t.Error("response should list available types")
+	}
+}
+
 func TestHandlerServeContent_BinaryFiles(t *testing.T) {
 	t.Parallel()
 

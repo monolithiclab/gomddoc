@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
@@ -45,10 +47,9 @@ func NewHandler(
 //
 // Flow:
 //  1. Read file from provider (gets content + input MIME type)
-//  2. Get renderer for input MIME type
-//  3. Render content (transforms to output MIME type + metadata)
-//  4. Content negotiation on output MIME type with Accept header
-//  5. Serve as HTML (wrapped in template) or raw (passthrough)
+//  2. Parse Accept header and negotiate renderer (2D: input type + output type)
+//  3. Render content
+//  4. Serve as HTML (wrapped in template) or raw (passthrough)
 func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// 1. Read file + get MIME type
 	content, mimeType, err := h.provider.ReadFile(r.Context(), r.URL.Path)
@@ -65,49 +66,42 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Get renderer for input MIME type
+	// 2. Content negotiation BEFORE rendering (2D lookup)
 	normalized := renderer.NormalizeMimeType(mimeType)
-	contentRenderer, err := h.registry.Get(normalized)
+	acceptedTypes := negotiate.ParseAccept(r.Header.Get("Accept"))
+
+	contentRenderer, selectedOutput, err := h.registry.Get(normalized, acceptedTypes)
 	if err != nil {
+		if errors.Is(err, renderer.ErrNoMatchingRenderer) {
+			available := h.registry.AvailableOutputTypes(normalized)
+			http.Error(w,
+				"Not Acceptable: available types: "+strings.Join(available, ", "),
+				http.StatusNotAcceptable,
+			)
+			return
+		}
 		h.handleError(w, r, err, r.URL.Path)
 		return
 	}
 
-	// 3. Render content to get output MIME type and metadata
+	// 3. Render content
 	renderResult, err := contentRenderer.Render(r.Context(), content)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return
 	}
 
-	// 4. Determine final MIME type
-	finalMimeType := renderResult.MimeType
-	if finalMimeType == "" {
-		finalMimeType = mimeType // Preserve full MIME type from provider (passthrough)
-	}
-
-	// 5. Content negotiation on OUTPUT MIME type
-	acceptedTypes := ParseAccept(r.Header.Get("Accept"))
-	finalNormalized := renderer.NormalizeMimeType(finalMimeType)
-
-	accepted := false
-	for _, mt := range acceptedTypes {
-		if mt.Matches(finalNormalized) {
-			accepted = true
-			break
-		}
-	}
-
-	if !accepted {
-		http.Error(w, "Not Acceptable: server can only provide "+finalNormalized, http.StatusNotAcceptable)
-		return
-	}
-
-	// 6. Serve based on output MIME type
-	if finalNormalized == "text/html" {
+	// 4. Serve based on selected output MIME type
+	outputNormalized := renderer.NormalizeMimeType(selectedOutput)
+	if outputNormalized == "text/html" {
 		h.serveHTML(w, r, renderResult.Content, renderResult.Metadata, renderResult.TOC)
 	} else {
-		h.serveRaw(w, r, renderResult.Content, finalMimeType)
+		// Use the full MIME type from RenderResult if available, otherwise the selected output
+		serveMimeType := renderResult.MimeType
+		if serveMimeType == "" {
+			serveMimeType = mimeType // Passthrough: preserve original
+		}
+		h.serveRaw(w, r, renderResult.Content, serveMimeType)
 	}
 }
 

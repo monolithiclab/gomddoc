@@ -43,6 +43,8 @@ func classifyError(err error) int {
 		return http.StatusRequestEntityTooLarge // 413
 	case errors.Is(err, renderer.ErrNoRenderer):
 		return http.StatusUnsupportedMediaType // 415
+	case errors.Is(err, renderer.ErrNoMatchingRenderer):
+		return http.StatusNotAcceptable // 406
 
 	default:
 		return http.StatusInternalServerError // 500

@@ -139,6 +139,7 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 
 func setupTestRegistry() renderer.RendererRegistry {
 	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownPassthroughRenderer())
 	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{ColorChips: true}))
 	registry.Register(renderer.NewPassthroughRenderer())
 	return registry

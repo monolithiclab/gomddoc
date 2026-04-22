@@ -34,8 +34,8 @@ The foundation is production-ready with comprehensive test coverage across inter
   light/dark mode, TOC scroll highlighting, touch device accessibility, copy-to-clipboard code blocks,
   KaTeX math rendering, and Mermaid diagram support. Color chips rendered via a `<color-chip>` web component
   with Shadow DOM encapsulation.
-- **HTTP**: Content negotiation (output-type only — input→output negotiation planned for Phase 6a),
-  gzip compression, security headers, ETag, request ID tracking, graceful shutdown.
+- **HTTP**: Two-dimensional content negotiation (input type + Accept header), gzip compression,
+  security headers, ETag, request ID tracking, graceful shutdown.
 - **Monitoring**: Prometheus metrics (`/metrics`), health probes (`/health/live`, `/health/ready`).
 - **Security**: Hidden file blocking, method filtering (GET/HEAD), clone timeout, file size limits.
 - **Navigation**: Auto-generated sidebar from directory structure with collapsible directories, active state
@@ -72,29 +72,30 @@ See `docs/architecture.md` for detailed architecture and `docs/guide/` for user 
 
 _Expand the rendering pipeline with proper content negotiation, enrichment, and format support._
 
-### 6a: Two-Dimensional Content Negotiation
+### 6a: Two-Dimensional Content Negotiation (Done)
 
-Rework the renderer registry so renderers declare both **input** and **output** MIME types. The handler
-uses the file's MIME type and the client's `Accept` header to select the best renderer.
+Reworked the renderer registry so renderers declare both **input** and **output** MIME types. The handler
+uses the file's MIME type and the client's `Accept` header to select the best renderer before rendering.
 
-- [ ] **Renderer interface change**: Replace `SupportedMimeTypes() []string` with two methods:
-      `InputMimeTypes() []string` (what the renderer can read) and `OutputMimeTypes() []string`
-      (what it can produce). Each renderer is a single input→output transformation.
-- [ ] **Registry two-dimensional lookup**: `Get(inputMimeType string, acceptedTypes []MediaType)` replaces
-      `Get(mimeType string)`. Selection algorithm: 1. Filter renderers whose `InputMimeTypes()` match the file's MIME type. 2. For each accepted type (sorted by q-value from `ParseAccept`), rank matching renderers by output
-      specificity: exact match (e.g. `text/html`) > type wildcard (`text/*`) > catch-all (`*/*`). 3. Pick the highest-ranked renderer. On tie, latest registered wins (allows overrides).
-- [ ] **MarkdownRenderer**: input `["text/markdown"]`, output `["text/html"]`. Transforms markdown to HTML
-      via goldmark with post-processing pipeline (heading anchors, admonitions, color chips).
-- [ ] **MarkdownPassthroughRenderer**: input `["text/markdown"]`, output `["text/markdown"]`. Returns
-      markdown content as-is (or with enrichment, see 6b). Serves LLMs and API consumers that prefer
-      raw markdown over rendered HTML.
-- [ ] **PassthroughRenderer**: input `["*/*"]`, output `["*/*"]`. Catch-all fallback, lowest priority.
-      Returns content unchanged with the provider's detected MIME type.
-- [ ] **Handler update**: Move content negotiation _before_ rendering. Today the handler renders first,
-      then checks `Accept` (wasting CPU on 406 responses). New flow: select renderer based on input type +
-      Accept header, then render. The `RenderResult` drops `Metadata` and `TOC` fields (moved to enricher).
-- [ ] **406 Not Acceptable**: When no renderer matches the input type + Accept combination, return 406
-      with a list of available output types in the response body.
+- [x] **`internal/negotiate` package**: Extracted `MediaType`, `ParseAccept`, `Matches` from
+      `internal/server/accept.go` into a standalone package to avoid import cycles between renderer and server.
+- [x] **Renderer interface change**: Replaced `SupportedMimeTypes() []string` with two methods:
+      `InputMimeTypes() []string` and `OutputMimeTypes() []string`. Each renderer declares its
+      input→output transformation.
+- [x] **Registry two-dimensional lookup**: `Get(inputMimeType, acceptedTypes)` returns `(renderer,
+      selectedOutputType, error)`. Selection algorithm: filter by input match, then rank by output
+      specificity (exact=3 > type/*=2 > */*=1). On tie, latest registered wins (allows overrides).
+      Wildcard outputs resolve to the input type before matching.
+- [x] **MarkdownRenderer**: input `["text/markdown"]`, output `["text/html"]`. Unchanged behavior.
+- [x] **MarkdownPassthroughRenderer**: input `["text/markdown"]`, output `["text/markdown"]`. Returns
+      raw markdown with frontmatter stripped and metadata/TOC extracted. Enables LLM-friendly API access
+      via `Accept: text/markdown`.
+- [x] **PassthroughRenderer**: input `["*/*"]`, output `["*/*"]`. Catch-all fallback, lowest priority.
+- [x] **Handler update**: Content negotiation now happens _before_ rendering. New flow:
+      `ReadFile → ParseAccept → Get(input, accepted) → Render → Serve`. No wasted CPU on 406 responses.
+- [x] **406 Not Acceptable**: When no renderer matches, returns 406 with a list of available output types.
+- [x] **Build command**: Registry-based dispatch replaces hardcoded `text/markdown` check. Uses
+      `registry.Get(mimeType, htmlAccept)` to determine renderable files.
 
 ### 6b: Content Enricher Pipeline
 
@@ -330,8 +331,8 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus (Phase 6a/6b):** Two-dimensional content negotiation and enricher pipeline — foundational
-changes that unlock LLM-friendly API access, cleaner separation of concerns, and richer cross-document features.
+**Immediate focus (Phase 6b):** Content enricher pipeline — cleaner separation of concerns between metadata
+extraction and rendering, enabling richer cross-document features.
 **Next up (Phase 8):** Theme folder restructuring (partials, page types, static assets) and theme variables.
 **Then (Phase 5 & 6c):** Full-text search for content discovery, and expanding renderer support (AsciiDoc, OpenAPI).
 

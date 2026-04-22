@@ -162,6 +162,16 @@ func TestClassifyError(t *testing.T) {
 			err:  fmt.Errorf("no handler for type: %w", renderer.ErrNoRenderer),
 			want: http.StatusUnsupportedMediaType,
 		},
+		{
+			name: "ErrNoMatchingRenderer",
+			err:  renderer.ErrNoMatchingRenderer,
+			want: http.StatusNotAcceptable,
+		},
+		{
+			name: "ErrNoMatchingRenderer wrapped",
+			err:  fmt.Errorf("output type mismatch: %w", renderer.ErrNoMatchingRenderer),
+			want: http.StatusNotAcceptable,
+		},
 	}
 
 	for _, tt := range tests {

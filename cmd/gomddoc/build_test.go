@@ -264,16 +264,17 @@ func newTestTemplateRenderer(t *testing.T) (*tmpl.HTMLRenderer, *config.SiteConf
 	return templateRenderer, &siteConfig
 }
 
-// newTestRegistry creates a renderer registry with the default markdown and
-// passthrough renderers, suitable for unit tests.
+// newTestRegistry creates a renderer registry with the default markdown,
+// markdown passthrough, and passthrough renderers, suitable for unit tests.
 func newTestRegistry() renderer.RendererRegistry {
 	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownPassthroughRenderer())
 	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
 	registry.Register(renderer.NewPassthroughRenderer())
 	return registry
 }
 
-func TestBuildMarkdownFile(t *testing.T) {
+func TestBuildFile(t *testing.T) {
 	outDir := t.TempDir()
 	b := &BuildCmd{Output: outDir}
 	stats := &buildStats{}
@@ -282,12 +283,12 @@ func TestBuildMarkdownFile(t *testing.T) {
 		"page.md": &fstest.MapFile{Data: []byte("# Test Page\n\nSome content.")},
 	}
 
-	registry := newTestRegistry()
+	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	err := b.buildMarkdownFile(context.Background(), contentRoot, "page.md", registry, templateRenderer, siteConfig, stats)
+	err := b.buildFile(context.Background(), contentRoot, "page.md", mdRenderer, templateRenderer, siteConfig, stats)
 	if err != nil {
-		t.Fatalf("buildMarkdownFile failed: %v", err)
+		t.Fatalf("buildFile failed: %v", err)
 	}
 
 	htmlContent, err := os.ReadFile(filepath.Join(outDir, "page.html"))
@@ -306,7 +307,7 @@ func TestBuildMarkdownFile(t *testing.T) {
 	}
 }
 
-func TestBuildMarkdownFile_README(t *testing.T) {
+func TestBuildFile_README(t *testing.T) {
 	outDir := t.TempDir()
 	b := &BuildCmd{Output: outDir}
 	stats := &buildStats{}
@@ -315,12 +316,12 @@ func TestBuildMarkdownFile_README(t *testing.T) {
 		"README.md": &fstest.MapFile{Data: []byte("# Project")},
 	}
 
-	registry := newTestRegistry()
+	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	err := b.buildMarkdownFile(context.Background(), contentRoot, "README.md", registry, templateRenderer, siteConfig, stats)
+	err := b.buildFile(context.Background(), contentRoot, "README.md", mdRenderer, templateRenderer, siteConfig, stats)
 	if err != nil {
-		t.Fatalf("buildMarkdownFile failed: %v", err)
+		t.Fatalf("buildFile failed: %v", err)
 	}
 
 	// Should produce both README.html and index.html
@@ -340,7 +341,7 @@ func TestBuildMarkdownFile_README(t *testing.T) {
 	}
 }
 
-func TestBuildMarkdownFile_SubdirREADME(t *testing.T) {
+func TestBuildFile_SubdirREADME(t *testing.T) {
 	outDir := t.TempDir()
 	b := &BuildCmd{Output: outDir}
 	stats := &buildStats{}
@@ -349,12 +350,12 @@ func TestBuildMarkdownFile_SubdirREADME(t *testing.T) {
 		"docs/README.md": &fstest.MapFile{Data: []byte("# Docs Index")},
 	}
 
-	registry := newTestRegistry()
+	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 
-	err := b.buildMarkdownFile(context.Background(), contentRoot, "docs/README.md", registry, templateRenderer, siteConfig, stats)
+	err := b.buildFile(context.Background(), contentRoot, "docs/README.md", mdRenderer, templateRenderer, siteConfig, stats)
 	if err != nil {
-		t.Fatalf("buildMarkdownFile failed: %v", err)
+		t.Fatalf("buildFile failed: %v", err)
 	}
 
 	// Should produce docs/README.html and docs/index.html

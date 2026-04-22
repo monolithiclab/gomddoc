@@ -85,6 +85,7 @@ func (s *ServeCmd) Run() error {
 	}()
 
 	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownPassthroughRenderer())
 	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
 		HighlightTheme: cfg.Site.Highlighting.Theme,
 		ColorChips:     cfg.Site.ColorChips,

@@ -6,16 +6,17 @@ import (
 	"testing"
 )
 
-func TestPassthroughRenderer_SupportedMimeTypes(t *testing.T) {
+func TestPassthroughRenderer_MimeTypes(t *testing.T) {
 	renderer := NewPassthroughRenderer()
-	mimeTypes := renderer.SupportedMimeTypes()
 
-	if len(mimeTypes) != 1 {
-		t.Errorf("SupportedMimeTypes() returned %d types, want 1", len(mimeTypes))
+	inputTypes := renderer.InputMimeTypes()
+	if len(inputTypes) != 1 || inputTypes[0] != "*/*" {
+		t.Errorf("InputMimeTypes() = %v, want [*/*]", inputTypes)
 	}
 
-	if mimeTypes[0] != "*/*" {
-		t.Errorf("SupportedMimeTypes() = %v, want [*/*]", mimeTypes)
+	outputTypes := renderer.OutputMimeTypes()
+	if len(outputTypes) != 1 || outputTypes[0] != "*/*" {
+		t.Errorf("OutputMimeTypes() = %v, want [*/*]", outputTypes)
 	}
 }
 

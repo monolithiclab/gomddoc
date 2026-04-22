@@ -84,9 +84,14 @@ func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
 	}
 }
 
-// SupportedMimeTypes returns the MIME types this renderer handles.
-func (m *MarkdownRenderer) SupportedMimeTypes() []string {
+// InputMimeTypes returns the MIME types this renderer accepts as input.
+func (m *MarkdownRenderer) InputMimeTypes() []string {
 	return []string{"text/markdown"}
+}
+
+// OutputMimeTypes returns the MIME types this renderer produces.
+func (m *MarkdownRenderer) OutputMimeTypes() []string {
+	return []string{"text/html"}
 }
 
 // Render converts markdown content to HTML.

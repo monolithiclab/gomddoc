@@ -14,8 +14,13 @@ func NewPassthroughRenderer() *PassthroughRenderer {
 	return &PassthroughRenderer{}
 }
 
-// SupportedMimeTypes returns the wildcard MIME type "*/*" to match any content.
-func (p *PassthroughRenderer) SupportedMimeTypes() []string {
+// InputMimeTypes returns the wildcard MIME type "*/*" to match any content.
+func (p *PassthroughRenderer) InputMimeTypes() []string {
+	return []string{"*/*"}
+}
+
+// OutputMimeTypes returns "*/*" — output type mirrors the input type.
+func (p *PassthroughRenderer) OutputMimeTypes() []string {
 	return []string{"*/*"}
 }
 

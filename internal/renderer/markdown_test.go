@@ -6,16 +6,17 @@ import (
 	"testing"
 )
 
-func TestMarkdownRenderer_SupportedMimeTypes(t *testing.T) {
+func TestMarkdownRenderer_MimeTypes(t *testing.T) {
 	renderer := NewMarkdownRenderer(MarkdownOptions{ColorChips: true})
-	mimeTypes := renderer.SupportedMimeTypes()
 
-	if len(mimeTypes) != 1 {
-		t.Errorf("SupportedMimeTypes() returned %d types, want 1", len(mimeTypes))
+	inputTypes := renderer.InputMimeTypes()
+	if len(inputTypes) != 1 || inputTypes[0] != "text/markdown" {
+		t.Errorf("InputMimeTypes() = %v, want [text/markdown]", inputTypes)
 	}
 
-	if mimeTypes[0] != "text/markdown" {
-		t.Errorf("SupportedMimeTypes() = %v, want [text/markdown]", mimeTypes)
+	outputTypes := renderer.OutputMimeTypes()
+	if len(outputTypes) != 1 || outputTypes[0] != "text/html" {
+		t.Errorf("OutputMimeTypes() = %v, want [text/html]", outputTypes)
 	}
 }
 

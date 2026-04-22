@@ -200,6 +200,37 @@ Compression requires no configuration and is always enabled. It uses a `sync.Poo
 
 ---
 
+## Content Negotiation (Accept Header)
+
+gomddoc uses the HTTP `Accept` header to determine the output format for each request. This enables
+the same URL to serve different representations depending on what the client wants.
+
+**Default behavior** (browser requests, `Accept: */*`): Markdown files are rendered as HTML.
+
+**Raw markdown** (`Accept: text/markdown`): Returns the raw markdown content with YAML frontmatter
+stripped. Useful for LLMs, API consumers, and scripts that prefer markdown over rendered HTML.
+
+```bash
+# Get rendered HTML (default)
+curl http://localhost:8080/docs/guide.md
+
+# Get raw markdown
+curl -H "Accept: text/markdown" http://localhost:8080/docs/guide.md
+
+# 406 Not Acceptable — no renderer produces JSON for markdown input
+curl -H "Accept: application/json" http://localhost:8080/docs/guide.md
+```
+
+**Non-markdown files** (CSS, images, etc.): Always served as-is with their detected MIME type,
+regardless of the Accept header.
+
+**406 Not Acceptable**: When the server cannot produce any of the requested output types, it returns
+406 with a list of available output types in the response body.
+
+No configuration is required. Content negotiation is always enabled.
+
+---
+
 ## Priority Order
 
 When a setting is defined in multiple places, gomddoc follows this strict priority order (highest wins):

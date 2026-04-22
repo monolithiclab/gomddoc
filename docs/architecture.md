@@ -65,7 +65,8 @@ Both providers share a common `normalizePath()` function for converting request 
 
 ```go
 type ContentRenderer interface {
-    SupportedMimeTypes() []string
+    InputMimeTypes() []string
+    OutputMimeTypes() []string
     Render(ctx context.Context, content []byte) (*RenderResult, error)
 }
 
@@ -77,12 +78,19 @@ type RenderResult struct {
 }
 ```
 
+Renderers declare both input and output MIME types, enabling two-dimensional content negotiation
+(input type from the file + output type from the client's Accept header).
+
 **Built-in Renderers:**
 
-| Renderer              | Input             | Output                       | Template Wrapped |
-| --------------------- | ----------------- | ---------------------------- | ---------------- |
-| **MarkdownRenderer**  | `text/markdown`   | `text/html; charset=utf-8`   | Yes              |
-| **PassthroughRenderer** | `*/*` (wildcard)  | `""` (passthrough signal)   | No               |
+| Renderer | InputMimeTypes | OutputMimeTypes | Purpose |
+| --- | --- | --- | --- |
+| **MarkdownPassthroughRenderer** | `["text/markdown"]` | `["text/markdown"]` | Raw markdown with metadata/TOC extracted |
+| **MarkdownRenderer** | `["text/markdown"]` | `["text/html"]` | Markdown → HTML with post-processing |
+| **PassthroughRenderer** | `["*/*"]` | `["*/*"]` | Catch-all, content unchanged |
+
+Registration order matters: later registrations win ties. MarkdownPassthroughRenderer is registered
+first, then MarkdownRenderer (so HTML is the default for `Accept: */*`), then PassthroughRenderer.
 
 **Post-Processing Pipeline:**
 
@@ -97,18 +105,23 @@ order-dependent (heading anchors must run before admonitions to avoid processing
 
 ### 3. Registry
 
-**Responsibility:** MIME type → renderer mapping with wildcard support
+**Responsibility:** Two-dimensional renderer selection (input type + Accept header)
 
 ```go
 type RendererRegistry interface {
     Register(renderer ContentRenderer)
-    Get(mimeType string) (ContentRenderer, error)  // Returns ErrNoRenderer if not found
+    Get(inputMimeType string, accepted []negotiate.MediaType) (ContentRenderer, string, error)
+    AvailableOutputTypes(inputMimeType string) []string
 }
 ```
 
-**Lookup order:** exact match → `type/*` → `*/*`
+**Selection algorithm:**
+1. Filter entries whose `InputMimeTypes()` match the input (exact=3 > type/*=2 > */*=1)
+2. For each accepted type (sorted by q-value), score output types by specificity
+3. Return best match; on tie, latest registered wins
+4. Return `ErrNoMatchingRenderer` if no output match (→ 406 Not Acceptable)
 
-Thread-safe with `sync.RWMutex`. Collision detection with `slog.Warn`.
+Thread-safe with `sync.RWMutex`. Storage uses `[]registryEntry` (ordered list, not map).
 
 ### 4. Handler Layer
 
@@ -116,9 +129,9 @@ Thread-safe with `sync.RWMutex`. Collision detection with `slog.Warn`.
 
 **Flow:**
 1. Read file + get MIME type (Provider)
-2. Get renderer from registry (normalized MIME type)
-3. Render content (produces output MIME type + metadata + TOC)
-4. Content negotiation on OUTPUT MIME type vs Accept header (RFC 7231: entries with q=0 are filtered as "not acceptable")
+2. Parse Accept header → negotiate renderer via 2D registry lookup (input type + accepted output)
+3. If no match → 406 Not Acceptable with available output types
+4. Render content (produces output content + metadata + TOC)
 5. Serve (wrapped in template if HTML, raw otherwise)
 
 ### 5. Template Layer
@@ -273,15 +286,15 @@ sequenceDiagram
     participant R as MarkdownRenderer
     participant T as Template
 
-    C->>M: GET /docs/guide.md
+    C->>M: GET /docs/guide.md (Accept: text/html)
     M->>H: ServeContent()
     H->>P: ReadFile("/docs/guide.md")
     P-->>H: content + "text/markdown"
-    H->>Reg: Get("text/markdown")
-    Reg-->>H: MarkdownRenderer
+    H->>H: ParseAccept("text/html")
+    H->>Reg: Get("text/markdown", [text/html])
+    Reg-->>H: MarkdownRenderer + "text/html"
     H->>R: Render(ctx, content)
     R-->>H: RenderResult{HTML, metadata, TOC}
-    H->>H: Content negotiation (Accept vs text/html)
     H->>T: Render("default.html.tmpl", {Site, Page})
     T-->>H: Templated HTML
     H-->>C: 200 OK (HTML + ETag + Cache-Control)
@@ -302,8 +315,9 @@ sequenceDiagram
     M->>H: ServeContent()
     H->>P: ReadFile("/images/logo.png")
     P-->>H: content + "image/png"
-    H->>Reg: Get("image/png")
-    Reg-->>H: PassthroughRenderer (via */*)
+    H->>H: ParseAccept("*/*")
+    H->>Reg: Get("image/png", [*/*])
+    Reg-->>H: PassthroughRenderer + "image/png"
     H->>R: Render(content)
     R-->>H: same content, passthrough
     H-->>C: 200 OK (PNG + Content-Type + ETag)
@@ -329,6 +343,7 @@ All provider and renderer errors are mapped to HTTP status codes via `classifyEr
 | `provider.ErrGitLFSNotSupported` | Not Implemented | 501 |
 | `provider.ErrFileTooLarge`    | Request Entity Too Large | 413 |
 | `renderer.ErrNoRenderer`      | Unsupported Media Type | 415 |
+| `renderer.ErrNoMatchingRenderer` | Not Acceptable | 406 |
 | _(default)_                   | Internal Server Error | 500 |
 
 All errors use `errors.Is()` for classification, supporting wrapped errors via `fmt.Errorf("%w", err)`.
@@ -354,9 +369,8 @@ type PathError struct {
 
 ### Registry Wildcard Matching
 
-1. Exact match: `"text/markdown"`
-2. Type wildcard: `"text/*"`
-3. Catch-all: `"*/*"`
+Input types are scored: exact match (3) > type wildcard (2) > catch-all (1).
+Output types are resolved before matching: `*/*` resolves to the input MIME type.
 
 ## Security
 
@@ -409,12 +423,12 @@ Environment variables are applied via reflection-based walking of the struct tre
 
 ## Testing
 
-### Coverage (as of 2026-03-19)
+### Coverage (as of 2026-03-23)
 
-Overall statement coverage: **73.0%**
+Overall statement coverage: **80.6%**
 
 *Note: Overall coverage includes `cmd/gomddoc` which tests via external binary execution (integration tests
-that don't count toward Go's coverage instrumentation). Internal packages average ~88% coverage.*
+that don't count toward Go's coverage instrumentation). Internal packages average ~90%+ coverage.*
 
 ### Test Strategy
 
@@ -432,7 +446,8 @@ See [Custom Renderers Guide](custom-renderers.md) for complete examples. In brie
 
 ```go
 type MyRenderer struct{}
-func (r *MyRenderer) SupportedMimeTypes() []string { return []string{"text/x-custom"} }
+func (r *MyRenderer) InputMimeTypes() []string  { return []string{"text/x-custom"} }
+func (r *MyRenderer) OutputMimeTypes() []string { return []string{"text/html"} }
 func (r *MyRenderer) Render(ctx context.Context, content []byte) (*renderer.RenderResult, error) {
     // transform content...
     return &renderer.RenderResult{Content: output, MimeType: "text/html; charset=utf-8"}, nil
