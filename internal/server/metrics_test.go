@@ -114,3 +114,15 @@ func TestMetrics_DefaultStatusCode(t *testing.T) {
 		t.Errorf("expected counter to increment by 1 for default 200, got %v", diff)
 	}
 }
+
+func TestStatusRecorder_Unwrap(t *testing.T) {
+	t.Parallel()
+
+	inner := httptest.NewRecorder()
+	rec := &statusRecorder{ResponseWriter: inner, statusCode: 200}
+
+	unwrapped := rec.Unwrap()
+	if unwrapped != inner {
+		t.Error("Unwrap() should return the underlying ResponseWriter")
+	}
+}

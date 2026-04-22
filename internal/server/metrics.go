@@ -38,6 +38,12 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// Unwrap returns the underlying ResponseWriter, enabling http.ResponseController
+// to discover interfaces (Flusher, Hijacker) on wrapped writers.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // Metrics is an HTTP middleware that records request count and duration
 // using Prometheus metrics.
 func Metrics(next http.Handler) http.Handler {
