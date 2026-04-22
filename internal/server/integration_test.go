@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
 
 // TestIntegration_ContentServing verifies all content types are served correctly
@@ -287,5 +289,130 @@ func TestIntegration_ContextCancellation(t *testing.T) {
 	if w.Code != 499 && w.Code != 504 {
 		t.Logf("got status %d, expected 499 or 504 for context cancellation", w.Code)
 		// Not failing - context cancellation timing is non-deterministic
+	}
+}
+
+// TestIntegration_ExtensionStripping verifies end-to-end URL extension stripping behavior
+func TestIntegration_ExtensionStripping(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":      &fstest.MapFile{Data: []byte("# Guide\n\nUser guide content.")},
+		"docs/intro.md": &fstest.MapFile{Data: []byte("# Introduction\n\nGetting started.")},
+		"image.jpg":     &fstest.MapFile{Data: []byte{0xFF, 0xD8, 0xFF}}, // JPEG header
+		"style.css":     &fstest.MapFile{Data: []byte("body { margin: 0; }")},
+	}
+
+	// Build resolver for extension stripping
+	resolver := resolve.Build(files, []string{".md"}, func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	})
+
+	// Set up handler with resolver
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		SiteConfig:       &siteConfig,
+		Resolver:         resolver,
+	})
+
+	// Wrap handler with extension redirect middleware
+	middleware := ExtensionRedirect(resolver, []string{".md"})
+	wrappedHandler := middleware(http.HandlerFunc(handler.ServeContent))
+
+	tests := []struct {
+		name           string
+		path           string
+		acceptHeader   string
+		expectedStatus int
+		expectedLoc    string
+		shouldContain  string
+	}{
+		{
+			name:           "extensionless path resolves and renders",
+			path:           "/guide",
+			acceptHeader:   "text/html",
+			expectedStatus: 200,
+			shouldContain:  "User guide content",
+		},
+		{
+			name:           "nested extensionless path resolves",
+			path:           "/docs/intro",
+			acceptHeader:   "text/html",
+			expectedStatus: 200,
+			shouldContain:  "Getting started",
+		},
+		{
+			name:           "md extension redirects to extensionless",
+			path:           "/guide.md",
+			acceptHeader:   "text/html",
+			expectedStatus: 301,
+			expectedLoc:    "/guide",
+		},
+		{
+			name:           "nested md extension redirects",
+			path:           "/docs/intro.md",
+			acceptHeader:   "text/html",
+			expectedStatus: 301,
+			expectedLoc:    "/docs/intro",
+		},
+		{
+			name:           "non-stripped extension serves normally",
+			path:           "/image.jpg",
+			acceptHeader:   "*/*",
+			expectedStatus: 200,
+		},
+		{
+			name:           "css file serves normally",
+			path:           "/style.css",
+			acceptHeader:   "*/*",
+			expectedStatus: 200,
+			shouldContain:  "margin",
+		},
+		{
+			name:           "nonexistent extensionless path returns 404",
+			path:           "/nonexistent",
+			acceptHeader:   "text/html",
+			expectedStatus: 404,
+		},
+		{
+			name:           "nonexistent md file returns 404",
+			path:           "/nonexistent.md",
+			acceptHeader:   "text/html",
+			expectedStatus: 404,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest("GET", tt.path, nil)
+			req.Header.Set("Accept", tt.acceptHeader)
+			w := httptest.NewRecorder()
+
+			wrappedHandler.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.expectedStatus)
+			}
+
+			if tt.expectedLoc != "" {
+				if loc := w.Header().Get("Location"); loc != tt.expectedLoc {
+					t.Errorf("Location = %q, want %q", loc, tt.expectedLoc)
+				}
+			}
+
+			if tt.shouldContain != "" {
+				body := w.Body.String()
+				if !strings.Contains(body, tt.shouldContain) {
+					t.Errorf("response should contain %q", tt.shouldContain)
+				}
+			}
+		})
 	}
 }

@@ -98,7 +98,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	enricherOpts := enricher.MarkdownEnricherOptions{}
 
 	if opts.EnableNavigation {
-		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, cfg.Site.Exclude)
+		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, cfg.Site.Exclude, resolver)
 		enricherOpts.NavBuilder = navBuilderAdapter(navGen)
 		enricherOpts.PrevNextBuilder = prevNextBuilderAdapter(navGen)
 		p.RedirectFinder = redirectFinderAdapter(navGen)

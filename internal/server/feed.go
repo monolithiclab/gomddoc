@@ -12,6 +12,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/seo"
 )
 
@@ -26,26 +27,28 @@ type FeedHandler struct {
 	defaultIndex string
 	provider     provider.Provider
 	siteTitle    string
+	resolver     *resolve.PathResolver
 
 	once   sync.Once
 	cached []byte
 }
 
 // NewFeedHandler creates a new FeedHandler.
-func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string) *FeedHandler {
+func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string, resolver *resolve.PathResolver) *FeedHandler {
 	return &FeedHandler{
 		index:        index,
 		domain:       domain,
 		defaultIndex: defaultIndex,
 		provider:     prov,
 		siteTitle:    siteTitle,
+		resolver:     resolver,
 	}
 }
 
 // ServeHTTP writes the Atom feed response.
 func (h *FeedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.once.Do(func() {
-		out, err := GenerateFeed(r.Context(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle)
+		out, err := GenerateFeed(r.Context(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver)
 		if err == nil {
 			h.cached = out
 		}
@@ -90,7 +93,8 @@ type atomEntry struct {
 
 // GenerateFeed produces the Atom feed XML bytes.
 // When prov is non-nil, each entry includes an updated time from the file's modification time.
-func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string) ([]byte, error) {
+// When resolver is non-nil, URLs use extensionless paths.
+func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string, resolver *resolve.PathResolver) ([]byte, error) {
 	var contentRoot fs.FS
 	if prov != nil {
 		if root, err := prov.RootFS(ctx); err == nil {
@@ -145,7 +149,19 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 	// Build Atom entries.
 	entries := make([]atomEntry, 0, len(candidates))
 	for _, c := range candidates {
-		loc := seo.PageURL(domain, c.page.Path, defaultIndex)
+		// Use clean path if resolver is available
+		pagePath := c.page.Path
+		if resolver != nil {
+			// Strip leading slash for resolver lookup
+			lookupPath := strings.TrimPrefix(c.page.Path, "/")
+			if clean, found := resolver.CleanPath(lookupPath); found {
+				pagePath = "/" + clean
+			} else {
+				pagePath = c.page.Path
+			}
+		}
+
+		loc := seo.PageURL(domain, pagePath, defaultIndex)
 		if loc == "" {
 			continue
 		}

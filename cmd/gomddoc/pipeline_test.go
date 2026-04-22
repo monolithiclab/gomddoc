@@ -209,7 +209,7 @@ func TestNavBuilderAdapter(t *testing.T) {
 		"docs/guide.md": &fstest.MapFile{Data: []byte("# Guide")},
 	}
 
-	navGen := navigation.NewGenerator(contentRoot, "README.md", nil)
+	navGen := navigation.NewGenerator(contentRoot, "README.md", nil, nil)
 	builder := navBuilderAdapter(navGen)
 
 	// Call the adapter — it should return nav items for the root
@@ -223,7 +223,7 @@ func TestNavBuilderAdapter_EmptyFS(t *testing.T) {
 	t.Parallel()
 
 	contentRoot := fstest.MapFS{}
-	navGen := navigation.NewGenerator(contentRoot, "README.md", nil)
+	navGen := navigation.NewGenerator(contentRoot, "README.md", nil, nil)
 	builder := navBuilderAdapter(navGen)
 
 	items := builder("/nonexistent")
@@ -240,7 +240,7 @@ func TestRedirectFinderAdapter(t *testing.T) {
 		"docs/guide.md": &fstest.MapFile{Data: []byte("# Guide")},
 	}
 
-	navGen := navigation.NewGenerator(contentRoot, "README.md", nil)
+	navGen := navigation.NewGenerator(contentRoot, "README.md", nil, nil)
 	finder := redirectFinderAdapter(navGen)
 
 	// "docs" directory has no README → should find first page

@@ -26,8 +26,8 @@ func TestResolver_BasicResolution(t *testing.T) {
 	t.Parallel()
 
 	fsys := fstest.MapFS{
-		"index.md":       {},
-		"guide.md":       {},
+		"index.md":        {},
+		"guide.md":        {},
 		"images/logo.jpg": {},
 	}
 
@@ -202,8 +202,8 @@ func TestResolver_NonRenderedFileSkipped(t *testing.T) {
 	t.Parallel()
 
 	fsys := fstest.MapFS{
-		"data.csv":  {},
-		"guide.md":  {},
+		"data.csv": {},
+		"guide.md": {},
 	}
 
 	// .csv is in strip list but hasRenderer returns false for text/csv.

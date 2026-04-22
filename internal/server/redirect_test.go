@@ -120,9 +120,9 @@ func TestExtensionRedirect(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{
-		"guide.md":       &fstest.MapFile{Data: []byte("# Guide")},
-		"docs/intro.md":  &fstest.MapFile{Data: []byte("# Intro")},
-		"image.jpg":      &fstest.MapFile{Data: []byte{0xFF, 0xD8}},
+		"guide.md":      &fstest.MapFile{Data: []byte("# Guide")},
+		"docs/intro.md": &fstest.MapFile{Data: []byte("# Intro")},
+		"image.jpg":     &fstest.MapFile{Data: []byte{0xFF, 0xD8}},
 	}
 
 	resolver := resolve.Build(files, []string{".md"}, func(mimeType string) bool {

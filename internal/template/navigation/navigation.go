@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -26,14 +27,16 @@ type Generator struct {
 	rootFS          fs.FS
 	defaultIndex    string
 	excludePatterns []string
+	resolver        *resolve.PathResolver
 }
 
 // NewGenerator creates a new navigation generator.
-func NewGenerator(rootFS fs.FS, defaultIndex string, excludePatterns []string) *Generator {
+func NewGenerator(rootFS fs.FS, defaultIndex string, excludePatterns []string, resolver *resolve.PathResolver) *Generator {
 	return &Generator{
 		rootFS:          rootFS,
 		defaultIndex:    defaultIndex,
 		excludePatterns: excludePatterns,
+		resolver:        resolver,
 	}
 }
 
@@ -101,6 +104,11 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 			}
 		} else {
 			urlPath := "/" + entryPath
+			if g.resolver != nil {
+				if clean, found := g.resolver.CleanPath(entryPath); found {
+					urlPath = "/" + clean
+				}
+			}
 			label := g.extractTitle(entryPath)
 			if label == "" {
 				// Fall back to title-cased filename without extension,

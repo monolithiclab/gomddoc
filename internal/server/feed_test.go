@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
 
 var feedTestTime = time.Date(2025, 7, 10, 14, 0, 0, 0, time.UTC)
@@ -24,7 +26,7 @@ func TestGenerateFeed(t *testing.T) {
 	idx := buildTestIndex(t, feedTestFS)
 	prov := newMemoryProvider(feedTestFS, "README.md", false)
 
-	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site")
+	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", nil)
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -59,7 +61,7 @@ func TestGenerateFeed_ExcludesNoindex(t *testing.T) {
 	idx := buildTestIndex(t, sitemapNoindexFS)
 	prov := newMemoryProvider(sitemapNoindexFS, "README.md", false)
 
-	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site")
+	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", nil)
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -91,7 +93,7 @@ func TestGenerateFeed_LimitsEntries(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Test")
+	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Test", nil)
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -109,7 +111,7 @@ func TestGenerateFeed_EmptyIndex(t *testing.T) {
 	emptyFS := fstest.MapFS{}
 	idx := buildTestIndex(t, emptyFS)
 
-	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Empty Site")
+	data, err := GenerateFeed(context.Background(), idx, "https://example.com", "README.md", nil, "Empty Site", nil)
 	if err != nil {
 		t.Fatalf("GenerateFeed: %v", err)
 	}
@@ -128,7 +130,7 @@ func TestFeedHandler_ServeHTTP(t *testing.T) {
 
 	idx := buildTestIndex(t, feedTestFS)
 	prov := newMemoryProvider(feedTestFS, "README.md", false)
-	handler := NewFeedHandler(idx, "https://docs.example.com", "README.md", prov, "Test Site")
+	handler := NewFeedHandler(idx, "https://docs.example.com", "README.md", prov, "Test Site", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/feed.xml", nil)
 	w := httptest.NewRecorder()
@@ -146,5 +148,35 @@ func TestFeedHandler_ServeHTTP(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "<feed") {
 		t.Error("response should contain <feed>")
+	}
+}
+
+func TestGenerateFeed_WithResolver(t *testing.T) {
+	t.Parallel()
+
+	idx := buildTestIndex(t, feedTestFS)
+	prov := newMemoryProvider(feedTestFS, "README.md", false)
+
+	// Build a resolver that strips .md extensions
+	hasRenderer := func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	}
+	resolver := resolve.Build(feedTestFS, []string{".md"}, hasRenderer)
+
+	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", resolver)
+	if err != nil {
+		t.Fatalf("GenerateFeed: %v", err)
+	}
+
+	body := string(data)
+
+	// Should contain extensionless URL for guide.md
+	if !strings.Contains(body, "https://docs.example.com/docs/guide") {
+		t.Error("should contain extensionless URL docs/guide")
+	}
+
+	// Should NOT contain .md URL
+	if strings.Contains(body, "https://docs.example.com/docs/guide.md") {
+		t.Error("should not contain .md URL when resolver provides clean path")
 	}
 }

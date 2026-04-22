@@ -10,6 +10,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/seo"
 )
 
@@ -21,18 +22,20 @@ type SitemapHandler struct {
 	domain       string
 	defaultIndex string
 	provider     provider.Provider
+	resolver     *resolve.PathResolver
 
 	once   sync.Once
 	cached []byte
 }
 
 // NewSitemapHandler creates a new SitemapHandler.
-func NewSitemapHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider) *SitemapHandler {
+func NewSitemapHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver) *SitemapHandler {
 	return &SitemapHandler{
 		index:        index,
 		domain:       domain,
 		defaultIndex: defaultIndex,
 		provider:     prov,
+		resolver:     resolver,
 	}
 }
 
@@ -52,7 +55,7 @@ type sitemapURL struct {
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.once.Do(func() {
-		out, err := GenerateSitemap(r.Context(), h.index, h.domain, h.defaultIndex, h.provider)
+		out, err := GenerateSitemap(r.Context(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver)
 		if err == nil {
 			h.cached = out
 		}
@@ -70,7 +73,8 @@ func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // GenerateSitemap produces the sitemap XML bytes.
 // When prov is non-nil, each entry includes a <lastmod> from the file's modification time.
-func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider) ([]byte, error) {
+// When resolver is non-nil, URLs use extensionless paths.
+func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver) ([]byte, error) {
 	var contentRoot fs.FS
 	if prov != nil {
 		if root, err := prov.RootFS(ctx); err == nil {
@@ -85,7 +89,20 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 		if robots, ok := page.Meta["robots"].(string); ok && strings.Contains(robots, "noindex") {
 			continue
 		}
-		loc := seo.PageURL(domain, "/"+page.Path, defaultIndex)
+
+		// Use clean path if resolver is available
+		pagePath := page.Path
+		if resolver != nil {
+			// Strip leading slash for resolver lookup
+			lookupPath := strings.TrimPrefix(page.Path, "/")
+			if clean, found := resolver.CleanPath(lookupPath); found {
+				pagePath = "/" + clean
+			} else {
+				pagePath = page.Path
+			}
+		}
+
+		loc := seo.PageURL(domain, pagePath, defaultIndex)
 		if loc != "" {
 			entry := sitemapURL{Loc: loc}
 			if contentRoot != nil {

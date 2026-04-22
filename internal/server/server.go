@@ -42,13 +42,13 @@ type HTTPServerConfig struct {
 	Registry         renderer.RendererRegistry
 	EnricherRegistry enricher.EnricherRegistry
 	TemplateRenderer template.Renderer
-	MetaIndex        *metadata.Index  // nil disables metadata API
-	SearchIndex      *search.Index    // nil disables search API
-	RedirectFinder   RedirectFinder   // nil disables redirect lookup
-	URLRedirects     URLRedirectMap   // nil disables URL redirects
-	StaticFS         fs.FS            // nil disables static asset serving
-	AuthStore        *CredentialStore    // nil disables basic auth
-	MCPHandler       http.Handler        // nil disables MCP endpoint at /_mcp/
+	MetaIndex        *metadata.Index       // nil disables metadata API
+	SearchIndex      *search.Index         // nil disables search API
+	RedirectFinder   RedirectFinder        // nil disables redirect lookup
+	URLRedirects     URLRedirectMap        // nil disables URL redirects
+	StaticFS         fs.FS                 // nil disables static asset serving
+	AuthStore        *CredentialStore      // nil disables basic auth
+	MCPHandler       http.Handler          // nil disables MCP endpoint at /_mcp/
 	Resolver         *resolve.PathResolver // nil disables extension stripping
 }
 
@@ -99,10 +99,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	}
 
 	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider)
+		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, opts.Resolver)
 		auth.Handle("GET /sitemap.xml", sitemapHandler)
 
-		feedHandler := NewFeedHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, cfg.Site.Meta.Title)
+		feedHandler := NewFeedHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, cfg.Site.Meta.Title, opts.Resolver)
 		auth.Handle("GET /feed.xml", feedHandler)
 	}
 
@@ -130,10 +130,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	// Content handler with content-specific middleware (outermost first)
 	content := auth.Subgroup("",
 		Compression, // Gzip responses >= 1KB when client accepts
-		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),          // Only allow GET and HEAD
-		ContentExclusion(cfg.Site.Exclude),                                  // Block hidden files and user-configured exclusions
-		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions),          // Redirect .md URLs to clean URLs
-		Metrics,                                                            // Innermost: measure actual handler time
+		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead), // Only allow GET and HEAD
+		ContentExclusion(cfg.Site.Exclude),                         // Block hidden files and user-configured exclusions
+		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions), // Redirect .md URLs to clean URLs
+		Metrics, // Innermost: measure actual handler time
 	)
 	content.HandleFunc("/", handler.ServeContent)
 

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
 
 var sitemapTestTime = time.Date(2025, 6, 15, 10, 30, 0, 0, time.UTC)
@@ -28,7 +30,7 @@ var sitemapNoindexFS = fstest.MapFS{
 func TestSitemapHandler(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
-	handler := NewSitemapHandler(idx, "https://docs.example.com", "README.md", prov)
+	handler := NewSitemapHandler(idx, "https://docs.example.com", "README.md", prov, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
 	w := httptest.NewRecorder()
@@ -65,7 +67,7 @@ func TestSitemapHandler(t *testing.T) {
 func TestGenerateSitemap(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
-	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil)
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -88,7 +90,7 @@ func TestGenerateSitemap(t *testing.T) {
 func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
 	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
-	data, err := GenerateSitemap(context.Background(), idx, "", "README.md", prov)
+	data, err := GenerateSitemap(context.Background(), idx, "", "README.md", prov, nil)
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -102,7 +104,7 @@ func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
 	idx := buildTestIndex(t, sitemapNoindexFS)
 	prov := newMemoryProvider(sitemapNoindexFS, "README.md", false)
-	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, nil)
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -128,7 +130,7 @@ func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
 
 func TestGenerateSitemap_NilProvider(t *testing.T) {
 	idx := buildTestIndex(t, sitemapTestFS)
-	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", nil)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", nil, nil)
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
@@ -139,5 +141,33 @@ func TestGenerateSitemap_NilProvider(t *testing.T) {
 	}
 	if !strings.Contains(body, "https://docs.example.com/docs/guide.md") {
 		t.Error("should still contain URLs")
+	}
+}
+
+func TestGenerateSitemap_WithResolver(t *testing.T) {
+	idx := buildTestIndex(t, sitemapTestFS)
+	prov := newMemoryProvider(sitemapTestFS, "README.md", false)
+
+	// Build a resolver that strips .md extensions
+	hasRenderer := func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	}
+	resolver := resolve.Build(sitemapTestFS, []string{".md"}, hasRenderer)
+
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, resolver)
+	if err != nil {
+		t.Fatalf("GenerateSitemap: %v", err)
+	}
+
+	body := string(data)
+
+	// Should contain extensionless URL for guide.md
+	if !strings.Contains(body, "https://docs.example.com/docs/guide") {
+		t.Error("should contain extensionless URL docs/guide")
+	}
+
+	// Should NOT contain .md URL
+	if strings.Contains(body, "https://docs.example.com/docs/guide.md") {
+		t.Error("should not contain .md URL when resolver provides clean path")
 	}
 }

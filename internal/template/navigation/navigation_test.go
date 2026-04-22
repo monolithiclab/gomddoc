@@ -1,10 +1,17 @@
 package navigation
 
 import (
+	"mime"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
+
+func init() {
+	_ = mime.AddExtensionType(".md", "text/markdown")
+}
 
 func TestGenerate_BasicTree(t *testing.T) {
 	t.Parallel()
@@ -17,7 +24,7 @@ func TestGenerate_BasicTree(t *testing.T) {
 		"docs/usage.md":   {Data: []byte("# Usage Guide")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/guide.md")
 
 	if root == nil {
@@ -49,7 +56,7 @@ func TestGenerate_ActiveMarking(t *testing.T) {
 		"docs/install.md": {Data: []byte("# Install")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/docs/install.md")
 
 	if root == nil {
@@ -83,7 +90,7 @@ func TestGenerate_HiddenFilesSkipped(t *testing.T) {
 		".gomddoc/config.md": {Data: []byte("# Config")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root == nil {
@@ -109,7 +116,7 @@ func TestGenerate_DefaultIndexSkipped(t *testing.T) {
 		"docs/setup.md":  {Data: []byte("# Setup")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root == nil {
@@ -137,7 +144,7 @@ func TestGenerate_EmptyDirsExcluded(t *testing.T) {
 		"empty/README.md": {Data: []byte("# Empty")}, // Only has default index
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root == nil {
@@ -162,7 +169,7 @@ func TestGenerate_NonMDFilesSkipped(t *testing.T) {
 		"script.html": {Data: []byte("<html>")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root == nil {
@@ -212,7 +219,7 @@ func TestGenerate_TitleExtraction(t *testing.T) {
 				"test-file.md": {Data: []byte(tt.content)},
 			}
 
-			gen := NewGenerator(fs, "README.md", nil)
+			gen := NewGenerator(fs, "README.md", nil, nil)
 			root := gen.Generate("/")
 
 			if root == nil {
@@ -240,7 +247,7 @@ func TestGenerate_SortOrder(t *testing.T) {
 		"alpha/two.md": {Data: []byte("# Two")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root == nil {
@@ -276,7 +283,7 @@ func TestGenerate_EmptyFS(t *testing.T) {
 
 	fs := fstest.MapFS{}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root != nil {
@@ -291,7 +298,7 @@ func TestGenerate_OnlyDefaultIndex(t *testing.T) {
 		"README.md": {Data: []byte("# Home")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root != nil {
@@ -334,7 +341,7 @@ func TestExtractTitle_FrontMatter(t *testing.T) {
 		"page.md": {Data: []byte("---\ntitle: FM Title\nauthor: Test\n---\n\nSome intro text.\n\n# Real Heading\n\nContent.")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/")
 
 	if root == nil {
@@ -353,7 +360,7 @@ func TestGenerate_DeepNesting(t *testing.T) {
 		"a/b/c/deep.md": {Data: []byte("# Deep Page")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil)
+	gen := NewGenerator(fs, "README.md", nil, nil)
 	root := gen.Generate("/a/b/c/deep.md")
 
 	if root == nil {
@@ -453,5 +460,49 @@ func TestFindFirstPage(t *testing.T) {
 				t.Errorf("FindFirstPage() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestGenerate_CleanPaths(t *testing.T) {
+	t.Parallel()
+	fsys := fstest.MapFS{
+		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
+		"about.md": &fstest.MapFile{Data: []byte("# About")},
+	}
+
+	resolver := resolve.Build(fsys, []string{".md"}, func(mime string) bool {
+		return mime == "text/markdown"
+	})
+	gen := NewGenerator(fsys, "README.md", nil, resolver)
+	root := gen.Generate("guide.md")
+
+	// Check that nav nodes use clean paths
+	for _, child := range root.Children {
+		if child.Label == "Guide" {
+			if child.Path != "/guide" {
+				t.Errorf("guide Path = %q, want /guide", child.Path)
+			}
+		}
+		if child.Label == "About" {
+			if child.Path != "/about" {
+				t.Errorf("about Path = %q, want /about", child.Path)
+			}
+		}
+	}
+}
+
+func TestGenerate_NilResolver(t *testing.T) {
+	t.Parallel()
+	fsys := fstest.MapFS{
+		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
+	}
+	gen := NewGenerator(fsys, "README.md", nil, nil)
+	root := gen.Generate("guide.md")
+	for _, child := range root.Children {
+		if child.Label == "Guide" {
+			if child.Path != "/guide.md" {
+				t.Errorf("Path = %q, want /guide.md (no resolver)", child.Path)
+			}
+		}
 	}
 }
