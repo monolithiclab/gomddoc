@@ -31,15 +31,15 @@ type NavItem struct {
 // RelatedDoc represents a document related to the current page,
 // typically linked by shared tags.
 type RelatedDoc struct {
-	Path  string
-	Title string
+	Path  string `yaml:"path"`
+	Title string `yaml:"title"`
 }
 
 // PageLink represents a link to a page with its display title.
 // Used for previous/next navigation.
 type PageLink struct {
-	Path  string
-	Title string
+	Path  string `yaml:"path"`
+	Title string `yaml:"title"`
 }
 
 // EnrichmentData holds structured data extracted from content before rendering.

@@ -78,6 +78,95 @@ func TestMarkdownPassthroughRenderer_Render(t *testing.T) {
 	}
 }
 
+func TestMarkdownPassthroughRenderer_RenderWithEnrichment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		input      string
+		enrichment *enricher.EnrichmentData
+		wantFM     bool     // expect frontmatter delimiters
+		wantStrs   []string // strings that should appear in output
+		wantNoStrs []string // strings that should NOT appear in output
+	}{
+		{
+			name:       "nil enrichment",
+			input:      "# Hello",
+			enrichment: nil,
+			wantFM:     false,
+			wantStrs:   []string{"# Hello"},
+		},
+		{
+			name:  "metadata preserved",
+			input: "---\ntitle: Original\n---\n# Hello",
+			enrichment: &enricher.EnrichmentData{
+				Metadata: map[string]any{"title": "Original", "description": "A page"},
+			},
+			wantFM:   true,
+			wantStrs: []string{"metadata:", "title: Original", "description: A page", "# Hello"},
+		},
+		{
+			name:  "related docs",
+			input: "# Hello",
+			enrichment: &enricher.EnrichmentData{
+				RelatedDocs: []enricher.RelatedDoc{
+					{Path: "/guide.md", Title: "Guide"},
+					{Path: "/faq.md", Title: "FAQ"},
+				},
+			},
+			wantFM:   true,
+			wantStrs: []string{"related_docs:", "/guide.md", "Guide", "/faq.md", "FAQ"},
+		},
+		{
+			name:  "prev and next pages",
+			input: "# Middle",
+			enrichment: &enricher.EnrichmentData{
+				PrevPage: &enricher.PageLink{Path: "/intro.md", Title: "Intro"},
+				NextPage: &enricher.PageLink{Path: "/advanced.md", Title: "Advanced"},
+			},
+			wantFM:   true,
+			wantStrs: []string{"prev_page:", "Intro", "next_page:", "Advanced"},
+		},
+		{
+			name:       "empty enrichment no frontmatter",
+			input:      "# Hello",
+			enrichment: &enricher.EnrichmentData{},
+			wantFM:     false,
+			wantStrs:   []string{"# Hello"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := NewMarkdownPassthroughRenderer()
+			result, err := r.Render(context.Background(), []byte(tt.input), tt.enrichment)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+
+			output := string(result.Content)
+			if tt.wantFM && !strings.Contains(output, "---\n") {
+				t.Errorf("expected frontmatter delimiters, got: %s", output)
+			}
+			if !tt.wantFM && strings.Contains(output, "---\n") {
+				t.Errorf("unexpected frontmatter delimiters, got: %s", output)
+			}
+			for _, s := range tt.wantStrs {
+				if !strings.Contains(output, s) {
+					t.Errorf("output missing %q, got: %s", s, output)
+				}
+			}
+			for _, s := range tt.wantNoStrs {
+				if strings.Contains(output, s) {
+					t.Errorf("output should not contain %q, got: %s", s, output)
+				}
+			}
+		})
+	}
+}
+
 func TestMarkdownPassthroughRenderer_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
