@@ -65,15 +65,15 @@ func startCmd() int {
 		os.Exit(1)
 	}
 
-	// Initialize components
-	provider, err := provider.NewFilesystemProvider(cfg.Dir, cfg.Server.DefaultIndex, cfg.Server.DirIndex)
+	// Initialize content provider (filesystem or Git based on cfg.Dir)
+	prov, err := provider.NewProvider(cfg.Dir, cfg.Server.DefaultIndex, cfg.Server.DirIndex)
 	if err != nil {
-		slog.Error("Cannot create filesystem provider", slog.Any("error", err))
+		slog.Error("Cannot create content provider", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer func() {
 		// Cleanup provider on normal exit
-		if err := provider.Close(); err != nil {
+		if err := prov.Close(); err != nil {
 			slog.Error("Failed to close provider", slog.Any("error", err))
 		}
 	}()
@@ -98,7 +98,7 @@ func startCmd() int {
 	}
 
 	// Create and configure server
-	httpServer := server.NewHTTPServer(cfg, provider, registry, templateRenderer)
+	httpServer := server.NewHTTPServer(cfg, prov, registry, templateRenderer)
 
 	// Setup graceful shutdown
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
