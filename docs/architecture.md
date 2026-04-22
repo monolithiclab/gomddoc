@@ -196,7 +196,7 @@ type Renderer interface {
 | Function | Signature | Purpose |
 |----------|-----------|---------|
 | `breadcrumbs` | `breadcrumbs(path) → []Breadcrumb` | Path-based breadcrumb navigation |
-| `toc` | `toc(tocTree, [min, max]) → HTML` | Nested `<ul>` table of contents (default: h1-h2) |
+| `toc` | `toc(tocTree, [min, max]) → []*TOCNode` | Returns filtered TOC nodes for template rendering (default: h1-h2) |
 | `navigation` | `navigation(navTree) → HTML` | Sidebar from enrichment `NavTree` |
 | `editURL` | `editURL(pagePath) → string` | Combines `edit_url` config with page path |
 | `inlineJSAsset` | `inlineJSAsset(name) → JS` | Loads asset as `template.JS` for `<script>` embedding |

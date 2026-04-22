@@ -176,9 +176,12 @@ Path: {{ .Path }}, Label: {{ .Label }}|
 	}
 }
 
+// tocItemPartial is the recursive toc-item partial used in tests.
+// Matches the default theme's toc.html.tmpl definition.
+const tocItemPartial = `{{ define "toc-item" }}<li><a href="#{{ .ID }}">{{ .Text }}</a>{{ if .Children }}<ul>{{ range .Children }}{{ template "toc-item" . }}{{ end }}</ul>{{ end }}</li>{{ end }}`
+
 func TestTOCFunction(t *testing.T) {
-	// Template that uses the toc function
-	templateContent := `{{ toc .Page.TOC }}`
+	templateContent := tocItemPartial + `{{ range toc .Page.TOC }}<ul>{{ template "toc-item" . }}</ul>{{ end }}`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/toc.html.tmpl": {
 			Data: []byte(templateContent),
@@ -211,7 +214,6 @@ func TestTOCFunction(t *testing.T) {
 	}
 
 	res := string(result)
-	// Expected: <ul><li><a href="#h1">H1</a><ul><li><a href="#h2">H2</a></li></ul></li><li><a href="#h1-2">H1-2</a></li></ul>
 
 	if !strings.Contains(res, `<a href="#h1">H1</a>`) {
 		t.Error("Missing H1 link")
@@ -223,7 +225,7 @@ func TestTOCFunction(t *testing.T) {
 
 func TestTOCFunction_Filtering(t *testing.T) {
 	// Template filtering levels 2-3
-	templateContent := `{{ toc .Page.TOC 2 3 }}`
+	templateContent := tocItemPartial + `{{ range toc .Page.TOC 2 3 }}<ul>{{ template "toc-item" . }}</ul>{{ end }}`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/toc_filter.html.tmpl": {
 			Data: []byte(templateContent),
@@ -505,7 +507,7 @@ func TestParseTemplateFallback(t *testing.T) {
 }
 
 func TestTOCFunction_EmptyTOC(t *testing.T) {
-	templateContent := `{{ toc .Page.TOC }}`
+	templateContent := tocItemPartial + `{{ range toc .Page.TOC }}{{ template "toc-item" . }}{{ end }}`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/toc_empty.html.tmpl": {
 			Data: []byte(templateContent),
@@ -544,9 +546,9 @@ func TestTOCFunction_EmptyTOC(t *testing.T) {
 	}
 }
 
-func TestHasVisibleDescendants(t *testing.T) {
-	// Template filtering levels 2-2 (only H2)
-	templateContent := `{{ toc .Page.TOC 2 2 }}`
+func TestTOCFunction_TransparentTraversal(t *testing.T) {
+	// Template filtering levels 2-2 (only H2) — H1 must be traversed transparently
+	templateContent := tocItemPartial + `{{ range toc .Page.TOC 2 2 }}<ul>{{ template "toc-item" . }}</ul>{{ end }}`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/toc_deep.html.tmpl": {
 			Data: []byte(templateContent),
@@ -557,7 +559,7 @@ func TestHasVisibleDescendants(t *testing.T) {
 	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
 
 	// Create a deep structure where H2 is nested under H1
-	// This tests the hasVisibleDescendants recursive path
+	// This tests transparent traversal of below-min nodes
 	tocRoot := &enricher.TOCNode{
 		Level: 0,
 		Children: []*enricher.TOCNode{
@@ -594,7 +596,7 @@ func TestHasVisibleDescendants(t *testing.T) {
 		t.Error("H1 should be skipped")
 	}
 
-	// H2 should be present
+	// H2 should be present (promoted through transparent H1 traversal)
 	if !strings.Contains(res, ">H2<") {
 		t.Error("H2 should be present")
 	}
@@ -844,75 +846,96 @@ func TestAssetURL(t *testing.T) {
 	}
 }
 
-func TestHasVisibleDescendants_Direct(t *testing.T) {
+func TestFilterTOCNodes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		node *enricher.TOCNode
-		min  int
-		max  int
-		want bool
+		name     string
+		root     *enricher.TOCNode
+		min, max int
+		wantIDs  []string // expected top-level node IDs in order
 	}{
 		{
-			name: "nil children",
-			node: &enricher.TOCNode{},
-			min:  1,
-			max:  3,
-			want: false,
+			name:    "nil root",
+			root:    nil,
+			min:     1,
+			max:     3,
+			wantIDs: nil,
 		},
 		{
-			name: "direct visible child",
-			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
-				{Level: 2},
+			name:    "empty children",
+			root:    &enricher.TOCNode{},
+			min:     1,
+			max:     3,
+			wantIDs: nil,
+		},
+		{
+			name: "direct visible children",
+			root: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 1, ID: "a"},
+				{Level: 2, ID: "b"},
 			}},
-			min:  1,
-			max:  3,
-			want: true,
+			min:     1,
+			max:     3,
+			wantIDs: []string{"a", "b"},
 		},
 		{
-			name: "nested visible descendant via below-min parent",
-			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
-				{Level: 0, Children: []*enricher.TOCNode{
-					{Level: 2},
+			name: "above max dropped",
+			root: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 1, ID: "a"},
+				{Level: 5, ID: "b"},
+			}},
+			min:     1,
+			max:     3,
+			wantIDs: []string{"a"},
+		},
+		{
+			name: "below min promotes children",
+			root: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 1, ID: "h1", Children: []*enricher.TOCNode{
+					{Level: 2, ID: "h2a"},
+					{Level: 2, ID: "h2b"},
 				}},
 			}},
-			min:  2,
-			max:  3,
-			want: true,
+			min:     2,
+			max:     3,
+			wantIDs: []string{"h2a", "h2b"},
 		},
 		{
-			name: "all children out of range above max",
-			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
-				{Level: 5},
-			}},
-			min:  1,
-			max:  3,
-			want: false,
-		},
-		{
-			name: "deeply nested visible descendant",
-			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
-				{Level: 0, Children: []*enricher.TOCNode{
-					{Level: 0, Children: []*enricher.TOCNode{
-						{Level: 2},
+			name: "deeply nested promotion",
+			root: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 0, ID: "skip1", Children: []*enricher.TOCNode{
+					{Level: 0, ID: "skip2", Children: []*enricher.TOCNode{
+						{Level: 2, ID: "found"},
 					}},
 				}},
 			}},
-			min:  2,
-			max:  3,
-			want: true,
+			min:     2,
+			max:     3,
+			wantIDs: []string{"found"},
 		},
 		{
-			name: "below-min child without visible descendants",
-			node: &enricher.TOCNode{Children: []*enricher.TOCNode{
-				{Level: 0, Children: []*enricher.TOCNode{
-					{Level: 5},
+			name: "children filtered recursively",
+			root: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 2, ID: "h2", Children: []*enricher.TOCNode{
+					{Level: 3, ID: "h3"},
+					{Level: 4, ID: "h4"},
 				}},
 			}},
-			min:  2,
-			max:  3,
-			want: false,
+			min:     2,
+			max:     3,
+			wantIDs: []string{"h2"},
+		},
+		{
+			name: "below-min without visible descendants returns empty",
+			root: &enricher.TOCNode{Children: []*enricher.TOCNode{
+				{Level: 0, Children: []*enricher.TOCNode{
+					{Level: 5, ID: "too-deep"},
+				}},
+			}},
+			min:     2,
+			max:     3,
+			wantIDs: nil,
 		},
 	}
 
@@ -920,11 +943,41 @@ func TestHasVisibleDescendants_Direct(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := hasVisibleDescendants(tt.node, tt.min, tt.max)
-			if got != tt.want {
-				t.Errorf("hasVisibleDescendants() = %v, want %v", got, tt.want)
+			got := filterTOC(tt.root, tt.min, tt.max)
+			var gotIDs []string
+			for _, n := range got {
+				gotIDs = append(gotIDs, n.ID)
+			}
+
+			if len(gotIDs) != len(tt.wantIDs) {
+				t.Fatalf("filterTOC() returned %d nodes %v, want %d nodes %v", len(gotIDs), gotIDs, len(tt.wantIDs), tt.wantIDs)
+			}
+			for i := range gotIDs {
+				if gotIDs[i] != tt.wantIDs[i] {
+					t.Errorf("filterTOC()[%d].ID = %q, want %q", i, gotIDs[i], tt.wantIDs[i])
+				}
 			}
 		})
+	}
+}
+
+func TestFilterTOCNodes_PreservesChildHierarchy(t *testing.T) {
+	t.Parallel()
+
+	root := &enricher.TOCNode{Children: []*enricher.TOCNode{
+		{Level: 2, ID: "h2", Text: "H2", Children: []*enricher.TOCNode{
+			{Level: 3, ID: "h3", Text: "H3"},
+			{Level: 4, ID: "h4", Text: "H4"},
+		}},
+	}}
+
+	got := filterTOC(root, 2, 3)
+	if len(got) != 1 || got[0].ID != "h2" {
+		t.Fatalf("expected [h2], got %v", got)
+	}
+	// h3 should be kept, h4 dropped
+	if len(got[0].Children) != 1 || got[0].Children[0].ID != "h3" {
+		t.Errorf("h2 children: expected [h3], got %v", got[0].Children)
 	}
 }
 
@@ -970,7 +1023,7 @@ func TestGenerateEditURL_ViaTemplate(t *testing.T) {
 	}
 }
 
-func TestGenerateTOC_WithLevels(t *testing.T) {
+func TestTOCFunction_IntegrationWithPartial(t *testing.T) {
 	t.Parallel()
 
 	toc := &enricher.TOCNode{
@@ -983,7 +1036,7 @@ func TestGenerateTOC_WithLevels(t *testing.T) {
 	}
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/default.html.tmpl": {
-			Data: []byte(`{{toc .Page.TOC 1 2}}`),
+			Data: []byte(tocItemPartial + `{{ $items := toc .Page.TOC 1 2 }}{{ if $items }}<ul>{{ range $items }}{{ template "toc-item" . }}{{ end }}</ul>{{ end }}`),
 		},
 	}
 	siteConfig := config.NewSiteConfig(".")
@@ -1006,6 +1059,13 @@ func TestGenerateTOC_WithLevels(t *testing.T) {
 	}
 	if !strings.Contains(output, "Usage") {
 		t.Errorf("TOC should contain 'Usage', got %q", output)
+	}
+	// Verify nested structure: Setup and Usage should be children of Introduction
+	if !strings.Contains(output, `<a href="#intro">Introduction</a>`) {
+		t.Errorf("Missing Introduction link, got %q", output)
+	}
+	if !strings.Contains(output, `<a href="#setup">Setup</a>`) {
+		t.Errorf("Missing Setup link, got %q", output)
 	}
 }
 

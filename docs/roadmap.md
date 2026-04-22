@@ -85,6 +85,7 @@ _Usability improvements to the serve, build, and preview subcommands._
       mode — `serve` never injects the script. Medium complexity.
 - [x] **`--domain` flag for serve/build/preview**: `-d, --domain` / `GOMDDOC_DOMAIN` on all
       three subcommands overrides `meta.domain` from config. CLI flag takes precedence.
+- [ ] Add an ignore list (matching gitignore rules) to exclude files/folder/globs/...
 
 ## Phase 9: SEO and Discoverability
 

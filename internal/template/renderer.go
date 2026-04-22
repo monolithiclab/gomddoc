@@ -241,7 +241,7 @@ func (h *HTMLRenderer) parseGlob(tmpl *template.Template, glob string) (bool, er
 func (h *HTMLRenderer) funcMap() template.FuncMap {
 	return template.FuncMap{
 		"breadcrumbs":  h.generateBreadcrumbs,
-		"toc":          h.generateTOC,
+		"toc":          filterTOC,
 		"editURL":      h.generateEditURL,
 		"themeVarsCSS": h.generateThemeVarsCSS,
 		"canonicalURL": func(pagePath string) string {
@@ -328,10 +328,13 @@ func (h *HTMLRenderer) generateBreadcrumbs(path string) []breadcrumb.Breadcrumb 
 	return h.breadcrumbGen.Generate(path)
 }
 
-// generateTOC generates the Table of Contents HTML
-func (h *HTMLRenderer) generateTOC(toc *enricher.TOCNode, levels ...int) template.HTML {
+// filterTOC returns a filtered list of TOCNode children for template rendering.
+// Nodes outside the min/max level range are pruned: nodes below min are traversed
+// transparently (their children promoted), nodes above max are dropped entirely.
+// Default levels: 1–2.
+func filterTOC(toc *enricher.TOCNode, levels ...int) []*enricher.TOCNode {
 	if toc == nil || len(toc.Children) == 0 {
-		return ""
+		return nil
 	}
 
 	minLevel := 1
@@ -343,69 +346,32 @@ func (h *HTMLRenderer) generateTOC(toc *enricher.TOCNode, levels ...int) templat
 		maxLevel = levels[1]
 	}
 
-	var buf bytes.Buffer
-	h.renderTOCNode(&buf, toc, minLevel, maxLevel)
-	return template.HTML(buf.String()) // #nosec G203
+	return filterTOCNodes(toc.Children, minLevel, maxLevel)
 }
 
-func (h *HTMLRenderer) renderTOCNode(buf *bytes.Buffer, node *enricher.TOCNode, minLevel, maxLevel int) {
-	// If this node is within range (or it's the root/container), render its children
-	// Root is level 0.
-
-	if node.Level > maxLevel {
-		return
-	}
-
-	hasVisibleChildren := false
-	for _, child := range node.Children {
-		if child.Level >= minLevel && child.Level <= maxLevel {
-			hasVisibleChildren = true
-			break
+// filterTOCNodes recursively filters a slice of TOCNode by heading level range.
+// Nodes within [min, max] are kept with their children filtered recursively.
+// Nodes below min are skipped but their children are promoted (transparent traversal).
+// Nodes above max are dropped entirely.
+func filterTOCNodes(nodes []*enricher.TOCNode, min, max int) []*enricher.TOCNode {
+	var result []*enricher.TOCNode
+	for _, node := range nodes {
+		if node.Level > max {
+			continue
 		}
-		// If child is below minLevel, it might contain visible descendants?
-		// e.g. want h2, structure is h1 -> h2.
-		// If we don't traverse h1, we miss h2.
-		if child.Level < minLevel {
-			// Check if this child has visible descendants
-			if hasVisibleDescendants(child, minLevel, maxLevel) {
-				hasVisibleChildren = true
-				break
-			}
+		if node.Level >= min {
+			result = append(result, &enricher.TOCNode{
+				Level:    node.Level,
+				Text:     node.Text,
+				ID:       node.ID,
+				Children: filterTOCNodes(node.Children, min, max),
+			})
+		} else {
+			// Below min level — promote children (transparent traversal)
+			result = append(result, filterTOCNodes(node.Children, min, max)...)
 		}
 	}
-
-	if !hasVisibleChildren {
-		return
-	}
-
-	buf.WriteString("<ul>")
-	for _, child := range node.Children {
-		if child.Level >= minLevel && child.Level <= maxLevel {
-			buf.WriteString("<li><a href=\"#")
-			buf.WriteString(template.HTMLEscapeString(child.ID))
-			buf.WriteString("\">")
-			buf.WriteString(template.HTMLEscapeString(child.Text))
-			buf.WriteString("</a>")
-			h.renderTOCNode(buf, child, minLevel, maxLevel)
-			buf.WriteString("</li>")
-		} else if child.Level < minLevel {
-			// Traverse transparently
-			h.renderTOCNode(buf, child, minLevel, maxLevel)
-		}
-	}
-	buf.WriteString("</ul>")
-}
-
-func hasVisibleDescendants(node *enricher.TOCNode, min, max int) bool {
-	for _, child := range node.Children {
-		if child.Level >= min && child.Level <= max {
-			return true
-		}
-		if child.Level < min && hasVisibleDescendants(child, min, max) {
-			return true
-		}
-	}
-	return false
+	return result
 }
 
 // ResolveLayout determines the template name to use based on frontmatter metadata.

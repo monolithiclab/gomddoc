@@ -99,10 +99,11 @@ Seven custom functions are available in templates:
   {{ end }}
   ```
 
-- **`toc`**: Renders a Table of Contents as nested `<ul>` HTML. Accepts optional min/max heading levels.
+- **`toc`**: Returns a filtered list of `TOCNode` items for template rendering. Accepts optional min/max heading levels. Used with the recursive `toc-item` partial defined in `toc.html.tmpl`.
   ```html
-  {{ toc .Page.TOC }}           {{/* Default: h1-h2 */}}
-  {{ toc .Page.TOC 2 3 }}       {{/* Only h2-h3 */}}
+  {{ $items := toc .Page.TOC }}           {{/* Default: h1-h2 */}}
+  {{ $items := toc .Page.TOC 2 3 }}       {{/* Only h2-h3 */}}
+  {{ range $items }}{{ template "toc-item" . }}{{ end }}
   ```
 
 - **`navigation`**: Generates the sidebar navigation tree with active state highlighting.
@@ -176,9 +177,7 @@ Seven custom functions are available in templates:
         {{ end }}
     </article>
 
-    <aside id="toc-sidebar">
-        {{ toc .Page.TOC 2 3 }}
-    </aside>
+    {{ template "toc" . }}
 
     <!-- Color Chip Web Component -->
     <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
@@ -192,7 +191,7 @@ When creating a custom theme, ensure it supports these features for parity with 
 
 - **Light/dark mode toggle** with `data-theme` attribute and `prefers-color-scheme` CSS fallback
 - **Navigation sidebar** via `{{ navigation .Page.Path }}`
-- **Table of contents** via `{{ toc .Page.TOC }}` with scroll highlighting
+- **Table of contents** via `{{ template "toc" . }}` partial with `toc-item` recursive template and scroll highlighting
 - **Breadcrumbs** via `{{ breadcrumbs .Page.Path }}`
 - **Search button** with `id="search-toggle"` in the header
 - **Search modal** via `{{ inlineJSAsset "search.mjs" }}` — uses CSS custom properties for styling

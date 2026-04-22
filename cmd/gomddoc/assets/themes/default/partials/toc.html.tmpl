@@ -1,10 +1,19 @@
+{{ define "toc-item" -}}
+<li>
+  <a href="#{{ .ID }}">{{ .Text }}</a>
+  {{- if .Children }}
+  <ul>{{ range .Children }}{{ template "toc-item" . }}{{ end }}</ul>
+  {{- end }}
+</li>
+{{- end }}
+
 {{ define "toc" }}
-{{- $toc := toc .Page.TOC }}
-{{- if $toc }}
+{{- $items := toc .Page.TOC }}
+{{- if $items }}
           <aside id="toc-sidebar" aria-label="Table of Contents">
             <nav>
               <header>On this page</header>
-              {{ $toc }}
+              <ul>{{ range $items }}{{ template "toc-item" . }}{{ end }}</ul>
             </nav>
           </aside>
           <div id="toc-overlay"></div>
