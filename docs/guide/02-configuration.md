@@ -119,6 +119,24 @@ Selects the visual theme to apply. gomddoc looks for a folder with this name in 
 
 ---
 
+## 3. Response Compression
+
+gomddoc automatically compresses HTTP responses using gzip when all of the following conditions are met:
+
+1. The client sends an `Accept-Encoding` header that includes `gzip`.
+2. The response body is **1 KB or larger**. Smaller responses are sent uncompressed because the compression overhead would outweigh the savings.
+3. The response content type is **not already compressed**. Binary formats such as images (`image/*`), video (`video/*`), audio (`audio/*`), and archive types (`application/zip`, `application/gzip`, etc.) are never re-compressed.
+
+When compression is active, the middleware:
+
+- Sets `Content-Encoding: gzip` on the response.
+- Removes the `Content-Length` header (the compressed size is not known in advance).
+- Always sets `Vary: Accept-Encoding` so that caches distinguish between compressed and uncompressed variants.
+
+Compression requires no configuration and is always enabled. It uses a `sync.Pool` of gzip writers internally to minimize memory allocations under load.
+
+---
+
 ## Priority Order
 
 When a setting is defined in multiple places, gomddoc follows this strict priority order:

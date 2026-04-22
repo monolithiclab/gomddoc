@@ -155,7 +155,7 @@ themes/
 **Static File Serving**
 
 - MIME type detection with appropriate headers
-- Gzip/Brotli compression for text assets
+- ~~Gzip/Brotli compression for text assets~~ Gzip compression: DONE (Phase 4.3)
 - ETags and Last-Modified headers
 - Range request support
 - Security headers: CSP, CORS configuration
