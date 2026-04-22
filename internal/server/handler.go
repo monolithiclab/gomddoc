@@ -4,12 +4,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"path"
 	"strconv"
-	"strings"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -112,7 +107,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 
 	// Default title logic
 	if _, ok := metadata["title"]; !ok {
-		metadata["title"] = deriveTitle(r.URL.Path)
+		metadata["title"] = text.DeriveTitle(r.URL.Path)
 	}
 
 	context := &tmpl.TemplateContext{
@@ -149,26 +144,6 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 			slog.String("request_id", GetRequestID(r.Context())),
 			slog.Any("error", writeErr))
 	}
-}
-
-// deriveTitle derives a title from the file path.
-// Example: "/docs/my-page.md" -> "My Page"
-func deriveTitle(reqPath string) string {
-	base := path.Base(reqPath)
-	if base == "." || base == "/" {
-		return "Home"
-	}
-
-	// Remove extension
-	ext := path.Ext(base)
-	name := strings.TrimSuffix(base, ext)
-
-	// Replace hyphens/underscores with spaces
-	name = strings.ReplaceAll(name, "-", " ")
-	name = strings.ReplaceAll(name, "_", " ")
-
-	// Capitalize Title Case
-	return cases.Title(language.English).String(name)
 }
 
 // serveRaw serves content directly without template wrapping (passthrough).

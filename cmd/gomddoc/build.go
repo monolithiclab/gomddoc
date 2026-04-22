@@ -7,13 +7,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/common"
@@ -22,6 +18,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // BuildCmd holds all flags for the build subcommand.
@@ -176,7 +173,7 @@ func (b *BuildCmd) buildMarkdownFile(
 		metadata = make(map[string]any)
 	}
 	if _, ok := metadata["title"]; !ok {
-		metadata["title"] = buildDeriveTitle("/" + filePath)
+		metadata["title"] = text.DeriveTitle("/" + filePath)
 	}
 
 	templateCtx := &tmpl.TemplateContext{
@@ -249,20 +246,4 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 	}
 
 	return nil
-}
-
-// buildDeriveTitle derives a page title from the request path.
-func buildDeriveTitle(reqPath string) string {
-	base := path.Base(reqPath)
-	if base == "." || base == "/" {
-		return "Home"
-	}
-
-	ext := path.Ext(base)
-	name := strings.TrimSuffix(base, ext)
-
-	name = strings.ReplaceAll(name, "-", " ")
-	name = strings.ReplaceAll(name, "_", " ")
-
-	return cases.Title(language.English).String(name)
 }

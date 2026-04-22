@@ -135,27 +135,6 @@ func TestBuildCmd_CreatesOutputDirectory(t *testing.T) {
 	}
 }
 
-func TestBuildCmd_DerivesTitle(t *testing.T) {
-	tests := []struct {
-		path string
-		want string
-	}{
-		{"/", "Home"},
-		{"/docs/my-page.md", "My Page"},
-		{"/docs/hello_world.md", "Hello World"},
-		{"/README.md", "Readme"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			got := buildDeriveTitle(tt.path)
-			if got != tt.want {
-				t.Errorf("buildDeriveTitle(%q) = %q, want %q", tt.path, got, tt.want)
-			}
-		})
-	}
-}
-
 // writeTestFile creates a file with the given content, creating parent directories as needed.
 func writeTestFile(t *testing.T, dir, name, content string) {
 	t.Helper()

@@ -131,7 +131,7 @@ Extracted from completed spec files before deletion.
 - **Separate rendering pipeline**: Duplicates serve logic, diverges over time
 - **Template-only output** (skip template wrapping, output raw HTML): Simpler but useless without styling
 
-**Why walk-and-render**: Reuses the exact same provider → renderer → template pipeline as `serve.go`. Walks `contentRoot` with `fs.WalkDir`, renders `.md` files through the full pipeline, copies non-markdown files as-is. Generates `index.html` alongside `README.html` for clean URLs. Config reused via `NewFromServeArgs` with dummy port. Trade-off: `deriveTitle()` duplicated from `server/handler.go` (unexported) — acceptable for 10 lines vs adding a shared package.
+**Why walk-and-render**: Reuses the exact same provider → renderer → template pipeline as `serve.go`. Walks `contentRoot` with `fs.WalkDir`, renders `.md` files through the full pipeline, copies non-markdown files as-is. Generates `index.html` alongside `README.html` for clean URLs. Config reused via `NewFromServeArgs` with dummy port. Title derivation uses the shared `text.DeriveTitle` function (extracted to `internal/text/`).
 
 ## Color Chip Web Component
 
