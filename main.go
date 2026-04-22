@@ -65,11 +65,31 @@ func newServeHTTP(config *Config) (http.HandlerFunc, error) {
 
 		md, err := root.ReadFile(filename)
 		if err != nil {
-			slog.Error("Cannot read file", slog.String("filename", filename), slog.Any("error", err))
-			w.WriteHeader(http.StatusInternalServerError)
+			if os.IsNotExist(err) {
+				slog.Info("File not found", slog.String("filename", filename))
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusNotFound)
+				_, writeErr := w.Write([]byte("File not found"))
+				if writeErr != nil {
+					slog.Error("Cannot write 404 response", slog.Any("error", writeErr))
+				}
+			} else {
+				slog.Error("Cannot read file", slog.String("filename", filename), slog.Any("error", err))
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, writeErr := w.Write([]byte("Internal server error"))
+				if writeErr != nil {
+					slog.Error("Cannot write 500 response", slog.Any("error", writeErr))
+				}
+			}
 			return
 		}
+
 		html := mdToHTML(md)
+
+		// Set proper headers before writing response
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=300") // 5 minute cache
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(html)
 		if err != nil {
