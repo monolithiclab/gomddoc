@@ -87,9 +87,9 @@ func TestTemplateContext(t *testing.T) {
 		Site: siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<p>Test content</p>"),
-			Breadcrumbs: map[string]string{
-				"/":     "Home",
-				"/test": "Test",
+			Breadcrumbs: []Breadcrumb{
+				{"/", "Home"},
+				{"/test", "Test"},
 			},
 		},
 	}
@@ -110,12 +110,12 @@ func TestTemplateContext(t *testing.T) {
 		t.Errorf("Expected 2 breadcrumbs, got %d", len(ctx.Page.Breadcrumbs))
 	}
 
-	if ctx.Page.Breadcrumbs["/"] != "Home" {
-		t.Errorf("Expected breadcrumb '/' to be 'Home', got %q", ctx.Page.Breadcrumbs["/"])
+	if ctx.Page.Breadcrumbs[0].Path != "/" || ctx.Page.Breadcrumbs[0].Label != "Home" {
+		t.Errorf("Expected first breadcrumb to be {'/','Home'}, got {%q,%q}", ctx.Page.Breadcrumbs[0].Path, ctx.Page.Breadcrumbs[0].Label)
 	}
 
-	if ctx.Page.Breadcrumbs["/test"] != "Test" {
-		t.Errorf("Expected breadcrumb '/test' to be 'Test', got %q", ctx.Page.Breadcrumbs["/test"])
+	if ctx.Page.Breadcrumbs[1].Path != "/test" || ctx.Page.Breadcrumbs[1].Label != "Test" {
+		t.Errorf("Expected second breadcrumb to be {'/test','Test'}, got {%q,%q}", ctx.Page.Breadcrumbs[1].Path, ctx.Page.Breadcrumbs[1].Label)
 	}
 }
 
@@ -142,8 +142,8 @@ func TestHTMLRendererRender(t *testing.T) {
 		Site: siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<h1>Hello World</h1>"),
-			Breadcrumbs: map[string]string{
-				"/": "Home",
+			Breadcrumbs: []Breadcrumb{
+				{"/", "Home"},
 			},
 		},
 	}
@@ -186,8 +186,8 @@ func TestTemplateCache(t *testing.T) {
 	ctx := &TemplateContext{
 		Site: siteConfig,
 		Page: PageContext{
-			Breadcrumbs: map[string]string{
-				"/": "Home",
+			Breadcrumbs: []Breadcrumb{
+				{"/", "Home"},
 			},
 		},
 	}
@@ -231,8 +231,8 @@ func TestRenderWithContextCancellation(t *testing.T) {
 	ctx := &TemplateContext{
 		Site: siteConfig,
 		Page: PageContext{
-			Breadcrumbs: map[string]string{
-				"/": "Home",
+			Breadcrumbs: []Breadcrumb{
+				{"/", "Home"},
 			},
 		},
 	}
@@ -257,7 +257,7 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 		name     string
 		filePath string
 		fsys     fs.FS
-		expected map[string]string
+		expected []Breadcrumb
 	}{
 		{
 			name:     "root file without leading slash",
@@ -265,9 +265,9 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			fsys: fstest.MapFS{
 				"README.md": {Data: []byte("# Readme")},
 			},
-			expected: map[string]string{
-				"/":          "Home",
-				"/README.md": "Readme",
+			expected: []Breadcrumb{
+				{"/", "Home"},
+				{"/README.md", "Readme"},
 			},
 		},
 		{
@@ -276,11 +276,11 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			fsys: fstest.MapFS{
 				"references/subscription/overview.md": {Data: []byte("# Overview")},
 			},
-			expected: map[string]string{
-				"/":                                    "Home",
-				"/references/":                         "References",
-				"/references/subscription/":            "Subscription",
-				"/references/subscription/overview.md": "Overview",
+			expected: []Breadcrumb{
+				{"/", "Home"},
+				{"/references/", "References"},
+				{"/references/subscription/", "Subscription"},
+				{"/references/subscription/overview.md", "Overview"},
 			},
 		},
 		{
@@ -289,11 +289,11 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			fsys: fstest.MapFS{
 				"docs/guide/setup.md": {Data: []byte("# Setup Guide")},
 			},
-			expected: map[string]string{
-				"/":                    "Home",
-				"/docs/":               "Docs",
-				"/docs/guide/":         "Guide",
-				"/docs/guide/setup.md": "Setup",
+			expected: []Breadcrumb{
+				{"/", "Home"},
+				{"/docs/", "Docs"},
+				{"/docs/guide/", "Guide"},
+				{"/docs/guide/setup.md", "Setup"},
 			},
 		},
 		{
@@ -302,11 +302,11 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			fsys: fstest.MapFS{
 				"howtos/core/test.md": {Data: []byte("# Test Instructions")},
 			},
-			expected: map[string]string{
-				"/":                    "Home",
-				"/howtos/":             "Howtos",
-				"/howtos/core/":        "Core",
-				"/howtos/core/test.md": "Test",
+			expected: []Breadcrumb{
+				{"/", "Home"},
+				{"/howtos/", "Howtos"},
+				{"/howtos/core/", "Core"},
+				{"/howtos/core/test.md", "Test"},
 			},
 		},
 		{
@@ -315,10 +315,10 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			fsys: fstest.MapFS{
 				"howtos/core/README.md": {Data: []byte("# Core Documentation")},
 			},
-			expected: map[string]string{
-				"/":             "Home",
-				"/howtos/":      "Howtos",
-				"/howtos/core/": "Core",
+			expected: []Breadcrumb{
+				{"/", "Home"},
+				{"/howtos/", "Howtos"},
+				{"/howtos/core/", "Core"},
 			},
 		},
 		{
@@ -327,34 +327,34 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			fsys: fstest.MapFS{
 				"howtos/core/index.md": {Data: []byte("# Core Index")},
 			},
-			expected: map[string]string{
-				"/":             "Home",
-				"/howtos/":      "Howtos",
-				"/howtos/core/": "Core",
+			expected: []Breadcrumb{
+				{"/", "Home"},
+				{"/howtos/", "Howtos"},
+				{"/howtos/core/", "Core"},
 			},
 		},
 		{
 			name:     "empty path edge case",
 			filePath: "",
 			fsys:     fstest.MapFS{},
-			expected: map[string]string{
-				"/": "Home",
+			expected: []Breadcrumb{
+				{"/", "Home"},
 			},
 		},
 		{
 			name:     "root directory with trailing slash",
 			filePath: "/",
 			fsys:     fstest.MapFS{},
-			expected: map[string]string{
-				"/": "Home",
+			expected: []Breadcrumb{
+				{"/", "Home"},
 			},
 		},
 		{
 			name:     "excessively long path (DoS protection)",
 			filePath: "/" + strings.Repeat("a/", 1100) + "file.md", // ~3300 chars before clean, exceeds 2048 limit
 			fsys:     fstest.MapFS{},
-			expected: map[string]string{
-				"/": "Home", // Should only return root breadcrumb
+			expected: []Breadcrumb{
+				{"/", "Home"}, // Should only return root breadcrumb
 			},
 		},
 	}
@@ -371,11 +371,12 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 				return
 			}
 
-			for expectedPath, expectedName := range tt.expected {
-				if actualName, exists := result[expectedPath]; !exists {
-					t.Errorf("Expected breadcrumb path %q not found", expectedPath)
-				} else if actualName != expectedName {
-					t.Errorf("For path %q, expected name %q, got %q", expectedPath, expectedName, actualName)
+			for i, expected := range tt.expected {
+				if result[i].Path != expected.Path {
+					t.Errorf("Breadcrumb %d: expected path %q, got %q", i, expected.Path, result[i].Path)
+				}
+				if result[i].Label != expected.Label {
+					t.Errorf("Breadcrumb %d: expected label %q, got %q", i, expected.Label, result[i].Label)
 				}
 			}
 		})

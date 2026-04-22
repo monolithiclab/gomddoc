@@ -34,8 +34,8 @@
             {{- if gt (len .Page.Breadcrumbs) 1 }}
             <nav aria-label="breadcrumb">
                 <ul>
-                    {{- range $path, $name := .Page.Breadcrumbs }}
-                    <li><a href="{{ $path }}">{{ $name }}</a></li>
+                    {{- range .Page.Breadcrumbs }}
+                    <li><a href="{{ .Path }}">{{ .Label }}</a></li>
                     {{- end }}
                 </ul>
             </nav>

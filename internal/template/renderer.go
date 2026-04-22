@@ -32,9 +32,15 @@ type TemplateContext struct {
 	Page PageContext
 }
 
+// Breadcrumb represents a single breadcrumb item in the navigation trail
+type Breadcrumb struct {
+	Path  string // URL path for the breadcrumb link
+	Label string // Display label for the breadcrumb
+}
+
 type PageContext struct {
 	Content     template.HTML
-	Breadcrumbs map[string]string
+	Breadcrumbs []Breadcrumb // Ordered slice of breadcrumbs
 }
 
 const (
@@ -52,18 +58,21 @@ var bufferPool = sync.Pool{
 }
 
 // GenerateBreadcrumbs creates breadcrumb navigation from a file path using provider to determine file vs directory
-// Returns a map where keys are URL paths and values are capitalized display names
+// Returns an ordered slice of breadcrumb items with path and label
 // Directories get trailing slashes in URLs, files don't
-// Example: "/howtos/core/test.md" → {"/": "Home", "/howtos/": "Howtos", "/howtos/core/": "Core", "/howtos/core/test.md": "Test"}
-func GenerateBreadcrumbs(p provider.Provider, filepath string) map[string]string {
+// Example: "/howtos/core/test.md" → [{"/", "Home"}, {"/howtos/", "Howtos"}, {"/howtos/core/", "Core"}, {"/howtos/core/test.md", "Test"}]
+func GenerateBreadcrumbs(p provider.Provider, filepath string) []Breadcrumb {
 	const (
 		initialCapacity = 8
 		maxPathLength   = 2048
 	)
-	breadcrumbs := make(map[string]string, initialCapacity) // Pre-allocate with reasonable capacity
+	breadcrumbs := make([]Breadcrumb, 0, initialCapacity) // Pre-allocate with reasonable capacity
 
 	// Always include root
-	breadcrumbs[HomePath] = HomeLabel
+	breadcrumbs = append(breadcrumbs, Breadcrumb{
+		Path:  HomePath,
+		Label: HomeLabel,
+	})
 
 	if len(filepath) > maxPathLength {
 		slog.Warn("url path too long, skipping breadcrumbs")
@@ -110,7 +119,10 @@ func GenerateBreadcrumbs(p provider.Provider, filepath string) map[string]string
 			currentPath += "/"
 		}
 
-		breadcrumbs[currentPath] = titleCase(basename(segment))
+		breadcrumbs = append(breadcrumbs, Breadcrumb{
+			Path:  currentPath,
+			Label: titleCase(basename(segment)),
+		})
 	}
 
 	return breadcrumbs
