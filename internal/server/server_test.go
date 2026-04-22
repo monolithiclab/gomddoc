@@ -6,13 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/template"
 )
 
@@ -237,6 +240,159 @@ func TestPprofEndpoints(t *testing.T) {
 
 			if w.Code != tt.wantStatus {
 				t.Errorf("GET /debug/pprof/ status = %d, want %d", w.Code, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestHTTPServer_AuthProtectsAllEndpoints(t *testing.T) {
+	t.Parallel()
+
+	store, err := ParseHTPasswd(strings.NewReader("admin:" + mustHash(t, "secret")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testFS := fstest.MapFS{
+		"README.md": {Data: []byte("---\ntitle: Test\ntags: [go]\n---\n# Test")},
+	}
+	idx, err := metadata.BuildIndex(context.Background(), testFS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchIdx, err := search.BuildIndex(context.Background(), testFS, idx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Port:  ":8080",
+			Dir:   ".",
+			Pprof: true,
+			HTTP: config.HTTPConfig{
+				ShutdownTimeout:   1 * time.Second,
+				ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+				WriteTimeout:      config.DefaultWriteTimeout,
+				IdleTimeout:       config.DefaultIdleTimeout,
+				MaxHeaderMB:       config.DefaultMaxHeaderMB,
+			},
+		},
+		Site: config.NewSiteConfig("."),
+	}
+	cfg.Site.Meta.Domain = "example.com"
+
+	staticFS := fstest.MapFS{
+		"style.css": {Data: []byte("body{}")},
+	}
+
+	srv := NewHTTPServer(HTTPServerConfig{
+		Config:           cfg,
+		Provider:         newMemoryProvider(fstest.MapFS{}, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		MetaIndex:        idx,
+		SearchIndex:      searchIdx,
+		StaticFS:         staticFS,
+		AuthStore:        store,
+	})
+
+	// All these endpoints should require auth
+	protectedPaths := []string{
+		"/",
+		"/api/search?q=test",
+		"/api/tags",
+		"/debug/pprof/",
+		"/metrics",
+		"/sitemap.xml",
+	}
+
+	for _, path := range protectedPaths {
+		t.Run("unauthenticated"+path, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+			srv.server.Handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("GET %s without auth: status = %d, want %d", path, w.Code, http.StatusUnauthorized)
+			}
+		})
+
+		t.Run("authenticated "+path, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.SetBasicAuth("admin", "secret")
+			w := httptest.NewRecorder()
+			srv.server.Handler.ServeHTTP(w, req)
+
+			if w.Code == http.StatusUnauthorized {
+				t.Errorf("GET %s with valid auth: got 401, want non-401", path)
+			}
+		})
+	}
+
+	// Unprotected endpoints should NOT require auth
+	unprotectedPaths := []string{
+		"/_assets/style.css",
+		"/health/live",
+		"/health/ready",
+		"/robots.txt",
+	}
+	for _, path := range unprotectedPaths {
+		t.Run("unauthenticated "+path, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+			srv.server.Handler.ServeHTTP(w, req)
+
+			if w.Code == http.StatusUnauthorized {
+				t.Errorf("GET %s without auth: got 401, health should not require auth", path)
+			}
+		})
+	}
+}
+
+func TestHTTPServer_SecurityHeadersOnAllRoutes(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Port: ":8080",
+			Dir:  ".",
+			HTTP: config.HTTPConfig{
+				ShutdownTimeout:   1 * time.Second,
+				ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+				WriteTimeout:      config.DefaultWriteTimeout,
+				IdleTimeout:       config.DefaultIdleTimeout,
+				MaxHeaderMB:       config.DefaultMaxHeaderMB,
+			},
+		},
+		Site: config.NewSiteConfig("."),
+	}
+
+	srv := NewHTTPServer(HTTPServerConfig{
+		Config:           cfg,
+		Provider:         newMemoryProvider(fstest.MapFS{}, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+	})
+
+	paths := []string{"/", "/health/live", "/health/ready", "/metrics"}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+			srv.server.Handler.ServeHTTP(w, req)
+
+			if h := w.Header().Get("X-Content-Type-Options"); h != "nosniff" {
+				t.Errorf("GET %s: X-Content-Type-Options = %q, want %q", path, h, "nosniff")
+			}
+			if h := w.Header().Get("X-Frame-Options"); h != "DENY" {
+				t.Errorf("GET %s: X-Frame-Options = %q, want %q", path, h, "DENY")
 			}
 		})
 	}

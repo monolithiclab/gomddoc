@@ -91,10 +91,10 @@ func TestBlockHiddenPaths_HiddenFiles(t *testing.T) {
 	}
 }
 
-func TestMethodFilter(t *testing.T) {
+func TestNewMethodFilterMiddleware(t *testing.T) {
 	t.Parallel()
 
-	handler := MethodFilter(http.MethodGet, http.MethodHead)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := NewMethodFilterMiddleware(http.MethodGet, http.MethodHead)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}))
@@ -134,7 +134,7 @@ func TestMethodFilter(t *testing.T) {
 	}
 }
 
-func TestBasicAuth(t *testing.T) {
+func TestNewBasicAuthMiddleware(t *testing.T) {
 	t.Parallel()
 
 	store, err := ParseHTPasswd(strings.NewReader("admin:" + mustHash(t, "secret")))
@@ -142,7 +142,7 @@ func TestBasicAuth(t *testing.T) {
 		t.Fatalf("failed to create credential store: %v", err)
 	}
 
-	handler := BasicAuth(store, "test")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := NewBasicAuthMiddleware(store, "test")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}))
@@ -192,7 +192,7 @@ func TestBasicAuth(t *testing.T) {
 	}
 }
 
-func TestBasicAuth_MultipleUsers(t *testing.T) {
+func TestNewBasicAuthMiddleware_MultipleUsers(t *testing.T) {
 	t.Parallel()
 
 	input := strings.NewReader("admin:" + mustHash(t, "adminpass") + "\nviewer:" + mustHash(t, "viewerpass"))
@@ -201,7 +201,7 @@ func TestBasicAuth_MultipleUsers(t *testing.T) {
 		t.Fatalf("failed to parse htpasswd: %v", err)
 	}
 
-	handler := BasicAuth(store, "test")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := NewBasicAuthMiddleware(store, "test")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

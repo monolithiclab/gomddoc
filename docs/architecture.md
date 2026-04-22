@@ -280,14 +280,34 @@ File processing is parallelized with an `errgroup` worker pool bounded by `runti
 
 ### 10. Middleware Chain
 
-**Order (outermost to innermost):**
+Middleware is applied in two layers using `RouteGroup` for structured route registration:
+
+**Shared middleware (applied to all routes via mux wrapper):**
 
 1. **SecurityHeaders** — Sets X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS
 2. **RequestID** — Assigns unique request ID for tracing
-3. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception)
-4. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
-5. **BlockHiddenPaths** — Returns 404 for dot-prefixed path segments (except `.well-known` per RFC 8615)
-6. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
+
+**Auth group middleware (applied to authenticated routes via RouteGroup):**
+
+3. **BasicAuth** — HTTP Basic Authentication via htpasswd file (when configured)
+
+**Content-specific middleware (applied to content handler via Subgroup):**
+
+4. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception)
+5. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
+6. **BlockHiddenPaths** — Returns 404 for dot-prefixed path segments (except `.well-known` per RFC 8615)
+7. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
+
+**Route groups:**
+
+| Group | Prefix | Middleware | Routes |
+|-------|--------|-----------|--------|
+| health | `/health` | _(none)_ | `/live`, `/ready` |
+| _(mux direct)_ | | _(none)_ | `/robots.txt`, `/_assets/*` |
+| auth | | BasicAuth (if configured) | `/metrics`, `/sitemap.xml` |
+| auth → api | `/api` | _(inherits auth)_ | `/tags`, `/tags/{tag}`, `/search` |
+| auth → debug | `/debug/pprof` | _(inherits auth)_ | `/`, `/cmdline`, `/profile`, `/symbol`, `/trace` |
+| auth → content | | Compression, MethodFilter, BlockHiddenPaths, Metrics | `/` (catch-all) |
 
 ### 11. Theme System
 
@@ -461,7 +481,8 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 - **Path traversal**: `os.DirFS()` jails file access
 - **Hidden files**: Middleware blocks dot-prefixed paths (except `.well-known`)
 - **Method filtering**: Only GET and HEAD allowed (405 for others)
-- **Security headers**: nosniff, DENY framing, referrer policy, permissions policy, HSTS
+- **Security headers**: nosniff, DENY framing, referrer policy, permissions policy, HSTS — applied to all routes
+- **Authentication**: BasicAuth via RouteGroup on all sensitive endpoints (API, metrics, pprof, sitemap, content). Health and public assets are unauthenticated.
 - **Git SSH**: Host key verification via known_hosts (fail closed, no TOFU)
 - **Clone timeout**: Enforced via `context.WithTimeout` (default 60s)
 - **File size limits**: Git provider enforces 50MB max (configurable)

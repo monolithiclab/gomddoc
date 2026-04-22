@@ -217,7 +217,7 @@ Extracted from completed spec files before deletion.
 - **Always-on pprof on separate port**: Avoids accidental production exposure but adds port management complexity
 - **Build tag (`-tags pprof`)**: Zero overhead when disabled but complicates the build process
 
-**Why CLI flag**: Simplest approach. Disabled by default, logs `slog.Warn` when enabled. Routes registered directly on the mux (bypass content middleware, like `/health/` and `/metrics`). Config flows through `ServerConfig.Pprof` and is overridable via `GOMDDOC_SERVER_PPROF` env var.
+**Why CLI flag**: Simplest approach. Disabled by default, logs `slog.Warn` when enabled. Routes registered via the auth `RouteGroup` — protected by BasicAuth when configured. Config flows through `ServerConfig.Pprof` and is overridable via `GOMDDOC_SERVER_PPROF` env var.
 
 ## Pre-Launch SEO (Phase 9a)
 

@@ -51,66 +51,79 @@ type HTTPServerConfig struct {
 // NewHTTPServer creates a new HTTP server with the given dependencies.
 func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	cfg := opts.Config
-	handler := NewHandler(opts.Provider, opts.Registry, opts.EnricherRegistry, opts.TemplateRenderer, &cfg.Site, opts.RedirectFinder)
-
-	// Apply middleware chain (outermost first, innermost closest to handler)
-	var h http.Handler = http.HandlerFunc(handler.ServeContent)
-	h = Metrics(h)                                       // Innermost: measure actual handler time
-	h = BlockHiddenPaths(h)                              // Block all hidden files/directories
-	h = MethodFilter(http.MethodGet, http.MethodHead)(h) // Only allow GET and HEAD
-	h = Compression(h)                                   // Gzip responses >= 1KB when client accepts
-	if opts.AuthStore != nil {
-		h = BasicAuth(opts.AuthStore, "gomddoc")(h)
-	}
-	h = RequestID(h)       // Assign unique request ID for tracing
-	h = SecurityHeaders(h) // Must be outermost so headers are set first
-
-	// Health and metrics endpoints bypass content middleware
-	healthHandler := NewHealthHandler(opts.Provider)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health/live", healthHandler.LiveHandler)
-	mux.HandleFunc("GET /health/ready", healthHandler.ReadyHandler)
-	mux.Handle("/metrics", promhttp.Handler())
 
-	if opts.MetaIndex != nil {
-		metaHandler := NewMetadataHandler(opts.MetaIndex)
-		mux.HandleFunc("GET /api/tags", metaHandler.TagsHandler)
-		mux.HandleFunc("GET /api/tags/{tag}", metaHandler.TagPagesHandler)
-	}
+	// Health endpoints are unauthenticated (load balancer probes)
+	healthHandler := NewHealthHandler(opts.Provider)
+	healthGroup := NewGroup(mux, "/health")
+	healthGroup.HandleFunc("GET /live", healthHandler.LiveHandler)
+	healthGroup.HandleFunc("GET /ready", healthHandler.ReadyHandler)
 
-	if opts.SearchIndex != nil {
-		searchHandler := NewSearchHandler(opts.SearchIndex)
-		mux.HandleFunc("GET /api/search", searchHandler.SearchEndpoint)
-	}
-
+	// Robots handler is unauthenticated
 	robotsHandler := NewRobotsHandler(cfg.Site.Meta.Domain)
 	mux.Handle("GET /robots.txt", robotsHandler)
 
-	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex)
-		mux.Handle("GET /sitemap.xml", sitemapHandler)
-	}
-
+	// Assets handler is unauthenticated
 	if opts.StaticFS != nil {
 		assetsHandler := NewAssetsHandler(opts.StaticFS)
 		mux.Handle("GET /_assets/", http.StripPrefix("/_assets/", assetsHandler))
 	}
 
-	if cfg.Server.Pprof {
-		slog.Warn("pprof profiling enabled — do not use in production")
-		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
-		mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+	// All other endpoints require auth when configured
+	auth := NewGroup(mux, "")
+	if opts.AuthStore != nil {
+		auth = NewGroup(mux, "", NewBasicAuthMiddleware(opts.AuthStore, "gomddoc"))
 	}
 
-	mux.Handle("/", h)
+	auth.Handle("/metrics", promhttp.Handler())
+
+	// API sub-group
+	api := auth.Subgroup("/api")
+	if opts.MetaIndex != nil {
+		metaHandler := NewMetadataHandler(opts.MetaIndex)
+		api.HandleFunc("GET /tags", metaHandler.TagsHandler)
+		api.HandleFunc("GET /tags/{tag}", metaHandler.TagPagesHandler)
+	}
+	if opts.SearchIndex != nil {
+		searchHandler := NewSearchHandler(opts.SearchIndex)
+		api.HandleFunc("GET /search", searchHandler.SearchEndpoint)
+	}
+
+	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
+		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex)
+		auth.Handle("GET /sitemap.xml", sitemapHandler)
+	}
+
+	if cfg.Server.Pprof {
+		slog.Warn("pprof profiling enabled — do not use in production")
+		debug := auth.Subgroup("/debug/pprof")
+		debug.HandleFunc("GET /", pprof.Index)
+		debug.HandleFunc("GET /cmdline", pprof.Cmdline)
+		debug.HandleFunc("GET /profile", pprof.Profile)
+		debug.HandleFunc("GET /symbol", pprof.Symbol)
+		debug.HandleFunc("GET /trace", pprof.Trace)
+	}
+
+	handler := NewHandler(opts.Provider, opts.Registry, opts.EnricherRegistry, opts.TemplateRenderer, &cfg.Site, opts.RedirectFinder)
+
+	// Content handler with content-specific middleware (outermost first)
+	content := auth.Subgroup("",
+		Compression, // Gzip responses >= 1KB when client accepts
+		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead), // Only allow GET and HEAD
+		BlockHiddenPaths, // Block all hidden files/directories
+		Metrics,          // Innermost: measure actual handler time
+	)
+	content.HandleFunc("/", handler.ServeContent)
+
+	// Shared middleware: all routes get security headers and request IDs
+	var root http.Handler = mux
+	root = RequestID(root)
+	root = SecurityHeaders(root)
 
 	server := &http.Server{
 		Addr:              cfg.Server.Port,
-		Handler:           mux,
+		Handler:           root,
 		ReadHeaderTimeout: cfg.Server.HTTP.ReadHeaderTimeout,
 		WriteTimeout:      cfg.Server.HTTP.WriteTimeout,
 		IdleTimeout:       cfg.Server.HTTP.IdleTimeout,
