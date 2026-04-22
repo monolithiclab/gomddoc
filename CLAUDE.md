@@ -23,10 +23,12 @@ It's a **Go application** with clean architecture that:
 ### Running the Application
 
 ```bash
-make run                           # Run locally (go run ./cmd/gomddoc)
-go run ./cmd/gomddoc -d /path      # Run with custom directory
-go run ./cmd/gomddoc -p :9000      # Run on custom port
-./build/gomddoc                    # Run built binary
+make run                                  # Run locally (go run ./cmd/gomddoc serve)
+go run ./cmd/gomddoc serve -d /path       # Run with custom directory
+go run ./cmd/gomddoc serve -p :9000       # Run on custom port
+./build/gomddoc serve                     # Run built binary
+./build/gomddoc serve --help              # Show all flags and environment variables
+./build/gomddoc --version                 # Show version
 ```
 
 ### Testing and Quality
@@ -52,9 +54,9 @@ make clean                  # Remove build artifacts and coverage files
 
 ```
 gomddoc/
-├── cmd/gomddoc/           # CLI entry point and main()
+├── cmd/gomddoc/           # CLI entry point (Kong), serve subcommand
 ├── internal/
-│   ├── config/           # Configuration management (ServerConfig, SiteConfig)
+│   ├── config/           # Configuration (NewFromServeArgs, validation, YAML, env overrides)
 │   ├── provider/         # Content providers (filesystem with MIME detection)
 │   ├── renderer/         # Content renderers (markdown, passthrough, custom)
 │   ├── template/         # Template rendering and caching
@@ -70,6 +72,7 @@ gomddoc/
 - **HTTP server**: Standard library HTTP server with graceful shutdown
 - **File serving**: Uses `os.DirFS()` for secure file access within specified directory
 - **Security**: Path traversal protection, hidden file blocking, secure defaults
+- **CLI**: Kong-based subcommand architecture (`gomddoc serve`), version injection via ldflags
 - **Configuration**: CLI flags, environment variables, YAML config file support
 - **Testing**: Comprehensive test suite with integration tests (78.9% coverage)
 - **HTTP Compliance**: Proper status codes, Content-Type, Cache-Control, Content-Length headers
@@ -77,6 +80,7 @@ gomddoc/
 
 ## Key Dependencies
 
+- `github.com/alecthomas/kong`: CLI subcommand parsing with struct tags
 - `github.com/yuin/goldmark`: Markdown parsing and HTML rendering
 - `golang.org/x/sync/errgroup`: Graceful shutdown coordination
 

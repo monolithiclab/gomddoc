@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -95,32 +94,30 @@ type HighlightConfig struct {
 	Theme string `env:"THEME" yaml:"theme"`
 }
 
-// Load initializes and returns the full configuration.
-// It loads defaults, environment variables, command-line flags, and config files in the correct order.
-func Load() (*Config, error) {
+// NewFromServeArgs creates a fully initialized Config from serve command arguments.
+// Kong has already resolved flags > env vars > defaults for server-level settings.
+// This function handles: build Config -> ComputeDynamicDefaults -> LoadFromFile -> ApplyEnvOverrides (site) -> Validate.
+func NewFromServeArgs(dir, port string, devMode bool, gitSSHKey string) (*Config, error) {
 	cfg := New()
 
-	// 1. Load from Environment (Pre-flag)
-	cfg.ApplyEnvOverrides()
+	// 1. Apply serve command args (already resolved by Kong: flags > env > defaults)
+	cfg.Server.Dir = dir
+	cfg.Server.Port = port
+	cfg.Server.DevMode = devMode
+	cfg.Server.GitSSHKey = gitSSHKey
 
-	// 2. Load from Flags
-	// Only parse flags if they haven't been parsed yet (to support testing or multiple calls safe-guard)
-	if !flag.Parsed() {
-		cfg.ParseFlags()
-	}
-
-	// 3. Compute derived defaults (like Title from Dir)
+	// 2. Compute derived defaults (like Title from Dir)
 	cfg.ComputeDynamicDefaults()
 
-	// 4. Load from File
+	// 3. Load from File (.gomddoc/config.yml)
 	if err := cfg.Site.LoadFromFile(cfg.Server.Dir); err != nil {
 		return nil, fmt.Errorf("load config file: %w", err)
 	}
 
-	// 5. Re-apply Environment (Post-file) to ensure Env > File
-	cfg.ApplyEnvOverrides()
+	// 4. Re-apply environment overrides for site-level settings (env > file)
+	cfg.Site.ApplyEnvOverrides()
 
-	// 6. Validate
+	// 5. Validate
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -211,19 +208,6 @@ func (c *Config) ApplyEnvOverrides() {
 // correct prefix GOMDDOC_SITE (useful for standalone usage or testing).
 func (sc *SiteConfig) ApplyEnvOverrides() {
 	applyEnvOverridesWithPrefix(sc, "GOMDDOC_SITE")
-}
-
-// ParseFlags parses command line flags and updates the configuration
-// Flags override everything else.
-func (c *Config) ParseFlags() {
-	if flag.Parsed() {
-		return
-	}
-	flag.StringVar(&c.Server.Dir, "d", c.Server.Dir, "Markdown directory")
-	flag.StringVar(&c.Server.Port, "p", c.Server.Port, "HTTP port")
-	flag.BoolVar(&c.Server.DevMode, "dev", c.Server.DevMode, "Enable development mode")
-	flag.StringVar(&c.Server.GitSSHKey, "git-key-file", c.Server.GitSSHKey, "Path to SSH private key file")
-	flag.Parse()
 }
 
 // ComputeDynamicDefaults calculates defaults that depend on other values
@@ -357,6 +341,61 @@ func (c *Config) validateServer() error {
 // MaxHeaderBytes returns the maximum header size in bytes.
 func (c *Config) MaxHeaderBytes() int {
 	return c.Server.HTTP.MaxHeaderMB << 20
+}
+
+// EnvVar describes an available environment variable.
+type EnvVar struct {
+	Name         string
+	Type         string
+	DefaultValue string
+}
+
+// EnvVars returns all environment variables recognized by the config system.
+func EnvVars() []EnvVar {
+	cfg := New()
+	var vars []EnvVar
+	collectEnvVars(reflect.ValueOf(cfg).Elem(), reflect.TypeOf(cfg).Elem(), "GOMDDOC", &vars)
+	return vars
+}
+
+// collectEnvVars recursively walks a struct and collects env var metadata.
+func collectEnvVars(v reflect.Value, t reflect.Type, prefix string, vars *[]EnvVar) {
+	for i := range t.NumField() {
+		field := v.Field(i)
+		fieldType := t.Field(i)
+
+		if !field.CanSet() {
+			continue
+		}
+
+		envTag := fieldType.Tag.Get("env")
+
+		kind := field.Kind()
+		if kind == reflect.Struct {
+			newPrefix := prefix
+			if envTag != "" {
+				newPrefix = prefix + "_" + envTag
+			}
+			collectEnvVars(field, field.Type(), newPrefix, vars)
+			continue
+		}
+
+		if envTag == "" {
+			continue
+		}
+
+		envVarName := prefix + "_" + envTag
+		typeName := field.Type().String()
+		if field.Type() == reflect.TypeFor[time.Duration]() {
+			typeName = "duration"
+		}
+
+		*vars = append(*vars, EnvVar{
+			Name:         envVarName,
+			Type:         typeName,
+			DefaultValue: fmt.Sprintf("%v", field.Interface()),
+		})
+	}
 }
 
 // applyEnvOverridesWithPrefix applies env overrides to any struct with env tags

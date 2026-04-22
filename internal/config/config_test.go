@@ -55,25 +55,6 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestParseFlags(t *testing.T) {
-	// Save original args to restore later
-	oldArgs := os.Args
-	defer func() { os.Args = oldArgs }()
-
-	// Test default values
-	os.Args = []string{"cmd"}
-	config := New()
-	config.ParseFlags()
-
-	if config.Server.Dir != "." {
-		t.Errorf("Expected default dir '.', got %q", config.Server.Dir)
-	}
-
-	if config.Server.Port != ":8080" {
-		t.Errorf("Expected default port ':8080', got %q", config.Server.Port)
-	}
-}
-
 func TestValidate(t *testing.T) {
 	config := New()
 	err := config.Validate()
@@ -710,6 +691,45 @@ theme:
 				t.Errorf("Theme.Name = %q, want %q", sc.Theme.Name, tt.wantTheme)
 			}
 		})
+	}
+}
+
+func TestEnvVars(t *testing.T) {
+	t.Parallel()
+
+	vars := EnvVars()
+	if len(vars) == 0 {
+		t.Fatal("EnvVars() returned empty slice")
+	}
+
+	// Build a set for lookup
+	names := make(map[string]bool)
+	for _, v := range vars {
+		names[v.Name] = true
+	}
+
+	required := []string{
+		"GOMDDOC_SERVER_PORT",
+		"GOMDDOC_SERVER_DIR",
+		"GOMDDOC_SERVER_DEV_MODE",
+		"GOMDDOC_SITE_META_TITLE",
+		"GOMDDOC_SITE_THEME_NAME",
+		"GOMDDOC_SITE_HIGHLIGHTING_THEME",
+	}
+	for _, name := range required {
+		if !names[name] {
+			t.Errorf("Expected env var %q in EnvVars() output", name)
+		}
+	}
+
+	// Verify each var has non-empty Name and Type
+	for _, v := range vars {
+		if v.Name == "" {
+			t.Error("EnvVar has empty Name")
+		}
+		if v.Type == "" {
+			t.Errorf("EnvVar %q has empty Type", v.Name)
+		}
 	}
 }
 

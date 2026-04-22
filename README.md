@@ -32,26 +32,29 @@ make run
 
 ```bash
 # Serve current directory on default port 8080
-./build/gomddoc
+./build/gomddoc serve
 
 # Serve specific directory
-./build/gomddoc -d /path/to/docs
+./build/gomddoc serve -d /path/to/docs
 
 # Use custom port
-./build/gomddoc -p :9000
+./build/gomddoc serve -p :9000
 
 # Enable directory listing (disabled by default for security)
-GOMDDOC_SERVER_DIR_INDEX=true ./build/gomddoc
+GOMDDOC_SERVER_DIR_INDEX=true ./build/gomddoc serve
 
 # Combine options
-./build/gomddoc -d ./docs -p :3000
+./build/gomddoc serve -d ./docs -p :3000
+
+# Show version
+./build/gomddoc --version
 ```
 
 ### Examples
 
 ```bash
 # Start server
-$ ./build/gomddoc
+$ ./build/gomddoc serve
 2025/10/06 13:00:00 INFO Listening... Addr=:8080
 
 # Access different content types
@@ -80,43 +83,57 @@ Gomddoc serves all content types with intelligent rendering:
 **Directory Handling:**
 
 - First tries to serve `README.md` from the directory
-- If `README.md` not found and `GOMDDOC_SERVER_DIR_INDEX=false` (default): Returns 403 Forbidden
-- If `README.md` not found and `GOMDDOC_SERVER_DIR_INDEX=true`: Generates markdown directory listing
+- If `README.md` not found and `GOMDDOC_SITE_DIR_INDEX=false` (default): Returns 403 Forbidden
+- If `README.md` not found and `GOMDDOC_SITE_DIR_INDEX=true`: Generates markdown directory listing
 
 ## Configuration
 
 ### Command Line Flags
 
-| Flag | Default | Description                         |
-| ---- | ------- | ----------------------------------- |
-| `-d` | `.`     | Directory to serve files from       |
-| `-p` | `:8080` | Port to listen on (format: `:8080`) |
+```bash
+gomddoc serve [flags]
+```
+
+| Flag               | Default | Env Var                    | Description                          |
+| ------------------ | ------- | -------------------------- | ------------------------------------ |
+| `-d`, `--dir`      | `.`     | `GOMDDOC_SERVER_DIR`       | Markdown directory or Git URL        |
+| `-p`, `--port`     | `:8080` | `GOMDDOC_SERVER_PORT`      | HTTP listen address (host:port)      |
+| `--dev`            | `false` | `GOMDDOC_SERVER_DEV_MODE`  | Enable development mode              |
+| `--git-key-file`   |         | `GOMDDOC_SERVER_GIT_SSH_KEY` | Path to SSH private key file       |
+| `--version`        |         |                            | Show version and exit                |
 
 ### Environment Variables
 
-| Variable                       | Default     | Description                              |
-| ------------------------------ | ----------- | ---------------------------------------- |
-| `GOMDDOC_DIR`                  | `.`         | Directory to serve (same as `-d`)        |
-| `GOMDDOC_PORT`                 | `:8080`     | Port to listen on (same as `-p`)         |
-| `GOMDDOC_SERVER_DEFAULT_INDEX` | `README.md` | Default file to serve for directories    |
-| `GOMDDOC_SERVER_DIR_INDEX`     | `false`     | Enable directory listing generation      |
-| `GOMDDOC_DEV_MODE`             | `false`     | Disable template caching for development |
-| `GOMDDOC_SHUTDOWN_TIMEOUT`     | `1s`        | Graceful shutdown timeout                |
+All environment variables can be listed with `gomddoc serve --help`.
 
-**Site Configuration** (overrides `.gomddoc/config.yml`):
+**Server settings:**
 
-| Variable                   | Default        | Description                    |
-| -------------------------- | -------------- | ------------------------------ |
-| `GOMDDOC_META_TITLE`       | Directory name | Site title                     |
-| `GOMDDOC_META_DESCRIPTION` | `""`           | Site description               |
-| `GOMDDOC_META_DOMAIN`      | `""`           | Site domain (without protocol) |
-| `GOMDDOC_THEME_NAME`       | `default`      | Theme name                     |
+| Variable                                  | Type     | Default     | Description                            |
+| ----------------------------------------- | -------- | ----------- | -------------------------------------- |
+| `GOMDDOC_SERVER_DIR`                      | string   | `.`         | Markdown directory or Git URL          |
+| `GOMDDOC_SERVER_PORT`                     | string   | `:8080`     | HTTP listen address (host:port)        |
+| `GOMDDOC_SERVER_DEV_MODE`                 | bool     | `false`     | Enable development mode                |
+| `GOMDDOC_SERVER_GIT_SSH_KEY`              | string   |             | Path to SSH private key file           |
+| `GOMDDOC_SERVER_HTTP_SHUTDOWN_TIMEOUT`    | duration | `1s`        | Graceful shutdown timeout              |
+| `GOMDDOC_SERVER_HTTP_READ_HEADER_TIMEOUT` | duration | `5s`        | HTTP read header timeout               |
+| `GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT`       | duration | `30s`       | HTTP write timeout                     |
+| `GOMDDOC_SERVER_HTTP_IDLE_TIMEOUT`        | duration | `2m`        | HTTP idle timeout                      |
+| `GOMDDOC_SERVER_HTTP_MAX_HEADER_MB`       | int      | `1`         | Maximum header size in MB              |
 
-**Note**: All environment variables are prefixed with `GOMDDOC_`. Nested configuration fields use hierarchical prefixes:
+**Site settings** (also configurable via `.gomddoc/config.yml`):
 
-- `ServerConfig` fields: `GOMDDOC_SERVER_*`
-- `SiteConfig.Meta` fields: `GOMDDOC_META_*`
-- `SiteConfig.Theme` fields: `GOMDDOC_THEME_*`
+| Variable                        | Type   | Default      | Description                    |
+| ------------------------------- | ------ | ------------ | ------------------------------ |
+| `GOMDDOC_SITE_DEFAULT_INDEX`    | string | `README.md`  | Default file for directories   |
+| `GOMDDOC_SITE_DIR_INDEX`        | bool   | `false`      | Enable directory listing       |
+| `GOMDDOC_SITE_EDIT_URL`         | string |              | Edit URL template              |
+| `GOMDDOC_SITE_META_TITLE`       | string | Dir name     | Site title                     |
+| `GOMDDOC_SITE_META_DESCRIPTION` | string |              | Site description               |
+| `GOMDDOC_SITE_META_DOMAIN`      | string |              | Site domain (without protocol) |
+| `GOMDDOC_SITE_THEME_NAME`       | string | `default`    | Theme name                     |
+| `GOMDDOC_SITE_HIGHLIGHTING_THEME` | string | `github`   | Syntax highlighting theme      |
+
+**Note**: All environment variables use hierarchical prefixes: `GOMDDOC_SERVER_*` for server settings, `GOMDDOC_SITE_*` for site settings. Environment variables take precedence over config file values.
 
 ### Configuration File
 
@@ -188,7 +205,7 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 - **Path Traversal Protection**: Uses `os.DirFS()` to jail file access within specified directory
 - **Hidden File Blocking**: Middleware blocks all paths starting with `.` (except `.well-known/`)
 - **Security Headers**: Automatically adds `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`
-- **Directory Listing Disabled by Default**: Prevents information disclosure (`GOMDDOC_SERVER_DIR_INDEX=false`)
+- **Directory Listing Disabled by Default**: Prevents information disclosure (`GOMDDOC_SITE_DIR_INDEX=false`)
 - **Proper Error Codes**: 403 Forbidden for disabled features, 404 for missing files
 - **Context Cancellation**: Protects against slow-loris attacks with request timeout handling
 
@@ -357,7 +374,7 @@ go tool cover -html=coverage.out
 Directory listing is disabled by default for security. Enable it:
 
 ```bash
-GOMDDOC_SERVER_DIR_INDEX=true ./build/gomddoc
+GOMDDOC_SITE_DIR_INDEX=true ./build/gomddoc serve
 ```
 
 ### Image/CSS/JS files not loading
@@ -387,7 +404,7 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 **Port already in use:**
 
 ```bash
-./build/gomddoc -p :8081
+./build/gomddoc serve -p :8081
 ```
 
 **Permission denied:**
@@ -400,7 +417,7 @@ chmod 755 $(find . -type d)
 **Template errors in dev mode:**
 
 ```bash
-DEV_MODE=true ./build/gomddoc  # Disables template caching
+./build/gomddoc serve --dev  # Disables template caching
 ```
 
 ## Contributing

@@ -2,9 +2,12 @@ include common-go.mk
 
 ROOT_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+
 
 build:  ## Build binary
-	go build -o build/gomddoc ./cmd/gomddoc
+	go build $(LDFLAGS) -o build/gomddoc ./cmd/gomddoc
 
 
 bench:  ## Run tests and benchmarks

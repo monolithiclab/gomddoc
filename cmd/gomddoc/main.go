@@ -1,32 +1,30 @@
 package main
 
 import (
-	"context"
 	"embed"
+	"fmt"
 	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
+	"text/tabwriter"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/alecthomas/kong"
 
-	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
-	"github.com/monolithiclab/gomddoc/internal/renderer"
-	"github.com/monolithiclab/gomddoc/internal/server"
-	"github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
 //go:embed assets
 var embeddedAssets embed.FS
 
-const (
-	ExitSuccess     = 0
-	ExitError       = 1
-	ExitConfigError = 2
-)
+// version is set at build time via ldflags.
+var version = "dev"
+
+// CLI is the top-level Kong command struct.
+type CLI struct {
+	Version kong.VersionFlag `name:"version" help:"Show version and exit."`
+	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
+}
 
 // infoProviderAdapter adapts provider.Provider to breadcrumb.InfoProvider
 type infoProviderAdapter struct {
@@ -41,95 +39,44 @@ func (pa *infoProviderAdapter) IsDir(path string) bool {
 	return info.IsDir()
 }
 
-func startCmd() int {
-	// Load configuration (Defaults -> Env -> Flags -> File -> Env -> Validate)
-	cfg, err := config.Load()
-	if err != nil {
-		slog.Error("Failed to load configuration", slog.Any("error", err))
-		return ExitConfigError
+// Ensure infoProviderAdapter implements breadcrumb.InfoProvider at compile time.
+var _ breadcrumb.InfoProvider = (*infoProviderAdapter)(nil)
+
+// helpPrinter wraps Kong's default help to append environment variables for subcommands.
+func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
+	if err := kong.DefaultHelpPrinter(options, ctx); err != nil {
+		return err
 	}
 
-	// Log config in dev mode
-	if cfg.Server.DevMode {
-		slog.Info("Development mode enabled", slog.Any("config", cfg))
+	if ctx.Command() != "serve" {
+		return nil
 	}
 
-	// Initialize content provider (filesystem or Git based on Dir)
-	var providerOpts []provider.GitProviderOption
-	if cfg.Server.GitSSHKey != "" {
-		providerOpts = append(providerOpts, provider.WithSSHKeyFile(cfg.Server.GitSSHKey))
-	}
-
-	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, providerOpts...)
-	if err != nil {
-		slog.Error("Cannot create content provider", slog.Any("error", err))
-		return ExitError
-	}
-	defer func() {
-		// Cleanup provider on normal exit
-		if err := prov.Close(); err != nil {
-			slog.Error("Failed to close provider", slog.Any("error", err))
+	vars := config.EnvVars()
+	fmt.Fprintln(ctx.Stdout)
+	fmt.Fprintln(ctx.Stdout, "Environment variables:")
+	w := tabwriter.NewWriter(ctx.Stdout, 0, 0, 3, ' ', 0)
+	for _, v := range vars {
+		def := v.DefaultValue
+		if def == "" {
+			def = "(empty)"
 		}
-	}()
-
-	// Create renderer registry with markdown and passthrough renderers
-	registry := renderer.NewDefaultRegistry()
-	registry.Register(renderer.NewMarkdownRenderer(cfg.Site.Highlighting.Theme))
-	registry.Register(renderer.NewPassthroughRenderer())
-
-	// Create breadcrumb generator
-	breadcrumbGen := breadcrumb.NewGenerator(&infoProviderAdapter{p: prov})
-
-	// Build asset filesystem with local .gomddoc/ overrides layered on top of embedded assets.
-	contentRoot, err := prov.RootFS()
-	if err != nil {
-		slog.Error("Cannot access content root", slog.Any("error", err))
-		return ExitError
+		fmt.Fprintf(w, "  %s\t%s\t(default: %s)\n", v.Name, v.Type, def)
 	}
-	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
-
-	// Create template renderer with injected dependencies (using functional options for cache)
-	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assetsFS, template.WithBreadcrumbGenerator(breadcrumbGen))
-	if !cfg.Server.DevMode {
-		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
-	}
-
-	// Validate that default theme exists (fatal error if missing)
-	if err := templateRenderer.ValidateDefaultTheme(); err != nil {
-		slog.Error("Default theme missing", slog.Any("error", err))
-		return ExitConfigError
-	}
-
-	// Create and configure server
-	httpServer := server.NewHTTPServer(cfg, prov, registry, templateRenderer)
-
-	// Setup graceful shutdown
-	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer sigCancel()
-
-	g, gCtx := errgroup.WithContext(sigChan)
-
-	// Start server in a goroutine
-	g.Go(func() error {
-		return httpServer.Start(gCtx)
-	})
-
-	// Handle graceful shutdown
-	g.Go(func() error {
-		<-gCtx.Done()
-		return httpServer.Shutdown(context.Background())
-	})
-
-	// Wait for completion
-	if err := g.Wait(); err != nil {
-		slog.Error("Server error", slog.Any("error", err))
-		return ExitError
-	}
-
-	return ExitSuccess
+	return w.Flush()
 }
 
 func main() {
-	statusCode := startCmd()
-	os.Exit(statusCode)
+	cli := CLI{}
+	ctx := kong.Parse(&cli,
+		kong.Name("gomddoc"),
+		kong.Description("A production-ready HTTP server that serves Markdown files as HTML."),
+		kong.Vars{"version": version},
+		kong.UsageOnError(),
+		kong.Help(helpPrinter),
+	)
+	if err := ctx.Run(); err != nil {
+		slog.Error("Fatal error", slog.Any("error", err))
+		os.Exit(1)
+	}
 }
