@@ -50,7 +50,7 @@ var admonitionTypes = map[string]struct {
 }
 
 // AdmonitionExtension is a goldmark extension that transforms GitHub-style
-// admonition blockquotes into styled admonition divs.
+// admonition blockquotes into custom HTML elements.
 //
 // It transforms blockquotes like:
 //
@@ -59,8 +59,8 @@ var admonitionTypes = map[string]struct {
 //
 // Into:
 //
-//	<div class="admonition admonition-note"><p class="admonition-title">Note</p>
-//	<p>Content here</p></div>
+//	<gmd-admonition type="note" title="Note">
+//	<p>Content here</p></gmd-admonition>
 type AdmonitionExtension struct{}
 
 // Extend registers the admonition AST transformer and node renderer.
@@ -197,20 +197,20 @@ func (r *admonitionRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegister
 	reg.Register(KindAdmonition, r.renderAdmonition)
 }
 
-// renderAdmonition renders an AdmonitionNode as an HTML div.
+// renderAdmonition renders an AdmonitionNode as a custom HTML element.
 func (r *admonitionRenderer) renderAdmonition(
 	w util.BufWriter, source []byte, node ast.Node, entering bool,
 ) (ast.WalkStatus, error) {
 	n := node.(*AdmonitionNode)
 
 	if entering {
-		_, _ = w.WriteString(`<div class="admonition admonition-`)
+		_, _ = w.WriteString(`<gmd-admonition type="`)
 		_, _ = w.WriteString(n.AdmonitionType)
-		_, _ = w.WriteString(`"><p class="admonition-title">`)
+		_, _ = w.WriteString(`" title="`)
 		_, _ = w.WriteString(n.Title)
-		_, _ = w.WriteString("</p>\n")
+		_, _ = w.WriteString("\">\n")
 	} else {
-		_, _ = w.WriteString("</div>\n")
+		_, _ = w.WriteString("</gmd-admonition>\n")
 	}
 
 	return ast.WalkContinue, nil
