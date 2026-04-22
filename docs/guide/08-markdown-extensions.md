@@ -133,6 +133,47 @@ graph TD
 
 Mermaid diagrams are rendered client-side using the Mermaid JavaScript library loaded from the jsDelivr CDN. Supported diagram types include flowcharts, sequence diagrams, Gantt charts, class diagrams, and more. See the [Mermaid documentation](https://mermaid.js.org/) for details.
 
+## Color Chips
+
+Hex color codes wrapped in backticks are automatically rendered as interactive color swatches using a `<color-chip>` web component.
+
+### Syntax
+
+Simply wrap a hex color code in backticks:
+
+```markdown
+The primary color is `#2563eb` and the accent is `#ec4899`.
+```
+
+Both 3-digit (`#fff`) and 6-digit (`#ffffff`) hex codes are supported. The color chip displays a small swatch next to the hex code. Clicking the chip copies the hex value to your clipboard.
+
+### Controlling Color Chips
+
+Color chips are enabled by default. You can disable them globally in `.gomddoc/config.yml`:
+
+```yaml
+color_chips: false
+```
+
+Or per-page via frontmatter:
+
+```markdown
+---
+color_chips: false
+---
+# My Page Without Color Chips
+```
+
+Per-page frontmatter overrides the global setting. Hex codes inside fenced code blocks are never transformed.
+
+## Heading Anchors
+
+All headings with auto-generated IDs get clickable anchor links. The anchor (`#`) appears when you hover over a heading (or is always visible on touch devices). Clicking the anchor updates the URL hash for easy linking to specific sections.
+
 ## Table of Contents
 
 gomddoc automatically generates a table of contents from headings (h1-h3) in Markdown documents. The TOC appears as a sidebar on desktop and a toggleable panel on mobile. Heading IDs are auto-generated for anchor linking.
+
+### TOC Scroll Highlighting
+
+As you scroll through a page, the TOC sidebar automatically highlights the currently visible section. The active heading is tracked and the TOC auto-scrolls to keep the active item centered. This works across all built-in themes.

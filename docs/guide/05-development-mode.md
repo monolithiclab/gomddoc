@@ -13,7 +13,7 @@ For rapid iteration, gomddoc includes a development mode.
 Use the `-dev` flag:
 
 ```bash
-gomddoc -d ./docs -dev
+gomddoc serve -d ./docs -dev
 ```
 
 Or the environment variable:

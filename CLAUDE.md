@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Agents Context
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI agents when working with code in this repository.
 
 ## Project Overview
 
@@ -9,6 +9,7 @@ stateless, git-native architecture. Strategic direction: the best git-backed doc
 no CMS, no editorial workflows.
 
 Key documentation:
+
 - `docs/architecture.md` — detailed architecture reference
 - `docs/decisions.md` — architectural decisions log with alternatives considered
 - `docs/roadmap.md` — phased roadmap (Phase 4+), deferred ideas
@@ -45,11 +46,15 @@ gomddoc/
 │   ├── server/            # HTTP server, handlers, middleware, content negotiation
 │   └── assets/            # Overlay filesystem for theme overrides
 ├── assets/                # Embedded themes and templates
-└── docs/                  # Architecture, decisions, roadmap, user guide
+├── docs/                  # Architecture, decisions, roadmap, user guide
+└── material/
+    ├── themes/            # Public free themes for gomddoc
+    └── public-website/    # Public website with marketing material, documentation, etc.
 ```
 
-Core patterns:
-- **MIME-type based routing** with renderer registry (exact > type/* > */*)
+### Core patterns
+
+- **MIME-type based routing** with renderer registry (exact > type/_ > _/\*)
 - **Content negotiation** via HTTP Accept header with q-values
 - **Options struct pattern** for constructors (e.g., `NewMarkdownRenderer(MarkdownOptions{...})`)
 - **Config/SiteConfig separation**: server config not exposed to templates (security)
@@ -67,13 +72,23 @@ Core patterns:
 ## Development Workflow
 
 1. Make code changes in appropriate `internal/` packages
-2. Update tests in corresponding `*_test.go` files
+2. Maintain tests in corresponding `*_test.go` files to cover at least 80% of the code base.
+   New feature must be tested as extensively as possible.
 3. Run `make codefix` to upgrade to latest Go best practices
-4. Run `make format` then `make lint` to verify code quality
-5. Run `make test` to ensure all tests pass (target: 78%+)
-6. Run `make build` to create production binary
+4. Run `make format lint -j8` to verify and enforce code quality
+5. Run `make lint -j8` to enforce code standards
+6. Run `make test` to ensure all tests pass (target: 78%+)
+7. Run `make build` to create production binary
 
-## Go Best Practices
+### General Conventions
+
+- Run manual tests using Chrome devtool MCP server, use `material/testsite/` as a gomddoc directory target
+- Update the documentation in `docs/` upon success.
+- No backward compatibility concerns: gomddoc is unpublished yet. No legacy mode or migration shims needed.
+- Keep dependencies minimal across all repos.
+- Prevent duplicated code whenever possible
+
+### Go Best Practices
 
 - Use modern Go 1.25+ patterns
 - Prefer `any` to `interface{}`
@@ -81,3 +96,20 @@ Core patterns:
 - Table-driven tests with `[]struct{...}` test tables
 - Sentinel errors with `errors.Is()` for classification
 - All errors wrapped with `fmt.Errorf("context: %w", err)`
+
+### Subsequent tasks
+
+#### After implementing a new CLI feature
+
+1. Update the marketing site content in `material/public-website` if the feature is user-facing.
+2. Check if existing themes need updates in `material/themes` (new template variables, new elements to style).
+
+#### After modifying theme capabilities
+
+1. Check if the CLI's template system needs changes to support new theme features.
+2. Update the marketing site's custom theme if it uses patterns affected by the change.
+
+#### After changing CLI configuration options
+
+1. Update `material/public-website/docs/configuration.md` to reflect new options.
+2. Update theme READMEs in `material/themes/` if themes expose new config.

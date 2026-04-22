@@ -72,6 +72,7 @@ These settings control how your documentation is presented and served. They are 
 default_index: "README.md"
 dir_index: false
 edit_url: "https://github.com/org/repo/edit/main"
+color_chips: true
 
 meta:
   title: "My Project Docs"
@@ -80,6 +81,9 @@ meta:
 
 theme:
   name: "default"
+
+highlighting:
+  theme: "github"
 ```
 
 ### Content Behavior
@@ -127,13 +131,29 @@ A base URL for "Edit this page" links that appear at the bottom of each page. Wh
 
 When configured, a page at `/docs/guide.md` will produce an edit link pointing to `https://github.com/org/repo/edit/main/docs/guide.md`.
 
+### Rendering Options
+
+**Color Chips**
+Controls whether hex color codes in backticks (e.g., `` `#ff5733` ``) are rendered as interactive color swatches. Can be overridden per-page via frontmatter.
+*   **YAML:** `color_chips`
+*   **Env Var:** `GOMDDOC_SITE_COLOR_CHIPS`
+*   **Default:** `true`
+
 ### Theme (`SITE.THEME`)
 
 **Theme Name**
-Selects the visual theme to apply. gomddoc looks for a folder with this name in the internal or local `assets/themes/` directory.
+Selects the visual theme to apply. gomddoc ships with 8 built-in themes: `default`, `academic`, `gitbook`, `material`, `midnight`, `minimal`, `nord`, `ocean`.
 *   **YAML:** `theme.name`
 *   **Env Var:** `GOMDDOC_SITE_THEME_NAME`
 *   **Default:** `default`
+
+### Syntax Highlighting (`SITE.HIGHLIGHTING`)
+
+**Highlighting Theme**
+Sets the Chroma syntax highlighting theme for code blocks. See [Chroma styles](https://xyproto.github.io/splash/docs/) for available themes.
+*   **YAML:** `highlighting.theme`
+*   **Env Var:** `GOMDDOC_SITE_HIGHLIGHTING_THEME`
+*   **Default:** `github`
 
 ---
 

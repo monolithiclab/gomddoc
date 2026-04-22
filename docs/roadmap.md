@@ -17,7 +17,7 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 - **Performance-first**: Built for speed with intelligent caching
 - **Security by design**: Path traversal protection, content sanitization, secure defaults
 
-## Current State (Phase 7 In Progress)
+## Current State (Phase 8 In Progress)
 
 The foundation is production-ready with comprehensive test coverage across internal packages:
 
@@ -28,8 +28,14 @@ The foundation is production-ready with comprehensive test coverage across inter
 - **Providers**: Filesystem (os.DirFS with path traversal protection) and Git (go-git, memory or disk-based
   storage, SSH auth with known_hosts, fail-closed).
 - **Rendering**: Markdown (goldmark, GFM, syntax highlighting, admonitions, color chips, TOC, heading anchors,
-  YAML frontmatter), passthrough for all other MIME types via `*/*` wildcard.
-- **HTTP**: Content negotiation, gzip compression, security headers, ETag, request ID tracking, graceful shutdown.
+  YAML frontmatter), passthrough for all other MIME types via `*/*` wildcard. Post-processing pipeline:
+  goldmark → heading anchors → admonitions → color chips.
+- **Theming**: 8 bundled themes (default, academic, gitbook, material, midnight, minimal, nord, ocean) with
+  light/dark mode, TOC scroll highlighting, touch device accessibility, copy-to-clipboard code blocks,
+  KaTeX math rendering, and Mermaid diagram support. Color chips rendered via a `<color-chip>` web component
+  with Shadow DOM encapsulation.
+- **HTTP**: Content negotiation (output-type only — input→output negotiation planned for Phase 6a),
+  gzip compression, security headers, ETag, request ID tracking, graceful shutdown.
 - **Monitoring**: Prometheus metrics (`/metrics`), health probes (`/health/live`, `/health/ready`).
 - **Security**: Hidden file blocking, method filtering (GET/HEAD), clone timeout, file size limits.
 - **Navigation**: Auto-generated sidebar from directory structure with collapsible directories, active state
@@ -37,6 +43,7 @@ The foundation is production-ready with comprehensive test coverage across inter
 - **Metadata**: Frontmatter indexing across all pages with JSON API (`/api/tags`, `/api/tags/{tag}`).
 - **Static site generation**: `gomddoc build` command for deploying to S3, Netlify, GitHub Pages.
 - **Edit links**: Configurable `edit_url` in site config with "Edit this page" footer links.
+- **Template functions**: `navigation`, `toc`, `breadcrumbs`, `editURL`, `inlineAsset` available in themes.
 - **Documentation**: User guides (`docs/guide/`), architecture reference (`docs/architecture.md`).
 
 See `docs/architecture.md` for detailed architecture and `docs/guide/` for user documentation.
@@ -57,13 +64,88 @@ See `docs/architecture.md` for detailed architecture and `docs/guide/` for user 
 - [x] **Metadata indexing**: Lightweight frontmatter parser indexes tags/categories across all pages.
       JSON API: `GET /api/tags` and `GET /api/tags/{tag}`.
 
-## Phase 6: Renderer Enhancement
+## Phase 6: Renderer Enhancement (Partial)
 
-_Expand support for technical documentation formats._
+_Expand the rendering pipeline with proper content negotiation, enrichment, and format support._
+
+### 6a: Two-Dimensional Content Negotiation
+
+Rework the renderer registry so renderers declare both **input** and **output** MIME types. The handler
+uses the file's MIME type and the client's `Accept` header to select the best renderer.
+
+- [ ] **Renderer interface change**: Replace `SupportedMimeTypes() []string` with two methods:
+      `InputMimeTypes() []string` (what the renderer can read) and `OutputMimeTypes() []string`
+      (what it can produce). Each renderer is a single input→output transformation.
+- [ ] **Registry two-dimensional lookup**: `Get(inputMimeType string, acceptedTypes []MediaType)` replaces
+      `Get(mimeType string)`. Selection algorithm: 1. Filter renderers whose `InputMimeTypes()` match the file's MIME type. 2. For each accepted type (sorted by q-value from `ParseAccept`), rank matching renderers by output
+      specificity: exact match (e.g. `text/html`) > type wildcard (`text/*`) > catch-all (`*/*`). 3. Pick the highest-ranked renderer. On tie, latest registered wins (allows overrides).
+- [ ] **MarkdownRenderer**: input `["text/markdown"]`, output `["text/html"]`. Transforms markdown to HTML
+      via goldmark with post-processing pipeline (heading anchors, admonitions, color chips).
+- [ ] **MarkdownPassthroughRenderer**: input `["text/markdown"]`, output `["text/markdown"]`. Returns
+      markdown content as-is (or with enrichment, see 6b). Serves LLMs and API consumers that prefer
+      raw markdown over rendered HTML.
+- [ ] **PassthroughRenderer**: input `["*/*"]`, output `["*/*"]`. Catch-all fallback, lowest priority.
+      Returns content unchanged with the provider's detected MIME type.
+- [ ] **Handler update**: Move content negotiation _before_ rendering. Today the handler renders first,
+      then checks `Accept` (wasting CPU on 406 responses). New flow: select renderer based on input type +
+      Accept header, then render. The `RenderResult` drops `Metadata` and `TOC` fields (moved to enricher).
+- [ ] **406 Not Acceptable**: When no renderer matches the input type + Accept combination, return 406
+      with a list of available output types in the response body.
+
+### 6b: Content Enricher Pipeline
+
+Introduce an `Enricher` step that runs before rendering. The enricher extracts structured data from
+content (metadata, TOC, navigation, related documents) independent of the output format. Renderers
+receive enrichment data and decide what to use.
+
+- [ ] **Enricher interface**:
+
+  ```go
+  type EnrichmentData struct {
+      Metadata    map[string]any
+      TOC         *TOCNode
+      Navigation  *NavTree       // format-agnostic tree; renderers decide presentation
+      RelatedDocs []RelatedDoc
+  }
+
+  type NavTree struct {
+      Items []NavItem
+  }
+
+  type NavItem struct {
+      Title    string
+      Path     string
+      Active   bool      // on the current page's path
+      Children []NavItem
+  }
+
+  type Enricher interface {
+      SupportedMimeTypes() []string
+      Enrich(ctx context.Context, content []byte, path string) (*EnrichmentData, error)
+  }
+  ```
+
+- [ ] **MarkdownEnricher**: Extracts YAML frontmatter, builds TOC from headings, resolves navigation
+      context from the file path, and finds related documents via shared tags (using the metadata index).
+- [ ] **Render signature change**: `Render(ctx, content, enrichment)` — renderers receive enrichment data.
+      The HTML renderer uses TOC/metadata for template context. The passthrough renderer may inject
+      related doc links or return content unchanged. Renderers are not required to use enrichment.
+- [ ] **Handler pipeline**: `Provider.ReadFile() → Enricher.Enrich() → Renderer.Render(content, enrichment)
+→ Handler (template wrap if HTML, raw otherwise)`. The enricher needs access to the metadata index
+      and navigation builder (dependency injection via constructor, not stateless like renderers).
+- [ ] **Enricher registry**: MIME-type-keyed registry similar to the renderer registry. Falls back to a
+      no-op enricher (returns empty `EnrichmentData`) for types without a dedicated enricher.
+
+### 6c: Additional Renderers
+
+_Expand format support for technical documentation._
 
 - [ ] **AsciiDoc support**: Renderer for `.adoc` files (popular in technical writing).
 - [ ] **OpenAPI renderer**: Render `swagger.yaml` / `openapi.json` as interactive API docs.
-- [ ] **Rich Markdown**: Native Mermaid diagrams, MathJax/KaTeX (currently client-side CDN only).
+- [x] **KaTeX math rendering**: Client-side via CDN with `$...$` (inline) and `$$...$$` (display) delimiters.
+      Auto-render extension scans page content on load.
+- [x] **Mermaid diagrams**: Client-side via CDN with fenced `mermaid` code blocks. Theme-aware (dark/light).
+- [ ] **Server-side Mermaid/KaTeX**: Native rendering without client-side JS dependency.
 
 ## Phase 7: Static Site Generation (Partial)
 
@@ -102,7 +184,6 @@ that supports partials, multiple page types, and static assets.
       └── dark.png
   ```
 - [ ] **Migration**: Move existing `layout.html.tmpl` into `layouts/`, screenshots into `screenshots/`.
-      Maintain backward compatibility: if `layout.html.tmpl` exists at root, use it (legacy mode).
 - [ ] **Embedded themes update**: Rework all bundled themes (`cmd/gomddoc/assets/themes/*`) to the
       new structure. Update `go:embed` directives and the overlay filesystem accordingly.
 
@@ -116,7 +197,13 @@ Break the monolithic `layout.html.tmpl` into composable partials that themes can
 - [ ] **Partial override resolution**: Theme provides base partials; site `.gomddoc/partials/` overrides
       specific ones without copying the whole theme. Resolution order: site partials > theme partials > default.
 - [x] **UI polish**: Copy-to-clipboard for code blocks.
-- [x] **Dark mode**: Native light/dark toggle.
+- [x] **Dark mode**: Native light/dark toggle with `prefers-color-scheme` fallback.
+- [x] **8 bundled themes**: default, academic, gitbook, material, midnight, minimal, nord, ocean.
+      Each with light/dark screenshots, responsive design, and full feature parity.
+- [x] **TOC scroll highlighting**: Active heading tracking in table of contents sidebar.
+- [x] **Touch device accessibility**: `@media (hover: none)` shows copy buttons and heading anchors by default.
+- [x] **Color chip web component**: `<color-chip>` custom element with Shadow DOM, click-to-copy, accessible.
+- [x] **`inlineAsset` template function**: Load shared assets (JS/CSS) from theme or shared directory.
 
 ### 8c: Theme Variables
 
@@ -223,7 +310,10 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus (Phase 5 & 6):** Full-text search for content discovery, and expanding renderer support.
+**Immediate focus (Phase 6a/6b):** Two-dimensional content negotiation and enricher pipeline — foundational
+changes that unlock LLM-friendly API access, cleaner separation of concerns, and richer cross-document features.
+**Next up (Phase 8):** Theme folder restructuring (partials, page types, static assets) and theme variables.
+**Then (Phase 5 & 6c):** Full-text search for content discovery, and expanding renderer support (AsciiDoc, OpenAPI).
 
 ## Deferred (Not Planned)
 

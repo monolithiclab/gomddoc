@@ -133,6 +133,70 @@ Extracted from completed spec files before deletion.
 
 **Why walk-and-render**: Reuses the exact same provider → renderer → template pipeline as `serve.go`. Walks `contentRoot` with `fs.WalkDir`, renders `.md` files through the full pipeline, copies non-markdown files as-is. Generates `index.html` alongside `README.html` for clean URLs. Config reused via `NewFromServeArgs` with dummy port. Trade-off: `deriveTitle()` duplicated from `server/handler.go` (unexported) — acceptable for 10 lines vs adding a shared package.
 
+## Color Chip Web Component
+
+**Chosen**: Shadow DOM `<color-chip>` custom element, shared via `inlineAsset`
+
+**Alternatives considered**:
+- **Inline `<span>` with styles**: Simple but leaks CSS between themes; each theme must define chip styles independently
+- **Server-side SVG**: Would add rendering complexity; no interactivity (click-to-copy)
+- **CSS-only with `background-color`**: No click-to-copy; requires parsing hex in CSS (not possible without JS)
+
+**Why web component**: Shadow DOM encapsulation means the chip renders identically across all 8 themes without any theme-specific CSS. The `::part(swatch)` and `::part(label)` CSS parts allow themes to customize appearance if needed. Click-to-copy with "Copied!" feedback provides utility. The component is loaded once via `{{ inlineAsset "color-chip.mjs" }}` — shared across all themes from `assets/shared/`.
+
+**Post-processing integration**: The `transformColorChips()` function converts `<code>#HEX</code>` to `<color-chip>#HEX</color-chip>` during rendering. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by `color_chips` config (default: true) with per-page frontmatter override.
+
+## TOC Scroll Highlighting
+
+**Chosen**: `getBoundingClientRect()` with scroll event listener (passive)
+
+**Alternatives considered**:
+- **IntersectionObserver**: Modern API but requires careful threshold tuning; doesn't naturally give "last heading above viewport" semantics
+- **Scroll position + offset calculation**: Manual math with `offsetTop` — fragile with sticky headers and dynamic content
+
+**Why getBoundingClientRect**: Simple, well-supported, directly answers "which heading last scrolled past the top?" with a single `<= 100` threshold. Passive scroll listener avoids jank. Includes fallback for TOC entries without a matching heading (walks backward to nearest ancestor heading that is in the TOC). Auto-scrolls the TOC sidebar to keep the active item centered.
+
+## Touch Device Accessibility
+
+**Chosen**: `@media (hover: none)` CSS media query
+
+**Key decisions**:
+- Copy buttons always visible on touch (no hover state to reveal them)
+- Heading anchors always visible at reduced opacity on touch
+- Applied consistently across all 8 themes
+
+**Why**: Touch devices (phones, tablets) cannot hover. Without this, copy buttons and heading anchors are invisible and unreachable. The `hover: none` media query is well-supported (95%+ browser coverage) and cleanly separates touch from pointer interaction models.
+
+## Theme System
+
+**Chosen**: 8 bundled themes with full feature parity, single-file `layout.html.tmpl` architecture
+
+**Key decisions**:
+- **Single-file themes**: Each theme is one `layout.html.tmpl` with inline CSS/JS. Simpler than multi-file setups; entire theme is self-contained and easy to copy/customize.
+- **Feature parity**: All themes must support: light/dark mode, TOC, navigation, breadcrumbs, admonitions, color chips, code copy, heading anchors, KaTeX, Mermaid, touch accessibility. Prevents "works in default theme but not in X" bugs.
+- **Client-side KaTeX/Mermaid**: Loaded from jsDelivr CDN. Zero server-side deps. Theme-aware (Mermaid initializes with dark/light theme based on `data-theme` attribute).
+- **`prefers-color-scheme` CSS fallback**: All themes include `@media (prefers-color-scheme: dark) { :root:not([data-theme]) { ... } }` so dark mode works even without JavaScript/localStorage.
+
+## `inlineAsset` Template Function
+
+**Chosen**: Template function that loads assets from theme directory with shared directory fallback
+
+**Alternatives considered**:
+- **Embed directly in each theme**: Duplicates code across 8 themes; updating means touching all themes
+- **External `<script src>` URL**: Requires static asset serving infrastructure (Phase 8e); not yet available
+- **Global template function with hardcoded paths**: Inflexible; can't be overridden per-theme
+
+**Why `inlineAsset`**: Search order (theme dir → shared dir) lets themes override shared assets without forking. Returns `template.JS` for safe inline embedding. Currently used for `color-chip.mjs`. When Phase 8e (static asset serving) ships, themes can migrate to `<script src="{{ assetURL ... }}">` while keeping `inlineAsset` as a fallback for small snippets.
+
+## Cache Busting Strategy
+
+**Chosen**: Content-hash ETags (FNV-64a) on rendered output
+
+**Alternatives considered**:
+- **Git commit-based invalidation**: Use commit hash as cache key. Simpler mental model ("new commit = new content") but busts cache for all resources on every commit, even unmodified files. Especially problematic with PR/tag preview (Phase 10) where many commits touch few files.
+
+**Why content hashes**: FNV-64a ETag on the rendered HTML means only genuinely changed pages are invalidated. No dependency on Git metadata at serve time. Works identically for filesystem and git providers.
+
 ## Full-Text Search (Decision Pending)
 
 **Options analyzed** (not yet implemented):

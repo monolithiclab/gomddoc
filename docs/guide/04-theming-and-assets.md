@@ -8,6 +8,37 @@ author: "nicolasm"
 
 gomddoc uses an **Overlay Filesystem** to handle assets. This means you can "overlay" your own custom files on top of the built-in defaults without replacing everything.
 
+## Built-in Themes
+
+gomddoc ships with 8 themes. Set the theme in `.gomddoc/config.yml` or via `GOMDDOC_SITE_THEME_NAME`:
+
+| Theme | Style | Description |
+|-------|-------|-------------|
+| `default` | General purpose | Three-column layout (nav + content + TOC), Inter font |
+| `academic` | Scholarly | Serif typography (Merriweather), justified text, warm parchment palette |
+| `gitbook` | Documentation | Book-style reading (1.8 line height), tinted nav sidebar |
+| `material` | Design system | Material Design 3, rounded corners, tonal elevation |
+| `midnight` | Dark-first | Neon purple/cyan gradients, glowing code blocks |
+| `minimal` | Brutalist | System fonts only, zero border-radius, heavy typographic hierarchy |
+| `nord` | Color palette | Nord 16-color palette, frosted glass aesthetic |
+| `ocean` | Colorful | Teal/navy gradients, sine-wave header clip-path |
+
+All themes include: light/dark mode, TOC sidebar, navigation sidebar, breadcrumbs, admonitions, color chips, copy-to-clipboard code blocks, heading anchors, KaTeX math, Mermaid diagrams, and touch device accessibility.
+
+### Switching Themes
+
+```yaml
+# .gomddoc/config.yml
+theme:
+  name: "nord"
+```
+
+Or via environment variable:
+
+```bash
+GOMDDOC_SITE_THEME_NAME=midnight gomddoc serve
+```
+
 ## Directory Structure
 
 To customize your site, create a `.gomddoc` folder in your content root:
@@ -19,10 +50,11 @@ To customize your site, create a `.gomddoc` folder in your content root:
 │   └── assets/
 │       └── themes/
 │           └── default/
-│               ├── layout.html.tmpl  <-- Overrides built-in layout
-│               └── style.css         <-- Adds/Overrides CSS
+│               └── layout.html.tmpl  <-- Overrides built-in layout
 └── README.md
 ```
+
+The overlay filesystem checks your `.gomddoc/assets/` first, then falls back to the embedded defaults.
 
 ## Creating a Custom Theme
 
@@ -44,6 +76,9 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
     - `.Site.Theme.Name`: Current theme name.
     - `.Site.DefaultIndex`: Default index file name.
     - `.Site.DirIndex`: Whether directory listing is enabled.
+    - `.Site.EditURL`: Base URL for "Edit this page" links.
+    - `.Site.ColorChips`: Whether color chips are enabled.
+    - `.Site.Highlighting.Theme`: Chroma syntax highlighting theme name.
 
 - **`.Page`**: Current page data (`PageContext`).
     - `.Page.Content`: The rendered HTML content (type `template.HTML`, safe for embedding).
@@ -53,7 +88,7 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
 
 ### Template Functions
 
-Two custom functions are available in templates:
+Five custom functions are available in templates:
 
 - **`breadcrumbs`**: Generates breadcrumb navigation from a path.
   ```html
@@ -68,41 +103,81 @@ Two custom functions are available in templates:
   {{ toc .Page.TOC 2 3 }}       {{/* Only h2-h3 */}}
   ```
 
+- **`navigation`**: Generates the sidebar navigation tree with active state highlighting.
+  ```html
+  <nav>{{ navigation .Page.Path }}</nav>
+  ```
+
+- **`editURL`**: Combines the configured `edit_url` base with the current page path. Returns empty string if `edit_url` is not configured.
+  ```html
+  {{ $editLink := editURL .Page.Path }}
+  {{ if $editLink }}
+      <a href="{{ $editLink }}">Edit this page</a>
+  {{ end }}
+  ```
+
+- **`inlineAsset`**: Loads a JavaScript or CSS asset from the theme directory, falling back to the shared assets directory. Used for embedding shared components like the color chip web component.
+  ```html
+  <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>
+  ```
+
 ### Example Layout
 
 ```html
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>{{ .Site.Meta.Title }}</title>
+    <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
     <meta name="description" content="{{ .Site.Meta.Description }}">
 </head>
 <body>
-    <nav>
+    <header>
+        <a href="/">{{ .Site.Meta.Title }}</a>
+        <button id="theme-toggle">Toggle Theme</button>
+    </header>
+
+    <nav id="nav-sidebar">
+        {{ navigation .Page.Path }}
+    </nav>
+
+    <nav aria-label="Breadcrumb">
         {{ range breadcrumbs .Page.Path }}
             <a href="{{ .Path }}">{{ .Label }}</a> /
         {{ end }}
     </nav>
 
-    <aside>
+    <article>
+        {{ .Page.Content }}
+
+        {{ $editLink := editURL .Page.Path }}
+        {{ if $editLink }}
+        <footer><a href="{{ $editLink }}">Edit this page</a></footer>
+        {{ end }}
+    </article>
+
+    <aside id="toc-sidebar">
         {{ toc .Page.TOC 2 3 }}
     </aside>
 
-    <main>
-        {{ .Page.Content }}
-    </main>
-
-    <footer>
-        Served by gomddoc
-    </footer>
+    <!-- Color Chip Web Component -->
+    <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>
 </body>
 </html>
 ```
 
-## Asset Serving
+## Theme Features Checklist
 
-Any file placed in `.gomddoc/assets/` can be accessed via `/_assets/` (or relative paths depending on theme implementation, though direct asset serving logic maps usually to the root or specific asset handlers).
+When creating a custom theme, ensure it supports these features for parity with built-in themes:
 
-*Currently, `gomddoc` serves content directly. For theme assets (CSS/JS), they should be referenced relative to the theme structure or served as static files if exposed.*
-
-*(Note: The current implementation primarily embeds the layout. Static asset serving for themes might require specific handler mapping which is standard in the default theme).*
+- **Light/dark mode toggle** with `data-theme` attribute and `prefers-color-scheme` CSS fallback
+- **Navigation sidebar** via `{{ navigation .Page.Path }}`
+- **Table of contents** via `{{ toc .Page.TOC }}` with scroll highlighting
+- **Breadcrumbs** via `{{ breadcrumbs .Page.Path }}`
+- **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`
+- **Color chip web component** via `{{ inlineAsset "color-chip.mjs" }}`
+- **Copy-to-clipboard** on code blocks
+- **Heading anchors** (`.heading-anchor` class, revealed on hover)
+- **Touch accessibility** with `@media (hover: none)` for copy buttons and heading anchors
+- **KaTeX** CSS and auto-render scripts for math rendering
+- **Mermaid** script for diagram rendering (theme-aware: dark/light)
+- **Responsive design** with mobile breakpoints
