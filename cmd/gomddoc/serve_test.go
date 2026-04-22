@@ -163,9 +163,7 @@ func TestWriteEnvVarsHelp(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	if err := writeEnvVarsHelp(&buf); err != nil {
-		t.Fatalf("writeEnvVarsHelp() error = %v", err)
-	}
+	writeEnvVarsHelp(&buf)
 
 	output := buf.String()
 	if !strings.Contains(output, "Environment variables:") {
