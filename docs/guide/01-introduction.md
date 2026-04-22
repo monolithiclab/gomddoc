@@ -104,6 +104,7 @@ All commands accept an optional `DIR` argument (default: `.`) specifying the con
 
 *   Configure the server: [Configuration](02-configuration.md)
 *   Connect to private repos: [Content Sources](03-content-sources.md)
-*   Customize the look: [Theming](04-theming-and-assets.md)
-*   Set up search: [Full-Text Search](11-search.md)
-*   Optimize for search engines: [SEO](12-seo.md)
+*   Expose docs to AI: [MCP Server](04-mcp.md)
+*   Customize the look: [Theming](05-theming-and-assets.md)
+*   Set up search: [Full-Text Search](12-search.md)
+*   Optimize for search engines: [SEO](13-seo.md)

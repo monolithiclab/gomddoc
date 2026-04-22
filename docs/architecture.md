@@ -27,6 +27,12 @@ graph TD
     EN --> G
     G --> H
     F --> H
+
+    MCP["MCP Client<br/>(Claude, Cursor, etc.)"] -->|"JSON-RPC<br/>(stdio / HTTP)"| MCPS["MCP Server<br/>internal/mcp/"]
+    MCPS --> D
+    MCPS --> MI["Metadata Index"]
+    MCPS --> SI["Search Index"]
+    MCPS --> NAV["Navigation"]
 ```
 
 ## Core Components
@@ -269,7 +275,52 @@ all themes. Opens via Ctrl+K / Cmd+K or a header search button. Debounced fetch 
 keyboard navigation (arrow keys + Enter), and highlighted snippets. CSS uses theme custom properties
 (`--color-bg`, `--color-text`, `--color-primary`, etc.) for automatic cross-theme compatibility.
 
-### 10. Static Site Generator
+### 10. MCP Server
+
+**Responsibility:** AI-native documentation access via the Model Context Protocol
+
+```go
+type ServerDeps struct {
+    Provider     provider.Provider
+    MetaIndex    *metadata.Index
+    SearchIndex  *search.Index
+    ContentRoot  fs.FS
+    DefaultIndex string
+    SiteName     string
+    Version      string
+}
+
+type MCPServer struct {
+    server *mcp.Server
+    deps   ServerDeps
+}
+
+func NewServer(deps ServerDeps) *MCPServer
+func (s *MCPServer) Run(ctx context.Context) error       // stdio transport
+func (s *MCPServer) HTTPHandler() http.Handler            // Streamable HTTP
+```
+
+The MCP server is a thin adapter that exposes gomddoc's existing internals — Provider, Metadata Index,
+Search Index, and Navigation — via the MCP protocol. No new parsing or indexing logic is introduced.
+
+Uses the official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk`). Supports two transports:
+stdio (for local clients like Claude Desktop/Cursor) and Streamable HTTP (for remote access via `/_mcp/`).
+
+**Capabilities:**
+
+| Category | Items |
+|----------|-------|
+| **Tools** (6) | `search_docs`, `read_page`, `list_pages`, `get_table_of_contents`, `read_section`, `find_related` |
+| **Resources** (4) | `docs://site/index`, `docs://site/tags`, `docs://site/page/{+path}`, `docs://site/tag/{tag}` |
+| **Prompts** (3) | `explain_concept`, `troubleshoot`, `summarize_page` |
+
+All tools are annotated with `readOnlyHint: true` and `idempotentHint: true` for auto-approval trust.
+
+**Section Extraction:** The `read_section` tool provides sub-page access by heading anchor ID — a line-based
+algorithm extracts content between headings without requiring goldmark. Uses `slugifyHeading()` matching
+goldmark's auto-heading-ID behavior.
+
+### 11. Static Site Generator
 
 **Responsibility:** Build static HTML from content for deployment to static hosts
 
@@ -278,7 +329,7 @@ The `gomddoc build` command reuses the same provider → renderer → template p
 copies non-markdown files as-is, and generates `index.html` alongside `README.html` for clean URLs.
 File processing is parallelized with an `errgroup` worker pool bounded by `runtime.NumCPU()`.
 
-### 10. Middleware Chain
+### 12. Middleware Chain
 
 Middleware is applied in two layers using `RouteGroup` for structured route registration:
 
@@ -309,7 +360,7 @@ Middleware is applied in two layers using `RouteGroup` for structured route regi
 | auth → debug | `/debug/pprof` | _(inherits auth)_ | `/`, `/cmdline`, `/profile`, `/symbol`, `/trace` |
 | auth → content | | Compression, MethodFilter, BlockHiddenPaths, Metrics | `/` (catch-all) |
 
-### 11. Theme System
+### 13. Theme System
 
 **Responsibility:** Visual presentation with 8 bundled themes and user customization
 
@@ -355,7 +406,7 @@ Theme CSS references variables with fallbacks: `var(--theme-bg, #ffffff)`. Cache
 site `.gomddoc/static/` > theme `static/` > `assets/shared/static/`. FNV-64a ETags, immutable cache headers,
 dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output directory.
 
-### 12. Color Chip Web Component
+### 14. Color Chip Web Component
 
 **Responsibility:** Render inline hex color codes as interactive color swatches
 
@@ -599,6 +650,11 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Build reuses serve pipeline | Single source of truth for rendering; no divergence between serve and build output |
 | Color chip as web component | Shadow DOM encapsulation prevents theme CSS conflicts; `::part()` allows per-theme styling |
 | `inlineAsset` template func | Themes share components without copy-paste; search order (theme → shared) allows overrides |
+| MCP as thin adapter | Reuses Provider, MetaIndex, SearchIndex, Navigation — no new parsing/indexing; MCP package is purely protocol translation |
+| Official Go MCP SDK | Semver stable (v1.4.x), auto-generates JSON Schema from Go struct tags, struct-based options matching gomddoc conventions |
+| `docs://` URI scheme | Semantic resource identification separate from HTTP URLs; clear namespace for MCP resource discovery |
+| Section extraction without goldmark | Line-based heading parser keeps MCP package lightweight; no dependency on rendering pipeline |
+| All tools `readOnlyHint` | Trust signal for MCP clients to enable auto-approval — gomddoc never modifies content |
 | Client-side KaTeX/Mermaid | Zero server deps; CDN delivery; theme-aware dark/light rendering |
 | TOC scroll highlighting | `IntersectionObserver`-free approach using `getBoundingClientRect` for broad compatibility |
 | Touch `@media (hover: none)` | Mobile/tablet users can't hover — show interactive elements by default |
@@ -630,3 +686,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Page Type**: Layout variant selected via frontmatter `layout` field (e.g., `page`, `api`, `changelog`)
 - **`inlineAsset`**: Template function that loads JS/CSS from theme directory with shared directory fallback
 - **`assetURL`**: Template function that resolves static files to `/_assets/` URLs
+- **MCP Server**: Model Context Protocol adapter exposing Provider, MetaIndex, SearchIndex, and Navigation to AI models
+- **MCP Tool**: A model-invocable action (search, read, list, navigate) exposed via the MCP protocol
+- **MCP Resource**: A data source identified by a `docs://` URI, accessed by MCP clients
+- **Section Extraction**: Line-based algorithm that extracts markdown content under a specific heading by anchor ID

@@ -22,10 +22,11 @@ var version = "dev"
 // CLI is the top-level Kong command struct.
 type CLI struct {
 	Version kong.VersionFlag `name:"version" help:"Show version and exit."`
-	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
 	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
 	Init    InitCmd          `cmd:"" help:"Initialize a .gomddoc/ directory with default configuration."`
+	MCP     MCPCmd           `cmd:"" help:"Start MCP server for AI model integration (stdio transport)."`
 	Preview PreviewCmd       `cmd:"" help:"Quick local preview with auto-port and browser open."`
+	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
 }
 
 // helpPrinter wraps Kong's default help to append environment variables for subcommands.
@@ -33,7 +34,6 @@ func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 	if err := kong.DefaultHelpPrinter(options, ctx); err != nil {
 		return err
 	}
-
 	return writeEnvVarsHelp(ctx.Stdout)
 }
 

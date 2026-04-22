@@ -23,8 +23,9 @@ The foundation is production-ready with 87.3% test coverage. For a full descript
 of current capabilities, see `docs/architecture.md`.
 
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
-7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO). Six review batches
-resolved 45/46 identified issues (security, correctness, deduplication, hardening).
+7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO), 10a (MCP server).
+Six review batches resolved 45/46 identified issues (security, correctness, deduplication,
+hardening).
 
 **Phase 5 note:** Server-side full-text search and client-side search UI are complete for `serve`
 and `preview` modes. Build-mode search (Pagefind) deferred.
@@ -184,71 +185,52 @@ gomddoc into an AI-queryable knowledge base — a strategic differentiator no ot
 offers natively._
 
 **Why MCP over HTTP APIs:** MCP is purpose-built for AI tool use. Models discover capabilities via
-the protocol, not by reading API docs. A single `gomddoc mcp` command or SSE endpoint makes every
-document instantly available to any MCP-compatible client (Claude Desktop, Cursor, Windsurf, custom
-agents) with zero configuration on the model side.
+the protocol, not by reading API docs. A single `gomddoc mcp` command makes every document instantly
+available to any MCP-compatible client (Claude Desktop, Cursor, Windsurf, custom agents) with zero
+configuration on the model side.
 
 **Architecture fit:** The MCP server is a thin adapter over existing gomddoc internals. No new parsing
-logic — it reuses Provider (file I/O), Enricher (metadata/TOC extraction), and Metadata Index (tag
-queries) directly. New package: `internal/mcp/`.
+logic — it reuses Provider (file I/O), Metadata Index (tag queries), Search Index (full-text search),
+and Navigation (TOC tree) directly. Package: `internal/mcp/`.
 
 ```
 MCP Client (Claude, etc.)
-    ↕ JSON-RPC (stdio or SSE)
+    ↕ JSON-RPC (stdio or Streamable HTTP)
 internal/mcp/server.go
     ↓ adapts to existing interfaces
-Provider → Enricher → Metadata Index → Navigation
+Provider → Metadata Index → Search Index → Navigation
 ```
 
-### 10a: Core MCP Server
+### 10a: Core MCP Server (Complete)
 
-_Minimum viable MCP server with file access and metadata._
+_Full MCP server with tools, resources, prompts, and section-level access._
 
-- [ ] **`internal/mcp/` package**: MCP server implementation using a Go MCP SDK (e.g.,
-      `github.com/mark3labs/mcp-go`). Implements the MCP server protocol with resource and
-      tool capabilities. Stateless — instantiated with Provider, EnricherRegistry, and
-      metadata Index references.
-- [ ] **`gomddoc mcp` subcommand**: stdio transport for local use. Speaks MCP JSON-RPC over
-      stdin/stdout. Works with Claude Desktop (`claude_desktop_config.json`), Cursor, and any
-      MCP-compatible client. Kong subcommand with same positional `dir` argument as `serve`.
-- [ ] **Resource: `docs://list`**: List all documentation files in the content tree. Returns
-      paths, titles (from frontmatter or filename), and MIME types. Backed by `Provider.RootFS`
-      + `fs.WalkDir`. Supports optional `path` parameter to list a subdirectory.
-- [ ] **Resource: `docs://{path}`**: Read a specific file's content. Returns raw markdown with
-      frontmatter stripped (clean content for model consumption). Backed by `Provider.ReadFile` +
-      frontmatter stripping (reuses `MarkdownPassthroughRenderer` logic). Non-markdown files
-      returned as-is.
-- [ ] **Tool: `get_page_metadata`**: Extract structured metadata for a file — title, description,
-      tags, TOC structure, related documents. Backed by `EnricherRegistry.Get(mime).Enrich()`.
-      Returns JSON with `metadata`, `toc`, and `related_docs` fields.
-- [ ] **Tool: `list_tags`**: List all tags across the documentation. Backed by
-      `metadata.Index.AllTags()`. Returns sorted string array.
-- [ ] **Tool: `search_by_tag`**: Find all pages with a given tag. Backed by
-      `metadata.Index.ByTag()`. Returns array of `{path, title, description}`.
-- [ ] **Tool: `list_pages`**: List all indexed pages with metadata. Backed by
-      `metadata.Index.AllPages()`. Supports optional tag filter. Returns array of `PageInfo`.
+- [x] **`internal/mcp/` package**: MCP server using the official Go MCP SDK
+      (`github.com/modelcontextprotocol/go-sdk` v1.4.x). Thin adapter over Provider,
+      MetaIndex, SearchIndex, and Navigation. Supports stdio and Streamable HTTP transports.
+- [x] **`gomddoc mcp` subcommand**: stdio transport for local use. Speaks MCP JSON-RPC over
+      stdin/stdout. Works with Claude Desktop, Cursor, Claude Code, and any MCP-compatible
+      client. Kong subcommand with same positional `dir` argument as `serve`.
+- [x] **6 tools**: `search_docs` (full-text search with TF-IDF ranking), `read_page` (page
+      content with metadata), `list_pages` (browse with tag filter), `get_table_of_contents`
+      (navigation tree), `read_section` (sub-page access by heading ID), `find_related`
+      (related pages via shared tags). All annotated `readOnlyHint: true`.
+- [x] **4 resources**: `docs://site/index` (all pages JSON), `docs://site/tags` (all tags),
+      `docs://site/page/{+path}` (page content), `docs://site/tag/{tag}` (pages by tag).
+      Custom `docs://` URI scheme for semantic identification.
+- [x] **3 prompts**: `explain_concept`, `troubleshoot`, `summarize_page`. Pre-built
+      interaction patterns that search docs and embed relevant context.
+- [x] **Section extraction**: Line-based heading parser (`ExtractSection`, `slugifyHeading`)
+      extracts content under a specific heading ID without goldmark dependency. Key
+      differentiator — sub-page access for token-efficient retrieval.
 
-### 10b: Advanced MCP Capabilities
+### 10b: HTTP Integration
 
-_Richer AI interactions — search, navigation context, and batch access._
+_Streamable HTTP transport for remote MCP access._
 
-- [ ] **SSE transport**: HTTP-based MCP endpoint at `/_mcp/` on the existing server. Enables
-      remote MCP access without stdio. Shares the server's Provider and metadata instances.
-      Protected by the same middleware (auth, rate limiting) as other endpoints.
-- [ ] **Tool: `search`**: Full-text search across all documentation. Backed by Phase 5 search
-      index (when available). Returns ranked results with snippets. Falls back to tag search
-      if full-text search is not configured.
-- [ ] **Tool: `get_navigation`**: Get the navigation tree for a given path — what sections exist,
-      what's adjacent. Backed by `navigation.Generator.Generate()`. Helps models understand
-      documentation structure and find relevant sections.
-- [ ] **Tool: `get_section`**: Read a specific section of a document by heading ID. Extracts
-      content between two headings using the TOC structure. Useful for targeted retrieval
-      without loading entire documents.
-- [ ] **Tool: `find_related`**: Find documents related to a given page via shared tags, same
-      directory, or similar metadata. Backed by `EnricherRegistry` + `metadata.Index`.
-      Returns ranked list with relevance reason.
-- [ ] **Batch resource reads**: Support reading multiple files in a single request. Reduces
-      round trips for models that need context from several documents simultaneously.
+- [ ] **Streamable HTTP at `/_mcp/`**: Mount `MCPServer.HTTPHandler()` on the existing HTTP
+      server behind the auth RouteGroup. Add `MCPHandler http.Handler` to `HTTPServerConfig`.
+      Protected by the same authentication middleware as other endpoints.
 
 ### 10c: MCP for Static Sites
 
@@ -309,7 +291,7 @@ _Enable community theme sharing via a GitHub-based registry._
 | `gomddoc build`         | Static site generation                               | Done    |
 | `gomddoc preview`       | Quick local preview with auto-open browser           | Done    |
 | `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Done    |
-| `gomddoc mcp`            | MCP server for AI-native documentation access        | Planned |
+| `gomddoc mcp`            | MCP server for AI-native documentation access        | Done    |
 | `gomddoc validate`      | Validate config and check for broken links           | Planned |
 | `gomddoc theme list`    | List available themes from the marketplace           | Planned |
 | `gomddoc theme search`  | Search themes by name, category, or keyword          | Planned |
@@ -322,7 +304,7 @@ _Enable community theme sharing via a GitHub-based registry._
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
 **Immediate focus (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
-**High-value (Phase 10a):** MCP interface — low complexity (thin adapter over existing layers), high differentiation.
+**Next (Phase 10b):** MCP HTTP integration — mount Streamable HTTP transport at `/_mcp/` on existing server.
 **Deferred:** CI benchmark tracking (Phase 4, needs CI pipeline), build-mode search (Phase 5, Pagefind).
 
 ## Deferred (Not Planned)

@@ -15,16 +15,17 @@ remote Git repositories with zero build steps.
 1. [Introduction & Quick Start](01-introduction.md)
 2. [Configuration](02-configuration.md)
 3. [Content Sources (Git & Local)](03-content-sources.md)
-4. [Theming & Assets](04-theming-and-assets.md)
-5. [Development Mode](05-development-mode.md)
-6. [Security](06-security.md)
-7. [HTTP Behavior](07-http-behavior.md)
-8. [Markdown Extensions](08-markdown-extensions.md)
-9. [Observability](09-observability.md)
-10. [Deployment](10-deployment.md)
-11. [Full-Text Search](11-search.md)
-12. [SEO](12-seo.md)
-13. [API Reference](13-api-reference.md)
+4. [MCP Server](04-mcp.md)
+5. [Theming & Assets](05-theming-and-assets.md)
+6. [Development Mode](06-development-mode.md)
+7. [Security](07-security.md)
+8. [HTTP Behavior](08-http-behavior.md)
+9. [Markdown Extensions](09-markdown-extensions.md)
+10. [Observability](10-observability.md)
+11. [Deployment](11-deployment.md)
+12. [Full-Text Search](12-search.md)
+13. [SEO](13-seo.md)
+14. [API Reference](14-api-reference.md)
 
 ## Core Features
 
@@ -37,6 +38,7 @@ remote Git repositories with zero build steps.
   SSH host key verification (no TOFU), and comprehensive security headers.
 - **Zero-Config:** Works out of the box with sensible defaults (like using `README.md` as index).
 - **Extensible:** Custom renderers, configurable themes, YAML front matter support, and auto-generated TOC.
+- **MCP Server:** Built-in Model Context Protocol server for AI-native documentation access (Claude, Cursor, Copilot).
 - **Static Site Generation:** Build static HTML sites for deployment to any host (S3, Netlify, GitHub Pages).
 - **Production Ready:** Graceful shutdown, configurable timeouts, buffer pooling, structured logging with log
   injection prevention, Prometheus metrics, health endpoints.

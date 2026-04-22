@@ -160,6 +160,43 @@ Serves theme static assets (CSS, JS, fonts). Only available in `build` mode — 
 
 ---
 
+## MCP Server (Model Context Protocol)
+
+gomddoc includes a built-in MCP server for AI-native documentation access. Start it with
+`gomddoc mcp [dir]` (stdio transport). See the [MCP Server guide](04-mcp.md) for setup instructions.
+
+### MCP Tools
+
+All tools are read-only and idempotent.
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `search_docs` | Full-text search with TF-IDF ranking | `query` (required), `limit` (default: 20) |
+| `read_page` | Read page with metadata prepended | `path` (required) |
+| `read_section` | Read a section by heading anchor ID | `path`, `heading_id` (both required) |
+| `list_pages` | List pages, optionally filtered by tag | `tag` (optional), `limit` (default: 50) |
+| `get_table_of_contents` | Site-wide navigation tree | `path` (optional subtree root) |
+| `find_related` | Find related pages by shared tags | `path` (required) |
+
+### MCP Resources
+
+| URI | Type | MIME Type | Description |
+|-----|------|-----------|-------------|
+| `docs://site/index` | Static | `application/json` | All pages with metadata |
+| `docs://site/tags` | Static | `application/json` | All unique tags |
+| `docs://site/page/{+path}` | Template | `text/markdown` | Page content (frontmatter stripped) |
+| `docs://site/tag/{tag}` | Template | `application/json` | Pages with a specific tag |
+
+### MCP Prompts
+
+| Prompt | Arguments | Description |
+|--------|-----------|-------------|
+| `explain_concept` | `concept` (required) | Explain a concept using docs as source |
+| `troubleshoot` | `issue` (required), `error_message` (optional) | Step-by-step troubleshooting |
+| `summarize_page` | `path` (required) | Concise page summary |
+
+---
+
 ## Middleware Chain
 
 All content requests pass through this middleware chain (outermost to innermost):
