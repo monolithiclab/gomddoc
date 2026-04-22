@@ -6,6 +6,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
@@ -23,11 +24,16 @@ type NavNode struct {
 }
 
 // Generator builds navigation trees from an fs.FS.
+// The base tree (without active/open markings) is built once on first call
+// and cached. Each Generate() call clones the cached tree and applies
+// active-path marking to the clone.
 type Generator struct {
 	rootFS          fs.FS
 	defaultIndex    string
 	excludePatterns []string
 	resolver        *resolve.PathResolver
+	cachedTree      *NavNode
+	cacheOnce       sync.Once
 }
 
 // NewGenerator creates a new navigation generator.
@@ -41,24 +47,45 @@ func NewGenerator(rootFS fs.FS, defaultIndex string, excludePatterns []string, r
 }
 
 // Generate builds a navigation tree with the given path marked as active.
-// It walks the rootFS to discover all renderable markdown files and
-// organizes them into a hierarchical tree structure.
+// The base tree is built once (on first call) by walking rootFS, then cached.
+// Subsequent calls clone the cached tree and apply active-path marking.
 func (g *Generator) Generate(currentPath string) *NavNode {
-	root := &NavNode{
-		Label: "Root",
-		Path:  "/",
-		IsDir: true,
-	}
+	g.cacheOnce.Do(func() {
+		root := &NavNode{
+			Label: "Root",
+			Path:  "/",
+			IsDir: true,
+		}
+		g.buildTree(root, ".")
+		if len(root.Children) > 0 {
+			g.cachedTree = root
+		}
+	})
 
-	g.buildTree(root, ".")
-	g.markActive(root, cleanPath(currentPath))
-
-	// If root has no children, return nil to signal no navigation
-	if len(root.Children) == 0 {
+	if g.cachedTree == nil {
 		return nil
 	}
 
-	return root
+	tree := cloneTree(g.cachedTree)
+	g.markActive(tree, cleanPath(currentPath))
+	return tree
+}
+
+// cloneTree creates a deep copy of a NavNode tree.
+// IsActive and IsOpen are reset to false in the clone.
+func cloneTree(node *NavNode) *NavNode {
+	clone := &NavNode{
+		Label: node.Label,
+		Path:  node.Path,
+		IsDir: node.IsDir,
+	}
+	if len(node.Children) > 0 {
+		clone.Children = make([]*NavNode, len(node.Children))
+		for i, child := range node.Children {
+			clone.Children[i] = cloneTree(child)
+		}
+	}
+	return clone
 }
 
 // buildTree recursively walks the filesystem and populates the tree.
