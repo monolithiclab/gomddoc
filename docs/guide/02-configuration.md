@@ -166,6 +166,12 @@ Controls what happens when a directory is requested but no index file (e.g., `RE
 *   **Env Var:** `GOMDDOC_SITE_DIR_INDEX`
 *   **Default:** `false`
 
+**Language**
+Sets the `lang` attribute on the `<html>` tag (e.g., `<html lang="en">`). Lighthouse flags missing or incorrect language attributes. Can be overridden per page via frontmatter `lang` field.
+*   **YAML:** `language`
+*   **Env Var:** `GOMDDOC_SITE_LANGUAGE`
+*   **Default:** `"en"`
+
 ### Metadata (`SITE.META`)
 
 **Title**
@@ -244,6 +250,7 @@ or environment variable setting — but only for that page.
 | `og_type` | — | Controls `<meta property="og:type">` for this page (default: `article`) |
 | `color_chips` | `color_chips` | Enables or disables color chip rendering on this page, overriding the global setting |
 | `robots` | `meta.robots` | Controls `<meta name="robots">` for this page (e.g., `noindex`). Pages with `noindex` are excluded from the sitemap |
+| `lang` | `language` | Sets the `<html lang="...">` attribute for this page, overriding the site-level language |
 | `tags` | — | Page tags for the metadata index, queryable via `/api/tags` and the MCP `find_related` tool |
 | `date` | — | Publication date included in tags API responses |
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ if .Page.Meta.lang }}{{ .Page.Meta.lang }}{{ else }}{{ .Site.Language }}{{ end }}">
 {{ template "head" . }}
 <body>
   {{ template "header" . }}

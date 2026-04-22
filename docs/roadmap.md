@@ -132,9 +132,9 @@ _Enhances competitiveness and closes remaining gaps._
 - [x] **Per-page `robots` meta tag**: Frontmatter `robots: noindex` or `robots: noindex, nofollow`
       controls per-page indexing. Site-wide default via `meta.robots` config. Pages with `noindex`
       are automatically excluded from the sitemap. Low complexity.
-- [ ] **HTML `lang` attribute**: Add `lang` attribute to `<html>` tag (e.g., `<html lang="en">`).
-      Configurable via `language` field in `SiteConfig`, default `"en"`. Lighthouse flags its
-      absence. Low complexity.
+- [x] **HTML `lang` attribute**: `<html lang="...">` configurable via `language` field in
+      `SiteConfig` (default `"en"`). Per-page override via frontmatter `lang` field.
+      All 8 themes + marketing site updated. Low complexity.
 - [ ] **404 page with navigation**: Custom 404 page including site navigation and suggested pages.
       In `build` mode, output `404.html` (convention for Netlify, GitHub Pages, Cloudflare Pages).
       Low complexity.
