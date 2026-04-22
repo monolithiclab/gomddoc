@@ -55,7 +55,6 @@ type ServerConfig struct {
 	AdminPort string     `env:"ADMIN_PORT"`
 	DevMode   bool       `env:"DEV_MODE"`
 	Dir       string     `env:"DIR"`
-	GitSSHKey string     `env:"GIT_SSH_KEY"`
 	Pprof     bool       `env:"PPROF"`
 	HTTP      HTTPConfig `env:"HTTP"`
 }
@@ -117,7 +116,6 @@ type ServeArgs struct {
 	DevMode   bool
 	DirIndex  bool
 	Pprof     bool
-	GitSSHKey string
 }
 
 // NewFromServeArgs creates a fully initialized Config from serve command arguments.
@@ -132,7 +130,6 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 	cfg.Server.AdminPort = args.AdminPort
 	cfg.Server.DevMode = args.DevMode
 	cfg.Server.Pprof = args.Pprof
-	cfg.Server.GitSSHKey = args.GitSSHKey
 	cfg.Site.DirIndex = args.DirIndex
 
 	// 2. Compute derived defaults (like Title from Dir)
@@ -171,10 +168,9 @@ func NewFromDir(dir string) (*Config, error) {
 func New() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port:      DefaultPort,
-			DevMode:   false,
-			Dir:       ".",
-			GitSSHKey: "",
+			Port:    DefaultPort,
+			DevMode: false,
+			Dir:     ".",
 			HTTP: HTTPConfig{
 				ShutdownTimeout:   DefaultShutdownTimeout,
 				ReadHeaderTimeout: DefaultReadHeaderTimeout,

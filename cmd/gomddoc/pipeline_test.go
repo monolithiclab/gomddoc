@@ -12,6 +12,68 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
+func TestBuildGitConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		sshKey     string
+		storageDir string
+		sourceURL  string
+		wantSSH    bool
+		wantDisk   bool
+	}{
+		{
+			name:      "no flags",
+			sourceURL: "https://github.com/example/repo",
+			wantSSH:   false,
+			wantDisk:  false,
+		},
+		{
+			name:      "ssh key only",
+			sshKey:    "/path/to/key",
+			sourceURL: "git@github.com:example/repo.git",
+			wantSSH:   true,
+			wantDisk:  false,
+		},
+		{
+			name:       "storage dir only",
+			storageDir: "/tmp/git-cache",
+			sourceURL:  "https://github.com/example/repo",
+			wantSSH:    false,
+			wantDisk:   true,
+		},
+		{
+			name:       "both flags",
+			sshKey:     "/path/to/key",
+			storageDir: "/tmp/git-cache",
+			sourceURL:  "git@github.com:example/repo.git",
+			wantSSH:    true,
+			wantDisk:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := buildGitConfig(tt.sshKey, tt.storageDir, tt.sourceURL)
+
+			if tt.wantSSH && cfg.SSHKeyFile != tt.sshKey {
+				t.Errorf("SSHKeyFile = %q, want %q", cfg.SSHKeyFile, tt.sshKey)
+			}
+			if !tt.wantSSH && cfg.SSHKeyFile != "" {
+				t.Errorf("SSHKeyFile = %q, want empty", cfg.SSHKeyFile)
+			}
+			if tt.wantDisk && cfg.StorageFactory == nil {
+				t.Error("StorageFactory should not be nil when storage dir set")
+			}
+			if !tt.wantDisk && cfg.StorageFactory != nil {
+				t.Error("StorageFactory should be nil when no storage dir")
+			}
+		})
+	}
+}
+
 func TestRunUntilCancelled(t *testing.T) {
 	t.Parallel()
 

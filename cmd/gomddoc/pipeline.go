@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"path/filepath"
 
 	"golang.org/x/sync/errgroup"
 
@@ -228,6 +231,21 @@ func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
 	}
 }
 
+// buildGitConfig constructs a GitProviderConfig from CLI flags.
+// The storageDir, when non-empty, creates a unique subdirectory based on the
+// SHA-256 hash of the source URL to isolate clones for different repositories.
+func buildGitConfig(sshKeyFile, storageDir, sourceURL string) provider.GitProviderConfig {
+	cfg := provider.GitProviderConfig{
+		SSHKeyFile: sshKeyFile,
+	}
+	if storageDir != "" {
+		h := sha256.Sum256([]byte(sourceURL))
+		subdir := filepath.Join(storageDir, hex.EncodeToString(h[:8]))
+		cfg.StorageFactory = provider.DiskStorageFactory(subdir)
+	}
+	return cfg
+}
+
 // ServerSetupOptions configures server creation for both serve and preview commands.
 type ServerSetupOptions struct {
 	Dir       string
@@ -236,7 +254,6 @@ type ServerSetupOptions struct {
 	Domain    string
 	DevMode   bool
 	DirIndex  bool
-	GitSSHKey string
 	Pprof     bool
 	GitCfg    provider.GitProviderConfig
 	AuthStore *server.CredentialStore
@@ -265,7 +282,6 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		DevMode:   opts.DevMode,
 		DirIndex:  opts.DirIndex,
 		Pprof:     opts.Pprof,
-		GitSSHKey: opts.GitSSHKey,
 	})
 	if err != nil {
 		return nil, err

@@ -34,9 +34,11 @@ import (
 
 // BuildCmd holds all flags for the build subcommand.
 type BuildCmd struct {
-	Dir    string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown source directory or Git URL."`
-	Output string `name:"output" short:"o" default:"build/site" env:"GOMDDOC_BUILD_OUTPUT" help:"Output directory for generated static site."`
-	Domain string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
+	Dir           string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown source directory or Git URL."`
+	Output        string `name:"output" short:"o" default:"build/site" env:"GOMDDOC_BUILD_OUTPUT" help:"Output directory for generated static site."`
+	Domain        string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
+	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
+	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
 }
 
 // sentinelFile is the name of the marker file written to output directories
@@ -94,7 +96,9 @@ func (b *BuildCmd) Run() error {
 		}
 	}
 
-	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude)
+	gitCfg := buildGitConfig(b.GitSSHKey, b.GitStorageDir, b.Dir)
+
+	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, gitCfg)
 	if err != nil {
 		return fmt.Errorf("build provider: %w", err)
 	}

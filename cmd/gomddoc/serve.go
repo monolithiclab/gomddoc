@@ -2,17 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/server"
 )
 
@@ -44,15 +40,7 @@ func resolvePort(port string) (string, error) {
 
 // setup creates the provider, pipeline, and HTTP server without starting it.
 func (s *ServeCmd) setup() (*setupResult, error) {
-	var gitCfg provider.GitProviderConfig
-	if s.GitSSHKey != "" {
-		gitCfg.SSHKeyFile = s.GitSSHKey
-	}
-	if s.GitStorageDir != "" {
-		h := sha256.Sum256([]byte(s.Dir))
-		subdir := filepath.Join(s.GitStorageDir, hex.EncodeToString(h[:8]))
-		gitCfg.StorageFactory = provider.DiskStorageFactory(subdir)
-	}
+	gitCfg := buildGitConfig(s.GitSSHKey, s.GitStorageDir, s.Dir)
 
 	var authStore *server.CredentialStore
 	if s.BasicAuthFile != "" {
@@ -69,7 +57,6 @@ func (s *ServeCmd) setup() (*setupResult, error) {
 		Port:      s.Port,
 		AdminPort: s.AdminPort,
 		Domain:    s.Domain,
-		GitSSHKey: s.GitSSHKey,
 		Pprof:     s.Pprof,
 		GitCfg:    gitCfg,
 		AuthStore: authStore,

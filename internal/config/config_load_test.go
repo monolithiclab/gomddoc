@@ -98,16 +98,3 @@ func TestNewFromServeArgs_DevMode(t *testing.T) {
 		t.Error("Expected DevMode to be true")
 	}
 }
-
-func TestNewFromServeArgs_GitSSHKey(t *testing.T) {
-	t.Parallel()
-
-	cfg, err := NewFromServeArgs(ServeArgs{Dir: t.TempDir(), Port: ":8080", GitSSHKey: "/path/to/key"})
-	if err != nil {
-		t.Fatalf("NewFromServeArgs() returned error: %v", err)
-	}
-
-	if cfg.Server.GitSSHKey != "/path/to/key" {
-		t.Errorf("Expected GitSSHKey %q, got %q", "/path/to/key", cfg.Server.GitSSHKey)
-	}
-}

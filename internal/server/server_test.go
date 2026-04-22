@@ -30,10 +30,9 @@ func TestNewHTTPServer(t *testing.T) {
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{
-			Port:      ":8080",
-			DevMode:   false,
-			Dir:       ".",
-			GitSSHKey: "",
+			Port:    ":8080",
+			DevMode: false,
+			Dir:     ".",
 			HTTP: config.HTTPConfig{
 				ShutdownTimeout:   1 * time.Second,
 				ReadHeaderTimeout: config.DefaultReadHeaderTimeout,

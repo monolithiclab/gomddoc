@@ -14,8 +14,9 @@ import (
 
 // MCPCmd holds flags for the mcp subcommand.
 type MCPCmd struct {
-	Dir       string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory or Git URL."`
-	GitSSHKey string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
+	Dir           string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory or Git URL."`
+	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
+	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
 }
 
 // Run executes the mcp command (stdio transport).
@@ -25,10 +26,7 @@ func (m *MCPCmd) Run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	var gitCfg provider.GitProviderConfig
-	if m.GitSSHKey != "" {
-		gitCfg.SSHKeyFile = m.GitSSHKey
-	}
+	gitCfg := buildGitConfig(m.GitSSHKey, m.GitStorageDir, m.Dir)
 
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, gitCfg)
 	if err != nil {
