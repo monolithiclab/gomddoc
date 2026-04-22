@@ -10,6 +10,10 @@ build:  ## Build binary
 	go build $(LDFLAGS) -o build/gomddoc ./cmd/gomddoc
 
 
+install:  ## Install gomddoc to $GOBIN (or $GOPATH/bin)
+	go install $(LDFLAGS) ./cmd/gomddoc
+
+
 bench:  ## Run tests and benchmarks
 	go test -bench=.
 
@@ -30,5 +34,5 @@ test:  ## Run unit tests with coverage and race detection
 	go tool cover -func cover.out
 
 
-.SILENT: bench build deploy run test
-.PHONY: bench build deploy run test
+.SILENT: bench build deploy install run test
+.PHONY: bench build deploy install run test
