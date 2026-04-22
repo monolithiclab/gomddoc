@@ -234,7 +234,7 @@ func TestMarkdownRenderer_Admonitions(t *testing.T) {
 		},
 	}
 
-	renderer := NewMarkdownRenderer()
+	renderer := NewMarkdownRenderer("")
 	ctx := context.Background()
 
 	for _, tt := range tests {
