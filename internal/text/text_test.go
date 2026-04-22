@@ -5,7 +5,7 @@ import (
 )
 
 func TestTitleCase(t *testing.T) {
-	// Note: Cannot use t.Parallel() - TitleCase() uses shared package-level state (caser with sync.Once)
+	t.Parallel()
 
 	tests := []struct {
 		name     string
@@ -64,14 +64,31 @@ func TestTitleCase(t *testing.T) {
 	}
 }
 
-func TestTitleCase_Caching(t *testing.T) {
-	// Call TitleCase multiple times to ensure the caser is initialized only once
-	// This is more of a smoke test - actual verification would require instrumentation
-	for i := range 100 {
-		result := TitleCase("test")
-		if result != "Test" {
-			t.Errorf("TitleCase failed after %d iterations: got %q, want %q", i, result, "Test")
-		}
+func TestTitleCase_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	// Test concurrent access to TitleCase - this will catch race conditions
+	// when run with -race flag
+	const goroutines = 100
+	const iterations = 100
+
+	done := make(chan bool, goroutines)
+
+	for range goroutines {
+		go func() {
+			for range iterations {
+				result := TitleCase("hello world")
+				if result != "Hello World" {
+					t.Errorf("TitleCase concurrent access failed: got %q, want %q", result, "Hello World")
+				}
+			}
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	for range goroutines {
+		<-done
 	}
 }
 

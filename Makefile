@@ -19,8 +19,8 @@ run:  ## Run the application locally
 	go run ./cmd/gomddoc -d ../prose-api/docs
 
 
-test:  ## Run unit tests with coverage
-	go test -cover -coverprofile cover.out ./...
+test:  ## Run unit tests with coverage and race detection
+	go test -race -cover -coverprofile cover.out ./...
 	go tool cover -func cover.out
 
 
