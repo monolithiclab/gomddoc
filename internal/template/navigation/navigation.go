@@ -187,8 +187,8 @@ func (g *Generator) extractTitle(filePath string) string {
 
 		// Look for the first # heading
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "# ") {
-			return strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
+		if after, ok := strings.CutPrefix(trimmed, "# "); ok {
+			return strings.TrimSpace(after)
 		}
 	}
 

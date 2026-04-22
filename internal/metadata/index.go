@@ -18,7 +18,7 @@ type PageInfo struct {
 	Title       string         `json:"title,omitempty"`
 	Description string         `json:"description,omitempty"`
 	Tags        []string       `json:"tags,omitempty"`
-	Date        time.Time      `json:"date,omitempty"`
+	Date        time.Time      `json:"date"`
 	Meta        map[string]any `json:"meta,omitempty"`
 }
 

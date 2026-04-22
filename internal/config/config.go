@@ -356,7 +356,7 @@ type EnvVar struct {
 func EnvVars() []EnvVar {
 	cfg := New()
 	var vars []EnvVar
-	collectEnvVars(reflect.ValueOf(cfg).Elem(), reflect.TypeOf(cfg).Elem(), "GOMDDOC", &vars)
+	collectEnvVars(reflect.ValueOf(cfg).Elem(), reflect.TypeFor[Config](), "GOMDDOC", &vars)
 	return vars
 }
 
