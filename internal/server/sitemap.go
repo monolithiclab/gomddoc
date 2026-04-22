@@ -38,27 +38,15 @@ type sitemapURL struct {
 
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	pages := h.index.AllPages()
-
-	urls := make([]sitemapURL, 0, len(pages))
-	for _, page := range pages {
-		loc := seo.PageURL(h.domain, "/"+page.Path, h.defaultIndex)
-		if loc != "" {
-			urls = append(urls, sitemapURL{Loc: loc})
-		}
-	}
-
-	sitemap := urlSet{
-		XMLNS: "http://www.sitemaps.org/schemas/sitemap/0.9",
-		URLs:  urls,
+	out, err := GenerateSitemap(h.index, h.domain, h.defaultIndex)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(xml.Header))
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	_ = enc.Encode(sitemap)
+	_, _ = w.Write(out)
 }
 
 // GenerateSitemap produces the sitemap XML bytes for use in build mode.
