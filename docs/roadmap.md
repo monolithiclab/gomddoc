@@ -53,7 +53,8 @@ See `docs/architecture.md` for detailed architecture and `docs/guide/` for user 
 - [x] **Disk-based Git storage**: `DiskStorageFactory` for the Git provider via `--git-storage-dir` flag.
       Prevents OOM on large repos by cloning to disk instead of memory.
 - [ ] **Partial clones**: `git clone --filter=blob:none` when upstream library support matures.
-- [ ] in dev mode, support automatic port assignment so that agents can work concurrently on multiple instances. if called with `--dev -p ":auto", then it should look for an available port starting with the default one.
+- [x] **Auto-port assignment**: `--port :auto` (or `-p :auto`) scans for an available port starting from
+      8080. Works in any mode, not just dev. Port discovery via sequential `net.Listen` scan.
 
 ## Phase 5: Search and Discovery (Partial)
 

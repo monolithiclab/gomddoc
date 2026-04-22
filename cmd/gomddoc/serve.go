@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"os/signal"
 	"path/filepath"
@@ -25,15 +26,34 @@ import (
 // ServeCmd holds all flags for the serve subcommand.
 type ServeCmd struct {
 	Dir           string `name:"dir" short:"d" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory or Git URL."`
-	Port          string `name:"port" short:"p" default:":8080" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port)."`
+	Port          string `name:"port" short:"p" default:":8080" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port). Use ':auto' for automatic port assignment."`
 	DevMode       bool   `name:"dev" default:"false" env:"GOMDDOC_SERVER_DEV_MODE" help:"Enable development mode (no caching, verbose logging)."`
 	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
 	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
 }
 
+// resolvePort resolves the port, handling auto-port assignment.
+// Returns the resolved port string (e.g., ":8081").
+func resolvePort(port string) (string, error) {
+	if !server.IsAutoPort(port) {
+		return port, nil
+	}
+	resolved, err := server.FindAvailablePort(config.DefaultAutoPortStart)
+	if err != nil {
+		return "", fmt.Errorf("auto-port: %w", err)
+	}
+	slog.Info("Auto-assigned port", slog.String("port", resolved))
+	return resolved, nil
+}
+
 // Run executes the serve command.
 func (s *ServeCmd) Run() error {
-	cfg, err := config.NewFromServeArgs(s.Dir, s.Port, s.DevMode, s.GitSSHKey)
+	port, err := resolvePort(s.Port)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := config.NewFromServeArgs(s.Dir, port, s.DevMode, s.GitSSHKey)
 	if err != nil {
 		return err
 	}

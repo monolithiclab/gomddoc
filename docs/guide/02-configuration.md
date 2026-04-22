@@ -25,10 +25,11 @@ Sets the source of your documentation. This can be a local path (e.g., `./docs`)
 *   **Default:** `.` (Current directory)
 
 **Server Port**
-Sets the network address and port the server listens on.
+Sets the network address and port the server listens on. Use `:auto` to automatically find an available port starting from 8080 — useful when running multiple instances or in CI environments.
 *   **CLI Flag:** `-p`
 *   **Env Var:** `GOMDDOC_SERVER_PORT`
 *   **Default:** `:8080`
+*   **Special value:** `:auto` — scans for the first available port starting from 8080
 
 **Development Mode**
 Enables development features: activates hot-reloading for `.gomddoc/config.yml` and theme templates, and disables all response caching.

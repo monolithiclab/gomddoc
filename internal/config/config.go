@@ -31,6 +31,7 @@ const (
 	DefaultIndex             = "README.md"
 	DefaultThemeName         = "default"
 	DefaultHighlightTheme    = "github"
+	DefaultAutoPortStart     = 8080
 
 	// Configurable upper bounds
 	MaxReadHeaderTimeout = 1 * time.Minute
