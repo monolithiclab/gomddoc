@@ -283,6 +283,96 @@ func TestAcceptsGzip(t *testing.T) {
 	}
 }
 
+func TestCompressionWriter_Unwrap(t *testing.T) {
+	rec := httptest.NewRecorder()
+	cw := &compressionWriter{ResponseWriter: rec}
+	if cw.Unwrap() != rec {
+		t.Error("Unwrap should return underlying ResponseWriter")
+	}
+}
+
+func TestCompressionWriter_WriteDecided_Compress(t *testing.T) {
+	// Handler writes a large body in two chunks to exercise writeDecided with gzip active.
+	firstChunk := strings.Repeat("A", minCompressionSize+1)
+	secondChunk := strings.Repeat("B", 500)
+	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(firstChunk))
+		// After the first write exceeds threshold, decided=true and compress=true.
+		// This second write goes through writeDecided with gzip.
+		_, _ = w.Write([]byte(secondChunk))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if ce := w.Header().Get("Content-Encoding"); ce != "gzip" {
+		t.Fatalf("Content-Encoding = %q, want gzip", ce)
+	}
+
+	decompressed := decompressGzip(t, w.Body.Bytes())
+	want := firstChunk + secondChunk
+	if decompressed != want {
+		t.Errorf("decompressed body length = %d, want %d", len(decompressed), len(want))
+	}
+}
+
+func TestCompressionWriter_WriteDecided_Passthrough(t *testing.T) {
+	// Handler writes a large body with image/png content type in two chunks.
+	// The first write triggers the decision (passthrough because image/png is skipped).
+	// The second write goes through writeDecided without gzip.
+	firstChunk := strings.Repeat("\x89", minCompressionSize+1)
+	secondChunk := strings.Repeat("\x00", 500)
+	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte(firstChunk))
+		// After the first write exceeds threshold, decided=true and compress=false.
+		// This second write goes through writeDecided raw (passthrough).
+		_, _ = w.Write([]byte(secondChunk))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/image.png", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if ce := w.Header().Get("Content-Encoding"); ce == "gzip" {
+		t.Error("image/png should not be gzip-compressed")
+	}
+
+	want := firstChunk + secondChunk
+	if w.Body.String() != want {
+		t.Errorf("body length = %d, want %d", w.Body.Len(), len(want))
+	}
+}
+
+func TestCompression_HeadRequest(t *testing.T) {
+	body := largeBody()
+	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(body))
+	}))
+
+	req := httptest.NewRequest(http.MethodHead, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if ce := w.Header().Get("Content-Encoding"); ce == "gzip" {
+		t.Error("HEAD requests should not be compressed")
+	}
+
+	if vary := w.Header().Get("Vary"); vary != "Accept-Encoding" {
+		t.Errorf("Vary = %q, want %q", vary, "Accept-Encoding")
+	}
+}
+
 func TestShouldSkipContentType(t *testing.T) {
 	tests := []struct {
 		contentType string

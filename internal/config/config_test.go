@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -730,6 +731,185 @@ func TestEnvVars(t *testing.T) {
 		if v.Type == "" {
 			t.Errorf("EnvVar %q has empty Type", v.Name)
 		}
+	}
+}
+
+func TestComputeDynamicDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		title     string
+		dir       string
+		wantTitle string
+	}{
+		{
+			name:      "sets title from dir basename when empty",
+			title:     "",
+			dir:       "/some/path/my-project",
+			wantTitle: "My-Project",
+		},
+		{
+			name:      "preserves existing title",
+			title:     "Custom Title",
+			dir:       "/some/path/my-project",
+			wantTitle: "Custom Title",
+		},
+		{
+			name:      "handles simple basename",
+			title:     "",
+			dir:       "/docs",
+			wantTitle: "Docs",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := New()
+			cfg.Site.Meta.Title = tt.title
+			cfg.Server.Dir = tt.dir
+			cfg.ComputeDynamicDefaults()
+
+			if cfg.Site.Meta.Title != tt.wantTitle {
+				t.Errorf("ComputeDynamicDefaults() title = %q, want %q", cfg.Site.Meta.Title, tt.wantTitle)
+			}
+		})
+	}
+}
+
+func TestApplyEnvOverrides_WalkStructTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		envVars  map[string]string
+		validate func(*testing.T, *Config)
+	}{
+		{
+			name: "string field via SiteConfig.ApplyEnvOverrides",
+			envVars: map[string]string{
+				"GOMDDOC_SITE_DEFAULT_INDEX": "index.md",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if c.Site.DefaultIndex != "index.md" {
+					t.Errorf("Site.DefaultIndex = %q, want %q", c.Site.DefaultIndex, "index.md")
+				}
+			},
+		},
+		{
+			name: "bool field via SiteConfig.ApplyEnvOverrides",
+			envVars: map[string]string{
+				"GOMDDOC_SITE_DIR_INDEX": "true",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if !c.Site.DirIndex {
+					t.Errorf("Site.DirIndex = %v, want true", c.Site.DirIndex)
+				}
+			},
+		},
+		{
+			name: "nested struct field via SiteConfig.ApplyEnvOverrides",
+			envVars: map[string]string{
+				"GOMDDOC_SITE_META_TITLE": "Env Title",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if c.Site.Meta.Title != "Env Title" {
+					t.Errorf("Site.Meta.Title = %q, want %q", c.Site.Meta.Title, "Env Title")
+				}
+			},
+		},
+		{
+			name:    "missing env var preserves default",
+			envVars: map[string]string{},
+			validate: func(t *testing.T, c *Config) {
+				if c.Site.DefaultIndex != DefaultIndex {
+					t.Errorf("Site.DefaultIndex = %q, want default %q", c.Site.DefaultIndex, DefaultIndex)
+				}
+			},
+		},
+		{
+			name: "duration field via Config.ApplyEnvOverrides",
+			envVars: map[string]string{
+				"GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT": "45s",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if c.Server.HTTP.WriteTimeout != 45*time.Second {
+					t.Errorf("Server.HTTP.WriteTimeout = %v, want 45s", c.Server.HTTP.WriteTimeout)
+				}
+			},
+		},
+		{
+			name: "int field via Config.ApplyEnvOverrides",
+			envVars: map[string]string{
+				"GOMDDOC_SERVER_HTTP_MAX_HEADER_MB": "5",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if c.Server.HTTP.MaxHeaderMB != 5 {
+					t.Errorf("Server.HTTP.MaxHeaderMB = %d, want 5", c.Server.HTTP.MaxHeaderMB)
+				}
+			},
+		},
+		{
+			name: "invalid duration is ignored",
+			envVars: map[string]string{
+				"GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT": "notaduration",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if c.Server.HTTP.WriteTimeout != DefaultWriteTimeout {
+					t.Errorf("Server.HTTP.WriteTimeout = %v, want default %v", c.Server.HTTP.WriteTimeout, DefaultWriteTimeout)
+				}
+			},
+		},
+		{
+			name: "invalid int is ignored",
+			envVars: map[string]string{
+				"GOMDDOC_SERVER_HTTP_MAX_HEADER_MB": "notanint",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if c.Server.HTTP.MaxHeaderMB != DefaultMaxHeaderMB {
+					t.Errorf("Server.HTTP.MaxHeaderMB = %d, want default %d", c.Server.HTTP.MaxHeaderMB, DefaultMaxHeaderMB)
+				}
+			},
+		},
+		{
+			name: "invalid bool is ignored",
+			envVars: map[string]string{
+				"GOMDDOC_SITE_DIR_INDEX": "notabool",
+			},
+			validate: func(t *testing.T, c *Config) {
+				if c.Site.DirIndex {
+					t.Errorf("Site.DirIndex = true, want false (default preserved on invalid input)")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
+
+			cfg := New()
+
+			// Use SiteConfig.ApplyEnvOverrides for site-level tests,
+			// Config.ApplyEnvOverrides for server-level tests
+			hasSiteOnly := true
+			for k := range tt.envVars {
+				if strings.HasPrefix(k, "GOMDDOC_SERVER_") {
+					hasSiteOnly = false
+					break
+				}
+			}
+
+			if hasSiteOnly {
+				cfg.Site.ApplyEnvOverrides()
+			} else {
+				cfg.ApplyEnvOverrides()
+			}
+
+			tt.validate(t, cfg)
+		})
 	}
 }
 

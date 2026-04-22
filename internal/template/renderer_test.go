@@ -808,6 +808,245 @@ func TestNavigationFunction_NilGenerator(t *testing.T) {
 	}
 }
 
+func TestFuncMap_InlineAsset(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`<script>{{inlineAsset "test.js"}}</script>`),
+		},
+		"assets/themes/default/test.js": {
+			Data: []byte("console.log('hello');"),
+		},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	result, err := r.Render(context.Background(), "default.html.tmpl", &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/"},
+	})
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(string(result), "console.log('hello');") {
+		t.Errorf("Expected inlined JS content, got %q", string(result))
+	}
+}
+
+func TestFuncMap_InlineAsset_SharedFallback(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`<script>{{inlineAsset "shared.js"}}</script>`),
+		},
+		"assets/shared/shared.js": {
+			Data: []byte("shared code"),
+		},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	result, err := r.Render(context.Background(), "default.html.tmpl", &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/"},
+	})
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	if !strings.Contains(string(result), "shared code") {
+		t.Errorf("Expected shared asset content, got %q", string(result))
+	}
+}
+
+func TestFuncMap_InlineAsset_NotFound(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`{{inlineAsset "missing.js"}}`),
+		},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	_, err := r.Render(context.Background(), "default.html.tmpl", &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/"},
+	})
+	if err == nil {
+		t.Fatal("Render should fail when asset is not found")
+	}
+}
+
+func TestHasVisibleDescendants_Direct(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		node *renderer.TOCNode
+		min  int
+		max  int
+		want bool
+	}{
+		{
+			name: "nil children",
+			node: &renderer.TOCNode{},
+			min:  1,
+			max:  3,
+			want: false,
+		},
+		{
+			name: "direct visible child",
+			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
+				{Level: 2},
+			}},
+			min:  1,
+			max:  3,
+			want: true,
+		},
+		{
+			name: "nested visible descendant via below-min parent",
+			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
+				{Level: 0, Children: []*renderer.TOCNode{
+					{Level: 2},
+				}},
+			}},
+			min:  2,
+			max:  3,
+			want: true,
+		},
+		{
+			name: "all children out of range above max",
+			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
+				{Level: 5},
+			}},
+			min:  1,
+			max:  3,
+			want: false,
+		},
+		{
+			name: "deeply nested visible descendant",
+			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
+				{Level: 0, Children: []*renderer.TOCNode{
+					{Level: 0, Children: []*renderer.TOCNode{
+						{Level: 2},
+					}},
+				}},
+			}},
+			min:  2,
+			max:  3,
+			want: true,
+		},
+		{
+			name: "below-min child without visible descendants",
+			node: &renderer.TOCNode{Children: []*renderer.TOCNode{
+				{Level: 0, Children: []*renderer.TOCNode{
+					{Level: 5},
+				}},
+			}},
+			min:  2,
+			max:  3,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := hasVisibleDescendants(tt.node, tt.min, tt.max)
+			if got != tt.want {
+				t.Errorf("hasVisibleDescendants() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateEditURL_ViaTemplate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		editURL  string
+		pagePath string
+		want     string
+	}{
+		{"empty config", "", "/page.md", ""},
+		{"basic", "https://github.com/user/repo/edit/main", "/docs/page.md", "https://github.com/user/repo/edit/main/docs/page.md"},
+		{"trailing slash", "https://github.com/user/repo/edit/main/", "/page.md", "https://github.com/user/repo/edit/main/page.md"},
+		{"no leading slash on path", "https://example.com/edit", "page.md", "https://example.com/edit/page.md"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			testFS := fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl": {
+					Data: []byte(`{{editURL .Page.Path}}`),
+				},
+			}
+			siteConfig := config.NewSiteConfig(".")
+			siteConfig.EditURL = tt.editURL
+			r := NewHTMLRenderer(&siteConfig, testFS)
+			result, err := r.Render(context.Background(), "default.html.tmpl", &TemplateContext{
+				Site: &siteConfig,
+				Page: PageContext{Path: tt.pagePath},
+			})
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+			got := strings.TrimSpace(string(result))
+			if got != tt.want {
+				t.Errorf("editURL = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateTOC_WithLevels(t *testing.T) {
+	t.Parallel()
+
+	toc := &renderer.TOCNode{
+		Children: []*renderer.TOCNode{
+			{Level: 1, ID: "intro", Text: "Introduction", Children: []*renderer.TOCNode{
+				{Level: 2, ID: "setup", Text: "Setup"},
+				{Level: 2, ID: "usage", Text: "Usage"},
+			}},
+		},
+	}
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`{{toc .Page.TOC 1 2}}`),
+		},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	result, err := r.Render(context.Background(), "default.html.tmpl", &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{Path: "/", TOC: toc},
+	})
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	output := string(result)
+	if !strings.Contains(output, "Introduction") {
+		t.Errorf("TOC should contain 'Introduction', got %q", output)
+	}
+	if !strings.Contains(output, "Setup") {
+		t.Errorf("TOC should contain 'Setup', got %q", output)
+	}
+	if !strings.Contains(output, "Usage") {
+		t.Errorf("TOC should contain 'Usage', got %q", output)
+	}
+}
+
 func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
 	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
 	testFS := fstest.MapFS{

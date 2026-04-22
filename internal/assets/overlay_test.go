@@ -316,31 +316,151 @@ func TestOverlayFS_UserAssetOverride(t *testing.T) {
 	}
 }
 
-// basicFS wraps MapFS but hides StatFS interface to test fallback
-type basicFS struct {
-	fstest.MapFS
+// nonStatFS wraps an fs.FS to ensure it does NOT implement fs.StatFS.
+// Only the Open method is exposed, forcing the Stat fallback path.
+type nonStatFS struct {
+	inner fs.FS
 }
 
-func TestOverlayFS_StatFallback(t *testing.T) {
+func (n *nonStatFS) Open(name string) (fs.File, error) {
+	return n.inner.Open(name)
+}
+
+func TestOverlayFS_Stat(t *testing.T) {
 	t.Parallel()
 
-	// Use basicFS which doesn't implement fs.StatFS
-	fsys := basicFS{
-		MapFS: fstest.MapFS{
-			"file.txt": &fstest.MapFile{Data: []byte("content")},
+	tests := []struct {
+		name     string
+		buildFS  func() *OverlayFS
+		path     string
+		wantName string
+		wantSize int64
+		wantErr  error
+	}{
+		{
+			name: "StatFS path - file found",
+			buildFS: func() *OverlayFS {
+				return NewOverlayFS(fstest.MapFS{
+					"file.txt": &fstest.MapFile{Data: []byte("hello"), Mode: 0644},
+				})
+			},
+			path:     "file.txt",
+			wantName: "file.txt",
+			wantSize: 5,
+		},
+		{
+			name: "StatFS path - file not found",
+			buildFS: func() *OverlayFS {
+				return NewOverlayFS(fstest.MapFS{
+					"other.txt": &fstest.MapFile{Data: []byte("x")},
+				})
+			},
+			path:    "missing.txt",
+			wantErr: fs.ErrNotExist,
+		},
+		{
+			name: "StatFS path - first filesystem wins",
+			buildFS: func() *OverlayFS {
+				fs1 := fstest.MapFS{"file.txt": &fstest.MapFile{Data: []byte("short")}}
+				fs2 := fstest.MapFS{"file.txt": &fstest.MapFile{Data: []byte("longer content")}}
+				return NewOverlayFS(fs1, fs2)
+			},
+			path:     "file.txt",
+			wantName: "file.txt",
+			wantSize: 5,
+		},
+		{
+			name: "StatFS path - fallback to second filesystem",
+			buildFS: func() *OverlayFS {
+				fs1 := fstest.MapFS{"other.txt": &fstest.MapFile{Data: []byte("x")}}
+				fs2 := fstest.MapFS{"target.txt": &fstest.MapFile{Data: []byte("found")}}
+				return NewOverlayFS(fs1, fs2)
+			},
+			path:     "target.txt",
+			wantName: "target.txt",
+			wantSize: 5,
+		},
+		{
+			name: "non-StatFS fallback - file found via Open+Stat",
+			buildFS: func() *OverlayFS {
+				inner := fstest.MapFS{
+					"doc.txt": &fstest.MapFile{Data: []byte("content")},
+				}
+				return NewOverlayFS(&nonStatFS{inner: inner})
+			},
+			path:     "doc.txt",
+			wantName: "doc.txt",
+			wantSize: 7,
+		},
+		{
+			name: "non-StatFS fallback - file not found",
+			buildFS: func() *OverlayFS {
+				inner := fstest.MapFS{
+					"other.txt": &fstest.MapFile{Data: []byte("x")},
+				}
+				return NewOverlayFS(&nonStatFS{inner: inner})
+			},
+			path:    "missing.txt",
+			wantErr: fs.ErrNotExist,
+		},
+		{
+			name: "mixed StatFS and non-StatFS - non-StatFS first wins",
+			buildFS: func() *OverlayFS {
+				inner := fstest.MapFS{"file.txt": &fstest.MapFile{Data: []byte("from non-stat")}}
+				statFS := fstest.MapFS{"file.txt": &fstest.MapFile{Data: []byte("from stat")}}
+				return NewOverlayFS(&nonStatFS{inner: inner}, statFS)
+			},
+			path:     "file.txt",
+			wantName: "file.txt",
+			wantSize: int64(len("from non-stat")),
+		},
+		{
+			name: "non-StatFS not found falls back to StatFS",
+			buildFS: func() *OverlayFS {
+				inner := fstest.MapFS{"other.txt": &fstest.MapFile{Data: []byte("x")}}
+				statFS := fstest.MapFS{"target.txt": &fstest.MapFile{Data: []byte("found in stat")}}
+				return NewOverlayFS(&nonStatFS{inner: inner}, statFS)
+			},
+			path:     "target.txt",
+			wantName: "target.txt",
+			wantSize: int64(len("found in stat")),
+		},
+		{
+			name: "StatFS not found falls back to non-StatFS",
+			buildFS: func() *OverlayFS {
+				statFS := fstest.MapFS{"other.txt": &fstest.MapFile{Data: []byte("x")}}
+				inner := fstest.MapFS{"target.txt": &fstest.MapFile{Data: []byte("found via open")}}
+				return NewOverlayFS(statFS, &nonStatFS{inner: inner})
+			},
+			path:     "target.txt",
+			wantName: "target.txt",
+			wantSize: int64(len("found via open")),
 		},
 	}
 
-	overlay := NewOverlayFS(fsys)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Should fall back to Open() -> Stat()
-	info, err := overlay.Stat("file.txt")
-	if err != nil {
-		t.Fatalf("Stat() fallback error: %v", err)
-	}
+			overlay := tt.buildFS()
+			info, err := overlay.Stat(tt.path)
 
-	if info.Size() != 7 {
-		t.Errorf("Stat() size = %d, want 7", info.Size())
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("Stat() error = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Stat() unexpected error: %v", err)
+			}
+			if info.Name() != tt.wantName {
+				t.Errorf("Stat() Name = %q, want %q", info.Name(), tt.wantName)
+			}
+			if info.Size() != tt.wantSize {
+				t.Errorf("Stat() Size = %d, want %d", info.Size(), tt.wantSize)
+			}
+		})
 	}
 }
 

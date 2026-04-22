@@ -362,6 +362,46 @@ func TestFilesystemProvider_Stat(t *testing.T) {
 	}
 }
 
+func TestFilesystemProvider_RootFS(t *testing.T) {
+	t.Parallel()
+
+	mapFS := fstest.MapFS{
+		"hello.txt": &fstest.MapFile{Data: []byte("hello world")},
+		"sub/a.md":  &fstest.MapFile{Data: []byte("# A")},
+	}
+
+	provider, err := NewFilesystemProviderFromFS(mapFS, "README.md", false)
+	if err != nil {
+		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
+	}
+
+	rootFS, err := provider.RootFS(t.Context())
+	if err != nil {
+		t.Fatalf("RootFS() error = %v", err)
+	}
+	if rootFS == nil {
+		t.Fatal("RootFS() returned nil, want non-nil")
+	}
+
+	// Verify we can read files through the returned fs.FS
+	f, err := rootFS.Open("hello.txt")
+	if err != nil {
+		t.Fatalf("rootFS.Open() error = %v", err)
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if info.Name() != "hello.txt" {
+		t.Errorf("Name() = %q, want %q", info.Name(), "hello.txt")
+	}
+	if info.Size() != int64(len("hello world")) {
+		t.Errorf("Size() = %d, want %d", info.Size(), len("hello world"))
+	}
+}
+
 func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 	mapFS := fstest.MapFS{
 		"test_err_wrap/file.txt": &fstest.MapFile{Data: []byte("content")},

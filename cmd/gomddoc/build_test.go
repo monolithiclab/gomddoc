@@ -1,12 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/renderer"
+	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
 
 func TestBuildCmd_GeneratesHTMLFromMarkdown(t *testing.T) {
@@ -175,6 +181,264 @@ func TestBuildCmd_ParallelBuildProcessesAllFiles(t *testing.T) {
 		if content != expected {
 			t.Errorf("Expected %q in %s, got %q", expected, cssFile, content)
 		}
+	}
+}
+
+// --- Unit tests that call functions directly for coverage ---
+
+func TestWriteOutputFile(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+
+	// Test basic write
+	err := b.writeOutputFile("test.html", []byte("<html>hello</html>"))
+	if err != nil {
+		t.Fatalf("writeOutputFile failed: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(outDir, "test.html"))
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if string(content) != "<html>hello</html>" {
+		t.Errorf("content = %q, want %q", content, "<html>hello</html>")
+	}
+
+	// Test nested directory creation
+	err = b.writeOutputFile(filepath.Join("sub", "dir", "page.html"), []byte("nested"))
+	if err != nil {
+		t.Fatalf("writeOutputFile with nested dirs failed: %v", err)
+	}
+	content, err = os.ReadFile(filepath.Join(outDir, "sub", "dir", "page.html"))
+	if err != nil {
+		t.Fatalf("failed to read nested output file: %v", err)
+	}
+	if string(content) != "nested" {
+		t.Errorf("nested content = %q, want %q", content, "nested")
+	}
+}
+
+func TestCopyFile(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+	stats := &buildStats{}
+
+	contentRoot := fstest.MapFS{
+		"style.css": &fstest.MapFile{Data: []byte("body{}")},
+	}
+
+	err := b.copyFile(contentRoot, "style.css", stats)
+	if err != nil {
+		t.Fatalf("copyFile failed: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outDir, "style.css"))
+	if err != nil {
+		t.Fatalf("failed to read copied file: %v", err)
+	}
+	if string(content) != "body{}" {
+		t.Errorf("content = %q, want %q", content, "body{}")
+	}
+
+	if stats.copiedFiles.Load() != 1 {
+		t.Errorf("copiedFiles = %d, want 1", stats.copiedFiles.Load())
+	}
+	if stats.totalBytes.Load() != int64(len("body{}")) {
+		t.Errorf("totalBytes = %d, want %d", stats.totalBytes.Load(), len("body{}"))
+	}
+}
+
+// newTestTemplateRenderer creates a minimal HTMLRenderer backed by an in-memory
+// template filesystem, suitable for unit tests that need to render markdown.
+func newTestTemplateRenderer(t *testing.T) (*tmpl.HTMLRenderer, *config.SiteConfig) {
+	t.Helper()
+
+	siteConfig := config.NewSiteConfig(".")
+
+	templateFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": &fstest.MapFile{
+			Data: []byte(`<!DOCTYPE html><html><body>{{.Page.Content}}</body></html>`),
+		},
+	}
+
+	templateRenderer := tmpl.NewHTMLRenderer(&siteConfig, templateFS)
+	return templateRenderer, &siteConfig
+}
+
+// newTestRegistry creates a renderer registry with the default markdown and
+// passthrough renderers, suitable for unit tests.
+func newTestRegistry() renderer.RendererRegistry {
+	registry := renderer.NewDefaultRegistry()
+	registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{}))
+	registry.Register(renderer.NewPassthroughRenderer())
+	return registry
+}
+
+func TestBuildMarkdownFile(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+	stats := &buildStats{}
+
+	contentRoot := fstest.MapFS{
+		"page.md": &fstest.MapFile{Data: []byte("# Test Page\n\nSome content.")},
+	}
+
+	registry := newTestRegistry()
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+
+	err := b.buildMarkdownFile(context.Background(), contentRoot, "page.md", registry, templateRenderer, siteConfig, stats)
+	if err != nil {
+		t.Fatalf("buildMarkdownFile failed: %v", err)
+	}
+
+	htmlContent, err := os.ReadFile(filepath.Join(outDir, "page.html"))
+	if err != nil {
+		t.Fatalf("Expected page.html to exist: %v", err)
+	}
+	if !strings.Contains(string(htmlContent), "Test Page") {
+		t.Errorf("Expected 'Test Page' in output HTML, got:\n%s", htmlContent)
+	}
+
+	if stats.markdownFiles.Load() != 1 {
+		t.Errorf("markdownFiles = %d, want 1", stats.markdownFiles.Load())
+	}
+	if stats.totalBytes.Load() == 0 {
+		t.Error("totalBytes should be > 0 after rendering markdown")
+	}
+}
+
+func TestBuildMarkdownFile_README(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+	stats := &buildStats{}
+
+	contentRoot := fstest.MapFS{
+		"README.md": &fstest.MapFile{Data: []byte("# Project")},
+	}
+
+	registry := newTestRegistry()
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+
+	err := b.buildMarkdownFile(context.Background(), contentRoot, "README.md", registry, templateRenderer, siteConfig, stats)
+	if err != nil {
+		t.Fatalf("buildMarkdownFile failed: %v", err)
+	}
+
+	// Should produce both README.html and index.html
+	readmeHTML, err := os.ReadFile(filepath.Join(outDir, "README.html"))
+	if err != nil {
+		t.Fatal("Expected README.html to exist")
+	}
+	indexHTML, err := os.ReadFile(filepath.Join(outDir, "index.html"))
+	if err != nil {
+		t.Fatal("Expected index.html to exist")
+	}
+	if string(readmeHTML) != string(indexHTML) {
+		t.Error("README.html and index.html should have identical content")
+	}
+	if !strings.Contains(string(readmeHTML), "Project") {
+		t.Errorf("Expected 'Project' in output HTML, got:\n%s", readmeHTML)
+	}
+}
+
+func TestBuildMarkdownFile_SubdirREADME(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+	stats := &buildStats{}
+
+	contentRoot := fstest.MapFS{
+		"docs/README.md": &fstest.MapFile{Data: []byte("# Docs Index")},
+	}
+
+	registry := newTestRegistry()
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+
+	err := b.buildMarkdownFile(context.Background(), contentRoot, "docs/README.md", registry, templateRenderer, siteConfig, stats)
+	if err != nil {
+		t.Fatalf("buildMarkdownFile failed: %v", err)
+	}
+
+	// Should produce docs/README.html and docs/index.html
+	if _, err := os.Stat(filepath.Join(outDir, "docs", "README.html")); err != nil {
+		t.Fatal("Expected docs/README.html to exist")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "docs", "index.html")); err != nil {
+		t.Fatal("Expected docs/index.html to exist")
+	}
+}
+
+func TestWalkAndBuild(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+
+	contentRoot := fstest.MapFS{
+		"page.md":    &fstest.MapFile{Data: []byte("# Page")},
+		"style.css":  &fstest.MapFile{Data: []byte("body{}")},
+		".hidden.md": &fstest.MapFile{Data: []byte("# Hidden")},
+	}
+
+	registry := newTestRegistry()
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+
+	stats, err := b.walkAndBuild(contentRoot, registry, templateRenderer, siteConfig)
+	if err != nil {
+		t.Fatalf("walkAndBuild failed: %v", err)
+	}
+
+	if stats.markdownFiles.Load() != 1 {
+		t.Errorf("markdownFiles = %d, want 1", stats.markdownFiles.Load())
+	}
+	if stats.copiedFiles.Load() != 1 {
+		t.Errorf("copiedFiles = %d, want 1", stats.copiedFiles.Load())
+	}
+	if stats.skippedFiles.Load() != 1 {
+		t.Errorf("skippedFiles = %d, want 1 (hidden file)", stats.skippedFiles.Load())
+	}
+
+	// Verify output files exist
+	if _, err := os.Stat(filepath.Join(outDir, "page.html")); err != nil {
+		t.Error("Expected page.html to exist")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "style.css")); err != nil {
+		t.Error("Expected style.css to exist")
+	}
+	// Hidden file should not be in output
+	if _, err := os.Stat(filepath.Join(outDir, ".hidden.html")); !os.IsNotExist(err) {
+		t.Error("Expected .hidden.html to not exist")
+	}
+}
+
+func TestWalkAndBuild_MixedContent(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+
+	contentRoot := fstest.MapFS{
+		"README.md":        &fstest.MapFile{Data: []byte("# Root")},
+		"docs/guide.md":    &fstest.MapFile{Data: []byte("# Guide")},
+		"docs/style.css":   &fstest.MapFile{Data: []byte("h1{}")},
+		".gomddoc/cfg.yml": &fstest.MapFile{Data: []byte("theme: default")},
+	}
+
+	registry := newTestRegistry()
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+
+	stats, err := b.walkAndBuild(contentRoot, registry, templateRenderer, siteConfig)
+	if err != nil {
+		t.Fatalf("walkAndBuild failed: %v", err)
+	}
+
+	// README.md and docs/guide.md are markdown
+	if stats.markdownFiles.Load() != 2 {
+		t.Errorf("markdownFiles = %d, want 2", stats.markdownFiles.Load())
+	}
+	// docs/style.css is copied
+	if stats.copiedFiles.Load() != 1 {
+		t.Errorf("copiedFiles = %d, want 1", stats.copiedFiles.Load())
+	}
+	// .gomddoc directory is skipped entirely (hidden dir)
+
+	// README.md should produce index.html
+	if _, err := os.Stat(filepath.Join(outDir, "index.html")); err != nil {
+		t.Error("Expected index.html from README.md")
 	}
 }
 
