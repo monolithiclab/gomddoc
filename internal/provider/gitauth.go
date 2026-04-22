@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -12,11 +13,11 @@ import (
 
 // resolveAuth determines the authentication method for the endpoint.
 // Returns nil for anonymous access (git://, https://).
-// Returns SSH agent auth for ssh:// endpoints.
-func resolveAuth(endpoint *transport.Endpoint) (transport.AuthMethod, error) {
+// Returns SSH auth for ssh:// endpoints if a key file is provided.
+func resolveAuth(endpoint *transport.Endpoint, sshKeyFile string) (transport.AuthMethod, error) {
 	switch endpoint.Protocol {
 	case "ssh":
-		return setupSSHAuth(endpoint.User)
+		return setupSSHAuth(endpoint.User, sshKeyFile)
 	case "git":
 		return nil, nil // Git protocol is anonymous
 	case "https", "http":
@@ -26,22 +27,38 @@ func resolveAuth(endpoint *transport.Endpoint) (transport.AuthMethod, error) {
 	}
 }
 
-// setupSSHAuth creates an SSH agent-based authentication method.
-// Uses the running SSH agent (via SSH_AUTH_SOCK) for key management.
-func setupSSHAuth(user string) (transport.AuthMethod, error) {
+// setupSSHAuth creates an SSH authentication method using the specified key file.
+// If no key file is provided, it returns an error as we don't support implicit auth.
+func setupSSHAuth(user string, sshKeyFile string) (transport.AuthMethod, error) {
 	if user == "" {
 		user = "git"
 	}
 
-	auth, err := ssh.NewSSHAgentAuth(user)
-	if err != nil {
-		return nil, &PathError{Op: "ssh-agent", Path: user, Err: ErrGitAuthFailed}
+	if sshKeyFile == "" {
+		return nil, fmt.Errorf("ssh authentication requires a key file (use --git-key-file)")
 	}
 
-	// Configure host key verification
-	auth.HostKeyCallback = createHostKeyCallback()
+	return &ssh.PublicKeysCallback{
+		User: user,
+		Callback: func() ([]gossh.Signer, error) {
+			// #nosec G304 -- Path is provided by admin configuration
+			content, err := os.ReadFile(sshKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read key file %s: %w", sshKeyFile, err)
+			}
 
-	return auth, nil
+			signer, err := gossh.ParsePrivateKey(content)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse key file %s: %w", sshKeyFile, err)
+			}
+
+			slog.Debug("Loaded configured SSH key", slog.String("path", sshKeyFile))
+			return []gossh.Signer{signer}, nil
+		},
+		HostKeyCallbackHelper: ssh.HostKeyCallbackHelper{
+			HostKeyCallback: createHostKeyCallback(),
+		},
+	}, nil
 }
 
 // createHostKeyCallback creates a host key verification callback.

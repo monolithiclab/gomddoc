@@ -696,11 +696,12 @@ func TestResolveAuth(t *testing.T) {
 		name     string
 		protocol string
 		wantNil  bool
+		wantErr  bool
 	}{
-		{"git protocol is anonymous", "git", true},
-		{"https protocol is anonymous", "https", true},
-		{"http protocol is anonymous", "http", true},
-		// SSH would require agent, so we just check it doesn't panic with empty env
+		{"git protocol is anonymous", "git", true, false},
+		{"https protocol is anonymous", "https", true, false},
+		{"http protocol is anonymous", "http", true, false},
+		{"ssh protocol requires key file", "ssh", false, true},
 	}
 
 	for _, tt := range tests {
@@ -715,7 +716,14 @@ func TestResolveAuth(t *testing.T) {
 			// Override protocol for testing
 			parsed.Endpoint.Protocol = tt.protocol
 
-			auth, err := resolveAuth(parsed.Endpoint)
+			auth, err := resolveAuth(parsed.Endpoint, "")
+			if tt.wantErr {
+				if err == nil {
+					t.Error("resolveAuth() error = nil, want error")
+				}
+				return
+			}
+
 			if tt.wantNil {
 				if err != nil {
 					t.Errorf("resolveAuth() error = %v, want nil", err)

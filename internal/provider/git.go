@@ -62,6 +62,14 @@ func WithMaxFileSize(size int64) GitProviderOption {
 	}
 }
 
+// WithSSHKeyFile sets the path to the SSH private key file.
+// If provided, this key will be prioritized over the SSH agent and default keys.
+func WithSSHKeyFile(path string) GitProviderOption {
+	return func(g *GitProvider) {
+		g.sshKeyFile = path
+	}
+}
+
 // GitProvider implements Provider for remote Git repositories.
 // It clones the repository into storage on first access and serves
 // files from the object database.
@@ -79,6 +87,7 @@ type GitProvider struct {
 	dirIndex       bool
 	cloneTimeout   time.Duration
 	maxFileSize    int64
+	sshKeyFile     string
 	storageFactory StorageFactory
 
 	// Authentication (nil for anonymous)
@@ -216,7 +225,7 @@ func (g *GitProvider) cloneLocked() error {
 // setupAuthLocked configures authentication based on the endpoint protocol.
 // Must be called with g.mu held for writing.
 func (g *GitProvider) setupAuthLocked() error {
-	auth, err := resolveAuth(g.parsedURL.Endpoint)
+	auth, err := resolveAuth(g.parsedURL.Endpoint, g.sshKeyFile)
 	if err != nil {
 		return &PathError{Op: "auth", Path: g.parsedURL.Endpoint.String(), Err: err}
 	}

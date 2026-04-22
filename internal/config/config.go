@@ -51,6 +51,9 @@ type Config struct {
 	// Server configuration
 	Server *ServerConfig `env:"SERVER"`
 
+	// Git configuration
+	GitSSHKeyFile string `env:"GIT_SSH_KEY_FILE"`
+
 	// Reference to site configuration (this IS exposed to templates)
 	Site *SiteConfig
 }
@@ -87,6 +90,7 @@ func (c *Config) ParseFlags() {
 	flag.StringVar(&c.Dir, "d", c.Dir, "Markdown directory")
 	flag.StringVar(&c.Port, "p", c.Port, "HTTP port (default: 8080)")
 	flag.BoolVar(&c.DevMode, "dev", c.DevMode, "Enable development mode (hot reload)")
+	flag.StringVar(&c.GitSSHKeyFile, "git-key-file", c.GitSSHKeyFile, "Path to SSH private key file for Git operations")
 	flag.Parse()
 }
 

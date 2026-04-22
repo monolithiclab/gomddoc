@@ -66,7 +66,12 @@ func startCmd() int {
 	}
 
 	// Initialize content provider (filesystem or Git based on cfg.Dir)
-	prov, err := provider.NewProvider(cfg.Dir, cfg.Server.DefaultIndex, cfg.Server.DirIndex)
+	var providerOpts []provider.GitProviderOption
+	if cfg.GitSSHKeyFile != "" {
+		providerOpts = append(providerOpts, provider.WithSSHKeyFile(cfg.GitSSHKeyFile))
+	}
+
+	prov, err := provider.NewProvider(cfg.Dir, cfg.Server.DefaultIndex, cfg.Server.DirIndex, providerOpts...)
 	if err != nil {
 		slog.Error("Cannot create content provider", slog.Any("error", err))
 		os.Exit(1)

@@ -17,9 +17,9 @@ import "github.com/monolithiclab/gomddoc/internal/common"
 //
 // Returns an error if the provider cannot be created. For Git URLs, URL
 // parsing errors are returned immediately; clone errors occur on first access.
-func NewProvider(dir, defaultIndex string, dirIndex bool) (Provider, error) {
+func NewProvider(dir, defaultIndex string, dirIndex bool, opts ...GitProviderOption) (Provider, error) {
 	if common.IsGitURL(dir) {
-		return NewGitProvider(dir, defaultIndex, dirIndex)
+		return NewGitProvider(dir, defaultIndex, dirIndex, opts...)
 	}
 	return NewFilesystemProvider(dir, defaultIndex, dirIndex)
 }
