@@ -32,6 +32,7 @@ gomddoc serve [DIR] [flags]
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory or Git URL |
 | `-p, --port` | `GOMDDOC_SERVER_PORT` | `:8080` | Listen address (`:auto` for auto-assign) |
 | `--dev` | `GOMDDOC_SERVER_DEV_MODE` | `false` | Dev mode (no caching, verbose logs) |
+| `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
 | `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
 | `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory |
 | `--pprof` | `GOMDDOC_SERVER_PPROF` | `false` | Enable profiling endpoints |
@@ -49,9 +50,10 @@ gomddoc preview [DIR] [flags]
 |----------|---------|---------|-------------|
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory |
 | `-p, --port` | `GOMDDOC_SERVER_PORT` | `:auto` | Listen address (auto-assigns from 8080) |
+| `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
 | `--open` | `GOMDDOC_PREVIEW_OPEN` | `false` | Auto-open browser on startup |
 
-Preview is identical to `serve --dev` but defaults to automatic port assignment.
+Preview enables dev mode (no caching, template re-parsing on every request) and defaults to automatic port assignment.
 
 ### `build`
 
@@ -65,6 +67,7 @@ gomddoc build [DIR] [flags]
 |----------|---------|---------|-------------|
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Markdown source directory or Git URL |
 | `-o, --output` | `GOMDDOC_BUILD_OUTPUT` | `build/site` | Output directory |
+| `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
 | `-f, --force` | `GOMDDOC_BUILD_FORCE` | `false` | Overwrite output directory if it exists |
 
 **Build behavior:**

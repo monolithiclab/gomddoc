@@ -89,12 +89,8 @@ _Usability improvements to the serve, build, and preview subcommands._
       and pushes reload events on file changes. SSE is simpler than WebSocket (no upgrade
       handshake, native `EventSource` API, works through proxies). Only active in `preview`
       mode — `serve` never injects the script. Medium complexity.
-- [ ] **`--domain` flag for serve/build/preview**: Add a `--domain` flag (and `GOMDDOC_DOMAIN`
-      env var) to all three subcommands as a convenient alternative to setting `meta.domain` in
-      `.gomddoc/config.yml`. CLI flag takes precedence over config file. Used for canonical URLs,
-      sitemap generation, Open Graph tags, and `robots.txt` Sitemap directive. Eliminates the
-      need for a config file in simple single-command deployments (e.g.,
-      `gomddoc serve --domain docs.example.com`). Low complexity.
+- [x] **`--domain` flag for serve/build/preview**: `-d, --domain` / `GOMDDOC_DOMAIN` on all
+      three subcommands overrides `meta.domain` from config. CLI flag takes precedence.
 
 ## Phase 9: SEO and Discoverability
 

@@ -432,6 +432,31 @@ func TestBuildCmd_Run_WithFrontmatter(t *testing.T) {
 	}
 }
 
+func TestBuildCmd_Run_WithDomain(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+	writeTestFile(t, srcDir, "README.md", "---\ntitle: Domain Build Test\n---\n# Domain Build Test")
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir, Domain: "build.example.com"}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// Verify sitemap.xml was generated with the domain
+	sitemapContent := readTestFile(t, outDir, "sitemap.xml")
+	if !strings.Contains(sitemapContent, "build.example.com") {
+		t.Errorf("sitemap.xml should contain the domain, got:\n%s", sitemapContent)
+	}
+
+	// Verify robots.txt references the domain
+	robotsContent := readTestFile(t, outDir, "robots.txt")
+	if !strings.Contains(robotsContent, "build.example.com") {
+		t.Error("robots.txt should contain the domain")
+	}
+}
+
 func TestBuildCmd_Run_NonexistentDir(t *testing.T) {
 	t.Parallel()
 

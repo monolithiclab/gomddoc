@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log/slog"
 
@@ -143,6 +144,7 @@ func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
 type ServerSetupOptions struct {
 	Dir       string
 	Port      string
+	Domain    string
 	DevMode   bool
 	GitSSHKey string
 	Pprof     bool
@@ -171,6 +173,13 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 	}
 
 	cfg.Server.Pprof = opts.Pprof
+
+	if opts.Domain != "" {
+		cfg.Site.Meta.Domain = opts.Domain
+		if err := cfg.Site.Validate(); err != nil {
+			return nil, fmt.Errorf("domain flag: %w", err)
+		}
+	}
 
 	if cfg.Server.DevMode {
 		slog.Info("Development mode enabled",

@@ -76,16 +76,16 @@ func TestServeCmd_Setup(t *testing.T) {
 	}
 }
 
-func TestServeCmd_Setup_DevMode(t *testing.T) {
+func TestServeCmd_Setup_WithDomain(t *testing.T) {
 	t.Parallel()
 
 	srcDir := t.TempDir()
-	writeTestFile(t, srcDir, "README.md", "# Dev Mode Test")
+	writeTestFile(t, srcDir, "README.md", "# Domain Test")
 
 	cmd := &ServeCmd{
-		Dir:     srcDir,
-		Port:    ":0",
-		DevMode: true,
+		Dir:    srcDir,
+		Port:   ":0",
+		Domain: "docs.example.com",
 	}
 
 	result, err := cmd.setup()
@@ -94,8 +94,8 @@ func TestServeCmd_Setup_DevMode(t *testing.T) {
 	}
 	defer result.cleanup()
 
-	if result.httpServer == nil {
-		t.Error("httpServer should not be nil in dev mode")
+	if got := result.cfg.Site.Meta.Domain; got != "docs.example.com" {
+		t.Errorf("Domain = %q, want %q", got, "docs.example.com")
 	}
 }
 

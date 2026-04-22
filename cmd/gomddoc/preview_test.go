@@ -61,6 +61,29 @@ func TestPreviewCmd_Setup(t *testing.T) {
 	}
 }
 
+func TestPreviewCmd_Setup_WithDomain(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Domain Test")
+
+	cmd := &PreviewCmd{
+		Dir:    srcDir,
+		Port:   ":0",
+		Domain: "preview.example.com",
+	}
+
+	result, err := cmd.setup()
+	if err != nil {
+		t.Fatalf("setup() error = %v", err)
+	}
+	defer result.cleanup()
+
+	if got := result.cfg.Site.Meta.Domain; got != "preview.example.com" {
+		t.Errorf("Domain = %q, want %q", got, "preview.example.com")
+	}
+}
+
 func TestPreviewCmd_Setup_NonexistentDir(t *testing.T) {
 	t.Parallel()
 

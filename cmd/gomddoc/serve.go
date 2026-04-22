@@ -21,6 +21,7 @@ type ServeCmd struct {
 	Dir           string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory or Git URL."`
 	Port          string `name:"port" short:"p" default:":8080" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port). Use ':auto' for automatic port assignment."`
 	DevMode       bool   `name:"dev" default:"false" env:"GOMDDOC_SERVER_DEV_MODE" help:"Enable development mode (no caching, verbose logging)."`
+	Domain        string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
 	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
 	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
 	Pprof         bool   `name:"pprof" default:"false" env:"GOMDDOC_SERVER_PPROF" help:"Enable pprof profiling endpoints at /debug/pprof/."`
@@ -67,6 +68,7 @@ func (s *ServeCmd) setup() (*setupResult, error) {
 		Dir:       s.Dir,
 		Port:      s.Port,
 		DevMode:   s.DevMode,
+		Domain:    s.Domain,
 		GitSSHKey: s.GitSSHKey,
 		Pprof:     s.Pprof,
 		GitCfg:    gitCfg,

@@ -18,25 +18,13 @@ automatically, auto-assigns a port, and can open your browser:
 gomddoc preview --open
 ```
 
-This is equivalent to `gomddoc serve --dev` with automatic port assignment. Preview is the
-recommended command during active writing — it prioritizes convenience over production settings.
+Preview enables dev mode automatically and is the recommended command during active writing —
+it prioritizes convenience over production settings. `serve` always runs in production mode.
 
 ## Development Mode
 
-Development mode disables caching and enables verbose logging, so every browser refresh shows
-the latest version of your content. You can enable it explicitly on the `serve` command when you
-need more control over port or other flags:
-
-```bash
-gomddoc serve ./docs --dev
-```
-
-Or via environment variable:
-
-```bash
-export GOMDDOC_SERVER_DEV_MODE=true
-gomddoc serve
-```
+Development mode (enabled by `preview`) disables caching and enables verbose logging, so every
+browser refresh shows the latest version of your content.
 
 ### What Changes in Dev Mode
 

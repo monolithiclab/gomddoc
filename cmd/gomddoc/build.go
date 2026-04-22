@@ -31,6 +31,7 @@ import (
 type BuildCmd struct {
 	Dir    string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown source directory or Git URL."`
 	Output string `name:"output" short:"o" default:"build/site" env:"GOMDDOC_BUILD_OUTPUT" help:"Output directory for generated static site."`
+	Domain string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
 	Force  bool   `name:"force" short:"f" default:"false" env:"GOMDDOC_BUILD_FORCE" help:"Overwrite output directory if it already exists."`
 }
 
@@ -54,6 +55,13 @@ func (b *BuildCmd) Run() error {
 	cfg, err := config.NewFromDir(b.Dir)
 	if err != nil {
 		return fmt.Errorf("build config: %w", err)
+	}
+
+	if b.Domain != "" {
+		cfg.Site.Meta.Domain = b.Domain
+		if err := cfg.Site.Validate(); err != nil {
+			return fmt.Errorf("domain flag: %w", err)
+		}
 	}
 
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
