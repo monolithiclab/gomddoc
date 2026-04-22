@@ -213,6 +213,64 @@ func TestBuildIndex(t *testing.T) {
 	})
 }
 
+func TestByPath(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"readme.md": {
+			Data: []byte("---\ntitle: Home\ntags:\n  - go\n---\n# Home"),
+		},
+		"guide/intro.md": {
+			Data: []byte("---\ntitle: Intro\n---\n# Intro"),
+		},
+	}
+
+	idx, err := BuildIndex(context.Background(), testFS, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex failed: %v", err)
+	}
+
+	t.Run("existing path", func(t *testing.T) {
+		t.Parallel()
+		page := idx.ByPath("/readme.md")
+		if page == nil {
+			t.Fatal("expected non-nil page for /readme.md")
+		}
+		if page.Title != "Home" {
+			t.Errorf("Title = %q, want %q", page.Title, "Home")
+		}
+	})
+
+	t.Run("nested path", func(t *testing.T) {
+		t.Parallel()
+		page := idx.ByPath("/guide/intro.md")
+		if page == nil {
+			t.Fatal("expected non-nil page for /guide/intro.md")
+		}
+		if page.Title != "Intro" {
+			t.Errorf("Title = %q, want %q", page.Title, "Intro")
+		}
+	})
+
+	t.Run("nonexistent path", func(t *testing.T) {
+		t.Parallel()
+		page := idx.ByPath("/nonexistent.md")
+		if page != nil {
+			t.Fatalf("expected nil for nonexistent path, got %+v", page)
+		}
+	})
+
+	t.Run("returns copy not reference", func(t *testing.T) {
+		t.Parallel()
+		page1 := idx.ByPath("/readme.md")
+		page1.Title = "Modified"
+		page2 := idx.ByPath("/readme.md")
+		if page2.Title == "Modified" {
+			t.Fatal("ByPath should return a copy, not a reference to internal state")
+		}
+	})
+}
+
 func TestBuildIndex_EmptyFS(t *testing.T) {
 	t.Parallel()
 

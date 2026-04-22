@@ -271,6 +271,73 @@ func TestServeCmd_Setup_InvalidPort(t *testing.T) {
 	}
 }
 
+func TestLoadAuthStore(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		wantLen int
+		wantErr bool
+	}{
+		{
+			name:    "valid bcrypt entry",
+			content: "admin:$2y$10$X4hMFNEgYwXEME.eDOcRMeOPYJEKnVQlKNPMpuALMJyczIqn4JDo2\n",
+			wantLen: 1,
+		},
+		{
+			name:    "multiple entries with comments",
+			content: "# comment\nadmin:$2y$10$X4hMFNEgYwXEME.eDOcRMeOPYJEKnVQlKNPMpuALMJyczIqn4JDo2\nuser:$2a$10$X4hMFNEgYwXEME.eDOcRMeOPYJEKnVQlKNPMpuALMJyczIqn4JDo2\n",
+			wantLen: 2,
+		},
+		{
+			name:    "invalid format",
+			content: "no-colon-here\n",
+			wantErr: true,
+		},
+		{
+			name:    "unsupported hash",
+			content: "admin:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=\n",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			file := filepath.Join(t.TempDir(), "htpasswd")
+			writeTestFile(t, filepath.Dir(file), filepath.Base(file), tt.content)
+
+			store, err := loadAuthStore(file)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if store.Len() != tt.wantLen {
+				t.Errorf("store.Len() = %d, want %d", store.Len(), tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestLoadAuthStore_NonexistentFile(t *testing.T) {
+	t.Parallel()
+
+	_, err := loadAuthStore("/nonexistent/htpasswd")
+	if err == nil {
+		t.Fatal("expected error for nonexistent file, got nil")
+	}
+	if !strings.Contains(err.Error(), "opening htpasswd file") {
+		t.Errorf("error = %q, want it to contain 'opening htpasswd file'", err)
+	}
+}
+
 func TestResolvePort_Error(t *testing.T) {
 	t.Parallel()
 
