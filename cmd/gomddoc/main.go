@@ -20,7 +20,13 @@ import (
 //go:embed assets
 var assets embed.FS
 
-func main() {
+const (
+	ExitSuccess     = 0
+	ExitError       = 1
+	ExitConfigError = 2
+)
+
+func startCmd() int {
 	// 1. Create application config with defaults (includes temporary SiteConfig)
 	cfg := config.New()
 
@@ -65,6 +71,12 @@ func main() {
 		slog.Error("Cannot create filesystem provider", slog.Any("error", err))
 		os.Exit(1)
 	}
+	defer func() {
+		// Cleanup provider on normal exit
+		if err := provider.Close(); err != nil {
+			slog.Error("Failed to close provider", slog.Any("error", err))
+		}
+	}()
 
 	processor := processor.NewMarkdownProcessor()
 
@@ -79,7 +91,7 @@ func main() {
 	// Validate that default theme exists (fatal error if missing)
 	if err := renderer.ValidateDefaultTheme(); err != nil {
 		slog.Error("Default theme missing", slog.Any("error", err))
-		os.Exit(1)
+		return ExitConfigError
 	}
 
 	// Create and configure server
@@ -87,6 +99,7 @@ func main() {
 
 	// Setup graceful shutdown
 	sigChan, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer sigCancel()
 
 	g, gCtx := errgroup.WithContext(sigChan)
 
@@ -104,17 +117,13 @@ func main() {
 	// Wait for completion
 	if err := g.Wait(); err != nil {
 		slog.Error("Server error", slog.Any("error", err))
-		sigCancel()
-		// Cleanup provider before exit
-		if closeErr := provider.Close(); closeErr != nil {
-			slog.Error("Failed to close provider", slog.Any("error", closeErr))
-		}
-		os.Exit(1)
+		return ExitError
 	}
-	sigCancel()
 
-	// Cleanup provider on normal exit
-	if err := provider.Close(); err != nil {
-		slog.Error("Failed to close provider", slog.Any("error", err))
-	}
+	return ExitSuccess
+}
+
+func main() {
+	statusCode := startCmd()
+	os.Exit(statusCode)
 }
