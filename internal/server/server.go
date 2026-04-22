@@ -42,6 +42,7 @@ func NewHTTPServer(
 	h = BlockHiddenPaths(h)                              // Block all hidden files/directories
 	h = MethodFilter(http.MethodGet, http.MethodHead)(h) // Only allow GET and HEAD
 	h = Compression(h)                                   // Gzip responses >= 1KB when client accepts
+	h = RequestID(h)                                     // Assign unique request ID for tracing
 	h = SecurityHeaders(h)                               // Must be outermost so headers are set first
 
 	// Health endpoints bypass all middleware

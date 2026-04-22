@@ -145,7 +145,9 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	w.WriteHeader(http.StatusOK)
 	_, writeErr := w.Write(rendered)
 	if writeErr != nil {
-		slog.Error("Cannot write response", slog.Any("error", writeErr))
+		slog.Error("Cannot write response",
+			slog.String("request_id", GetRequestID(r.Context())),
+			slog.Any("error", writeErr))
 	}
 }
 
@@ -185,7 +187,9 @@ func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byt
 	w.WriteHeader(http.StatusOK)
 	_, writeErr := w.Write(content) // #nosec G705 -- static file content served with correct Content-Type and nosniff header
 	if writeErr != nil {
-		slog.Error("Cannot write response", slog.Any("error", writeErr))
+		slog.Error("Cannot write response",
+			slog.String("request_id", GetRequestID(r.Context())),
+			slog.Any("error", writeErr))
 	}
 }
 
@@ -198,17 +202,20 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 	case http.StatusNotFound:
 		slog.Info("File not found", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
+			slog.String("request_id", GetRequestID(r.Context())),
 			text.Safe("path", path),
 		)
 	case http.StatusForbidden:
 		slog.Info("Access forbidden", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
+			slog.String("request_id", GetRequestID(r.Context())),
 			text.Safe("path", path),
 			slog.String("error", err.Error()),
 		)
 	default:
 		slog.Error("Request failed", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
+			slog.String("request_id", GetRequestID(r.Context())),
 			text.Safe("path", path),
 			slog.String("error", err.Error()),
 		)

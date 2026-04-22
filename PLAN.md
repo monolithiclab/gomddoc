@@ -610,6 +610,7 @@ type MetricsCollector interface {
 
 **Distributed Tracing**
 
+- [x] Request ID middleware (`X-Request-ID` header, context propagation, upstream trust)
 - OpenTelemetry integration
 - Span creation for processing pipeline
 - Trace correlation across services
