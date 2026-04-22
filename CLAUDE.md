@@ -32,7 +32,7 @@ go run ./cmd/gomddoc -p :9000      # Run on custom port
 ### Testing and Quality
 
 ```bash
-make test                   # Run tests with coverage report (57.5% coverage)
+make test                   # Run tests with coverage report (78.9% coverage)
 make bench                  # Run benchmarks
 make lint                   # Run comprehensive linting (format, vet, staticcheck, golangci-lint, gosec, gocritic)
 make format                 # Format source code with gofmt
@@ -48,30 +48,32 @@ make clean                  # Remove build artifacts and coverage files
 
 ## Architecture
 
-### **Current Structure (Phase 1 - Interface-Driven)**
+### **Current Structure (Phase 2 - Renderer System)**
 
 ```
 gomddoc/
 ├── cmd/gomddoc/           # CLI entry point and main()
 ├── internal/
-│   ├── config/           # Configuration management
-│   ├── provider/         # Content providers (filesystem)
-│   ├── processor/        # Document processors (markdown)
-│   ├── template/         # Template rendering
-│   └── server/           # HTTP server, handlers, middleware
+│   ├── config/           # Configuration management (ServerConfig, SiteConfig)
+│   ├── provider/         # Content providers (filesystem with MIME detection)
+│   ├── renderer/         # Content renderers (markdown, passthrough, custom)
+│   ├── template/         # Template rendering and caching
+│   └── server/           # HTTP server, handlers, middleware, content negotiation
 ├── assets/               # Embedded themes and templates
-└── docs/                 # Architecture documentation
+└── docs/                 # Architecture and custom renderer documentation
 ```
 
-- **Interface-Driven**: Clean interfaces for Provider, Processor, Renderer, Server
+- **MIME-Type Based Routing**: Universal content handling via standard MIME types
+- **Renderer Registry**: Self-declaring renderers with wildcard matching
+- **Content Negotiation**: HTTP Accept header support with proper 406 responses
+- **Directory Listing**: Optional generation with secure defaults (DirIndex=false)
 - **HTTP server**: Standard library HTTP server with graceful shutdown
-- **Markdown processing**: Uses gomarkdown with CommonExtensions + AutoHeadingIDs
-- **File serving**: Uses `os.OpenRoot()` for secure file access within the specified directory
-- **Security**: Built-in path traversal protection + security headers middleware
-- **Configuration**: Command-line flags for directory (`-d`) and port (`-p`)
-- **Testing**: Comprehensive test suite across all packages with 57.5% coverage
-- **HTTP Compliance**: Proper status codes, Content-Type, and Cache-Control headers
-- **Extensibility**: Ready for multiple providers, processors, and advanced features
+- **File serving**: Uses `os.DirFS()` for secure file access within specified directory
+- **Security**: Path traversal protection, hidden file blocking, secure defaults
+- **Configuration**: CLI flags, environment variables, YAML config file support
+- **Testing**: Comprehensive test suite with integration tests (78.9% coverage)
+- **HTTP Compliance**: Proper status codes, Content-Type, Cache-Control, Content-Length headers
+- **Extensibility**: Add custom renderers with ~10 lines of code
 
 ## Key Dependencies
 
@@ -93,18 +95,19 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 
 ## Current Implementation Status
 
-### ✅ **PHASE 1 COMPLETED: Interface-Driven Architecture**
+### ✅ **PHASE 2 COMPLETED: Content Rendering System**
 
-- **Project Structure**: Migrated from single file to proper Go project structure
-- **Interface Design**: Clean interfaces for Provider, Processor, Renderer, Server
-- **HTTP Compliance**: Proper 404/500 status codes, Content-Type headers
-- **Security Headers**: X-Content-Type-Options and X-Frame-Options middleware
-- **Comprehensive Testing**: 57.5% coverage with unit and integration tests (improved from 54.9%)
-- **Path Security**: Built-in protection via `os.OpenRoot()` (Go 1.24+)
-- **Caching**: 5-minute Cache-Control headers for browser optimization
-- **Error Handling**: Proper logging and HTTP responses
-- **Graceful Shutdown**: Signal handling for clean server shutdown
-- **Backward Compatibility**: 100% identical behavior to single-file implementation
+- **Universal Content Serving**: Markdown, HTML, CSS, JS, images, and all file types
+- **MIME-Type Based Routing**: Renderer registry with wildcard matching (exact → type/* → */*)
+- **Content Negotiation**: HTTP Accept header parsing with q-values and stable sort
+- **Directory Listing**: Optional generation with README.md fallback (DirIndex configurable)
+- **Custom Renderer Support**: Extensible architecture for adding content transformations
+- **Built-in Renderers**: MarkdownRenderer (md→html) and PassthroughRenderer (*/*→same)
+- **MIME Normalization**: Charset stripping for routing, preservation for HTTP headers
+- **Error Classification**: Sentinel errors with proper HTTP status codes (403/404/406/499/504)
+- **Context Cancellation**: All renderers support request timeout and cancellation
+- **Comprehensive Testing**: 78.9% coverage with integration tests (improved from 57.5%)
+- **Thread Safety**: Stateless renderers with concurrent registry access
 
 ### **ARCHITECTURE BENEFITS**
 
@@ -120,21 +123,27 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 2. Update tests in corresponding `*_test.go` files
 3. Run `make format` to verify code quality
 4. Run `make lint` to verify code quality
-5. Run `make test` to ensure all tests pass (target: 57.5%+)
+5. Run `make test` to ensure all tests pass (target: 78.9%+)
 6. Run `make build` to create production binary
 7. Commit changes with descriptive messages
 
 ### **NEXT PHASES READY**
 
-The restructured architecture enables Phase 2+ features from `PLAN.md`:
+The renderer architecture enables Phase 3+ features:
 
-- **Multiple Content Providers**: Database, GitHub, custom sources
-- **Multiple Document Processors**: AsciiDoc, RST, Jupyter notebooks
-- **Advanced Template System**: Multiple themes, i18n support
+- **Multiple Content Providers**: S3, database, GitHub API, custom sources
+- **Additional Renderers**: AsciiDoc, RST, Jupyter notebooks, syntax highlighting
+- **Advanced Template System**: Multiple themes, i18n support, live reload
 - **API Integration**: REST/GraphQL APIs for headless CMS functionality
-- **Plugin Architecture**: Dynamic extension loading and custom processors
+- **Plugin Architecture**: Dynamic renderer loading at runtime
+- **Full-Text Search**: Index content for fast searching
+- **Live Preview**: WebSocket-based hot reload for development
 
-The application is production-ready with clean architecture, comprehensive testing, and full extensibility.
+The application is production-ready with:
+- Clean, extensible architecture
+- Comprehensive testing (78.9% coverage)
+- Complete documentation (README, architecture, custom renderers)
+- Real-world deployment readiness
 
 ## Go best practices
 
