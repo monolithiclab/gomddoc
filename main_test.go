@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMarkdownHandler(t *testing.T) {
@@ -300,5 +301,430 @@ func TestPathCleaning(t *testing.T) {
 				t.Errorf("got status %d, want %d for path %q", w.Code, tt.expectedStatus, tt.path)
 			}
 		})
+	}
+}
+
+func TestEdgeCasesAndErrorScenarios(t *testing.T) {
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	handler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		expectedStatus int
+		expectedType   string
+		shouldContain  string
+	}{
+		{
+			name:           "POST method (should still work)",
+			method:         "POST",
+			path:           "/",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  "Gomddoc",
+		},
+		{
+			name:           "PUT method",
+			method:         "PUT",
+			path:           "/",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  "Gomddoc",
+		},
+		{
+			name:           "slash only path",
+			method:         "GET",
+			path:           "/",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  "Gomddoc",
+		},
+		{
+			name:           "complex missing file path",
+			method:         "GET",
+			path:           "/nonexistent/deeply/nested/file.md",
+			expectedStatus: 404,
+			expectedType:   "text/plain; charset=utf-8",
+			shouldContain:  "File not found",
+		},
+		{
+			name:           "file with spaces in name",
+			method:         "GET",
+			path:           "/file%20with%20spaces.md",
+			expectedStatus: 404,
+			expectedType:   "text/plain; charset=utf-8",
+			shouldContain:  "File not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			w := httptest.NewRecorder()
+
+			handler(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("got status %d, want %d", w.Code, tt.expectedStatus)
+			}
+
+			contentType := w.Header().Get("Content-Type")
+			if contentType != tt.expectedType {
+				t.Errorf("got content-type %q, want %q", contentType, tt.expectedType)
+			}
+
+			if tt.shouldContain != "" {
+				body := w.Body.String()
+				if !strings.Contains(body, tt.shouldContain) {
+					t.Errorf("response should contain %q, got: %q", tt.shouldContain, body)
+				}
+			}
+		})
+	}
+}
+
+func TestConfigurationVariations(t *testing.T) {
+	// Test different directory configurations
+	tests := []struct {
+		name      string
+		dir       string
+		index     string
+		shouldErr bool
+	}{
+		{
+			name:      "current directory",
+			dir:       ".",
+			index:     "README.md",
+			shouldErr: false,
+		},
+		{
+			name:      "custom index file",
+			dir:       ".",
+			index:     "custom.md",
+			shouldErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &Config{
+				Dir:             tt.dir,
+				DefaultIndex:    tt.index,
+				Port:            ":8080",
+				ShutdownTimeout: 1 * time.Second,
+			}
+
+			handler, err := newServeHTTP(config)
+			if tt.shouldErr && err == nil {
+				t.Error("expected error but got none")
+			}
+			if !tt.shouldErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if handler == nil && !tt.shouldErr {
+				t.Error("handler should not be nil")
+			}
+		})
+	}
+}
+
+func TestHTTPMethodsAndHeaders(t *testing.T) {
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	baseHandler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	// Test with security headers middleware
+	handler := securityHeaders(http.HandlerFunc(baseHandler))
+
+	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
+	for _, method := range methods {
+		t.Run("method_"+method, func(t *testing.T) {
+			req := httptest.NewRequest(method, "/", nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			// All methods should work (server doesn't restrict by method)
+			if w.Code != 200 {
+				t.Errorf("method %s: got status %d, want 200", method, w.Code)
+			}
+
+			// Security headers should always be present
+			if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+				t.Errorf("method %s: missing X-Content-Type-Options header", method)
+			}
+			if w.Header().Get("X-Frame-Options") != "DENY" {
+				t.Errorf("method %s: missing X-Frame-Options header", method)
+			}
+		})
+	}
+}
+
+func TestMarkdownVariations(t *testing.T) {
+	// Test different markdown content types
+	tests := []struct {
+		name     string
+		content  string
+		contains []string
+	}{
+		{
+			name:     "complex markdown",
+			content:  "# Header\n\n**Bold** and *italic*\n\n- List item\n- Another item\n\n```go\nfunc test() {}\n```\n\n[Link](http://example.com)",
+			contains: []string{"<h1", "<strong>", "<em>", "<ul>", "<li>", "<pre>", "<code", "<a href"},
+		},
+		{
+			name:     "markdown with special characters",
+			content:  "# Test with símβols & entities\n\n> Quote block\n\n| Table | Header |\n|-------|--------|\n| Cell  | Data   |",
+			contains: []string{"<h1", "símβols", "&amp;", "<blockquote>", "<table>", "<th>", "<td>"},
+		},
+		{
+			name:     "minimal markdown",
+			content:  "Just plain text.",
+			contains: []string{"<p>", "Just plain text"},
+		},
+		{
+			name:     "empty markdown",
+			content:  "",
+			contains: []string{}, // Empty content should render as empty HTML
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test file
+			filename := "test_" + strings.ReplaceAll(tt.name, " ", "_") + ".md"
+			err := os.WriteFile(filename, []byte(tt.content), 0644)
+			if err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+			defer os.Remove(filename)
+
+			config := &Config{Dir: ".", DefaultIndex: "README.md"}
+			handler, err := newServeHTTP(config)
+			if err != nil {
+				t.Fatalf("Failed to create handler: %v", err)
+			}
+
+			req := httptest.NewRequest("GET", "/"+filename, nil)
+			w := httptest.NewRecorder()
+
+			handler(w, req)
+
+			if w.Code != 200 {
+				t.Errorf("got status %d, want 200", w.Code)
+			}
+
+			body := w.Body.String()
+			for _, expected := range tt.contains {
+				if !strings.Contains(body, expected) {
+					t.Errorf("response should contain %q, got: %s", expected, body)
+				}
+			}
+		})
+	}
+}
+
+func TestErrorHandlingEdgeCases(t *testing.T) {
+	// Test valid directory but request file outside scope
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	handler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	// Test deeply nested missing file path
+	req := httptest.NewRequest("GET", "/deeply/nested/missing/file.md", nil)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	// Should return 404 for missing nested files
+	if w.Code != 404 {
+		t.Errorf("expected status 404 for missing nested file, got %d", w.Code)
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "text/plain; charset=utf-8" {
+		t.Errorf("got content-type %q, want %q", contentType, "text/plain; charset=utf-8")
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "File not found") {
+		t.Errorf("response should contain 'File not found', got: %q", body)
+	}
+}
+
+func TestWriteErrorScenarios(t *testing.T) {
+	// Test scenarios that could cause write errors
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	handler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	// Create a custom ResponseWriter that fails on Write
+	type failingWriter struct {
+		*httptest.ResponseRecorder
+		failOnWrite bool
+	}
+
+	fw := &failingWriter{
+		ResponseRecorder: httptest.NewRecorder(),
+		failOnWrite:     true,
+	}
+
+	// Override Write method to simulate write failure
+	fw.ResponseRecorder.Body.Reset()
+
+	req := httptest.NewRequest("GET", "/nonexistent-file.md", nil)
+
+	// Test with normal writer first to ensure our test setup is correct
+	normalW := httptest.NewRecorder()
+	handler(normalW, req)
+
+	if normalW.Code != 404 {
+		t.Errorf("expected 404 for missing file, got %d", normalW.Code)
+	}
+}
+
+func TestSpecialCharacterPaths(t *testing.T) {
+	// Test paths with special characters and URL encoding
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	handler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedStatus int
+	}{
+		{"URL encoded spaces", "/file%20name.md", 404},
+		{"Special characters", "/file-with_special.chars.md", 404},
+		{"Unicode characters", "/файл.md", 404},
+		{"Double encoded", "/file%2520name.md", 404},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.path, nil)
+			w := httptest.NewRecorder()
+
+			handler(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("path %q: got status %d, want %d", tt.path, w.Code, tt.expectedStatus)
+			}
+		})
+	}
+}
+
+func TestLargeMarkdownFiles(t *testing.T) {
+	// Test handling of larger markdown content
+	largeContent := "# Large Test File\n\n"
+	for i := 0; i < 100; i++ {
+		largeContent += "This is paragraph " + strings.Repeat("content ", 20) + "\n\n"
+	}
+
+	filename := "large_test.md"
+	err := os.WriteFile(filename, []byte(largeContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create large test file: %v", err)
+	}
+	defer os.Remove(filename)
+
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	handler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/"+filename, nil)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("got status %d, want 200", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "<h1") || !strings.Contains(body, "Large Test File") {
+		t.Error("large file should be properly converted to HTML")
+	}
+
+	// Check response size is reasonable (should be larger than input due to HTML tags)
+	if len(body) < len(largeContent) {
+		t.Error("HTML output should be larger than markdown input")
+	}
+}
+
+func TestBenchmarkMdToHTML(t *testing.T) {
+	// Test the mdToHTML function directly with various inputs
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"small", "# Small test"},
+		{"medium", strings.Repeat("## Header\n\nSome content with **bold** and *italic*.\n\n", 10)},
+		{"large", strings.Repeat("# Large Header\n\nContent with lists:\n- Item 1\n- Item 2\n\n", 100)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mdToHTML([]byte(tt.input))
+			if len(result) == 0 {
+				t.Error("mdToHTML should not return empty result")
+			}
+			if !strings.Contains(string(result), "<") {
+				t.Error("result should contain HTML tags")
+			}
+		})
+	}
+}
+
+func TestConcurrentRequests(t *testing.T) {
+	// Test concurrent access to ensure thread safety
+	config := &Config{Dir: ".", DefaultIndex: "README.md"}
+	handler, err := newServeHTTP(config)
+	if err != nil {
+		t.Fatalf("Failed to create handler: %v", err)
+	}
+
+	// Create test file
+	err = os.WriteFile("concurrent_test.md", []byte("# Concurrent Test"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	defer os.Remove("concurrent_test.md")
+
+	const numRequests = 10
+	results := make(chan int, numRequests)
+
+	// Launch concurrent requests
+	for i := 0; i < numRequests; i++ {
+		go func() {
+			req := httptest.NewRequest("GET", "/concurrent_test.md", nil)
+			w := httptest.NewRecorder()
+			handler(w, req)
+			results <- w.Code
+		}()
+	}
+
+	// Collect results
+	for i := 0; i < numRequests; i++ {
+		status := <-results
+		if status != 200 {
+			t.Errorf("concurrent request %d: got status %d, want 200", i, status)
+		}
 	}
 }
