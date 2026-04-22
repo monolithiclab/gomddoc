@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -61,7 +62,7 @@ func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool)
 //   - Uses mime.TypeByExtension() for file extension mapping
 //   - Returns "text/markdown" for README.md and directory listings
 //   - Defaults to "application/octet-stream" for unknown types
-func (f *FilesystemProvider) ReadFile(requestPath string) ([]byte, string, error) {
+func (f *FilesystemProvider) ReadFile(_ context.Context, requestPath string) ([]byte, string, error) {
 	cleanPath := normalizePath(requestPath)
 
 	// Check if path is directory
@@ -122,7 +123,7 @@ func (f *FilesystemProvider) handleDirectory(cleanPath, requestPath string) ([]b
 }
 
 // Stat returns a FileInfo describing the named file
-func (f *FilesystemProvider) Stat(requestPath string) (fs.FileInfo, error) {
+func (f *FilesystemProvider) Stat(_ context.Context, requestPath string) (fs.FileInfo, error) {
 	cleanPath := normalizePath(requestPath)
 
 	info, err := fs.Stat(f.root, cleanPath)
@@ -142,7 +143,7 @@ func (f *FilesystemProvider) DefaultIndex() string {
 }
 
 // RootFS returns the content root as an fs.FS
-func (f *FilesystemProvider) RootFS() (fs.FS, error) {
+func (f *FilesystemProvider) RootFS(_ context.Context) (fs.FS, error) {
 	return f.root, nil
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log/slog"
@@ -33,7 +34,7 @@ type infoProviderAdapter struct {
 }
 
 func (pa *infoProviderAdapter) IsDir(path string) bool {
-	info, err := pa.p.Stat(path)
+	info, err := pa.p.Stat(context.Background(), path)
 	if err != nil {
 		return false
 	}

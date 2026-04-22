@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -16,14 +17,14 @@ type errorProvider struct {
 }
 
 var _ = (interface {
-	Stat(string) (fs.FileInfo, error)
+	Stat(context.Context, string) (fs.FileInfo, error)
 })((*errorProvider)(nil))
 
-func (e *errorProvider) ReadFile(_ string) ([]byte, string, error) {
+func (e *errorProvider) ReadFile(_ context.Context, _ string) ([]byte, string, error) {
 	return nil, "", errors.New("not implemented")
 }
 
-func (e *errorProvider) Stat(_ string) (fs.FileInfo, error) {
+func (e *errorProvider) Stat(_ context.Context, _ string) (fs.FileInfo, error) {
 	return nil, e.statErr
 }
 
@@ -31,7 +32,7 @@ func (e *errorProvider) DefaultIndex() string {
 	return "README.md"
 }
 
-func (e *errorProvider) RootFS() (fs.FS, error) {
+func (e *errorProvider) RootFS(_ context.Context) (fs.FS, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -254,7 +255,7 @@ func TestMemoryProvider_StatRoot(t *testing.T) {
 	t.Parallel()
 
 	mp := newMemoryProvider(nil, "README.md", false)
-	info, err := mp.Stat(".")
+	info, err := mp.Stat(t.Context(), ".")
 	if err != nil {
 		t.Fatalf("Stat(.) failed: %v", err)
 	}

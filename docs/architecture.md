@@ -35,8 +35,8 @@ graph TD
 
 ```go
 type Provider interface {
-    ReadFile(path string) (content []byte, mimeType string, error)
-    Stat(path string) (fs.FileInfo, error)
+    ReadFile(ctx context.Context, path string) (content []byte, mimeType string, error)
+    Stat(ctx context.Context, path string) (fs.FileInfo, error)
     DefaultIndex() string
     Close() error
 }
@@ -451,7 +451,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | MIME-type routing | Universal, stdlib-backed, natural fit with HTTP Accept negotiation |
 | Separate Provider/Renderer | I/O vs transformation separation; mock either independently |
 | PassthroughRenderer `*/*` | No maintenance when new file types added; guarantees all types handled |
-| No context in Provider | stdlib `fs.FS` compatibility; timeout at HTTP level |
+| Context in Provider | Propagates cancellation/deadlines from HTTP handlers through provider calls |
 | `RenderResult` struct | Extensible return (content + metadata + TOC) without interface churn |
 | `path` not `filepath` for fs.FS | `io/fs` spec requires forward slashes; `filepath` breaks on Windows |
 | Clone timeout via context | Standard Go pattern; `git.CloneContext()` respects cancellation |

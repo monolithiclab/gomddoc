@@ -165,8 +165,8 @@ func (g *GitProvider) DefaultIndex() string {
 
 // RootFS returns the content root as an fs.FS backed by the cloned tree.
 // Triggers a clone if the repository has not been cloned yet.
-func (g *GitProvider) RootFS() (fs.FS, error) {
-	if err := g.ensureCloned(); err != nil {
+func (g *GitProvider) RootFS(ctx context.Context) (fs.FS, error) {
+	if err := g.ensureCloned(ctx); err != nil {
 		return nil, err
 	}
 	g.mu.RLock()
@@ -190,7 +190,7 @@ func (g *GitProvider) Close() error {
 
 // ensureCloned performs lazy initialization of the repository.
 // Safe for concurrent calls - only the first caller clones.
-func (g *GitProvider) ensureCloned() error {
+func (g *GitProvider) ensureCloned(ctx context.Context) error {
 	// Fast path: already cloned
 	g.mu.RLock()
 	if g.closed {
@@ -215,12 +215,12 @@ func (g *GitProvider) ensureCloned() error {
 		return nil
 	}
 
-	return g.cloneLocked()
+	return g.cloneLocked(ctx)
 }
 
 // cloneLocked performs the actual clone operation.
 // Must be called with g.mu held for writing.
-func (g *GitProvider) cloneLocked() error {
+func (g *GitProvider) cloneLocked(ctx context.Context) error {
 	stor, err := g.storageFactory()
 	if err != nil {
 		return &PathError{Op: "storage", Path: g.parsedURL.Endpoint.String(), Err: err}
@@ -246,7 +246,7 @@ func (g *GitProvider) cloneLocked() error {
 		cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(g.parsedURL.Ref)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), g.cloneTimeout)
+	ctx, cancel := context.WithTimeout(ctx, g.cloneTimeout)
 	defer cancel()
 
 	repo, err := git.CloneContext(ctx, g.storage, nil, cloneOpts)
@@ -362,8 +362,8 @@ func (g *GitProvider) classifyCloneError(err error) error {
 }
 
 // ReadFile reads a file at the given path and returns its content with MIME type.
-func (g *GitProvider) ReadFile(requestPath string) ([]byte, string, error) {
-	if err := g.ensureCloned(); err != nil {
+func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte, string, error) {
+	if err := g.ensureCloned(ctx); err != nil {
 		return nil, "", err
 	}
 
@@ -491,8 +491,8 @@ func (g *GitProvider) listDirectoryLocked(tree *object.Tree) ([]fs.DirEntry, err
 }
 
 // Stat returns a FileInfo describing the named file.
-func (g *GitProvider) Stat(requestPath string) (fs.FileInfo, error) {
-	if err := g.ensureCloned(); err != nil {
+func (g *GitProvider) Stat(ctx context.Context, requestPath string) (fs.FileInfo, error) {
+	if err := g.ensureCloned(ctx); err != nil {
 		return nil, err
 	}
 

@@ -46,7 +46,7 @@ func NewHandler(
 //  5. Serve as HTML (wrapped in template) or raw (passthrough)
 func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// 1. Read file + get MIME type
-	content, mimeType, err := h.provider.ReadFile(r.URL.Path)
+	content, mimeType, err := h.provider.ReadFile(r.Context(), r.URL.Path)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return

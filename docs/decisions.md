@@ -35,7 +35,7 @@ Extracted from completed spec files before deletion.
 - **Registry collisions**: Warn with `slog.Warn`, then override (enables testing/plugins)
 - **Wildcard matching order**: exact > `type/*` > `*/*`
 - **PassthroughRenderer**: Registered as `*/*` wildcard — simplest approach, zero maintenance when new file types appear
-- **No context in Provider**: Maintains stdlib `fs.FS` compatibility; timeout enforced at HTTP level
+- **Context in Provider**: `context.Context` added to `ReadFile` and `Stat` for cancellation/deadline propagation from HTTP handlers. Supersedes the earlier decision to omit context for `fs.FS` compatibility.
 - **Provider type**: `fs.StatFS` interface value, not `*os.FS` pointer
 - **MIME registration**: In `MarkdownRenderer` `init()` — co-located with the renderer that owns it
 - **goldmark thread safety**: Parser/renderer are reused (goldmark is thread-safe), no pooling needed

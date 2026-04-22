@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io/fs"
 	"strings"
 	"testing/fstest"
@@ -30,14 +31,14 @@ func newMemoryProvider(files fstest.MapFS, defaultIndex string, dirIndex bool) *
 	}
 }
 
-func (m *memoryProvider) ReadFile(path string) ([]byte, string, error) {
+func (m *memoryProvider) ReadFile(ctx context.Context, path string) ([]byte, string, error) {
 	path = strings.TrimPrefix(path, "/")
 	if path == "" || path == "." {
 		path = m.defaultIndex
 	}
 
 	// Check if path is a directory
-	info, err := m.Stat(path)
+	info, err := m.Stat(ctx, path)
 	if err == nil && info.IsDir() {
 		// Try default index in directory
 		indexPath := path + "/" + m.defaultIndex
@@ -66,7 +67,7 @@ func (m *memoryProvider) ReadFile(path string) ([]byte, string, error) {
 	return data, detectMimeType(path), nil
 }
 
-func (m *memoryProvider) Stat(path string) (fs.FileInfo, error) {
+func (m *memoryProvider) Stat(_ context.Context, path string) (fs.FileInfo, error) {
 	path = strings.TrimPrefix(path, "/")
 	if path == "" {
 		path = "."
@@ -83,7 +84,7 @@ func (m *memoryProvider) DefaultIndex() string {
 	return m.defaultIndex
 }
 
-func (m *memoryProvider) RootFS() (fs.FS, error) {
+func (m *memoryProvider) RootFS(_ context.Context) (fs.FS, error) {
 	return m.fsys, nil
 }
 

@@ -63,7 +63,7 @@ func (b *BuildCmd) Run() error {
 
 	breadcrumbGen := breadcrumb.NewGenerator(&infoProviderAdapter{p: prov})
 
-	contentRoot, err := prov.RootFS()
+	contentRoot, err := prov.RootFS(context.Background())
 	if err != nil {
 		return fmt.Errorf("build root fs: %w", err)
 	}

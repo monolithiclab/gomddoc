@@ -31,8 +31,8 @@ func (h *HealthHandler) LiveHandler(w http.ResponseWriter, _ *http.Request) {
 
 // ReadyHandler checks whether the provider is ready to serve content.
 // It returns 200 if the provider can stat its root, or 503 if not.
-func (h *HealthHandler) ReadyHandler(w http.ResponseWriter, _ *http.Request) {
-	if _, err := h.provider.Stat("."); err != nil {
+func (h *HealthHandler) ReadyHandler(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.provider.Stat(r.Context(), "."); err != nil {
 		slog.Warn("readiness check failed", slog.String("error", err.Error()))
 		writeHealthJSON(w, http.StatusServiceUnavailable, healthResponse{
 			Status: "unavailable",

@@ -303,7 +303,7 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, mimeType, err := p.ReadFile(tt.path)
+			content, mimeType, err := p.ReadFile(t.Context(), tt.path)
 
 			if tt.wantErr != nil {
 				if err == nil {
@@ -392,7 +392,7 @@ func TestGitProvider_StatMocked(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			info, err := p.Stat(tt.path)
+			info, err := p.Stat(t.Context(), tt.path)
 
 			if tt.wantErr != nil {
 				if err == nil {
@@ -447,7 +447,7 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			commitTime:   commitTime,
 		}
 
-		content, mimeType, err := p.ReadFile("/docs")
+		content, mimeType, err := p.ReadFile(t.Context(), "/docs")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
@@ -482,7 +482,7 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			commitTime:   commitTime,
 		}
 
-		_, _, err := p.ReadFile("/docs")
+		_, _, err := p.ReadFile(t.Context(), "/docs")
 		if err == nil {
 			t.Error("ReadFile() error = nil, want error")
 		}
@@ -518,7 +518,7 @@ func TestGitProvider_LFSPointerDetection(t *testing.T) {
 		commitTime:   commitTime,
 	}
 
-	_, _, err := p.ReadFile("/large-file.bin")
+	_, _, err := p.ReadFile(t.Context(), "/large-file.bin")
 	if err == nil {
 		t.Error("ReadFile() error = nil, want error for LFS pointer")
 	}
@@ -892,7 +892,7 @@ func TestGitProvider_FileSizeLimit(t *testing.T) {
 		commitTime:   commitTime,
 	}
 
-	_, _, err := p.ReadFile("/file.txt")
+	_, _, err := p.ReadFile(t.Context(), "/file.txt")
 	if err == nil {
 		t.Error("ReadFile() error = nil, want error for file too large")
 	}
@@ -940,7 +940,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 	}
 
 	t.Run("root returns docs README", func(t *testing.T) {
-		content, _, err := p.ReadFile("/")
+		content, _, err := p.ReadFile(t.Context(), "/")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
@@ -950,7 +950,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 	})
 
 	t.Run("can access files in subdir", func(t *testing.T) {
-		content, _, err := p.ReadFile("/guide.md")
+		content, _, err := p.ReadFile(t.Context(), "/guide.md")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
@@ -960,7 +960,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 	})
 
 	t.Run("can access nested subdirectory", func(t *testing.T) {
-		content, _, err := p.ReadFile("/api/types.md")
+		content, _, err := p.ReadFile(t.Context(), "/api/types.md")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}

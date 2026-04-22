@@ -106,7 +106,7 @@ func TestNewProvider_FilesystemProviderBehavior(t *testing.T) {
 	defer p.Close()
 
 	// Verify it can stat the current directory
-	info, err := p.Stat("/")
+	info, err := p.Stat(t.Context(), "/")
 	if err != nil {
 		t.Fatalf("Stat() error = %v", err)
 	}
