@@ -13,7 +13,11 @@ type MediaType struct {
 	Type    string  // Main type (e.g., "text")
 	Subtype string  // Subtype (e.g., "html")
 	Q       float64 // Quality factor (0.0-1.0), defaults to 1.0
-	Full    string  // Full MIME type (e.g., "text/html")
+}
+
+func (mt MediaType) String() string {
+	return mt.Type + "/" + mt.Subtype
+
 }
 
 // ParseAccept parses an HTTP Accept header and returns a list of MediaType values
@@ -31,11 +35,11 @@ type MediaType struct {
 //   - "*/*" → [{*/*, q=1.0}]
 func ParseAccept(acceptHeader string) []MediaType {
 	if acceptHeader == "" {
-		return []MediaType{{Type: "*", Subtype: "*", Q: 1.0, Full: "*/*"}}
+		return []MediaType{{Type: "*", Subtype: "*", Q: 1.0}}
 	}
 
 	var types []MediaType
-	for _, part := range strings.Split(acceptHeader, ",") {
+	for part := range strings.SplitSeq(acceptHeader, ",") {
 		mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
 		if err != nil {
 			continue // Skip invalid entries
@@ -59,7 +63,6 @@ func ParseAccept(acceptHeader string) []MediaType {
 			Type:    parts[0],
 			Subtype: parts[1],
 			Q:       q,
-			Full:    mediaType,
 		})
 	}
 

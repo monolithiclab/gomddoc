@@ -6,37 +6,62 @@ import (
 	"testing"
 )
 
-func TestCachedTemplateStore_GetSet(t *testing.T) {
-	cache := &CachedTemplateStore{}
+func TestCachedTemplateStore(t *testing.T) {
+	t.Parallel()
 
-	// Create a test template
-	tmpl := template.Must(template.New("test").Parse("Hello {{.}}"))
-
-	// Store template
-	cache.Set("test-key", tmpl)
-
-	// Retrieve template
-	retrieved := cache.Get("test-key")
-	if retrieved == nil {
-		t.Fatal("Get should return stored template")
+	tests := []struct {
+		name      string
+		operation string
+		key       string
+		template  string
+		wantNil   bool
+	}{
+		{
+			name:      "set and get existing template",
+			operation: "set_get",
+			key:       "test-key",
+			template:  "Hello {{.}}",
+			wantNil:   false,
+		},
+		{
+			name:      "get non-existent template",
+			operation: "get_miss",
+			key:       "nonexistent",
+			wantNil:   true,
+		},
 	}
 
-	if retrieved != tmpl {
-		t.Error("Retrieved template should be the same instance")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestCachedTemplateStore_GetMiss(t *testing.T) {
-	cache := &CachedTemplateStore{}
+			cache := &CachedTemplateStore{}
 
-	// Try to get non-existent template
-	retrieved := cache.Get("nonexistent")
-	if retrieved != nil {
-		t.Error("Get should return nil for cache miss")
+			switch tt.operation {
+			case "set_get":
+				tmpl := template.Must(template.New("test").Parse(tt.template))
+				cache.Set(tt.key, tmpl)
+
+				retrieved := cache.Get(tt.key)
+				if retrieved == nil {
+					t.Fatal("Get should return stored template")
+				}
+				if retrieved != tmpl {
+					t.Error("Retrieved template should be the same instance")
+				}
+			case "get_miss":
+				retrieved := cache.Get(tt.key)
+				if retrieved != nil {
+					t.Error("Get should return nil for cache miss")
+				}
+			}
+		})
 	}
 }
 
 func TestCachedTemplateStore_Clear(t *testing.T) {
+	t.Parallel()
+
 	cache := &CachedTemplateStore{}
 
 	// Add multiple templates
@@ -69,7 +94,7 @@ func TestCachedTemplateStore_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	numGoroutines := 100
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -92,40 +117,25 @@ func TestCachedTemplateStore_Concurrent(t *testing.T) {
 	}
 }
 
-func TestPassthroughTemplateStore_AlwaysMiss(t *testing.T) {
-	cache := &PassthroughTemplateStore{}
+func TestPassthroughTemplateStore(t *testing.T) {
+	t.Parallel()
 
-	// Create a test template
+	cache := &PassthroughTemplateStore{}
 	tmpl := template.Must(template.New("test").Parse("Hello {{.}}"))
 
-	// Store template (should be no-op)
+	// Set should be no-op
 	cache.Set("test-key", tmpl)
 
-	// Try to get - should always return nil
-	retrieved := cache.Get("test-key")
-	if retrieved != nil {
+	// Get should always return nil (no caching)
+	if retrieved := cache.Get("test-key"); retrieved != nil {
 		t.Error("PassthroughTemplateStore should always return nil on Get")
 	}
-}
 
-func TestPassthroughTemplateStore_SetNoOp(t *testing.T) {
-	cache := &PassthroughTemplateStore{}
+	// Clear should be no-op (should not panic)
+	cache.Clear()
 
-	// Create a test template
-	tmpl := template.Must(template.New("test").Parse("Hello {{.}}"))
-
-	// Set should not panic (no-op)
-	cache.Set("test-key", tmpl)
-
-	// Verify still returns nil
+	// Verify Get still returns nil after clear
 	if cache.Get("test-key") != nil {
 		t.Error("PassthroughTemplateStore should not cache templates")
 	}
-}
-
-func TestPassthroughTemplateStore_ClearNoOp(t *testing.T) {
-	cache := &PassthroughTemplateStore{}
-
-	// Clear should not panic (no-op)
-	cache.Clear()
 }

@@ -13,6 +13,8 @@ import (
 )
 
 func TestClassifyError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		err  error
@@ -92,6 +94,8 @@ func TestClassifyError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := classifyError(tt.err)
 			if got != tt.want {
 				t.Errorf("classifyError(%v) = %d, want %d", tt.err, got, tt.want)

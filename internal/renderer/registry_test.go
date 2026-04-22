@@ -89,58 +89,74 @@ func TestDefaultRegistry_Register(t *testing.T) {
 func TestDefaultRegistry_Get_Wildcards(t *testing.T) {
 	tests := []struct {
 		name         string
-		registerMime []string
+		renderers    []mockRenderer
 		lookupFor    string
 		wantFound    bool
 		wantRenderer string
 	}{
 		{
-			name:         "exact match",
-			registerMime: []string{"text/markdown"},
+			name: "exact match",
+			renderers: []mockRenderer{
+				{name: "markdown", supportedMime: []string{"text/markdown"}},
+			},
 			lookupFor:    "text/markdown",
 			wantFound:    true,
 			wantRenderer: "markdown",
 		},
 		{
-			name:         "type wildcard match",
-			registerMime: []string{"text/*"},
+			name: "type wildcard match",
+			renderers: []mockRenderer{
+				{name: "text-wildcard", supportedMime: []string{"text/*"}},
+			},
 			lookupFor:    "text/plain",
 			wantFound:    true,
 			wantRenderer: "text-wildcard",
 		},
 		{
-			name:         "catch-all wildcard match",
-			registerMime: []string{"*/*"},
+			name: "catch-all wildcard match",
+			renderers: []mockRenderer{
+				{name: "catch-all", supportedMime: []string{"*/*"}},
+			},
 			lookupFor:    "application/json",
 			wantFound:    true,
 			wantRenderer: "catch-all",
 		},
 		{
-			name:         "exact match wins over wildcard",
-			registerMime: []string{"text/markdown", "text/*"},
+			name: "exact match wins over wildcard",
+			renderers: []mockRenderer{
+				{name: "exact", supportedMime: []string{"text/markdown"}},
+				{name: "wildcard", supportedMime: []string{"text/*"}},
+			},
 			lookupFor:    "text/markdown",
 			wantFound:    true,
 			wantRenderer: "exact",
 		},
 		{
-			name:         "type wildcard wins over catch-all",
-			registerMime: []string{"text/*", "*/*"},
+			name: "type wildcard wins over catch-all",
+			renderers: []mockRenderer{
+				{name: "type-wildcard", supportedMime: []string{"text/*"}},
+				{name: "catch-all", supportedMime: []string{"*/*"}},
+			},
 			lookupFor:    "text/plain",
 			wantFound:    true,
 			wantRenderer: "type-wildcard",
 		},
 		{
-			name:         "MIME type with charset normalized",
-			registerMime: []string{"text/html"},
+			name: "MIME type with charset normalized",
+			renderers: []mockRenderer{
+				{name: "html", supportedMime: []string{"text/html"}},
+			},
 			lookupFor:    "text/html; charset=utf-8",
 			wantFound:    true,
 			wantRenderer: "html",
 		},
 		{
-			name:         "no match",
-			registerMime: []string{"text/markdown"},
-			lookupFor:    "application/json",
-			wantFound:    false,
+			name: "no match",
+			renderers: []mockRenderer{
+				{name: "markdown", supportedMime: []string{"text/markdown"}},
+			},
+			lookupFor: "application/json",
+			wantFound: false,
 		},
 	}
 
@@ -148,20 +164,9 @@ func TestDefaultRegistry_Get_Wildcards(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			registry := NewDefaultRegistry()
 
-			// Register renderers based on test case
-			switch tt.name {
-			case "exact match wins over wildcard":
-				registry.Register(&mockRenderer{name: "exact", supportedMime: []string{"text/markdown"}})
-				registry.Register(&mockRenderer{name: "wildcard", supportedMime: []string{"text/*"}})
-			case "type wildcard wins over catch-all":
-				registry.Register(&mockRenderer{name: "type-wildcard", supportedMime: []string{"text/*"}})
-				registry.Register(&mockRenderer{name: "catch-all", supportedMime: []string{"*/*"}})
-			default:
-				name := tt.wantRenderer
-				if name == "" {
-					name = "test"
-				}
-				registry.Register(&mockRenderer{name: name, supportedMime: tt.registerMime})
+			// Register all renderers for this test case
+			for i := range tt.renderers {
+				registry.Register(&tt.renderers[i])
 			}
 
 			renderer, err := registry.Get(tt.lookupFor)
@@ -194,7 +199,7 @@ func TestDefaultRegistry_ThreadSafety(t *testing.T) {
 	concurrency := 100
 
 	// Concurrent registrations
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
@@ -207,12 +212,10 @@ func TestDefaultRegistry_ThreadSafety(t *testing.T) {
 	}
 
 	// Concurrent lookups
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range concurrency {
+		wg.Go(func() {
 			_, _ = registry.Get("application/test")
-		}()
+		})
 	}
 
 	wg.Wait()

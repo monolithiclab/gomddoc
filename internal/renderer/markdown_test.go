@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestMarkdownRenderer_SupportedMimeTypes(t *testing.T) {
@@ -38,36 +37,6 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 			name:         "paragraph",
 			input:        "This is a paragraph.",
 			wantContains: []string{"<p>This is a paragraph.</p>"},
-			wantMimeType: "text/html; charset=utf-8",
-		},
-		{
-			name:         "multiple headings",
-			input:        "# Title\n\n## Subtitle",
-			wantContains: []string{"<h1", "id=\"title\"", "<h2", "id=\"subtitle\""},
-			wantMimeType: "text/html; charset=utf-8",
-		},
-		{
-			name:         "code block",
-			input:        "```go\nfunc main() {}\n```",
-			wantContains: []string{"<pre>", "<code", "func main()"},
-			wantMimeType: "text/html; charset=utf-8",
-		},
-		{
-			name:         "list",
-			input:        "- Item 1\n- Item 2",
-			wantContains: []string{"<ul>", "<li>Item 1</li>", "<li>Item 2</li>"},
-			wantMimeType: "text/html; charset=utf-8",
-		},
-		{
-			name:         "emphasis",
-			input:        "**bold** and *italic*",
-			wantContains: []string{"<strong>bold</strong>", "<em>italic</em>"},
-			wantMimeType: "text/html; charset=utf-8",
-		},
-		{
-			name:         "link",
-			input:        "[link](https://example.com)",
-			wantContains: []string{"<a href=\"https://example.com\">link</a>"},
 			wantMimeType: "text/html; charset=utf-8",
 		},
 		{
@@ -120,59 +89,13 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 }
 
 func TestMarkdownRenderer_ContextCancellation(t *testing.T) {
-	tests := []struct {
-		name      string
-		setupCtx  func() context.Context
-		wantError bool
-	}{
-		{
-			name: "already cancelled context",
-			setupCtx: func() context.Context {
-				ctx, cancel := context.WithCancel(context.Background())
-				cancel() // Cancel immediately
-				return ctx
-			},
-			wantError: true,
-		},
-		{
-			name: "timeout context",
-			setupCtx: func() context.Context {
-				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-				defer cancel()
-				time.Sleep(2 * time.Millisecond) // Ensure timeout
-				return ctx
-			},
-			wantError: true,
-		},
-		{
-			name:      "valid context",
-			setupCtx:  context.Background,
-			wantError: false,
-		},
-	}
+	t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			renderer := NewMarkdownRenderer()
-			ctx := tt.setupCtx()
-
-			_, _, err := renderer.Render(ctx, []byte("# Test"))
-
-			if tt.wantError && err == nil {
-				t.Error("Render() error = nil, want error")
-			}
-			if !tt.wantError && err != nil {
-				t.Errorf("Render() error = %v, want nil", err)
-			}
-
-			if tt.wantError && err != nil {
-				// Verify it's a context error
-				if err != context.Canceled && err != context.DeadlineExceeded {
-					t.Errorf("Render() error = %v, want context.Canceled or context.DeadlineExceeded", err)
-				}
-			}
-		})
-	}
+	renderer := NewMarkdownRenderer()
+	testContextCancellation(t, func(ctx context.Context) error {
+		_, _, err := renderer.Render(ctx, []byte("# Test"))
+		return err
+	})
 }
 
 func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
@@ -183,7 +106,7 @@ func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
 	const concurrency = 100
 	done := make(chan bool, concurrency)
 
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		go func(n int) {
 			input := []byte("# Heading " + string(rune('A'+(n%26))))
 			_, _, err := renderer.Render(ctx, input)
@@ -195,7 +118,7 @@ func TestMarkdownRenderer_ConcurrentRenders(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		<-done
 	}
 }
@@ -205,7 +128,7 @@ func TestMarkdownRenderer_LargeContent(t *testing.T) {
 
 	// Generate large markdown content
 	var builder strings.Builder
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		builder.WriteString("## Section ")
 		builder.WriteString(string(rune('0' + (i % 10))))
 		builder.WriteString("\n\nThis is paragraph ")

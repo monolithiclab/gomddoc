@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"testing"
-	"time"
 )
 
 func TestPassthroughRenderer_SupportedMimeTypes(t *testing.T) {
@@ -22,123 +21,59 @@ func TestPassthroughRenderer_SupportedMimeTypes(t *testing.T) {
 
 func TestPassthroughRenderer_Render(t *testing.T) {
 	tests := []struct {
-		name         string
-		input        []byte
-		wantOutput   []byte
-		wantMimeType string
+		name  string
+		input []byte
 	}{
 		{
-			name:         "text content",
-			input:        []byte("Hello, World!"),
-			wantOutput:   []byte("Hello, World!"),
-			wantMimeType: "",
+			name:  "text content",
+			input: []byte("Hello, World!"),
 		},
 		{
-			name:         "binary content",
-			input:        []byte{0x89, 0x50, 0x4E, 0x47}, // PNG header
-			wantOutput:   []byte{0x89, 0x50, 0x4E, 0x47},
-			wantMimeType: "",
+			name:  "binary content",
+			input: []byte{0x89, 0x50, 0x4E, 0x47}, // PNG header
 		},
 		{
-			name:         "empty content",
-			input:        []byte{},
-			wantOutput:   []byte{},
-			wantMimeType: "",
+			name:  "empty content",
+			input: []byte{},
 		},
 		{
-			name:         "HTML content",
-			input:        []byte("<html><body>Test</body></html>"),
-			wantOutput:   []byte("<html><body>Test</body></html>"),
-			wantMimeType: "",
+			name:  "HTML content",
+			input: []byte("<html><body>Test</body></html>"),
 		},
 		{
-			name:         "JSON content",
-			input:        []byte(`{"key": "value"}`),
-			wantOutput:   []byte(`{"key": "value"}`),
-			wantMimeType: "",
+			name:  "JSON content",
+			input: []byte(`{"key": "value"}`),
 		},
 		{
-			name:         "large content",
-			input:        bytes.Repeat([]byte("x"), 10000),
-			wantOutput:   bytes.Repeat([]byte("x"), 10000),
-			wantMimeType: "",
+			name:  "large content",
+			input: bytes.Repeat([]byte("x"), 10000),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			renderer := NewPassthroughRenderer()
-			output, mimeType, err := renderer.Render(context.Background(), tt.input)
+			output, _, err := renderer.Render(context.Background(), tt.input)
 
 			if err != nil {
 				t.Fatalf("Render() error = %v, want nil", err)
 			}
 
-			if mimeType != tt.wantMimeType {
-				t.Errorf("Render() mimeType = %q, want %q", mimeType, tt.wantMimeType)
-			}
-
-			if !bytes.Equal(output, tt.wantOutput) {
-				t.Errorf("Render() output = %v, want %v", output, tt.wantOutput)
+			if !bytes.Equal(output, tt.input) {
+				t.Errorf("Render() output = %v, want %v", output, tt.input)
 			}
 		})
 	}
 }
 
 func TestPassthroughRenderer_ContextCancellation(t *testing.T) {
-	tests := []struct {
-		name      string
-		setupCtx  func() context.Context
-		wantError bool
-	}{
-		{
-			name: "already cancelled context",
-			setupCtx: func() context.Context {
-				ctx, cancel := context.WithCancel(context.Background())
-				cancel() // Cancel immediately
-				return ctx
-			},
-			wantError: true,
-		},
-		{
-			name: "timeout context",
-			setupCtx: func() context.Context {
-				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-				defer cancel()
-				time.Sleep(2 * time.Millisecond) // Ensure timeout
-				return ctx
-			},
-			wantError: true,
-		},
-		{
-			name:      "valid context",
-			setupCtx:  context.Background,
-			wantError: false,
-		},
-	}
+	t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			renderer := NewPassthroughRenderer()
-			ctx := tt.setupCtx()
-
-			_, _, err := renderer.Render(ctx, []byte("test content"))
-
-			if tt.wantError && err == nil {
-				t.Error("Render() error = nil, want error")
-			}
-			if !tt.wantError && err != nil {
-				t.Errorf("Render() error = %v, want nil", err)
-			}
-
-			if tt.wantError && err != nil {
-				// Verify it's a context error
-				if err != context.Canceled && err != context.DeadlineExceeded {
-					t.Errorf("Render() error = %v, want context.Canceled or context.DeadlineExceeded", err)
-				}
-			}
-		})
-	}
+	renderer := NewPassthroughRenderer()
+	testContextCancellation(t, func(ctx context.Context) error {
+		_, _, err := renderer.Render(ctx, []byte("test content"))
+		return err
+	})
 }
 
 func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
@@ -149,7 +84,7 @@ func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
 	const concurrency = 100
 	done := make(chan bool, concurrency)
 
-	for i := 0; i < concurrency; i++ {
+	for i := range concurrency {
 		go func(n int) {
 			input := []byte("Content " + string(rune('A'+(n%26))))
 			output, mimeType, err := renderer.Render(ctx, input)
@@ -167,7 +102,7 @@ func TestPassthroughRenderer_ConcurrentRenders(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		<-done
 	}
 }

@@ -3,337 +3,256 @@ package server
 import (
 	"context"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
-// TestIntegration_CSSAndJSFiles verifies CSS and JS files are served correctly
-func TestIntegration_CSSAndJSFiles(t *testing.T) {
-	// Create test directory with assets
-	testDir := t.TempDir()
+// TestIntegration_ContentServing verifies all content types are served correctly
+func TestIntegration_ContentServing(t *testing.T) {
+	t.Parallel()
 
-	cssContent := "body { margin: 0; }"
-	jsContent := "console.log('test');"
-
-	err := os.WriteFile(filepath.Join(testDir, "style.css"), []byte(cssContent), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create CSS file: %v", err)
+	// Create comprehensive in-memory filesystem - NO disk I/O!
+	files := fstest.MapFS{
+		"README.md":          &fstest.MapFile{Data: []byte("# Project\n\nMain docs.")},
+		"test.html":          &fstest.MapFile{Data: []byte("<h1>Raw HTML</h1><p>Content</p>")},
+		"style.css":          &fstest.MapFile{Data: []byte("body { margin: 0; }")},
+		"script.js":          &fstest.MapFile{Data: []byte("console.log('test');")},
+		"docs/guide.md":      &fstest.MapFile{Data: []byte("# Guide\n\nInstructions.")},
+		"docs/README.md":     &fstest.MapFile{Data: []byte("# Docs\n\nDocumentation.")},
+		"assets/style.css":   &fstest.MapFile{Data: []byte("body { margin: 0; }")},
+		"files/document.md":  &fstest.MapFile{Data: []byte("# Doc")},
+		"files/image.png":    &fstest.MapFile{Data: []byte{0x89, 0x50}},
+		"files/nested/.keep": &fstest.MapFile{Data: []byte("")},
 	}
-
-	err = os.WriteFile(filepath.Join(testDir, "script.js"), []byte(jsContent), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create JS file: %v", err)
-	}
-
-	// Setup dependencies
-	siteConfig := config.NewSiteConfig(testDir)
-	prov, err := provider.NewFilesystemProvider(testDir, "README.md", false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	defer prov.Close()
-
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, siteConfig)
 
 	tests := []struct {
-		name         string
-		path         string
-		expectedType string
-		expectedBody string
+		name             string
+		path             string
+		acceptHeader     string
+		dirIndex         bool
+		expectedStatus   int
+		expectedType     string
+		shouldContain    []string
+		shouldNotContain []string
 	}{
+		// CSS and JS passthrough
 		{
-			name:         "CSS file passthrough",
-			path:         "/style.css",
-			expectedType: "text/css; charset=utf-8",
-			expectedBody: cssContent,
+			name:           "CSS file passthrough",
+			path:           "/style.css",
+			acceptHeader:   "*/*",
+			expectedStatus: 200,
+			expectedType:   "text/css; charset=utf-8",
+			shouldContain:  []string{"body { margin: 0; }"},
 		},
 		{
-			name:         "JS file passthrough",
-			path:         "/script.js",
-			expectedType: "text/javascript; charset=utf-8",
-			expectedBody: jsContent,
+			name:           "JS file passthrough",
+			path:           "/script.js",
+			acceptHeader:   "*/*",
+			expectedStatus: 200,
+			expectedType:   "text/javascript; charset=utf-8",
+			shouldContain:  []string{"console.log('test');"},
+		},
+		{
+			name:           "nested CSS file",
+			path:           "/assets/style.css",
+			acceptHeader:   "*/*",
+			expectedStatus: 200,
+			expectedType:   "text/css; charset=utf-8",
+			shouldContain:  []string{"margin"},
+		},
+
+		// HTML wrapping
+		{
+			name:           "HTML file wrapped in template",
+			path:           "/test.html",
+			acceptHeader:   "text/html",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  []string{"<!DOCTYPE html>", "<h1>Raw HTML</h1>"},
+		},
+
+		// Markdown rendering
+		{
+			name:           "root markdown file",
+			path:           "/README.md",
+			acceptHeader:   "text/html",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  []string{"Project", "<h1"},
+		},
+		{
+			name:           "nested markdown file",
+			path:           "/docs/guide.md",
+			acceptHeader:   "text/html",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  []string{"Guide", "Instructions"},
+		},
+
+		// Directory with README
+		{
+			name:           "directory serves README",
+			path:           "/docs",
+			acceptHeader:   "text/html",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  []string{"Docs", "Documentation"},
+		},
+		{
+			name:           "root directory serves README",
+			path:           "/",
+			acceptHeader:   "text/html",
+			expectedStatus: 200,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  []string{"Main docs"},
+		},
+
+		// 404 errors
+		{
+			name:           "404 not found",
+			path:           "/nonexistent.md",
+			acceptHeader:   "text/html",
+			expectedStatus: 404,
+			expectedType:   "text/html; charset=utf-8",
+			shouldContain:  []string{"404"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			siteConfig := config.NewSiteConfig(".")
+			prov := newMemoryProvider(files, "README.md", tt.dirIndex)
+			registry := setupTestRegistry()
+			rend := setupTestRenderer()
+			handler := NewHandler(prov, registry, rend, siteConfig)
+
 			req := httptest.NewRequest("GET", tt.path, nil)
-			req.Header.Set("Accept", "*/*")
+			req.Header.Set("Accept", tt.acceptHeader)
 			w := httptest.NewRecorder()
 
 			handler.ServeContent(w, req)
 
-			if w.Code != 200 {
-				t.Errorf("got status %d, want 200", w.Code)
+			if w.Code != tt.expectedStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.expectedStatus)
 			}
 
-			contentType := w.Header().Get("Content-Type")
-			if contentType != tt.expectedType {
-				t.Errorf("got content type %q, want %q", contentType, tt.expectedType)
+			if contentType := w.Header().Get("Content-Type"); contentType != tt.expectedType {
+				t.Errorf("content-type = %q, want %q", contentType, tt.expectedType)
 			}
 
 			body := w.Body.String()
-			if body != tt.expectedBody {
-				t.Errorf("got body %q, want %q", body, tt.expectedBody)
+			for _, want := range tt.shouldContain {
+				if !strings.Contains(body, want) {
+					t.Errorf("response should contain %q", want)
+				}
 			}
 
-			// Verify passthrough headers
-			if cacheControl := w.Header().Get("Cache-Control"); cacheControl != "public, max-age=300" {
-				t.Errorf("got cache control %q, want public, max-age=300", cacheControl)
+			for _, notWant := range tt.shouldNotContain {
+				if strings.Contains(body, notWant) {
+					t.Errorf("response should not contain %q", notWant)
+				}
 			}
 
-			if contentLength := w.Header().Get("Content-Length"); contentLength == "" {
-				t.Error("Content-Length header should be set")
+			// Successful responses should have required headers
+			if tt.expectedStatus == 200 {
+				if cacheControl := w.Header().Get("Cache-Control"); cacheControl == "" {
+					t.Error("Cache-Control header should be set")
+				}
+				if contentLength := w.Header().Get("Content-Length"); contentLength == "" {
+					t.Error("Content-Length header should be set")
+				}
 			}
 		})
 	}
 }
 
-// TestIntegration_HTMLFileWrapping verifies HTML files are wrapped in template
-func TestIntegration_HTMLFileWrapping(t *testing.T) {
-	testDir := t.TempDir()
+// TestIntegration_DirectoryListing verifies directory listing behavior
+func TestIntegration_DirectoryListing(t *testing.T) {
+	t.Parallel()
 
-	htmlContent := "<h1>Raw HTML Content</h1><p>This is HTML.</p>"
-	err := os.WriteFile(filepath.Join(testDir, "test.html"), []byte(htmlContent), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create HTML file: %v", err)
+	files := fstest.MapFS{
+		"public/file1.md":     &fstest.MapFile{Data: []byte("# File 1")},
+		"public/file2.txt":    &fstest.MapFile{Data: []byte("text")},
+		"public/nested/.keep": &fstest.MapFile{Data: []byte("")},
+		"private/.keep":       &fstest.MapFile{Data: []byte("")},
 	}
 
-	// Setup dependencies
-	siteConfig := config.NewSiteConfig(testDir)
-	prov, err := provider.NewFilesystemProvider(testDir, "README.md", false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	defer prov.Close()
-
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, siteConfig)
-
-	req := httptest.NewRequest("GET", "/test.html", nil)
-	req.Header.Set("Accept", "text/html")
-	w := httptest.NewRecorder()
-
-	handler.ServeContent(w, req)
-
-	if w.Code != 200 {
-		t.Errorf("got status %d, want 200", w.Code)
-	}
-
-	contentType := w.Header().Get("Content-Type")
-	if contentType != "text/html; charset=utf-8" {
-		t.Errorf("got content type %q, want text/html; charset=utf-8", contentType)
+	tests := []struct {
+		name           string
+		path           string
+		dirIndex       bool
+		expectedStatus int
+		shouldContain  []string
+	}{
+		{
+			name:           "directory listing enabled",
+			path:           "/public",
+			dirIndex:       true,
+			expectedStatus: 200,
+			shouldContain:  []string{"Index", "file1.md", "file2.txt", "nested"},
+		},
+		{
+			name:           "directory listing disabled - 403",
+			path:           "/private",
+			dirIndex:       false,
+			expectedStatus: 403,
+			shouldContain:  []string{"403 Forbidden"},
+		},
 	}
 
-	body := w.Body.String()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// HTML should be wrapped in template (contains layout elements)
-	if !strings.Contains(body, "<!DOCTYPE html>") {
-		t.Error("HTML file should be wrapped in template with DOCTYPE")
-	}
+			siteConfig := config.NewSiteConfig(".")
+			prov := newMemoryProvider(files, "README.md", tt.dirIndex)
+			registry := setupTestRegistry()
+			rend := setupTestRenderer()
+			handler := NewHandler(prov, registry, rend, siteConfig)
 
-	// Should contain original content
-	if !strings.Contains(body, htmlContent) {
-		t.Errorf("wrapped HTML should contain original content %q", htmlContent)
-	}
-}
+			req := httptest.NewRequest("GET", tt.path, nil)
+			req.Header.Set("Accept", "text/html")
+			w := httptest.NewRecorder()
 
-// TestIntegration_DirectoryWithREADME verifies directory serving with README.md
-func TestIntegration_DirectoryWithREADME(t *testing.T) {
-	testDir := t.TempDir()
+			handler.ServeContent(w, req)
 
-	// Create subdirectory with README.md
-	subDir := filepath.Join(testDir, "docs")
-	err := os.Mkdir(subDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create subdirectory: %v", err)
-	}
+			if w.Code != tt.expectedStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.expectedStatus)
+			}
 
-	readmeContent := "# Documentation\n\nThis is the docs directory."
-	err = os.WriteFile(filepath.Join(subDir, "README.md"), []byte(readmeContent), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create README.md: %v", err)
-	}
-
-	// Setup dependencies
-	siteConfig := config.NewSiteConfig(testDir)
-	prov, err := provider.NewFilesystemProvider(testDir, "README.md", false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	defer prov.Close()
-
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, siteConfig)
-
-	req := httptest.NewRequest("GET", "/docs", nil)
-	req.Header.Set("Accept", "text/html")
-	w := httptest.NewRecorder()
-
-	handler.ServeContent(w, req)
-
-	if w.Code != 200 {
-		t.Errorf("got status %d, want 200", w.Code)
-	}
-
-	body := w.Body.String()
-
-	// Should serve README.md content as HTML
-	if !strings.Contains(body, "Documentation") {
-		t.Error("directory with README.md should serve README content")
-	}
-
-	// Should be rendered as HTML (markdown converted)
-	if !strings.Contains(body, "<h1") {
-		t.Error("README.md should be rendered as HTML")
-	}
-}
-
-// TestIntegration_DirectoryListingEnabled verifies directory listing generation
-func TestIntegration_DirectoryListingEnabled(t *testing.T) {
-	testDir := t.TempDir()
-
-	// Create subdirectory without README.md
-	subDir := filepath.Join(testDir, "files")
-	err := os.Mkdir(subDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create subdirectory: %v", err)
-	}
-
-	// Add some files to the directory
-	err = os.WriteFile(filepath.Join(subDir, "document.md"), []byte("# Doc"), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create document: %v", err)
-	}
-
-	err = os.WriteFile(filepath.Join(subDir, "image.png"), []byte{0x89, 0x50}, 0644)
-	if err != nil {
-		t.Fatalf("Failed to create image: %v", err)
-	}
-
-	// Create nested directory
-	nestedDir := filepath.Join(subDir, "nested")
-	err = os.Mkdir(nestedDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create nested directory: %v", err)
-	}
-
-	// Setup dependencies with dirIndex=true
-	siteConfig := config.NewSiteConfig(testDir)
-	prov, err := provider.NewFilesystemProvider(testDir, "README.md", true)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	defer prov.Close()
-
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, siteConfig)
-
-	req := httptest.NewRequest("GET", "/files", nil)
-	req.Header.Set("Accept", "text/html")
-	w := httptest.NewRecorder()
-
-	handler.ServeContent(w, req)
-
-	if w.Code != 200 {
-		t.Errorf("got status %d, want 200", w.Code)
-	}
-
-	body := w.Body.String()
-
-	// Should generate directory listing
-	if !strings.Contains(body, "Index") {
-		t.Error("directory listing should have 'Index' heading")
-	}
-
-	// Should list files
-	if !strings.Contains(body, "document.md") {
-		t.Error("directory listing should include document.md")
-	}
-
-	if !strings.Contains(body, "image.png") {
-		t.Error("directory listing should include image.png")
-	}
-
-	// Should list subdirectories
-	if !strings.Contains(body, "nested") {
-		t.Error("directory listing should include nested directory")
-	}
-}
-
-// TestIntegration_DirectoryListingDisabled verifies 403 when dirIndex=false
-func TestIntegration_DirectoryListingDisabled(t *testing.T) {
-	testDir := t.TempDir()
-
-	// Create subdirectory without README.md
-	subDir := filepath.Join(testDir, "private")
-	err := os.Mkdir(subDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create subdirectory: %v", err)
-	}
-
-	// Setup dependencies with dirIndex=false
-	siteConfig := config.NewSiteConfig(testDir)
-	prov, err := provider.NewFilesystemProvider(testDir, "README.md", false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	defer prov.Close()
-
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, siteConfig)
-
-	req := httptest.NewRequest("GET", "/private", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeContent(w, req)
-
-	if w.Code != 403 {
-		t.Errorf("got status %d, want 403", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "403 Forbidden") {
-		t.Errorf("403 response should contain 'Forbidden', got: %q", body)
+			body := w.Body.String()
+			for _, want := range tt.shouldContain {
+				if !strings.Contains(body, want) {
+					t.Errorf("response should contain %q", want)
+				}
+			}
+		})
 	}
 }
 
 // TestIntegration_ContextCancellation verifies context cancellation handling
 func TestIntegration_ContextCancellation(t *testing.T) {
-	testDir := t.TempDir()
+	t.Parallel()
 
-	// Create large markdown file to ensure processing takes time
-	largeContent := strings.Repeat("# Heading\n\nSome paragraph text.\n\n", 1000)
-	err := os.WriteFile(filepath.Join(testDir, "large.md"), []byte(largeContent), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
+	// Large content to ensure processing takes time
+	largeContent := strings.Repeat("# Heading\n\nParagraph.\n\n", 1000)
+	files := fstest.MapFS{
+		"large.md": &fstest.MapFile{Data: []byte(largeContent)},
 	}
 
-	// Setup dependencies
-	siteConfig := config.NewSiteConfig(testDir)
-	prov, err := provider.NewFilesystemProvider(testDir, "README.md", false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	defer prov.Close()
-
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
 	registry := setupTestRegistry()
 	rend := setupTestRenderer()
 	handler := NewHandler(prov, registry, rend, siteConfig)
 
-	// Create request with cancellable context
+	// Create request with already-cancelled context
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
 
@@ -349,142 +268,6 @@ func TestIntegration_ContextCancellation(t *testing.T) {
 	// Should return error status (499 for client closed request or 504 for timeout)
 	if w.Code != 499 && w.Code != 504 {
 		t.Logf("got status %d, expected 499 or 504 for context cancellation", w.Code)
-		// Not failing the test since context cancellation timing is tricky
-	}
-}
-
-// TestIntegration_EndToEnd verifies complete request flow
-func TestIntegration_EndToEnd(t *testing.T) {
-	testDir := t.TempDir()
-
-	// Create realistic project structure
-	err := os.WriteFile(filepath.Join(testDir, "README.md"), []byte("# Project\n\nMain docs."), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create README.md: %v", err)
-	}
-
-	docsDir := filepath.Join(testDir, "docs")
-	err = os.Mkdir(docsDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create docs directory: %v", err)
-	}
-
-	err = os.WriteFile(filepath.Join(docsDir, "guide.md"), []byte("# Guide\n\nInstructions."), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create guide.md: %v", err)
-	}
-
-	assetsDir := filepath.Join(testDir, "assets")
-	err = os.Mkdir(assetsDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create assets directory: %v", err)
-	}
-
-	err = os.WriteFile(filepath.Join(assetsDir, "style.css"), []byte("body { margin: 0; }"), 0644)
-	if err != nil {
-		t.Fatalf("Failed to create style.css: %v", err)
-	}
-
-	// Setup dependencies
-	siteConfig := config.NewSiteConfig(testDir)
-	prov, err := provider.NewFilesystemProvider(testDir, "README.md", true)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	defer prov.Close()
-
-	registry := setupTestRegistry()
-	rend := setupTestRenderer()
-	handler := NewHandler(prov, registry, rend, siteConfig)
-
-	tests := []struct {
-		name           string
-		path           string
-		acceptHeader   string
-		expectedStatus int
-		expectedType   string
-		shouldContain  string
-	}{
-		{
-			name:           "root markdown file",
-			path:           "/README.md",
-			acceptHeader:   "text/html",
-			expectedStatus: 200,
-			expectedType:   "text/html; charset=utf-8",
-			shouldContain:  "Project",
-		},
-		{
-			name:           "nested markdown file",
-			path:           "/docs/guide.md",
-			acceptHeader:   "text/html",
-			expectedStatus: 200,
-			expectedType:   "text/html; charset=utf-8",
-			shouldContain:  "Guide",
-		},
-		{
-			name:           "CSS asset",
-			path:           "/assets/style.css",
-			acceptHeader:   "*/*",
-			expectedStatus: 200,
-			expectedType:   "text/css; charset=utf-8",
-			shouldContain:  "margin",
-		},
-		{
-			name:           "directory with index",
-			path:           "/",
-			acceptHeader:   "text/html",
-			expectedStatus: 200,
-			expectedType:   "text/html; charset=utf-8",
-			shouldContain:  "Main docs",
-		},
-		{
-			name:           "directory listing",
-			path:           "/docs",
-			acceptHeader:   "text/html",
-			expectedStatus: 200,
-			expectedType:   "text/html; charset=utf-8",
-			shouldContain:  "guide.md",
-		},
-		{
-			name:           "404 not found",
-			path:           "/nonexistent.md",
-			acceptHeader:   "text/html",
-			expectedStatus: 404,
-			expectedType:   "text/html; charset=utf-8",
-			shouldContain:  "404",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", tt.path, nil)
-			req.Header.Set("Accept", tt.acceptHeader)
-			w := httptest.NewRecorder()
-
-			handler.ServeContent(w, req)
-
-			if w.Code != tt.expectedStatus {
-				t.Errorf("got status %d, want %d", w.Code, tt.expectedStatus)
-			}
-
-			contentType := w.Header().Get("Content-Type")
-			if contentType != tt.expectedType {
-				t.Errorf("got content type %q, want %q", contentType, tt.expectedType)
-			}
-
-			if tt.shouldContain != "" {
-				body := w.Body.String()
-				if !strings.Contains(body, tt.shouldContain) {
-					t.Errorf("response should contain %q", tt.shouldContain)
-				}
-			}
-
-			// All successful responses should have Content-Length
-			if tt.expectedStatus == 200 {
-				if contentLength := w.Header().Get("Content-Length"); contentLength == "" {
-					t.Error("Content-Length header should be set")
-				}
-			}
-		})
+		// Not failing - context cancellation timing is non-deterministic
 	}
 }

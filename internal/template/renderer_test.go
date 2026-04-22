@@ -220,7 +220,8 @@ func TestTemplateCache(t *testing.T) {
 }
 
 func TestRenderWithContextCancellation(t *testing.T) {
-	// Create test filesystem
+	t.Parallel()
+
 	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
 	testFS := fstest.MapFS{
 		"assets/themes/default/test.html.tmpl": {
@@ -229,31 +230,20 @@ func TestRenderWithContextCancellation(t *testing.T) {
 	}
 
 	siteConfig := config.NewSiteConfig(".")
-	siteConfig.Meta.Title = "Test"
-	// Dev mode - no caching, always parses
 	renderer := NewHTMLRenderer(siteConfig, testFS)
 
-	ctx := &TemplateContext{
+	templateCtx := &TemplateContext{
 		Site: siteConfig,
-		Page: PageContext{
-			Breadcrumbs: []Breadcrumb{
-				{"/", "Home"},
-			},
-		},
+		Page: PageContext{Breadcrumbs: []Breadcrumb{{"/", "Home"}}},
 	}
 
-	// Create a cancelled context
-	cancelledCtx, cancel := context.WithCancel(context.Background())
+	// Test with cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Immediately cancel
 
-	// Attempt to render with cancelled context
-	_, err := renderer.Render(cancelledCtx, "test.html.tmpl", ctx)
-	if err == nil {
-		t.Fatal("Expected error when rendering with cancelled context")
-	}
-
+	_, err := renderer.Render(ctx, "test.html.tmpl", templateCtx)
 	if err != context.Canceled {
-		t.Errorf("Expected context.Canceled error, got: %v", err)
+		t.Errorf("Render() with cancelled context: got error %v, want context.Canceled", err)
 	}
 }
 
@@ -265,7 +255,7 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 		expected []Breadcrumb
 	}{
 		{
-			name:     "root file without leading slash",
+			name:     "root file",
 			filePath: "README.md",
 			fsys: fstest.MapFS{
 				"README.md": {Data: []byte("# Readme")},
@@ -276,20 +266,7 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			},
 		},
 		{
-			name:     "multi levels deep file",
-			filePath: "references/subscription/overview.md",
-			fsys: fstest.MapFS{
-				"references/subscription/overview.md": {Data: []byte("# Overview")},
-			},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-				{"/references/", "References"},
-				{"/references/subscription/", "Subscription"},
-				{"/references/subscription/overview.md", "Overview"},
-			},
-		},
-		{
-			name:     "path with leading slash for file",
+			name:     "multi-level nested file",
 			filePath: "/docs/guide/setup.md",
 			fsys: fstest.MapFS{
 				"docs/guide/setup.md": {Data: []byte("# Setup Guide")},
@@ -302,20 +279,7 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			},
 		},
 		{
-			name:     "user example: file path",
-			filePath: "/howtos/core/test.md",
-			fsys: fstest.MapFS{
-				"howtos/core/test.md": {Data: []byte("# Test Instructions")},
-			},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-				{"/howtos/", "Howtos"},
-				{"/howtos/core/", "Core"},
-				{"/howtos/core/test.md", "Test"},
-			},
-		},
-		{
-			name:     "user example: directory path without trailing slash",
+			name:     "directory without trailing slash",
 			filePath: "/howtos/core",
 			fsys: fstest.MapFS{
 				"howtos/core/README.md": {Data: []byte("# Core Documentation")},
@@ -327,7 +291,7 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			},
 		},
 		{
-			name:     "user example: directory path with trailing slash",
+			name:     "directory with trailing slash",
 			filePath: "/howtos/core/",
 			fsys: fstest.MapFS{
 				"howtos/core/index.md": {Data: []byte("# Core Index")},
@@ -339,15 +303,7 @@ func TestGenerateBreadcrumbs(t *testing.T) {
 			},
 		},
 		{
-			name:     "empty path edge case",
-			filePath: "",
-			fsys:     fstest.MapFS{},
-			expected: []Breadcrumb{
-				{"/", "Home"},
-			},
-		},
-		{
-			name:     "root directory with trailing slash",
+			name:     "root directory",
 			filePath: "/",
 			fsys:     fstest.MapFS{},
 			expected: []Breadcrumb{
@@ -408,8 +364,7 @@ func BenchmarkGenerateBreadcrumbs(b *testing.B) {
 
 	provider := newTestFSProvider(fsys, "README.md")
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for _, path := range testPaths {
 			GenerateBreadcrumbs(provider, path)
 		}

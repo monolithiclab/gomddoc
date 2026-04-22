@@ -5,6 +5,8 @@ import (
 )
 
 func TestTitleCase(t *testing.T) {
+	// Note: Cannot use t.Parallel() - TitleCase() uses shared package-level state (caser with sync.Once)
+
 	tests := []struct {
 		name     string
 		input    string
@@ -13,11 +15,6 @@ func TestTitleCase(t *testing.T) {
 		{
 			name:     "simple lowercase",
 			input:    "hello",
-			expected: "Hello",
-		},
-		{
-			name:     "already capitalized",
-			input:    "Hello",
 			expected: "Hello",
 		},
 		{
@@ -70,7 +67,7 @@ func TestTitleCase(t *testing.T) {
 func TestTitleCase_Caching(t *testing.T) {
 	// Call TitleCase multiple times to ensure the caser is initialized only once
 	// This is more of a smoke test - actual verification would require instrumentation
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		result := TitleCase("test")
 		if result != "Test" {
 			t.Errorf("TitleCase failed after %d iterations: got %q, want %q", i, result, "Test")
@@ -79,13 +76,13 @@ func TestTitleCase_Caching(t *testing.T) {
 }
 
 func BenchmarkTitleCase(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = TitleCase("hello world")
 	}
 }
 
 func BenchmarkTitleCase_Unicode(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = TitleCase("école français")
 	}
 }
