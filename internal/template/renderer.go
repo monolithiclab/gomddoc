@@ -138,7 +138,14 @@ func titleCase(s string) string {
 	return text.TitleCase(s)
 }
 
-// HTMLRenderer implements Renderer for HTML templates
+// HTMLRenderer implements Renderer for HTML templates.
+//
+// Thread-safe: Render() is safe for concurrent calls. The siteConfig and assetsFS
+// fields are read-only after construction. Thread-safety of Render() depends on
+// the injected TemplateCache implementation (CachedTemplateStore uses sync.Map,
+// PassthroughTemplateStore is stateless).
+//
+// IMPORTANT: Do not mutate siteConfig after construction if using concurrently.
 type HTMLRenderer struct {
 	assetsFS   fs.FS
 	siteConfig *config.SiteConfig // For theme name (NOT full Config - security)

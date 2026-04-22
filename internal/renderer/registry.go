@@ -7,8 +7,11 @@ import (
 	"sync"
 )
 
-// DefaultRegistry implements RendererRegistry with thread-safe access
-// and support for wildcard MIME type matching.
+// DefaultRegistry implements RendererRegistry with support for wildcard MIME type matching.
+//
+// Thread-safe: All methods use sync.RWMutex for concurrent access.
+// Register() acquires a write lock, Get() acquires a read lock.
+// Safe for concurrent registration and lookup from multiple goroutines.
 type DefaultRegistry struct {
 	renderers map[string]ContentRenderer
 	mu        sync.RWMutex
