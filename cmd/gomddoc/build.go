@@ -92,8 +92,8 @@ func (b *BuildCmd) Run() error {
 
 	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
 		EnableCache:      true,
-		EnableNavigation: true,  // needed for prev/next page links
-		EnableMetadata:   false, // build doesn't serve tag API
+		EnableNavigation: true, // needed for prev/next page links
+		EnableMetadata:   true, // needed for SEO and redirect generation
 	})
 	if err != nil {
 		return fmt.Errorf("build pipeline: %w", err)
@@ -118,19 +118,13 @@ func (b *BuildCmd) Run() error {
 		}
 	}
 
-	// Build metadata index once for SEO + redirect generation
-	metaIdx, err := metadata.BuildIndex(context.Background(), contentRoot, cfg.Site.Exclude)
-	if err != nil {
-		return fmt.Errorf("build metadata index: %w", err)
-	}
-
 	// Generate SEO files (robots.txt and sitemap.xml)
-	if err := b.generateSEOFiles(metaIdx, &cfg.Site, pipeline.Resolver, prov); err != nil {
+	if err := b.generateSEOFiles(pipeline.MetaIndex, &cfg.Site, pipeline.Resolver, prov); err != nil {
 		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
 	// Generate redirect HTML files for redirect_from frontmatter
-	if err := b.generateRedirectFiles(metaIdx, &cfg.Site, pipeline.Resolver); err != nil {
+	if err := b.generateRedirectFiles(pipeline.MetaIndex, &cfg.Site, pipeline.Resolver); err != nil {
 		return fmt.Errorf("generate redirect files: %w", err)
 	}
 
