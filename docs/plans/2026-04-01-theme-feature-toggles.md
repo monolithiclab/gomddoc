@@ -15,6 +15,7 @@
 ### Task 1: Add `featureEnabled` and `mergeFeatures` functions
 
 **Files:**
+
 - Create: `internal/config/features.go`
 - Test: `internal/config/features_test.go`
 
@@ -254,6 +255,7 @@ git commit -m "feat: add FeatureEnabled and MergeFeatures for generic feature to
 ### Task 2: Migrate `SiteConfig` — replace `ColorChips` and `HasSearch` with `Features`
 
 **Files:**
+
 - Modify: `internal/config/config.go`
 - Modify: `internal/config/features.go` (add validation)
 - Modify: `internal/config/features_test.go` (add validation tests)
@@ -357,6 +359,7 @@ type SiteConfig struct {
 ```
 
 Notes:
+
 - `ColorChips` removed — migrated to `Features["color_chips"]`
 - `HasSearch` removed — migrated to `Features["search"]`
 - `Features` has no `env` tag — env override for map types requires custom handling (see Task 3)
@@ -432,6 +435,7 @@ git commit -m "feat: replace ColorChips and HasSearch with Features map on SiteC
 ### Task 3: Add env var override for Features map
 
 **Files:**
+
 - Modify: `internal/config/config.go` (extend `walkStruct` for map[string]bool)
 - Modify: `internal/config/config_test.go` (add env override test)
 
@@ -522,6 +526,7 @@ git commit -m "feat: add env var override support for Features map (GOMDDOC_SITE
 ### Task 4: Migrate renderer to use `Features`
 
 **Files:**
+
 - Modify: `internal/renderer/markdown.go`
 - Modify: `internal/renderer/colorchip_test.go`
 - Modify: `internal/renderer/markdown_test.go`
@@ -534,6 +539,7 @@ git commit -m "feat: add env var override support for Features map (GOMDDOC_SITE
 In `internal/renderer/markdown.go`:
 
 Replace `MarkdownOptions`:
+
 ```go
 type MarkdownOptions struct {
 	// HighlightTheme controls the Chroma syntax highlighting style for fenced
@@ -548,6 +554,7 @@ type MarkdownOptions struct {
 ```
 
 Replace `MarkdownRenderer`:
+
 ```go
 type MarkdownRenderer struct {
 	md       goldmark.Markdown
@@ -556,6 +563,7 @@ type MarkdownRenderer struct {
 ```
 
 Update `NewMarkdownRenderer` to store `features`:
+
 ```go
 return &MarkdownRenderer{
 	md:       md,
@@ -602,6 +610,7 @@ Replace `ColorChips: true` with `Features: map[string]bool{"color_chips": true}`
 - `internal/renderer/markdown_bench_test.go`: line 798
 
 Update `internal/renderer/colorchip_test.go`:
+
 - `TestColorChipsEnabled` — delete this test (function removed)
 - `TestMarkdownRenderer_ColorChips_Disabled` — update to use `Features` instead of `ColorChips`:
   - `NewMarkdownRenderer(MarkdownOptions{})` stays (nil features = all enabled, but color_chips not explicitly set means enabled — need to pass `Features: map[string]bool{"color_chips": false}` for "globally disabled")
@@ -625,6 +634,7 @@ git commit -m "feat: migrate renderer from ColorChips bool to Features map"
 ### Task 5: Update pipeline and server to pass `Features`
 
 **Files:**
+
 - Modify: `cmd/gomddoc/pipeline.go`
 - Modify: `internal/server/server_test.go`
 - Modify: `internal/server/testhelpers_test.go`
@@ -674,11 +684,13 @@ Replace `renderer.MarkdownOptions{ColorChips: true}` with `renderer.MarkdownOpti
 
 In `internal/template/renderer_test.go`:
 Replace `siteConfig.HasSearch = true` with:
+
 ```go
 siteConfig.Features = map[string]bool{"search": true}
 ```
 
 In `cmd/gomddoc/init_test.go`:
+
 - Remove the `ColorChips` assertion (`sc.ColorChips != true`)
 - Remove the `color_chips` YAML assertion
 - Optionally add assertion that `Features` is nil (all default true)
@@ -700,6 +712,7 @@ git commit -m "feat: wire Features through pipeline, server, and JSON-LD"
 ### Task 6: Add `feature` template function
 
 **Files:**
+
 - Modify: `internal/template/renderer.go`
 - Modify: `internal/template/renderer_test.go`
 
@@ -716,9 +729,11 @@ The correct approach per the spec: rebuild the `feature` closure per page render
 Actually, the simplest Go template approach: put a `Feature` method on `TemplateContext` and use `{{ .Feature "katex" }}` in templates. This is cleaner and avoids clone overhead.
 
 Let me re-read the spec... It says:
+
 > Templates access features via the `feature` template function — a closure
 
 But then says:
+
 > The `feature` closure is rebuilt per page render with the merged map. Cached templates are unaffected — the closure is injected via the template execution data, not the template definition.
 
 The cleanest way to honor the spec with cached templates: add a `Feature` method to `TemplateContext`. Templates call `{{ .Feature "katex" }}`. This is functionally identical to the spec's intent — per-page resolution — just uses Go method dispatch instead of a closure in funcMap.
@@ -836,6 +851,7 @@ git commit -m "feat: add Feature method to TemplateContext for per-page feature 
 ### Task 7: Update default theme templates
 
 **Files:**
+
 - Modify: `cmd/gomddoc/assets/themes/default/partials/scripts.html.tmpl`
 - Modify: `cmd/gomddoc/assets/themes/default/partials/header.html.tmpl`
 - Modify: `cmd/gomddoc/assets/themes/default/partials/toc.html.tmpl`
@@ -845,120 +861,127 @@ git commit -m "feat: add Feature method to TemplateContext for per-page feature 
 Wrap each feature in `{{ if .Feature "name" }}`:
 
 ```html
-{{ define "scripts" }}
-  {{ if .Feature "dark_mode" }}
-  <!-- Theme Toggle -->
-  <script>{{ inlineJSAsset "theme-toggle.mjs" }}</script>
-  {{ end }}
+{{ define "scripts" }} {{ if .Feature "dark_mode" }}
+<!-- Theme Toggle -->
+<script>
+  {{ inlineJSAsset "theme-toggle.mjs" }}
+</script>
+{{ end }}
 
-  <script>
-    // Mobile Navigation Toggle
-    (function() {
-      'use strict';
+<script>
+  // Mobile Navigation Toggle
+  (function() {
+    'use strict';
 
-      const navToggle = document.getElementById('nav-toggle');
-      const navSidebar = document.getElementById('nav-sidebar');
-      const navOverlay = document.getElementById('nav-overlay');
+    const navToggle = document.getElementById('nav-toggle');
+    const navSidebar = document.getElementById('nav-sidebar');
+    const navOverlay = document.getElementById('nav-overlay');
 
-      if (navToggle && navSidebar) {
-        const closeNav = () => {
-          navSidebar.classList.remove('show');
-          if (navOverlay) navOverlay.classList.remove('show');
-        };
+    if (navToggle && navSidebar) {
+      const closeNav = () => {
+        navSidebar.classList.remove('show');
+        if (navOverlay) navOverlay.classList.remove('show');
+      };
 
-        navToggle.addEventListener('click', () => {
-          const isShown = navSidebar.classList.contains('show');
-          navSidebar.classList.toggle('show', !isShown);
-          if (navOverlay) navOverlay.classList.toggle('show', !isShown);
-        });
-        if (navOverlay) navOverlay.addEventListener('click', closeNav);
+      navToggle.addEventListener('click', () => {
+        const isShown = navSidebar.classList.contains('show');
+        navSidebar.classList.toggle('show', !isShown);
+        if (navOverlay) navOverlay.classList.toggle('show', !isShown);
+      });
+      if (navOverlay) navOverlay.addEventListener('click', closeNav);
 
-        // Close on link click
-        navSidebar.addEventListener('click', (e) => {
-          if (e.target.closest('a')) {
-            closeNav();
-          }
-        });
-      }
-    })();
-
-    {{ if .Feature "toc" }}
-    // Mobile TOC Toggle
-    (function() {
-      'use strict';
-
-      const tocToggle = document.getElementById('toc-toggle');
-      const tocSidebar = document.getElementById('toc-sidebar');
-      const tocOverlay = document.getElementById('toc-overlay');
-
-      if (tocToggle && tocSidebar) {
-        const closeToc = () => {
-          tocSidebar.classList.remove('show');
-          if (tocOverlay) tocOverlay.classList.remove('show');
-        };
-
-        tocToggle.addEventListener('click', () => {
-          const isShown = tocSidebar.classList.contains('show');
-          tocSidebar.classList.toggle('show', !isShown);
-          if (tocOverlay) tocOverlay.classList.toggle('show', !isShown);
-        });
-        if (tocOverlay) tocOverlay.addEventListener('click', closeToc);
-
-        // Close on link click
-        tocSidebar.addEventListener('click', (e) => {
-          if (e.target.closest('a')) {
-            closeToc();
-          }
-        });
-      }
-    })();
-    {{ end }}
-  </script>
+      // Close on link click
+      navSidebar.addEventListener('click', (e) => {
+        if (e.target.closest('a')) {
+          closeNav();
+        }
+      });
+    }
+  })();
 
   {{ if .Feature "toc" }}
-  <!-- TOC Scroll Highlighting -->
-  <script>{{ inlineJSAsset "toc-highlight.mjs" }}</script>
-  {{ end }}
+  // Mobile TOC Toggle
+  (function() {
+    'use strict';
 
-  {{ if .Feature "code_copy" }}
-  <!-- Code Copy Button -->
-  <script>{{ inlineJSAsset "code-copy.mjs" }}</script>
-  {{ end }}
+    const tocToggle = document.getElementById('toc-toggle');
+    const tocSidebar = document.getElementById('toc-sidebar');
+    const tocOverlay = document.getElementById('toc-overlay');
 
-  {{ if .Feature "color_chips" }}
-  <!-- Color Chip Web Component -->
-  <script type="module">{{ inlineJSAsset "color-chip.mjs" }}</script>
-  {{ end }}
+    if (tocToggle && tocSidebar) {
+      const closeToc = () => {
+        tocSidebar.classList.remove('show');
+        if (tocOverlay) tocOverlay.classList.remove('show');
+      };
 
-  {{ if .Feature "search" }}
-  <!-- Search Modal -->
-  <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
-  {{ end }}
+      tocToggle.addEventListener('click', () => {
+        const isShown = tocSidebar.classList.contains('show');
+        tocSidebar.classList.toggle('show', !isShown);
+        if (tocOverlay) tocOverlay.classList.toggle('show', !isShown);
+      });
+      if (tocOverlay) tocOverlay.addEventListener('click', closeToc);
 
-  {{ if .Feature "katex" }}
-  <!-- KaTeX Auto-render -->
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
-    onload="renderMathInElement(document.body, {
+      // Close on link click
+      tocSidebar.addEventListener('click', (e) => {
+        if (e.target.closest('a')) {
+          closeToc();
+        }
+      });
+    }
+  })();
+  {{ end }}
+</script>
+
+{{ if .Feature "toc" }}
+<!-- TOC Scroll Highlighting -->
+<script>
+  {{ inlineJSAsset "toc-highlight.mjs" }}
+</script>
+{{ end }} {{ if .Feature "code_copy" }}
+<!-- Code Copy Button -->
+<script>
+  {{ inlineJSAsset "code-copy.mjs" }}
+</script>
+{{ end }} {{ if .Feature "color_chips" }}
+<!-- Color Chip Web Component -->
+<script type="module">
+  {{ inlineJSAsset "color-chip.mjs" }}
+</script>
+{{ end }} {{ if .Feature "search" }}
+<!-- Search Modal -->
+<script type="module">
+  {{ inlineJSAsset "search.mjs" }}
+</script>
+{{ end }} {{ if .Feature "katex" }}
+<!-- KaTeX Auto-render -->
+<script
+  defer
+  src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"
+></script>
+<script
+  defer
+  src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
       delimiters: [
         {left: '$$', right: '$$', display: true},
         {left: '$', right: '$', display: false}
       ]
-    });"></script>
-  {{ end }}
-
-  {{ if .Feature "mermaid" }}
-  <!-- Mermaid -->
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
-    });
-    await mermaid.run({ querySelector: '.language-mermaid' });
-  </script>
-  {{ end }}
-{{ end }}
+    });"
+></script>
+{{ end }} {{ if .Feature "mermaid" }}
+<!-- Mermaid -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({
+    startOnLoad: false,
+    theme:
+      document.documentElement.getAttribute("data-theme") === "dark"
+        ? "dark"
+        : "default",
+  });
+  await mermaid.run({ querySelector: ".language-mermaid" });
+</script>
+{{ end }} {{ end }}
 ```
 
 - [ ] **Step 2: Update `header.html.tmpl`**
@@ -967,22 +990,37 @@ Wrap theme toggle and search button:
 
 ```html
 {{ define "header" }}
-  <header class="site-header">
-    <div class="site-title">
-      <button id="nav-toggle" aria-label="Toggle navigation">☰</button>
-      <a href="/">{{ .Site.Meta.Title }}</a>
-    </div>
-    <div class="header-controls">
-      {{ if .Feature "search" }}
-      <button id="search-toggle" aria-label="Search documentation" title="Search (Ctrl+K)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-      </button>
-      {{ end }}
-      {{ if .Feature "dark_mode" }}
-      <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
-      {{ end }}
-    </div>
-  </header>
+<header class="site-header">
+  <div class="site-title">
+    <button id="nav-toggle" aria-label="Toggle navigation">☰</button>
+    <a href="/">{{ .Site.Meta.Title }}</a>
+  </div>
+  <div class="header-controls">
+    {{ if .Feature "search" }}
+    <button
+      id="search-toggle"
+      aria-label="Search documentation"
+      title="Search (Ctrl+K)"
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+    </button>
+    {{ end }} {{ if .Feature "dark_mode" }}
+    <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+    {{ end }}
+  </div>
+</header>
 {{ end }}
 ```
 
@@ -995,32 +1033,40 @@ Wrap entire TOC in feature check:
 <li>
   <a href="#{{ .ID }}">{{ .Text }}</a>
   {{- if .Children }}
-  <ul>{{ range .Children }}{{ template "toc-item" . }}{{ end }}</ul>
+  <ul>
+    {{ range .Children }}{{ template "toc-item" . }}{{ end }}
+  </ul>
   {{- end }}
 </li>
-{{- end }}
-
-{{ define "toc" }}
-{{- if .Feature "toc" }}
-{{- $items := toc .Page.TOC }}
-{{- if $items }}
-          <aside id="toc-sidebar" aria-label="Table of Contents">
-            <nav>
-              <header>On this page</header>
-              <ul>{{ range $items }}{{ template "toc-item" . }}{{ end }}</ul>
-            </nav>
-          </aside>
-          <div id="toc-overlay"></div>
-          <button id="toc-toggle" aria-label="Toggle table of contents">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="3" y1="6" x2="21" y2="6"></line>
-              <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-          </button>
-{{- end }}
-{{- end }}
-{{ end }}
+{{- end }} {{ define "toc" }} {{- if .Feature "toc" }} {{- $items := toc
+.Page.TOC }} {{- if $items }}
+<aside id="toc-sidebar" aria-label="Table of Contents">
+  <nav>
+    <header>On this page</header>
+    <ul>
+      {{ range $items }}{{ template "toc-item" . }}{{ end }}
+    </ul>
+  </nav>
+</aside>
+<div id="toc-overlay"></div>
+<button id="toc-toggle" aria-label="Toggle table of contents">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <line x1="3" y1="12" x2="21" y2="12"></line>
+    <line x1="3" y1="6" x2="21" y2="6"></line>
+    <line x1="3" y1="18" x2="21" y2="18"></line>
+  </svg>
+</button>
+{{- end }} {{- end }} {{ end }}
 ```
 
 - [ ] **Step 4: Run `make ci`**
@@ -1040,6 +1086,7 @@ git commit -m "feat: gate default theme features behind feature toggle checks"
 ### Task 8: Update all 7 material themes
 
 **Files:**
+
 - Modify: `material/themes/*/partials/scripts.html.tmpl` (7 files)
 - Modify: `material/themes/*/partials/header.html.tmpl` (7 files)
 - Modify: `material/themes/*/partials/toc.html.tmpl` (7 files)
@@ -1079,6 +1126,7 @@ git commit -m "feat: gate all 7 material theme features behind feature toggle ch
 ### Task 9: Final verification and cleanup
 
 **Files:**
+
 - Verify: all tests pass
 - Verify: no remaining references to `ColorChips` or `HasSearch` in non-test code
 
@@ -1102,7 +1150,7 @@ Start the server with the testsite to verify feature toggles work:
 
 ```bash
 cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc
-go run ./cmd/gomddoc serve material/testsite
+go run ./cmd/gomddoc serve testsite
 ```
 
 Open in browser, verify all features still load (default: all enabled).

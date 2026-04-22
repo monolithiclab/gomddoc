@@ -14,25 +14,26 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|------|--------|----------------|
-| `internal/renderer/ext_features.go` | Create | Shared `featuresContextKey` + helper to read features from parser context |
-| `internal/renderer/ext_anchors.go` | Create | Heading anchor extension: `Extender` + `NodeRenderer` for `ast.KindHeading` |
-| `internal/renderer/ext_admonition.go` | Create | Admonition extension: `AdmonitionNode` + `ASTTransformer` + `NodeRenderer` |
-| `internal/renderer/ext_colorchip.go` | Create | Color chip extension: `ColorChipNode` + `ASTTransformer` + `NodeRenderer` |
-| `internal/renderer/markdown.go` | Modify | Register extensions, remove post-processing block, set features on parser context |
-| `internal/renderer/anchors.go` | Delete | Replaced by `ext_anchors.go` |
-| `internal/renderer/admonition.go` | Delete | Replaced by `ext_admonition.go` |
-| `internal/renderer/colorchip.go` | Delete | Replaced by `ext_colorchip.go` |
-| `internal/renderer/anchors_test.go` | Rewrite | Test via renderer (markdown input → HTML output) |
-| `internal/renderer/admonition_test.go` | Rewrite | Test via renderer (markdown input → HTML output) |
-| `internal/renderer/colorchip_test.go` | Rewrite | Test via renderer (markdown input → HTML output) |
+| File                                   | Action  | Responsibility                                                                    |
+| -------------------------------------- | ------- | --------------------------------------------------------------------------------- |
+| `internal/renderer/ext_features.go`    | Create  | Shared `featuresContextKey` + helper to read features from parser context         |
+| `internal/renderer/ext_anchors.go`     | Create  | Heading anchor extension: `Extender` + `NodeRenderer` for `ast.KindHeading`       |
+| `internal/renderer/ext_admonition.go`  | Create  | Admonition extension: `AdmonitionNode` + `ASTTransformer` + `NodeRenderer`        |
+| `internal/renderer/ext_colorchip.go`   | Create  | Color chip extension: `ColorChipNode` + `ASTTransformer` + `NodeRenderer`         |
+| `internal/renderer/markdown.go`        | Modify  | Register extensions, remove post-processing block, set features on parser context |
+| `internal/renderer/anchors.go`         | Delete  | Replaced by `ext_anchors.go`                                                      |
+| `internal/renderer/admonition.go`      | Delete  | Replaced by `ext_admonition.go`                                                   |
+| `internal/renderer/colorchip.go`       | Delete  | Replaced by `ext_colorchip.go`                                                    |
+| `internal/renderer/anchors_test.go`    | Rewrite | Test via renderer (markdown input → HTML output)                                  |
+| `internal/renderer/admonition_test.go` | Rewrite | Test via renderer (markdown input → HTML output)                                  |
+| `internal/renderer/colorchip_test.go`  | Rewrite | Test via renderer (markdown input → HTML output)                                  |
 
 ---
 
 ### Task 1: Shared Feature Context Key
 
 **Files:**
+
 - Create: `internal/renderer/ext_features.go`
 
 - [ ] **Step 1: Create `ext_features.go`**
@@ -75,6 +76,7 @@ git commit -m "Add shared feature context key for goldmark extensions"
 ### Task 2: Heading Anchors Extension
 
 **Files:**
+
 - Create: `internal/renderer/ext_anchors.go`
 - Rewrite: `internal/renderer/anchors_test.go`
 - Delete: `internal/renderer/anchors.go`
@@ -350,6 +352,7 @@ doc.SetAttributeString("features", merged)
 ```
 
 Then in the renderer:
+
 ```go
 featuresAttr, _ := node.OwnerDocument().AttributeString("features")
 features, _ := featuresAttr.(map[string]bool)
@@ -480,6 +483,7 @@ git commit -m "Add heading anchor goldmark extension (replaces regex post-proces
 ### Task 3: Admonition Extension
 
 **Files:**
+
 - Create: `internal/renderer/ext_admonition.go`
 - Rewrite: `internal/renderer/admonition_test.go`
 - Delete: `internal/renderer/admonition.go`
@@ -969,6 +973,7 @@ git commit -m "Add admonition goldmark extension (replaces regex post-processor)
 ### Task 4: Color Chip Extension
 
 **Files:**
+
 - Create: `internal/renderer/ext_colorchip.go`
 - Rewrite: `internal/renderer/colorchip_test.go`
 - Delete: `internal/renderer/colorchip.go`
@@ -977,7 +982,7 @@ git commit -m "Add admonition goldmark extension (replaces regex post-processor)
 
 Rewrite `internal/renderer/colorchip_test.go`:
 
-```go
+````go
 package renderer
 
 import (
@@ -1146,7 +1151,7 @@ func TestColorChips_PageOverride(t *testing.T) {
 		}
 	})
 }
-```
+````
 
 - [ ] **Step 2: Create `ext_colorchip.go`**
 
@@ -1283,11 +1288,13 @@ git commit -m "Add color chip goldmark extension (replaces regex post-processor)
 ### Task 5: Wire Extensions into MarkdownRenderer
 
 **Files:**
+
 - Modify: `internal/renderer/markdown.go`
 
 - [ ] **Step 1: Update `markdown.go`**
 
 Replace the contents of `internal/renderer/markdown.go`. Key changes:
+
 1. Register the three extensions in `goldmark.New()`
 2. Set features on both parser context and document attribute before rendering
 3. Remove the post-processing block entirely
@@ -1448,9 +1455,10 @@ Expected: All tests pass, including the existing `markdown_test.go` integration 
 
 - [ ] **Step 2: Manual spot-check with testsite**
 
-Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go run ./cmd/gomddoc serve --root material/testsite`
+Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go run ./cmd/gomddoc serve --root testsite`
 
 Open in browser and verify:
+
 - Headings have anchor links on hover
 - Admonition blockquotes render as styled divs
 - Hex color codes in backticks render as color chips

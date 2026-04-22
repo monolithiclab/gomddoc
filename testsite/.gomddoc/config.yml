@@ -1,0 +1,13 @@
+# gomddoc site configuration
+# See: https://github.com/monolithiclab/gomddoc
+
+default_index: README.md
+dir_index: false
+color_chips: true
+meta:
+  title: Testsite
+  description: ""
+theme:
+  name: default
+highlighting:
+  theme: github

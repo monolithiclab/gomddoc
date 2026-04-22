@@ -14,30 +14,31 @@
 
 ## File Structure
 
-| Action | File | Responsibility |
-|--------|------|----------------|
-| Create | `internal/resolve/resolver.go` | PathResolver: builds extensionless↔real path mapping |
-| Create | `internal/resolve/resolver_test.go` | Unit tests for resolver |
-| Modify | `internal/config/config.go` | Add `StripExtensions` field to `SiteConfig`, default `[".md"]` |
-| Modify | `internal/config/config_test.go` | Test new config field |
-| Create | `internal/server/redirect.go` | Extension redirect middleware |
-| Create | `internal/server/redirect_test.go` | Tests for redirect middleware |
-| Modify | `internal/server/handler.go` | Consult resolver for extensionless paths |
-| Modify | `internal/server/handler_test.go` | Test resolver integration |
-| Modify | `internal/server/server.go` | Wire resolver into middleware and handler |
-| Modify | `internal/template/navigation/navigation.go` | Emit clean paths via resolver |
-| Modify | `internal/template/navigation/navigation_test.go` | Test clean path emission |
-| Modify | `internal/seo/url.go` | Strip extensions from page URLs |
-| Modify | `internal/seo/url_test.go` | Test extension stripping in SEO URLs |
-| Modify | `cmd/gomddoc/build.go` | Pretty URL output (`guide/index.html`) |
-| Modify | `cmd/gomddoc/build_test.go` | Test pretty URL output |
-| Modify | `cmd/gomddoc/pipeline.go` | Wire resolver into pipeline |
+| Action | File                                              | Responsibility                                                 |
+| ------ | ------------------------------------------------- | -------------------------------------------------------------- |
+| Create | `internal/resolve/resolver.go`                    | PathResolver: builds extensionless↔real path mapping           |
+| Create | `internal/resolve/resolver_test.go`               | Unit tests for resolver                                        |
+| Modify | `internal/config/config.go`                       | Add `StripExtensions` field to `SiteConfig`, default `[".md"]` |
+| Modify | `internal/config/config_test.go`                  | Test new config field                                          |
+| Create | `internal/server/redirect.go`                     | Extension redirect middleware                                  |
+| Create | `internal/server/redirect_test.go`                | Tests for redirect middleware                                  |
+| Modify | `internal/server/handler.go`                      | Consult resolver for extensionless paths                       |
+| Modify | `internal/server/handler_test.go`                 | Test resolver integration                                      |
+| Modify | `internal/server/server.go`                       | Wire resolver into middleware and handler                      |
+| Modify | `internal/template/navigation/navigation.go`      | Emit clean paths via resolver                                  |
+| Modify | `internal/template/navigation/navigation_test.go` | Test clean path emission                                       |
+| Modify | `internal/seo/url.go`                             | Strip extensions from page URLs                                |
+| Modify | `internal/seo/url_test.go`                        | Test extension stripping in SEO URLs                           |
+| Modify | `cmd/gomddoc/build.go`                            | Pretty URL output (`guide/index.html`)                         |
+| Modify | `cmd/gomddoc/build_test.go`                       | Test pretty URL output                                         |
+| Modify | `cmd/gomddoc/pipeline.go`                         | Wire resolver into pipeline                                    |
 
 ---
 
 ### Task 1: Add `StripExtensions` config field
 
 **Files:**
+
 - Modify: `internal/config/config.go:72-83` (SiteConfig struct)
 - Modify: `internal/config/config.go:185-201` (NewSiteConfig defaults)
 - Modify: `internal/config/config.go:259-296` (Validate)
@@ -162,6 +163,7 @@ git commit -m "Add StripExtensions config field with .md default"
 ### Task 2: Create PathResolver
 
 **Files:**
+
 - Create: `internal/resolve/resolver.go`
 - Create: `internal/resolve/resolver_test.go`
 
@@ -503,6 +505,7 @@ git commit -m "Add PathResolver for extensionless URL mapping"
 ### Task 3: Extension redirect middleware
 
 **Files:**
+
 - Create: `internal/server/redirect.go`
 - Create: `internal/server/redirect_test.go`
 
@@ -652,6 +655,7 @@ git commit -m "Add extension redirect middleware for canonical URLs"
 ### Task 4: Handler path resolution with resolver
 
 **Files:**
+
 - Modify: `internal/server/handler.go:26-57` (HandlerConfig, Handler, NewHandler)
 - Modify: `internal/server/handler.go:67-135` (ServeContent)
 - Test: `internal/server/handler_test.go`
@@ -741,6 +745,7 @@ git commit -m "Resolve extensionless paths via PathResolver in handler"
 ### Task 5: Wire resolver into server startup
 
 **Files:**
+
 - Modify: `cmd/gomddoc/pipeline.go:26-44` (Pipeline struct)
 - Modify: `cmd/gomddoc/pipeline.go:46-126` (setupPipeline)
 - Modify: `internal/server/server.go:30-51` (HTTPServerConfig)
@@ -820,6 +825,7 @@ git commit -m "Wire PathResolver into server startup and middleware"
 ### Task 6: Navigation emits clean paths
 
 **Files:**
+
 - Modify: `internal/template/navigation/navigation.go:24-38` (Generator struct)
 - Modify: `internal/template/navigation/navigation.go:86-120` (buildTree file handling)
 - Test: `internal/template/navigation/navigation_test.go`
@@ -928,6 +934,7 @@ git commit -m "Emit extensionless paths in navigation tree"
 ### Task 7: SEO URLs use clean paths
 
 **Files:**
+
 - Modify: `internal/seo/url.go`
 - Modify: `internal/seo/url_test.go`
 - Modify: `internal/server/sitemap.go`
@@ -1009,6 +1016,7 @@ git commit -m "Use extensionless paths in sitemap and feed URLs"
 ### Task 8: Build command — pretty URL output
 
 **Files:**
+
 - Modify: `cmd/gomddoc/build.go:231-301` (buildFile output path logic)
 - Modify: `cmd/gomddoc/build.go:162-228` (walkAndBuild)
 - Test: `cmd/gomddoc/build_test.go`
@@ -1109,6 +1117,7 @@ git commit -m "Generate pretty URL output in build mode"
 ### Task 9: Build — generate extension redirect pages
 
 **Files:**
+
 - Modify: `cmd/gomddoc/build.go:393-427` (generateRedirectFiles)
 
 - [ ] **Step 1: Write the test**
@@ -1188,6 +1197,7 @@ git commit -m "Generate extension redirect pages in build output"
 ### Task 10: Build — wire resolver into build pipeline
 
 **Files:**
+
 - Modify: `cmd/gomddoc/build.go:50-136` (Run)
 - Modify: `cmd/gomddoc/build.go:162-228` (walkAndBuild)
 
@@ -1237,6 +1247,7 @@ git commit -m "Wire resolver into build pipeline for SEO and pretty URLs"
 ### Task 11: Integration test — end-to-end serve mode
 
 **Files:**
+
 - Modify or create: an integration test file
 
 - [ ] **Step 1: Write integration test**
@@ -1268,6 +1279,7 @@ git commit -m "Add integration tests for URL extension stripping"
 ### Task 12: Update documentation
 
 **Files:**
+
 - Modify: `docs/guide/02-configuration.md` (add strip_extensions docs)
 - Modify: `docs/architecture.md` (mention resolver in pipeline)
 - Modify: `docs/roadmap.md` (mark feature as done)
@@ -1302,7 +1314,8 @@ Expected: PASS with no warnings.
 
 - [ ] **Step 2: Manual test with testsite**
 
-Run: `make run` and verify with Chrome DevTools MCP against `material/testsite/`:
+Run: `make run` and verify with Chrome DevTools MCP against `testsite/`:
+
 - Extensionless URLs work
 - Extension URLs redirect
 - Navigation shows clean URLs
@@ -1311,7 +1324,7 @@ Run: `make run` and verify with Chrome DevTools MCP against `material/testsite/`
 - [ ] **Step 3: Run build and inspect output**
 
 ```bash
-go run ./cmd/gomddoc build --dir material/testsite --output /tmp/testbuild --force
+go run ./cmd/gomddoc build --dir testsite --output /tmp/testbuild --force
 find /tmp/testbuild -name "*.html" | head -20
 ```
 

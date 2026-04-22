@@ -37,7 +37,7 @@ deploy:  ## Deploy the project
 
 
 run:  ## Run the application locally
-	go run ./cmd/gomddoc serve material/testsite
+	go run ./cmd/gomddoc serve testsite
 
 
 test:  ## Run unit tests with coverage and race detection

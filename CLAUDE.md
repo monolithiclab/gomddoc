@@ -73,10 +73,13 @@ internal/
 ├── template/          # HTML rendering, caching, breadcrumbs, navigation
 ├── assets/            # Overlay filesystem for theme overrides
 └── text/              # Text utilities (sanitize, title case)
-material/
-├── themes/            # Public free themes (8 bundled)
-└── public-website/    # Marketing site
+testsite/              # Lorem ipsum test site for quick testing
 ```
+
+**Related repositories:**
+
+- [gomddoc-themes](git@github.com:monolithiclab/gomddoc-themes.git) — 7 additional themes (academic, gitbook, material, midnight, minimal, nord, ocean)
+- [gomddoc-website](git@github.com:monolithiclab/gomddoc-website.git) — Marketing/public website
 
 ## Development Workflow
 
@@ -94,7 +97,7 @@ material/
   CSS sanitization) is not needed — treat these as false positives in reviews.
 - **Minimal dependencies** across all repos
 - **Prevent duplicated code** — extract shared helpers
-- **Manual testing**: Use Chrome DevTools MCP, target `material/testsite/`
+- **Manual testing**: Use Chrome DevTools MCP, target `testsite/`
 - **Options struct pattern** or **functional options**, depending on the case
 - **`path` not `filepath`** for `fs.FS` operations (forward slashes per `io/fs` spec)
 - **`filepath`** only for OS filesystem operations (writing files to disk)
@@ -147,8 +150,8 @@ material/
 
 #### New CLI feature
 
-1. Update `material/public-website` if user-facing
-2. Check if themes in `material/themes` need updates
+1. Update [gomddoc-website](git@github.com:monolithiclab/gomddoc-website.git) if user-facing
+2. Check if themes in [gomddoc-themes](git@github.com:monolithiclab/gomddoc-themes.git) need updates
 
 #### Theme capability change
 
@@ -157,5 +160,5 @@ material/
 
 #### Configuration change
 
-1. Update `material/public-website/docs/configuration.md`
-2. Update theme READMEs in `material/themes/` if relevant
+1. Update `docs/configuration.md` in [gomddoc-website](git@github.com:monolithiclab/gomddoc-website.git)
+2. Update theme READMEs in [gomddoc-themes](git@github.com:monolithiclab/gomddoc-themes.git) if relevant
