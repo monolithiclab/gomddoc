@@ -20,6 +20,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// maxMCPBodyBytes is the maximum request body size for MCP endpoints (1 MB).
+const maxMCPBodyBytes = 1 << 20
+
+// maxBodySize wraps an HTTP handler to limit the request body size.
+func maxBodySize(next http.Handler, n int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, n)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Server defines the interface for HTTP servers
 type Server interface {
 	// Start starts the HTTP server
@@ -95,7 +106,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	}
 
 	if opts.MCPHandler != nil {
-		auth.Handle("/_mcp/", http.StripPrefix("/_mcp", opts.MCPHandler))
+		auth.Handle("/_mcp/", http.StripPrefix("/_mcp", maxBodySize(opts.MCPHandler, maxMCPBodyBytes)))
 	}
 
 	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {

@@ -20,6 +20,7 @@ func NewSearchHandler(index *search.Index) *SearchHandler {
 const (
 	defaultSearchLimit = 20
 	maxSearchLimit     = 100
+	maxQueryLength     = 500
 )
 
 // SearchEndpoint handles GET /api/search?q=<query>&limit=<n>.
@@ -29,6 +30,9 @@ func (h *SearchHandler) SearchEndpoint(w http.ResponseWriter, r *http.Request) {
 	if q == "" {
 		writeJSON(w, http.StatusOK, []search.SearchResult{})
 		return
+	}
+	if len(q) > maxQueryLength {
+		q = q[:maxQueryLength]
 	}
 
 	limit := defaultSearchLimit

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -468,5 +469,53 @@ func TestMCPEndpoint(t *testing.T) {
 				t.Errorf("GET /_mcp/ status = %d, want %d", w.Code, tt.wantStatus)
 			}
 		})
+	}
+}
+
+func TestMCPEndpoint_BodySizeLimited(t *testing.T) {
+	t.Parallel()
+
+	// MCP handler that reads the full body — should fail on oversized requests
+	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Port: ":8080",
+			Dir:  ".",
+			HTTP: config.HTTPConfig{
+				ShutdownTimeout:   1 * time.Second,
+				ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+				WriteTimeout:      config.DefaultWriteTimeout,
+				IdleTimeout:       config.DefaultIdleTimeout,
+				MaxHeaderMB:       config.DefaultMaxHeaderMB,
+			},
+		},
+		Site: config.NewSiteConfig("."),
+	}
+
+	srv := NewHTTPServer(HTTPServerConfig{
+		Config:           cfg,
+		Provider:         newMemoryProvider(fstest.MapFS{}, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		MCPHandler:       mcpHandler,
+	})
+
+	// Send a body larger than maxMCPBodyBytes
+	oversizedBody := strings.NewReader(strings.Repeat("x", int(maxMCPBodyBytes)+1))
+	req := httptest.NewRequest(http.MethodPost, "/_mcp/", oversizedBody)
+	w := httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("POST /_mcp/ with oversized body: status = %d, want %d", w.Code, http.StatusRequestEntityTooLarge)
 	}
 }

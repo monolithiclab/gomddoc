@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -114,6 +115,24 @@ func TestSearchEndpoint(t *testing.T) {
 				t.Errorf("expected at least %d results, got %d", tt.minResults, len(results))
 			}
 		})
+	}
+}
+
+func TestSearchEndpoint_QueryLengthCapped(t *testing.T) {
+	t.Parallel()
+
+	idx := buildTestSearchIndex(t)
+	handler := NewSearchHandler(idx)
+
+	// Query longer than maxQueryLength should be truncated, not cause an error
+	longQuery := strings.Repeat("a", maxQueryLength+100)
+	req := httptest.NewRequest(http.MethodGet, "/api/search?q="+longQuery, nil)
+	rec := httptest.NewRecorder()
+
+	handler.SearchEndpoint(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 
