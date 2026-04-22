@@ -126,8 +126,6 @@ Seven custom functions are available in templates:
   {{ end }}
   ```
 
-- **`pageURL`**: Alias for `canonicalURL`.
-
 - **`inlineAsset`**: Loads a JavaScript or CSS asset from the theme directory, falling back to the shared assets directory. Used for embedding shared components like the color chip web component and search modal.
   ```html
   <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>

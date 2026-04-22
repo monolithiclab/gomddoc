@@ -37,12 +37,11 @@ This tells search engines the authoritative URL for each page, preventing duplic
 
 ### Template Functions
 
-Two template functions are available for SEO:
+A template function is available for SEO:
 
 - `{{ canonicalURL .Page.Path }}` — returns the full canonical URL for the page
-- `{{ pageURL .Page.Path }}` — alias for `canonicalURL`
 
-Both return an empty string if no domain is configured.
+Returns an empty string if no domain is configured.
 
 ## Sitemap
 
