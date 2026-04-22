@@ -143,122 +143,86 @@ func applyEnvOverridesWithPrefix(target any, prefix string) {
 }
 
 // walkStruct recursively walks any struct and applies env overrides
-// This is a shared helper used by both Config and SiteConfig
 func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
-	// Panic recovery for defensive programming against reflection edge cases
-	defer func() {
-		if r := recover(); r != nil {
-			slog.Error("Panic during config reflection",
-				slog.String("prefix", prefix),
-				slog.Any("panic", r))
-		}
-	}()
-
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 		fieldType := t.Field(i)
 
-		// More robust validation: check IsValid, CanSet
-		if !field.IsValid() || !field.CanSet() {
+		if !field.CanSet() {
 			continue
 		}
 
-		// Get env tag (skip if not present)
+		// Get env tag
 		envTag := fieldType.Tag.Get("env")
+
+		// Handle nested structs and pointers even if they don't have an env tag
+		// as their children might have them.
+		kind := field.Kind()
+		if kind == reflect.Struct {
+			newPrefix := prefix
+			if envTag != "" {
+				newPrefix = prefix + "_" + envTag
+			}
+			walkStruct(field, field.Type(), newPrefix)
+			continue
+		}
+
+		if kind == reflect.Ptr {
+			// Skip "Site" field to avoid circularity or redundant processing
+			if fieldType.Name == "Site" {
+				continue
+			}
+
+			if !field.IsNil() {
+				newPrefix := prefix
+				if envTag != "" {
+					newPrefix = prefix + "_" + envTag
+				}
+				walkStruct(field.Elem(), field.Elem().Type(), newPrefix)
+			}
+			continue
+		}
+
+		// Leaf node: check env var and set if present
 		if envTag == "" {
 			continue
 		}
 
-		// Build full env var name
 		envVarName := prefix + "_" + envTag
+		envValue := os.Getenv(envVarName)
+		if envValue == "" {
+			continue
+		}
 
-		slog.Debug("Processing config field",
-			slog.String("field", fieldType.Name),
-			slog.String("env_var", envVarName),
-			slog.String("kind", field.Kind().String()))
+		slog.Debug("Applied env override",
+			slog.String("var", envVarName),
+			slog.String("kind", kind.String()))
 
-		// Handle based on field kind
-		switch field.Kind() {
-		case reflect.Struct:
-			// Recurse into nested struct (builds hierarchical env var names)
-			slog.Debug("Recursing into struct field",
-				slog.String("field", fieldType.Name),
-				slog.String("prefix", envVarName))
-			walkStruct(field, field.Type(), envVarName)
-
-		case reflect.Ptr:
-			// Handle pointer fields by dereferencing and recursing
-			// Skip only the "Site" field since it's configured separately via SiteConfig.ApplyEnvOverrides()
-			// But process other pointer fields like "Server" (*ServerConfig)
-			if fieldType.Name == "Site" {
-				slog.Debug("Skipping Site field (configured separately)",
-					slog.String("field", fieldType.Name))
-				continue
-			}
-
-			// Dereference pointer and recurse if not nil
-			if !field.IsNil() {
-				slog.Debug("Dereferencing pointer field",
-					slog.String("field", fieldType.Name),
-					slog.String("prefix", envVarName))
-				walkStruct(field.Elem(), field.Elem().Type(), envVarName)
-			} else {
-				slog.Debug("Skipping nil pointer field",
-					slog.String("field", fieldType.Name))
-			}
-
+		switch kind {
 		case reflect.String:
-			// Leaf node: check env var and set if present
-			if envValue := os.Getenv(envVarName); envValue != "" {
-				field.SetString(envValue)
-				slog.Debug("Applied env override",
-					slog.String("var", envVarName),
-					slog.String("value", envValue))
-			}
+			field.SetString(envValue)
 
 		case reflect.Int, reflect.Int64:
-			// Support for int and duration types
-			if envValue := os.Getenv(envVarName); envValue != "" {
-				// Check if it's a time.Duration field
-				if field.Type() == reflect.TypeOf(time.Duration(0)) {
-					if duration, err := time.ParseDuration(envValue); err == nil {
-						field.SetInt(int64(duration))
-						slog.Debug("Applied env override (duration)",
-							slog.String("var", envVarName),
-							slog.String("value", envValue))
-					} else {
-						slog.Warn("Invalid duration format",
-							slog.String("var", envVarName),
-							slog.String("value", envValue))
-					}
+			// Handle time.Duration vs regular int
+			if field.Type() == reflect.TypeOf(time.Duration(0)) {
+				if duration, err := time.ParseDuration(envValue); err == nil {
+					field.SetInt(int64(duration))
 				} else {
-					// Regular int
-					if intValue, err := strconv.ParseInt(envValue, 10, 64); err == nil {
-						field.SetInt(intValue)
-						slog.Debug("Applied env override (int)",
-							slog.String("var", envVarName),
-							slog.String("value", envValue))
-					} else {
-						slog.Warn("Invalid int format",
-							slog.String("var", envVarName),
-							slog.String("value", envValue))
-					}
+					slog.Warn("Invalid duration format", slog.String("var", envVarName), slog.String("value", envValue))
+				}
+			} else {
+				if intValue, err := strconv.ParseInt(envValue, 10, 64); err == nil {
+					field.SetInt(intValue)
+				} else {
+					slog.Warn("Invalid int format", slog.String("var", envVarName), slog.String("value", envValue))
 				}
 			}
 
 		case reflect.Bool:
-			// Support for bool types
-			if envValue := os.Getenv(envVarName); envValue != "" {
-				if boolValue, err := strconv.ParseBool(envValue); err == nil {
-					field.SetBool(boolValue)
-					slog.Debug("Applied env override (bool)",
-						slog.String("var", envVarName),
-						slog.String("value", envValue))
-				} else {
-					slog.Warn("Invalid bool format",
-						slog.String("var", envVarName),
-						slog.String("value", envValue))
-				}
+			if boolValue, err := strconv.ParseBool(envValue); err == nil {
+				field.SetBool(boolValue)
+			} else {
+				slog.Warn("Invalid bool format", slog.String("var", envVarName), slog.String("value", envValue))
 			}
 		}
 	}
