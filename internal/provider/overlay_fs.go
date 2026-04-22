@@ -75,7 +75,7 @@ func (o *OverlayFS) Open(name string) (fs.File, error) {
 func (o *OverlayFS) ReadFile(name string) ([]byte, error) {
 	var lastErr error
 
-	for _, filesystem := range o.filesystems {
+	for i, filesystem := range o.filesystems {
 		data, err := fs.ReadFile(filesystem, name)
 		if err == nil {
 			return data, nil
@@ -86,6 +86,13 @@ func (o *OverlayFS) ReadFile(name string) ([]byte, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
+
+		// For non-ErrNotExist errors (permission, I/O), log and return
+		slog.Debug("Error reading file in filesystem",
+			slog.String("file", name),
+			slog.Int("fs_index", i),
+			slog.Any("error", err))
+		return nil, err
 	}
 
 	if lastErr != nil {

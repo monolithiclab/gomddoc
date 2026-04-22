@@ -74,6 +74,7 @@ func (b *BuildCmd) Run() error {
 
 	if b.Domain != "" {
 		cfg.Site.Meta.Domain = b.Domain
+		cfg.Site.Normalize()
 		if err := cfg.Site.Validate(); err != nil {
 			return fmt.Errorf("domain flag: %w", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -58,9 +59,11 @@ func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Use Background context — generation is a one-time init that must not
 		// be tied to (and cancelled with) the first incoming request.
 		out, err := GenerateSitemap(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver)
-		if err == nil {
-			h.cached = out
+		if err != nil {
+			slog.Error("Failed to generate sitemap", slog.Any("error", err))
+			return
 		}
+		h.cached = out
 	})
 
 	if h.cached == nil {

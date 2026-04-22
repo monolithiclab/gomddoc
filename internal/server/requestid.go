@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -26,7 +26,7 @@ func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-ID")
 		if !isValidRequestID(id) {
-			id = fmt.Sprintf("%d-%d", time.Now().UnixMicro(), requestCounter.Add(1))
+			id = strconv.FormatInt(time.Now().UnixMicro(), 10) + "-" + strconv.FormatUint(requestCounter.Add(1), 10)
 		}
 
 		// Set response header

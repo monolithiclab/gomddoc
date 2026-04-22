@@ -79,13 +79,15 @@ func GenerateMarkdownListing(dirPath string, entries []fs.DirEntry, excludePatte
 	return []byte(builder.String())
 }
 
+// markdownEscaper replaces markdown special characters to prevent injection.
+var markdownEscaper = strings.NewReplacer(
+	"[", `\[`,
+	"]", `\]`,
+	"(", `\(`,
+	")", `\)`,
+)
+
 // escapeMarkdown escapes markdown special characters in text to prevent injection.
 func escapeMarkdown(s string) string {
-	r := strings.NewReplacer(
-		"[", `\[`,
-		"]", `\]`,
-		"(", `\(`,
-		")", `\)`,
-	)
-	return r.Replace(s)
+	return markdownEscaper.Replace(s)
 }

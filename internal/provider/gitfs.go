@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -139,7 +140,7 @@ func (d *gitDirFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	}
 
 	if n <= 0 {
-		entries := d.entries[d.offset:]
+		entries := slices.Clone(d.entries[d.offset:])
 		d.offset = len(d.entries)
 		return entries, nil
 	}
@@ -152,5 +153,5 @@ func (d *gitDirFile) ReadDir(n int) ([]fs.DirEntry, error) {
 		n = len(remaining)
 	}
 	d.offset += n
-	return remaining[:n], nil
+	return slices.Clone(remaining[:n]), nil
 }

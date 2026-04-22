@@ -101,9 +101,10 @@ func GenerateJSONLD(cfg JSONLDConfig, page JSONLDPage) string {
 			website["name"] = cfg.SiteName
 		}
 		if cfg.HasSearch {
+			searchBase := PageURL(cfg.Domain, "/api/search", cfg.DefaultIndex)
 			website["potentialAction"] = map[string]any{
 				"@type":       "SearchAction",
-				"target":      PageURL(cfg.Domain, "/api/search?q={search_term_string}", cfg.DefaultIndex),
+				"target":      searchBase + "?q={search_term_string}",
 				"query-input": "required name=search_term_string",
 			}
 		}

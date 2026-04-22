@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 )
 
 var featureKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -70,7 +71,7 @@ func ValidateFeatureKeys(features map[string]bool) error {
 		return nil
 	}
 
-	for key := range features {
+	for _, key := range slices.Sorted(maps.Keys(features)) {
 		if !featureKeyPattern.MatchString(key) {
 			return fmt.Errorf("invalid feature key %q: must match pattern ^[a-z][a-z0-9_]*$", key)
 		}

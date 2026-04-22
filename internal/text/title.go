@@ -27,6 +27,6 @@ func DeriveTitle(reqPath string) string {
 	name = strings.ReplaceAll(name, "-", " ")
 	name = strings.ReplaceAll(name, "_", " ")
 
-	// Capitalize Title Case
+	// Capitalize Title Case (Caser is not goroutine-safe, must create per call)
 	return cases.Title(language.English).String(name)
 }

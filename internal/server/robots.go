@@ -8,19 +8,19 @@ import (
 
 // RobotsHandler serves a robots.txt response.
 type RobotsHandler struct {
-	domain string
+	cached []byte
 }
 
 // NewRobotsHandler creates a new RobotsHandler.
 func NewRobotsHandler(domain string) *RobotsHandler {
-	return &RobotsHandler{domain: domain}
+	return &RobotsHandler{cached: []byte(GenerateRobotsTxt(domain))}
 }
 
 // ServeHTTP writes the robots.txt response.
 func (h *RobotsHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(GenerateRobotsTxt(h.domain)))
+	_, _ = w.Write(h.cached)
 }
 
 // GenerateRobotsTxt produces the robots.txt content string.

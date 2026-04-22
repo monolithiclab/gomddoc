@@ -6,6 +6,12 @@ import (
 	"unicode"
 )
 
+// Reusable byte slices for regex replacements.
+var (
+	replSpace    = []byte(" ")
+	replCapture1 = []byte("$1")
+)
+
 // Compiled regex patterns for markdown stripping.
 var (
 	reCodeFence  = regexp.MustCompile("(?m)^```[^\n]*\n(?s:.*?)^```\\s*$")
@@ -23,30 +29,32 @@ var (
 )
 
 // stripMarkdown removes common markdown syntax, keeping the textual content.
+// Uses []byte operations to avoid intermediate string allocations.
 func stripMarkdown(text string) string {
+	b := []byte(text)
 	// Remove code fences entirely (content is code, not prose)
-	text = reCodeFence.ReplaceAllString(text, " ")
+	b = reCodeFence.ReplaceAll(b, replSpace)
 	// Images: keep alt text
-	text = reImage.ReplaceAllString(text, "$1")
+	b = reImage.ReplaceAll(b, replCapture1)
 	// Links: keep link text
-	text = reLink.ReplaceAllString(text, "$1")
+	b = reLink.ReplaceAll(b, replCapture1)
 	// Headings: remove # prefix
-	text = reHeading.ReplaceAllString(text, "")
+	b = reHeading.ReplaceAll(b, nil)
 	// Emphasis: keep inner text (bold before italic to handle *** correctly)
-	text = reBoldAst.ReplaceAllString(text, "$1")
-	text = reBoldUnd.ReplaceAllString(text, "$1")
-	text = reItalicAst.ReplaceAllString(text, "$1")
-	text = reItalicUnd.ReplaceAllString(text, "$1")
+	b = reBoldAst.ReplaceAll(b, replCapture1)
+	b = reBoldUnd.ReplaceAll(b, replCapture1)
+	b = reItalicAst.ReplaceAll(b, replCapture1)
+	b = reItalicUnd.ReplaceAll(b, replCapture1)
 	// Inline code: keep code text
-	text = reInlineCode.ReplaceAllString(text, "$1")
+	b = reInlineCode.ReplaceAll(b, replCapture1)
 	// Blockquotes: remove > prefix
-	text = reBlockquote.ReplaceAllString(text, "")
+	b = reBlockquote.ReplaceAll(b, nil)
 	// Horizontal rules
-	text = reHRule.ReplaceAllString(text, " ")
+	b = reHRule.ReplaceAll(b, replSpace)
 	// HTML tags
-	text = reHTMLTags.ReplaceAllString(text, " ")
+	b = reHTMLTags.ReplaceAll(b, replSpace)
 
-	return text
+	return string(b)
 }
 
 // tokenize splits text into lowercase tokens, filtering out tokens shorter than 2 characters.

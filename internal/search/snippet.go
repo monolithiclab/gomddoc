@@ -172,7 +172,8 @@ func isWordBoundary(text string, pos int) bool {
 	}
 	prevR, _ := utf8.DecodeLastRuneInString(text[:pos])
 	nextR, _ := utf8.DecodeRuneInString(text[pos:])
-	return !unicode.IsLetter(prevR) || !unicode.IsLetter(nextR)
+	isWord := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+	return !isWord(prevR) || !isWord(nextR)
 }
 
 // sortSpans sorts spans by start position using insertion sort (small slices).
