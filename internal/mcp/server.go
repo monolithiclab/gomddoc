@@ -13,12 +13,13 @@ import (
 
 // ServerDeps holds all dependencies for creating an MCP server.
 type ServerDeps struct {
-	Provider     provider.Provider
-	MetaIndex    *metadata.Index
-	SearchIndex  *search.Index
-	DefaultIndex string
-	SiteName     string
-	Version      string
+	Provider        provider.Provider
+	MetaIndex       *metadata.Index
+	SearchIndex     *search.Index
+	DefaultIndex    string
+	ExcludePatterns []string
+	SiteName        string
+	Version         string
 }
 
 // MCPServer wraps the MCP SDK server with gomddoc-specific handlers.

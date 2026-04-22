@@ -137,6 +137,9 @@ These settings control how your documentation is presented and served. They are 
 default_index: "README.md"
 dir_index: false
 edit_url: "https://github.com/org/repo/edit/main"
+exclude:
+  - "drafts/"
+  - "*.bak"
 
 meta:
   title: "My Project Docs"
@@ -179,6 +182,27 @@ Sets the `lang` attribute on the `<html>` tag (e.g., `<html lang="en">`). Lighth
 *   **YAML:** `language`
 *   **Env Var:** `GOMDDOC_SITE_LANGUAGE`
 *   **Default:** `"en"`
+
+**Exclude Patterns**
+A list of glob patterns for files and directories that should not be served, indexed, or included in navigation. Works like `.gitignore` — extends the built-in dot-file blocking (`.git/`, `.env`, `.gomddoc/`) with user-defined rules.
+
+*   A pattern without `/` is matched against each path segment (e.g., `*.bak` matches `docs/notes.bak`)
+*   A pattern with `/` is matched against the full path (e.g., `docs/internal/*.md`)
+*   A trailing `/` matches directory prefixes only (e.g., `drafts/` blocks `drafts/secret.md` but not `docs/drafts.md`)
+*   Patterns use Go's `path.Match` syntax (`*`, `?`, `[charclass]`)
+
+```yaml
+exclude:
+  - "drafts/"
+  - "*.bak"
+  - "TODO.md"
+  - "internal/"
+```
+
+*   **YAML:** `exclude`
+*   **Default:** `[]` (empty — only dot files are blocked)
+
+Excluded files return HTTP 404, are omitted from navigation, search, directory listings, and MCP tool access.
 
 ### Metadata (`SITE.META`)
 

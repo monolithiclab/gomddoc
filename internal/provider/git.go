@@ -76,13 +76,14 @@ type GitProviderConfig struct {
 //   - Suitable for small-to-medium repositories
 type GitProvider struct {
 	// Configuration (immutable after construction)
-	parsedURL      *ParsedGitURL
-	defaultIndex   string
-	dirIndex       bool
-	cloneTimeout   time.Duration
-	maxFileSize    int64
-	sshKeyFile     string
-	storageFactory StorageFactory
+	parsedURL       *ParsedGitURL
+	defaultIndex    string
+	dirIndex        bool
+	excludePatterns []string
+	cloneTimeout    time.Duration
+	maxFileSize     int64
+	sshKeyFile      string
+	storageFactory  StorageFactory
 
 	// Authentication (nil for anonymous)
 	auth transport.AuthMethod
@@ -109,7 +110,7 @@ type GitProvider struct {
 //
 // Errors:
 //   - ErrInvalidGitURL: URL is malformed or uses unsupported scheme
-func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, cfg GitProviderConfig) (*GitProvider, error) {
+func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, excludePatterns []string, cfg GitProviderConfig) (*GitProvider, error) {
 	if defaultIndex == "" {
 		return nil, ErrEmptyDefaultIndex
 	}
@@ -120,13 +121,14 @@ func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, cfg GitProviderC
 	}
 
 	g := &GitProvider{
-		parsedURL:      parsed,
-		defaultIndex:   defaultIndex,
-		dirIndex:       dirIndex,
-		cloneTimeout:   defaultCloneTimeout,
-		maxFileSize:    defaultMaxFileSize,
-		storageFactory: MemoryStorageFactory(),
-		auth:           nil, // Authentication set up in ensureCloned
+		parsedURL:       parsed,
+		defaultIndex:    defaultIndex,
+		dirIndex:        dirIndex,
+		excludePatterns: excludePatterns,
+		cloneTimeout:    defaultCloneTimeout,
+		maxFileSize:     defaultMaxFileSize,
+		storageFactory:  MemoryStorageFactory(),
+		auth:            nil, // Authentication set up in ensureCloned
 	}
 
 	if cfg.StorageFactory != nil {
@@ -439,7 +441,7 @@ func (g *GitProvider) handleDirectoryLocked(dirPath, requestPath string) ([]byte
 		}
 	}
 
-	return handleDirectory(requestPath, g.defaultIndex, g.dirIndex,
+	return handleDirectory(requestPath, g.defaultIndex, g.dirIndex, g.excludePatterns,
 		func() ([]byte, error) {
 			indexFile, err := dirTree.File(g.defaultIndex)
 			if err != nil {

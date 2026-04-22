@@ -126,7 +126,7 @@ func TestBuildIndex(t *testing.T) {
 		},
 	}
 
-	idx, err := BuildIndex(context.Background(), testFS)
+	idx, err := BuildIndex(context.Background(), testFS, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestBuildIndex(t *testing.T) {
 
 func TestBuildIndex_EmptyFS(t *testing.T) {
 	testFS := fstest.MapFS{}
-	idx, err := BuildIndex(context.Background(), testFS)
+	idx, err := BuildIndex(context.Background(), testFS, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestAllPages_ReturnsCopy(t *testing.T) {
 	testFS := fstest.MapFS{
 		"test.md": {Data: []byte("---\ntitle: Test\n---\n")},
 	}
-	idx, err := BuildIndex(context.Background(), testFS)
+	idx, err := BuildIndex(context.Background(), testFS, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestBuildIndex_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	_, err := BuildIndex(ctx, testFS)
+	_, err := BuildIndex(ctx, testFS, nil)
 	if err == nil {
 		// A cancelled context may or may not produce an error depending on
 		// timing; the goroutines check gctx.Err() but may have already
@@ -273,7 +273,7 @@ func TestBuildIndex_ManyFiles(t *testing.T) {
 		}
 	}
 
-	idx, err := BuildIndex(context.Background(), testFS)
+	idx, err := BuildIndex(context.Background(), testFS, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}

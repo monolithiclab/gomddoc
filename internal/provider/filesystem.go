@@ -13,9 +13,10 @@ import (
 
 // FilesystemProvider implements Provider for local filesystem access
 type FilesystemProvider struct {
-	root         fs.StatFS
-	defaultIndex string
-	dirIndex     bool
+	root            fs.StatFS
+	defaultIndex    string
+	dirIndex        bool
+	excludePatterns []string
 }
 
 // NewFilesystemProvider creates a new filesystem provider with path traversal protection.
@@ -25,14 +26,14 @@ type FilesystemProvider struct {
 //   - dir: Root directory to serve files from
 //   - defaultIndex: Default index file name (e.g., "README.md")
 //   - dirIndex: Enable directory listing generation (false = secure by default)
-func NewFilesystemProvider(dir, defaultIndex string, dirIndex bool) (*FilesystemProvider, error) {
+func NewFilesystemProvider(dir, defaultIndex string, dirIndex bool, excludePatterns []string) (*FilesystemProvider, error) {
 	fsys := os.DirFS(dir)
-	return NewFilesystemProviderFromFS(fsys, defaultIndex, dirIndex)
+	return NewFilesystemProviderFromFS(fsys, defaultIndex, dirIndex, excludePatterns)
 }
 
 // NewFilesystemProviderFromFS creates a new filesystem provider from an existing fs.FS.
 // This is useful for testing with in-memory filesystems or using custom fs implementations.
-func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool) (*FilesystemProvider, error) {
+func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool, excludePatterns []string) (*FilesystemProvider, error) {
 	if defaultIndex == "" {
 		return nil, ErrEmptyDefaultIndex
 	}
@@ -44,9 +45,10 @@ func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool)
 	}
 
 	return &FilesystemProvider{
-		root:         statFS,
-		defaultIndex: defaultIndex,
-		dirIndex:     dirIndex,
+		root:            statFS,
+		defaultIndex:    defaultIndex,
+		dirIndex:        dirIndex,
+		excludePatterns: excludePatterns,
 	}, nil
 }
 
@@ -100,7 +102,7 @@ func (f *FilesystemProvider) handleDirectory(dirPath, requestPath string) ([]byt
 		indexPath = f.defaultIndex
 	}
 
-	return handleDirectory(requestPath, f.defaultIndex, f.dirIndex,
+	return handleDirectory(requestPath, f.defaultIndex, f.dirIndex, f.excludePatterns,
 		func() ([]byte, error) { return fs.ReadFile(f.root, indexPath) },
 		func() ([]fs.DirEntry, error) { return fs.ReadDir(f.root, dirPath) },
 	)

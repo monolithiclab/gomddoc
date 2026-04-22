@@ -13,6 +13,7 @@ func handleDirectory(
 	requestPath string,
 	defaultIndex string,
 	dirIndex bool,
+	excludePatterns []string,
 	tryIndex func() ([]byte, error),
 	listEntries func() ([]fs.DirEntry, error),
 ) ([]byte, string, error) {
@@ -33,6 +34,6 @@ func handleDirectory(
 		return nil, "", &PathError{Op: "list", Path: requestPath, Err: err}
 	}
 
-	content := GenerateMarkdownListing(requestPath, entries)
+	content := GenerateMarkdownListing(requestPath, entries, excludePatterns)
 	return content, "text/markdown; charset=utf-8", nil
 }

@@ -10,7 +10,7 @@ import (
 func TestNewFilesystemProvider(t *testing.T) {
 	// Simple test to ensure the wrapper function works
 	// We use "." as a safe directory that always exists
-	p, err := NewFilesystemProvider(".", "README.md", false)
+	p, err := NewFilesystemProvider(".", "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewFilesystemProvider failed: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestNewFilesystemProviderFromFS(t *testing.T) {
 		"test.txt": &fstest.MapFile{Data: []byte("content")},
 	}
 
-	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false)
+	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewFilesystemProviderFromFS failed: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewFilesystemProviderFromFS_EmptyDefaultIndex(t *testing.T) {
 	t.Parallel()
 
 	mapFS := fstest.MapFS{}
-	_, err := NewFilesystemProviderFromFS(mapFS, "", false)
+	_, err := NewFilesystemProviderFromFS(mapFS, "", false, nil)
 	if err == nil {
 		t.Fatal("expected error for empty defaultIndex, got nil")
 	}
@@ -53,7 +53,7 @@ func TestFilesystemProvider_ReadFile(t *testing.T) {
 		"test_provider.txt": &fstest.MapFile{Data: []byte(testContent)},
 	}
 
-	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false)
+	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false, nil)
 	if err != nil {
 		t.Fatalf("Failed to create filesystem provider: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 	}
 
 	t.Run("directory with README.txt (dirIndex=false)", func(t *testing.T) {
-		provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false)
+		provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false, nil)
 		if err != nil {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
@@ -150,7 +150,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 	})
 
 	t.Run("directory without README.txt (dirIndex=false)", func(t *testing.T) {
-		provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false)
+		provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false, nil)
 		if err != nil {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
@@ -168,7 +168,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 	})
 
 	t.Run("directory without README.txt (dirIndex=true)", func(t *testing.T) {
-		provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", true)
+		provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", true, nil)
 		if err != nil {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
@@ -203,7 +203,7 @@ func TestFilesystemProvider_PathCleaning(t *testing.T) {
 		"path_test.txt": &fstest.MapFile{Data: []byte("Path Test")},
 	}
 
-	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false)
+	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false, nil)
 	if err != nil {
 		t.Fatalf("Failed to create filesystem provider: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestFilesystemProvider_MimeTypeDetection(t *testing.T) {
 		"testfile":     &fstest.MapFile{Data: []byte("data")},
 	}
 
-	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false)
+	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false, nil)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestFilesystemProvider_Stat(t *testing.T) {
 		"stat_test.txt": &fstest.MapFile{Data: []byte("test")},
 	}
 
-	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false)
+	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false, nil)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestFilesystemProvider_RootFS(t *testing.T) {
 		"sub/a.md":  &fstest.MapFile{Data: []byte("# A")},
 	}
 
-	provider, err := NewFilesystemProviderFromFS(mapFS, "README.md", false)
+	provider, err := NewFilesystemProviderFromFS(mapFS, "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
 	}
@@ -420,7 +420,7 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 		"test_err_wrap/file.txt": &fstest.MapFile{Data: []byte("content")},
 	}
 
-	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false)
+	provider, err := NewFilesystemProviderFromFS(mapFS, "README.txt", false, nil)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}

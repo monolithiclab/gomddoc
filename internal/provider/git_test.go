@@ -169,7 +169,7 @@ func TestNewGitProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, err := NewGitProvider(tt.gitURL, tt.defaultIndex, tt.dirIndex, GitProviderConfig{})
+			p, err := NewGitProvider(tt.gitURL, tt.defaultIndex, tt.dirIndex, nil, GitProviderConfig{})
 
 			if tt.wantErr {
 				if err == nil {
@@ -207,6 +207,7 @@ func TestGitProviderOptions(t *testing.T) {
 			"git+https://github.com/user/repo",
 			"README.md",
 			false,
+			nil,
 			GitProviderConfig{CloneTimeout: 30 * time.Second},
 		)
 		if err != nil {
@@ -223,6 +224,7 @@ func TestGitProviderOptions(t *testing.T) {
 			"git+https://github.com/user/repo",
 			"README.md",
 			false,
+			nil,
 			GitProviderConfig{MaxFileSize: 100 * 1024 * 1024},
 		)
 		if err != nil {
@@ -239,6 +241,7 @@ func TestGitProviderOptions(t *testing.T) {
 			"git+https://github.com/user/repo",
 			"README.md",
 			false,
+			nil,
 			GitProviderConfig{StorageFactory: MemoryStorageFactory()},
 		)
 		if err != nil {
@@ -698,7 +701,7 @@ func TestClassifyCloneError(t *testing.T) {
 func TestGitProvider_Close(t *testing.T) {
 	t.Parallel()
 
-	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, GitProviderConfig{})
+	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, nil, GitProviderConfig{})
 	if err != nil {
 		t.Fatalf("NewGitProvider() error = %v", err)
 	}
@@ -988,6 +991,7 @@ func TestGitProviderOptions_SSHKeyFile(t *testing.T) {
 		"git+https://github.com/user/repo",
 		"README.md",
 		false,
+		nil,
 		GitProviderConfig{SSHKeyFile: "/path/to/key"},
 	)
 	if err != nil {
@@ -1042,7 +1046,7 @@ func TestGitProvider_RootFS_Mocked(t *testing.T) {
 func TestGitProvider_EnsureCloned_AlreadyClosed(t *testing.T) {
 	t.Parallel()
 
-	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, GitProviderConfig{})
+	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, nil, GitProviderConfig{})
 	if err != nil {
 		t.Fatalf("NewGitProvider() error = %v", err)
 	}
@@ -1133,7 +1137,7 @@ func TestGitProvider_EnsureCloned_DoubleCheckAfterClose(t *testing.T) {
 
 	// Tests the slow path: fast path sees repo == nil, acquires write lock,
 	// then double-check sees closed == true.
-	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, GitProviderConfig{})
+	p, err := NewGitProvider("git+https://github.com/user/repo", "README.md", false, nil, GitProviderConfig{})
 	if err != nil {
 		t.Fatalf("NewGitProvider() error = %v", err)
 	}
@@ -1368,7 +1372,7 @@ func TestFilesystemProvider_Stat_Directory(t *testing.T) {
 		"docs/file.md": &fstest.MapFile{Data: []byte("# Doc")},
 	}
 
-	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false)
+	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
 	}
@@ -1389,7 +1393,7 @@ func TestFilesystemProvider_DefaultIndex(t *testing.T) {
 		"readme.txt": &fstest.MapFile{Data: []byte("hello")},
 	}
 
-	p, err := NewFilesystemProviderFromFS(mapFS, "readme.txt", false)
+	p, err := NewFilesystemProviderFromFS(mapFS, "readme.txt", false, nil)
 	if err != nil {
 		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
 	}
@@ -1403,7 +1407,7 @@ func TestFilesystemProvider_Close(t *testing.T) {
 	t.Parallel()
 
 	mapFS := fstest.MapFS{}
-	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false)
+	p, err := NewFilesystemProviderFromFS(mapFS, "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewFilesystemProviderFromFS() error = %v", err)
 	}
@@ -1546,7 +1550,7 @@ func TestCreateHostKeyCallback_InvalidPath(t *testing.T) {
 func TestNewProvider_GitURL(t *testing.T) {
 	t.Parallel()
 
-	p, err := NewProvider("git+https://github.com/user/repo", "README.md", false)
+	p, err := NewProvider("git+https://github.com/user/repo", "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}
@@ -1561,7 +1565,7 @@ func TestNewProvider_GitURL(t *testing.T) {
 func TestNewProvider_FilesystemPath(t *testing.T) {
 	t.Parallel()
 
-	p, err := NewProvider(".", "README.md", false)
+	p, err := NewProvider(".", "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}
@@ -1577,7 +1581,7 @@ func TestNewProvider_WithGitConfig(t *testing.T) {
 	t.Parallel()
 
 	cfg := GitProviderConfig{CloneTimeout: 30 * time.Second}
-	p, err := NewProvider("git+https://github.com/user/repo", "README.md", false, cfg)
+	p, err := NewProvider("git+https://github.com/user/repo", "README.md", false, nil, cfg)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}

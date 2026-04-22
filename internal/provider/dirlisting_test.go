@@ -143,7 +143,7 @@ func TestGenerateMarkdownListing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := GenerateMarkdownListing(tt.path, tt.entries)
+			result := GenerateMarkdownListing(tt.path, tt.entries, nil)
 			resultStr := string(result)
 
 			// Verify markdown structure

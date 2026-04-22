@@ -79,6 +79,7 @@ type SiteConfig struct {
 	Theme        ThemeConfig     `env:"THEME" yaml:"theme"`
 	Highlighting HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
 	Search       SearchConfig    `env:"SEARCH" yaml:"search"`
+	Exclude      []string        `yaml:"exclude"`
 }
 
 // SearchConfig holds search settings

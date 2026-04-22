@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
+	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
 // SearchResult represents a single search hit.
@@ -55,7 +56,7 @@ type Index struct {
 //
 // The build follows three phases: (1) collect paths, (2) read+tokenize concurrently,
 // (3) merge into inverted index.
-func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index) (*Index, error) {
+func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, excludePatterns []string) (*Index, error) {
 	// Phase 1: Collect markdown file paths.
 	var paths []string
 	err := fs.WalkDir(rootFS, ".", func(path string, d fs.DirEntry, err error) error {
@@ -63,18 +64,14 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index) (*
 			return fmt.Errorf("walk error at %s: %w", path, err)
 		}
 
-		name := d.Name()
-		if strings.HasPrefix(name, ".") && path != "." {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
+		if skip, skipErr := provider.SkipWalkEntry(path, d.Name(), d.IsDir(), excludePatterns); skip {
+			return skipErr
 		}
 		if d.IsDir() {
 			return nil
 		}
 
-		if ext := filepath.Ext(name); ext != ".md" && ext != ".markdown" {
+		if ext := filepath.Ext(d.Name()); ext != ".md" && ext != ".markdown" {
 			return nil
 		}
 

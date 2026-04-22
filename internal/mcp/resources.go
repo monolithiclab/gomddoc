@@ -78,7 +78,7 @@ func (s *MCPServer) handlePageResource(ctx context.Context, req *mcp.ReadResourc
 	if filePath == "" || filePath == uri {
 		return nil, mcp.ResourceNotFoundError(uri)
 	}
-	if provider.IsHiddenPath(filePath) {
+	if provider.IsRestrictedPath(filePath, s.deps.ExcludePatterns) {
 		return nil, mcp.ResourceNotFoundError(uri)
 	}
 

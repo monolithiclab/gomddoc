@@ -89,14 +89,14 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	enricherOpts := enricher.MarkdownEnricherOptions{}
 
 	if opts.EnableNavigation {
-		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex)
+		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, cfg.Site.Exclude)
 		enricherOpts.NavBuilder = navBuilderAdapter(navGen)
 		enricherOpts.PrevNextBuilder = prevNextBuilderAdapter(navGen)
 		p.RedirectFinder = redirectFinderAdapter(navGen)
 	}
 
 	if opts.EnableMetadata {
-		metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot)
+		metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot, cfg.Site.Exclude)
 		if err != nil {
 			slog.Warn("Failed to build metadata index", slog.Any("error", err))
 		}
@@ -106,7 +106,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	}
 
 	if opts.EnableSearch && cfg.Site.Search.Index {
-		searchIdx, searchErr := search.BuildIndex(context.Background(), contentRoot, p.MetaIndex)
+		searchIdx, searchErr := search.BuildIndex(context.Background(), contentRoot, p.MetaIndex, cfg.Site.Exclude)
 		if searchErr != nil {
 			slog.Warn("Failed to build search index", slog.Any("error", searchErr))
 		} else {
@@ -200,7 +200,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		)
 	}
 
-	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, opts.GitCfg)
+	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, opts.GitCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -217,12 +217,13 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 	}
 
 	mcpServer := mcp.NewServer(mcp.ServerDeps{
-		Provider:     prov,
-		MetaIndex:    pipeline.MetaIndex,
-		SearchIndex:  pipeline.SearchIndex,
-		DefaultIndex: cfg.Site.DefaultIndex,
-		SiteName:     cfg.Site.Meta.Title,
-		Version:      version,
+		Provider:        prov,
+		MetaIndex:       pipeline.MetaIndex,
+		SearchIndex:     pipeline.SearchIndex,
+		DefaultIndex:    cfg.Site.DefaultIndex,
+		ExcludePatterns: cfg.Site.Exclude,
+		SiteName:        cfg.Site.Meta.Title,
+		Version:         version,
 	})
 
 	serverConfig := server.HTTPServerConfig{

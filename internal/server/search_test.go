@@ -20,7 +20,7 @@ func buildTestSearchIndex(t *testing.T) *search.Index {
 		"reference.md": &fstest.MapFile{Data: []byte("# API Reference\n\nThe API provides endpoints for resources.")},
 	}
 
-	idx, err := search.BuildIndex(context.Background(), contentRoot, nil)
+	idx, err := search.BuildIndex(context.Background(), contentRoot, nil, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}

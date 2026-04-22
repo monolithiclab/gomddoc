@@ -13,7 +13,7 @@ import (
 
 func buildTestIndex(t *testing.T, files fstest.MapFS) *metadata.Index {
 	t.Helper()
-	idx, err := metadata.BuildIndex(context.Background(), files)
+	idx, err := metadata.BuildIndex(context.Background(), files, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex: %v", err)
 	}

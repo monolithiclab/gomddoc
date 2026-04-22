@@ -66,7 +66,7 @@ func (b *BuildCmd) Run() error {
 		}
 	}
 
-	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
+	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude)
 	if err != nil {
 		return fmt.Errorf("build provider: %w", err)
 	}
@@ -178,18 +178,16 @@ func (b *BuildCmd) walkAndBuild(
 			return fmt.Errorf("walk %s: %w", filePath, err)
 		}
 
-		name := d.Name()
-		if strings.HasPrefix(name, ".") && name != "." {
-			if d.IsDir() {
-				return fs.SkipDir
+		if skip, skipErr := provider.SkipWalkEntry(filePath, d.Name(), d.IsDir(), siteConfig.Exclude); skip {
+			if !d.IsDir() {
+				stats.skippedFiles.Add(1)
 			}
-			stats.skippedFiles.Add(1)
-			return nil
+			return skipErr
 		}
 
 		if !d.IsDir() {
 			filePaths = append(filePaths, filePath)
-			if strings.EqualFold(name, "index.md") {
+			if strings.EqualFold(d.Name(), "index.md") {
 				dirsWithIndexMD[path.Dir(filePath)] = true
 			}
 		}
@@ -363,7 +361,7 @@ func (b *BuildCmd) generateSEOFiles(prov provider.Provider, siteConfig *config.S
 			return fmt.Errorf("get content root for sitemap: %w", err)
 		}
 
-		idx, err := metadata.BuildIndex(context.Background(), contentRoot)
+		idx, err := metadata.BuildIndex(context.Background(), contentRoot, siteConfig.Exclude)
 		if err != nil {
 			return fmt.Errorf("build metadata index for sitemap: %w", err)
 		}
@@ -399,7 +397,7 @@ func (b *BuildCmd) generateRedirectFiles(prov provider.Provider, siteConfig *con
 		return fmt.Errorf("get content root for redirects: %w", err)
 	}
 
-	idx, err := metadata.BuildIndex(context.Background(), contentRoot)
+	idx, err := metadata.BuildIndex(context.Background(), contentRoot, siteConfig.Exclude)
 	if err != nil {
 		return fmt.Errorf("build metadata index for redirects: %w", err)
 	}

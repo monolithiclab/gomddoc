@@ -14,6 +14,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
+
+	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
 // PageInfo holds metadata extracted from a Markdown file's frontmatter.
@@ -38,7 +40,7 @@ type Index struct {
 // files are logged but do not cause the build to fail.
 //
 // Frontmatter parsing runs concurrently, bounded by runtime.NumCPU().
-func BuildIndex(ctx context.Context, rootFS fs.FS) (*Index, error) {
+func BuildIndex(ctx context.Context, rootFS fs.FS, excludePatterns []string) (*Index, error) {
 	// Phase 1: Collect all markdown file paths sequentially.
 	var paths []string
 	err := fs.WalkDir(rootFS, ".", func(path string, d fs.DirEntry, err error) error {
@@ -46,14 +48,8 @@ func BuildIndex(ctx context.Context, rootFS fs.FS) (*Index, error) {
 			return fmt.Errorf("walk error at %s: %w", path, err)
 		}
 
-		name := d.Name()
-
-		// Skip hidden directories and files
-		if strings.HasPrefix(name, ".") && path != "." {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
+		if skip, skipErr := provider.SkipWalkEntry(path, d.Name(), d.IsDir(), excludePatterns); skip {
+			return skipErr
 		}
 
 		if d.IsDir() {
@@ -61,7 +57,7 @@ func BuildIndex(ctx context.Context, rootFS fs.FS) (*Index, error) {
 		}
 
 		// Only collect Markdown files
-		if ext := filepath.Ext(name); ext != ".md" && ext != ".markdown" {
+		if ext := filepath.Ext(d.Name()); ext != ".md" && ext != ".markdown" {
 			return nil
 		}
 

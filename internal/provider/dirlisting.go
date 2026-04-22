@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 )
@@ -18,13 +19,16 @@ import (
 //   - All entries are hyperlinked
 //
 // The output is valid markdown that can be processed by MarkdownRenderer.
-func GenerateMarkdownListing(path string, entries []fs.DirEntry) []byte {
-	// Filter out hidden files and prepare sorted entries
+func GenerateMarkdownListing(dirPath string, entries []fs.DirEntry, excludePatterns []string) []byte {
+	// Filter out hidden and excluded files
 	visible := make([]fs.DirEntry, 0, len(entries))
 	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), ".") {
-			visible = append(visible, entry)
+		name := entry.Name()
+		entryPath := path.Join(dirPath, name)
+		if IsRestrictedPath(entryPath, excludePatterns) {
+			continue
 		}
+		visible = append(visible, entry)
 	}
 
 	// Sort: directories first, then alphabetically within each group
@@ -44,11 +48,11 @@ func GenerateMarkdownListing(path string, entries []fs.DirEntry) []byte {
 	// Build markdown listing
 	var builder strings.Builder
 
-	// Add heading (path is internal, but escape for safety)
-	if path == "" || path == "." || path == "/" {
+	// Add heading (dirPath is internal, but escape for safety)
+	if dirPath == "" || dirPath == "." || dirPath == "/" {
 		builder.WriteString("# Index\n\n")
 	} else {
-		builder.WriteString(fmt.Sprintf("# Index of %s\n\n", escapeMarkdown(path)))
+		builder.WriteString(fmt.Sprintf("# Index of %s\n\n", escapeMarkdown(dirPath)))
 	}
 
 	// Add entries

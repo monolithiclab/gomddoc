@@ -180,7 +180,7 @@ func TestMarkdownEnricher_Enrich_RelatedDocs(t *testing.T) {
 		"other.md": {Data: []byte("---\ntitle: Other\ntags:\n  - unrelated\n---\n# Other")},
 	}
 
-	idx, err := metadata.BuildIndex(context.Background(), fsys)
+	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex() error = %v", err)
 	}
@@ -225,7 +225,7 @@ func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutTags(t *testing.T) {
 		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
 	}
 
-	idx, err := metadata.BuildIndex(context.Background(), fsys)
+	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex() error = %v", err)
 	}
@@ -249,7 +249,7 @@ func TestMarkdownEnricher_Enrich_MalformedTags(t *testing.T) {
 		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
 	}
 
-	idx, err := metadata.BuildIndex(context.Background(), fsys)
+	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex() error = %v", err)
 	}

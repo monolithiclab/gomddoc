@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -22,15 +23,17 @@ type NavNode struct {
 
 // Generator builds navigation trees from an fs.FS.
 type Generator struct {
-	rootFS       fs.FS
-	defaultIndex string
+	rootFS          fs.FS
+	defaultIndex    string
+	excludePatterns []string
 }
 
 // NewGenerator creates a new navigation generator.
-func NewGenerator(rootFS fs.FS, defaultIndex string) *Generator {
+func NewGenerator(rootFS fs.FS, defaultIndex string, excludePatterns []string) *Generator {
 	return &Generator{
-		rootFS:       rootFS,
-		defaultIndex: defaultIndex,
+		rootFS:          rootFS,
+		defaultIndex:    defaultIndex,
+		excludePatterns: excludePatterns,
 	}
 }
 
@@ -62,11 +65,12 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 		return
 	}
 
-	// Filter to visible entries (skip hidden, non-markdown, default index)
+	// Filter to visible entries (skip hidden, excluded, non-markdown, default index)
 	var visible []fs.DirEntry
 	for _, entry := range entries {
 		name := entry.Name()
-		if strings.HasPrefix(name, ".") {
+		entryPath := path.Join(dir, name)
+		if provider.IsRestrictedPath(entryPath, g.excludePatterns) {
 			continue
 		}
 		if entry.IsDir() || (strings.HasSuffix(name, ".md") && name != g.defaultIndex) {

@@ -135,7 +135,7 @@ func (s *MCPServer) handleReadPage(ctx context.Context, _ *mcp.CallToolRequest, 
 	if input.Path == "" {
 		return textResult("Path must not be empty."), nil, nil
 	}
-	if provider.IsHiddenPath(input.Path) {
+	if provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
@@ -214,7 +214,7 @@ func (s *MCPServer) handleGetTOC(ctx context.Context, _ *mcp.CallToolRequest, in
 		return textResult("Content root is not available."), nil, nil
 	}
 
-	navGen := navigation.NewGenerator(contentRoot, s.deps.DefaultIndex)
+	navGen := navigation.NewGenerator(contentRoot, s.deps.DefaultIndex, s.deps.ExcludePatterns)
 	root := navGen.Generate(input.Path)
 	if root == nil {
 		return textResult("No navigation tree available."), nil, nil
@@ -230,7 +230,7 @@ func (s *MCPServer) handleReadSection(ctx context.Context, _ *mcp.CallToolReques
 	if input.Path == "" || input.HeadingID == "" {
 		return textResult("Both path and heading_id are required."), nil, nil
 	}
-	if provider.IsHiddenPath(input.Path) {
+	if provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
@@ -250,7 +250,7 @@ func (s *MCPServer) handleFindRelated(_ context.Context, _ *mcp.CallToolRequest,
 	if input.Path == "" {
 		return textResult("Path must not be empty."), nil, nil
 	}
-	if provider.IsHiddenPath(input.Path) {
+	if provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 	if s.deps.MetaIndex == nil {

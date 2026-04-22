@@ -73,11 +73,11 @@ func setupTest(t *testing.T) *testFixture {
 
 	ctx := context.Background()
 
-	metaIdx, err := metadata.BuildIndex(ctx, testFS)
+	metaIdx, err := metadata.BuildIndex(ctx, testFS, nil)
 	if err != nil {
 		t.Fatalf("building metadata index: %v", err)
 	}
-	searchIdx, err := search.BuildIndex(ctx, testFS, metaIdx)
+	searchIdx, err := search.BuildIndex(ctx, testFS, metaIdx, nil)
 	if err != nil {
 		t.Fatalf("building search index: %v", err)
 	}

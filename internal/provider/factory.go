@@ -15,13 +15,13 @@ package provider
 //
 // Returns an error if the provider cannot be created. For Git URLs, URL
 // parsing errors are returned immediately; clone errors occur on first access.
-func NewProvider(dir, defaultIndex string, dirIndex bool, gitCfg ...GitProviderConfig) (Provider, error) {
+func NewProvider(dir, defaultIndex string, dirIndex bool, excludePatterns []string, gitCfg ...GitProviderConfig) (Provider, error) {
 	if IsGitURL(dir) {
 		var cfg GitProviderConfig
 		if len(gitCfg) > 0 {
 			cfg = gitCfg[0]
 		}
-		return NewGitProvider(dir, defaultIndex, dirIndex, cfg)
+		return NewGitProvider(dir, defaultIndex, dirIndex, excludePatterns, cfg)
 	}
-	return NewFilesystemProvider(dir, defaultIndex, dirIndex)
+	return NewFilesystemProvider(dir, defaultIndex, dirIndex, excludePatterns)
 }

@@ -28,7 +28,7 @@ func (m *MCPCmd) Run() error {
 		gitCfg.SSHKeyFile = m.GitSSHKey
 	}
 
-	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, gitCfg)
+	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, gitCfg)
 	if err != nil {
 		return err
 	}
@@ -45,12 +45,13 @@ func (m *MCPCmd) Run() error {
 	}
 
 	mcpServer := mcp.NewServer(mcp.ServerDeps{
-		Provider:     prov,
-		MetaIndex:    pipeline.MetaIndex,
-		SearchIndex:  pipeline.SearchIndex,
-		DefaultIndex: cfg.Site.DefaultIndex,
-		SiteName:     cfg.Site.Meta.Title,
-		Version:      version,
+		Provider:        prov,
+		MetaIndex:       pipeline.MetaIndex,
+		SearchIndex:     pipeline.SearchIndex,
+		DefaultIndex:    cfg.Site.DefaultIndex,
+		ExcludePatterns: cfg.Site.Exclude,
+		SiteName:        cfg.Site.Meta.Title,
+		Version:         version,
 	})
 
 	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -54,7 +54,7 @@ func (m *MemoryProvider) ReadFile(ctx context.Context, path string) ([]byte, str
 			if err != nil {
 				return nil, "", provider.ErrNotFound
 			}
-			listing := provider.GenerateMarkdownListing(path, entries)
+			listing := provider.GenerateMarkdownListing(path, entries, nil)
 			return listing, "text/markdown; charset=utf-8", nil
 		}
 

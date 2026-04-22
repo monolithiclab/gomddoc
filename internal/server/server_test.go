@@ -43,7 +43,7 @@ func TestNewHTTPServer(t *testing.T) {
 	}
 
 	// Create dependencies
-	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
+	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 	cfg.Server.Port = ":" + strconv.Itoa(port)
 
 	// Create dependencies
-	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
+	prov, err := provider.NewFilesystemProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -256,11 +256,11 @@ func TestHTTPServer_AuthProtectsAllEndpoints(t *testing.T) {
 	testFS := fstest.MapFS{
 		"README.md": {Data: []byte("---\ntitle: Test\ntags: [go]\n---\n# Test")},
 	}
-	idx, err := metadata.BuildIndex(context.Background(), testFS)
+	idx, err := metadata.BuildIndex(context.Background(), testFS, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	searchIdx, err := search.BuildIndex(context.Background(), testFS, idx)
+	searchIdx, err := search.BuildIndex(context.Background(), testFS, idx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

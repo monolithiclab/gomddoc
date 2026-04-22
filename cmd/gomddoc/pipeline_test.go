@@ -23,7 +23,7 @@ func TestRunUntilCancelled(t *testing.T) {
 		t.Fatalf("config error: %v", err)
 	}
 
-	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
 	if err != nil {
 		t.Fatalf("provider error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestSetupPipeline(t *testing.T) {
 		t.Fatalf("config error: %v", err)
 	}
 
-	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
 	if err != nil {
 		t.Fatalf("provider error: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestNavBuilderAdapter(t *testing.T) {
 		"docs/guide.md": &fstest.MapFile{Data: []byte("# Guide")},
 	}
 
-	navGen := navigation.NewGenerator(contentRoot, "README.md")
+	navGen := navigation.NewGenerator(contentRoot, "README.md", nil)
 	builder := navBuilderAdapter(navGen)
 
 	// Call the adapter — it should return nav items for the root
@@ -223,7 +223,7 @@ func TestNavBuilderAdapter_EmptyFS(t *testing.T) {
 	t.Parallel()
 
 	contentRoot := fstest.MapFS{}
-	navGen := navigation.NewGenerator(contentRoot, "README.md")
+	navGen := navigation.NewGenerator(contentRoot, "README.md", nil)
 	builder := navBuilderAdapter(navGen)
 
 	items := builder("/nonexistent")
@@ -240,7 +240,7 @@ func TestRedirectFinderAdapter(t *testing.T) {
 		"docs/guide.md": &fstest.MapFile{Data: []byte("# Guide")},
 	}
 
-	navGen := navigation.NewGenerator(contentRoot, "README.md")
+	navGen := navigation.NewGenerator(contentRoot, "README.md", nil)
 	finder := redirectFinderAdapter(navGen)
 
 	// "docs" directory has no README → should find first page

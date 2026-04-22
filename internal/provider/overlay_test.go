@@ -19,7 +19,7 @@ func TestOverlayProvider(t *testing.T) {
 		"only-in-fallback.txt": &fstest.MapFile{Data: []byte("fallback only")},
 	}
 
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, fallbackFiles)
 
 	ctx := context.Background()
@@ -84,7 +84,7 @@ func TestOverlayProvider_RootFS(t *testing.T) {
 		"b.txt": &fstest.MapFile{Data: []byte("b")},
 	}
 
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, fallbackFiles)
 
 	root, err := overlay.RootFS(context.Background())
@@ -108,7 +108,7 @@ func TestOverlayProvider_RootFS_NilFallback(t *testing.T) {
 		"a.txt": &fstest.MapFile{Data: []byte("a")},
 	}
 
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, nil)
 
 	root, err := overlay.RootFS(context.Background())
@@ -132,7 +132,7 @@ func TestOverlayProvider_Stat(t *testing.T) {
 		"fallback.txt": &fstest.MapFile{Data: []byte("f")},
 	}
 
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, fallbackFiles)
 	ctx := context.Background()
 
@@ -177,7 +177,7 @@ func TestOverlayProvider_Stat_RootPath(t *testing.T) {
 		"b.txt": &fstest.MapFile{Data: []byte("b")},
 	}
 
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, fallbackFiles)
 
 	// Stat on root "/" normalizes to "." — primary handles it
@@ -197,7 +197,7 @@ func TestOverlayProvider_DefaultIndex(t *testing.T) {
 		"a.txt": &fstest.MapFile{Data: []byte("a")},
 	}
 
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "index.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "index.md", false, nil)
 	overlay := NewOverlayProvider(primary, nil)
 
 	if got := overlay.DefaultIndex(); got != "index.md" {
@@ -212,7 +212,7 @@ func TestOverlayProvider_Close(t *testing.T) {
 		"a.txt": &fstest.MapFile{Data: []byte("a")},
 	}
 
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, nil)
 
 	if err := overlay.Close(); err != nil {
@@ -233,7 +233,7 @@ func TestOverlayProvider_ReadFile_RootPath(t *testing.T) {
 	}
 
 	// dirIndex=false: root "/" with no README.md returns ErrDirListingDisabled
-	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false)
+	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, fallbackFiles)
 
 	_, _, err := overlay.ReadFile(context.Background(), "/")

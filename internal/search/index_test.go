@@ -259,12 +259,12 @@ func TestBuildIndex(t *testing.T) {
 		".secret.md":   &fstest.MapFile{Data: []byte("# Secret")},
 	}
 
-	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot)
+	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot, nil)
 	if err != nil {
 		t.Fatalf("metadata.BuildIndex failed: %v", err)
 	}
 
-	idx, err := BuildIndex(context.Background(), contentRoot, metaIndex)
+	idx, err := BuildIndex(context.Background(), contentRoot, metaIndex, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestBuildIndexSkipsHidden(t *testing.T) {
 		".dir/page.md": &fstest.MapFile{Data: []byte("# In Hidden Dir\n\nAlso hidden.")},
 	}
 
-	idx, err := BuildIndex(context.Background(), contentRoot, nil)
+	idx, err := BuildIndex(context.Background(), contentRoot, nil, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -314,12 +314,12 @@ func TestSearch(t *testing.T) {
 		"advanced.md":  &fstest.MapFile{Data: []byte("# Advanced Topics\n\nAdvanced configuration and performance tuning for the project.")},
 	}
 
-	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot)
+	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot, nil)
 	if err != nil {
 		t.Fatalf("metadata.BuildIndex failed: %v", err)
 	}
 
-	idx, err := BuildIndex(context.Background(), contentRoot, metaIndex)
+	idx, err := BuildIndex(context.Background(), contentRoot, metaIndex, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}

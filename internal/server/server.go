@@ -128,8 +128,8 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	content := auth.Subgroup("",
 		Compression, // Gzip responses >= 1KB when client accepts
 		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead), // Only allow GET and HEAD
-		BlockHiddenPaths, // Block all hidden files/directories
-		Metrics,          // Innermost: measure actual handler time
+		ContentExclusion(cfg.Site.Exclude),                         // Block hidden files and user-configured exclusions
+		Metrics,                                                    // Innermost: measure actual handler time
 	)
 	content.HandleFunc("/", handler.ServeContent)
 

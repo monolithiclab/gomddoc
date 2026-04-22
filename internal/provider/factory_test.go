@@ -58,7 +58,7 @@ func TestNewProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, err := NewProvider(tt.dir, tt.defaultIndex, tt.dirIndex)
+			p, err := NewProvider(tt.dir, tt.defaultIndex, tt.dirIndex, nil)
 
 			if tt.wantErr {
 				if err == nil {
@@ -99,7 +99,7 @@ func TestNewProvider_FilesystemProviderBehavior(t *testing.T) {
 	t.Parallel()
 
 	// Create a provider for current directory (should be FilesystemProvider)
-	p, err := NewProvider(".", "README.md", false)
+	p, err := NewProvider(".", "README.md", false, nil)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestNewProvider_GitProviderBehavior(t *testing.T) {
 	t.Parallel()
 
 	// Create a Git provider (won't actually clone until ReadFile/Stat is called)
-	p, err := NewProvider("git+https://github.com/user/repo#main:docs", "README.md", true)
+	p, err := NewProvider("git+https://github.com/user/repo#main:docs", "README.md", true, nil)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}

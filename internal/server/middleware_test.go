@@ -54,8 +54,8 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
-func TestBlockHiddenPaths_HiddenFiles(t *testing.T) {
-	handler := BlockHiddenPaths(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestContentExclusion_HiddenFiles(t *testing.T) {
+	handler := ContentExclusion(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}))
@@ -241,8 +241,8 @@ func mustHash(t *testing.T, password string) string {
 	return string(hash)
 }
 
-func TestBlockHiddenPaths_ResponseFormat(t *testing.T) {
-	handler := BlockHiddenPaths(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestContentExclusion_ResponseFormat(t *testing.T) {
+	handler := ContentExclusion(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}))
