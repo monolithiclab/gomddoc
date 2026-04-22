@@ -4,7 +4,7 @@ ROOT_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 
 
 build:  ## Build binary
-	go build -o build/gomddoc .
+	go build -o build/gomddoc ./cmd/gomddoc
 
 
 bench:  ## Run tests and benchmarks
@@ -16,7 +16,7 @@ deploy:  ## Deploy the project
 
 
 run:  ## Run the application locally
-	go run main.go
+	go run ./cmd/gomddoc -d ../prose-api/docs
 
 
 test:  ## Run unit tests with coverage

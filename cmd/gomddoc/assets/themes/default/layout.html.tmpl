@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>{{ .Title }}</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="color-scheme" content="light dark">
+        <meta name="description" content="{{ .Description }}">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+    </head>
+    <body>
+        <header class="container-fluid">
+            <nav>
+                <ul>
+                    <li>{{ .Title }}</li>
+                </ul>
+                <ul>
+                    <li><a href="/">Home</a></li>
+                </ul>
+            </nav>
+        </header>
+        <main class="container-fluid">
+            <aside>
+                <nav>
+                    <ul>
+                        <li>
+                            <a href="/">Root</a>
+                        </li>
+                        <li><a href="/">Core</a></li>
+                    </ul>
+                </nav>
+            </aside>
+            <article>{{ .Content }}</article>
+        </main>
+    </body>
+</html>
