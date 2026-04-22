@@ -125,7 +125,7 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 </html>`
 
 	testFS := fstest.MapFS{
-		"assets/themes/default/layout.html.tmpl": {
+		"assets/themes/default/layouts/default.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}

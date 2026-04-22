@@ -119,7 +119,7 @@ func (h *HTMLRenderer) Configure(opts ...RendererOption) {
 // The context is checked before expensive operations for cancellation support
 func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any) ([]byte, error) {
 	theme := h.siteConfig.Theme.Name
-	templatePath := fmt.Sprintf("assets/themes/%s/%s", theme, templateName)
+	cacheKey := fmt.Sprintf("assets/themes/%s/layouts/%s", theme, templateName)
 
 	// Check context before starting
 	select {
@@ -129,7 +129,7 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 	}
 
 	// Try cache first (returns nil if PassthroughTemplateStore)
-	tmpl := h.cache.Get(templatePath)
+	tmpl := h.cache.Get(cacheKey)
 
 	var err error
 	if tmpl == nil {
@@ -140,14 +140,14 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 		default:
 		}
 
-		// Cache miss or dev mode - parse template
-		tmpl, err = h.parseTemplate(templateName, templatePath)
+		// Cache miss or dev mode - parse template (layout + partials)
+		tmpl, err = h.parseTemplate(templateName)
 		if err != nil {
 			return nil, fmt.Errorf("parse template: %w", err)
 		}
 
 		// Store in cache (no-op if PassthroughTemplateStore)
-		h.cache.Set(templatePath, tmpl)
+		h.cache.Set(cacheKey, tmpl)
 	}
 
 	// Execute template with pooled buffer to reduce GC pressure
@@ -170,23 +170,39 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 	return result, nil
 }
 
-// parseTemplate parses a template with automatic fallback to default theme
-func (h *HTMLRenderer) parseTemplate(templateName, templatePath string) (*template.Template, error) {
-	tmpl, err := template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, templatePath)
+// parseTemplate parses a layout template with its partials, with automatic fallback to default theme.
+// Partials are discovered via glob in the theme's partials/ directory and parsed together
+// with the layout so that {{ template "partial-name" . }} calls work.
+func (h *HTMLRenderer) parseTemplate(templateName string) (*template.Template, error) {
+	tmpl, err := h.parseThemeTemplate(templateName, h.siteConfig.Theme.Name)
 	if err != nil && h.siteConfig.Theme.Name != config.DefaultThemeName {
 		// Fallback to default theme
 		slog.Warn("Theme template not found, falling back to default",
 			slog.String("theme", h.siteConfig.Theme.Name),
 			slog.String("template", templateName))
-		templatePath = path.Join("assets/themes/", config.DefaultThemeName, templateName)
-		tmpl, err = template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, templatePath)
+		tmpl, err = h.parseThemeTemplate(templateName, config.DefaultThemeName)
 	}
 	return tmpl, err
 }
 
+// parseThemeTemplate parses a layout and its partials for a specific theme.
+// The layout is loaded from assets/themes/{theme}/layouts/{templateName}.
+// Any partials in assets/themes/{theme}/partials/*.html.tmpl are parsed alongside it.
+func (h *HTMLRenderer) parseThemeTemplate(templateName, theme string) (*template.Template, error) {
+	layoutPath := fmt.Sprintf("assets/themes/%s/layouts/%s", theme, templateName)
+	partialsGlob := fmt.Sprintf("assets/themes/%s/partials/*.html.tmpl", theme)
+
+	patterns := []string{layoutPath}
+	if matches, _ := fs.Glob(h.assetsFS, partialsGlob); len(matches) > 0 {
+		patterns = append(patterns, partialsGlob)
+	}
+
+	return template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, patterns...)
+}
+
 // funcMap returns the map of functions available in templates
 func (h *HTMLRenderer) funcMap() template.FuncMap {
-	themeDir := path.Join("assets/themes", h.siteConfig.Theme.Name)
+	themeDir := path.Join("assets", "themes", h.siteConfig.Theme.Name)
 	return template.FuncMap{
 		"breadcrumbs": h.generateBreadcrumbs,
 		"toc":         h.generateTOC,
@@ -327,7 +343,7 @@ func (h *HTMLRenderer) ClearCache() {
 // ValidateDefaultTheme checks that the default theme exists in the asset filesystem
 // This is a fatal error if missing, as the application cannot function without it
 func (h *HTMLRenderer) ValidateDefaultTheme() error {
-	defaultTemplate := path.Join("assets/themes/", config.DefaultThemeName, "layout.html.tmpl")
+	defaultTemplate := path.Join("assets", "themes", config.DefaultThemeName, "layouts", "default.html.tmpl")
 	f, err := h.assetsFS.Open(defaultTemplate)
 	if err != nil {
 		return fmt.Errorf("default theme not found: %w (this is a fatal error)", err)

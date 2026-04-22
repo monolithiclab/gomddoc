@@ -160,40 +160,38 @@ _Transform themes from monolithic templates into composable, configurable, distr
 
 ### 8a: Theme Folder Structure
 
-Rework the current flat structure (`<theme>/layout.html.tmpl`) into a well-defined package layout
+Rework the current flat structure (`<theme>/default.html.tmpl`) into a well-defined package layout
 that supports partials, multiple page types, and static assets.
 
-- [ ] **Canonical structure**: Restructure each theme directory from the current flat layout to:
+- [x] **Canonical structure**: Restructured each theme directory to composable layout:
   ```
   <theme>/
-  ├── README.md              # Metadata (frontmatter) and description
+  ├── README.md              # Enriched frontmatter metadata + description
   ├── layouts/
-  │   ├── layout.html.tmpl   # Base layout (required)
-  │   ├── page.html.tmpl     # Page type overrides (optional)
-  │   └── ...
+  │   └── default.html.tmpl   # Skeleton calling partials (~40-50 lines)
   ├── partials/
-  │   ├── header.html.tmpl
-  │   ├── footer.html.tmpl
-  │   ├── nav.html.tmpl
-  │   ├── toc.html.tmpl
-  │   ├── head.html.tmpl
-  │   └── scripts.html.tmpl
-  ├── static/                # Theme-specific static assets (CSS, JS, images, fonts)
+  │   ├── head.html.tmpl     # <head>: meta, fonts, CSS
+  │   ├── header.html.tmpl   # Site header bar
+  │   ├── nav.html.tmpl      # Navigation sidebar (self-contained)
+  │   ├── toc.html.tmpl      # TOC sidebar (self-contained)
+  │   └── scripts.html.tmpl  # All <script> blocks
   └── screenshots/
-      ├── light.png
-      └── dark.png
+      ├── desktop-light.png
+      └── desktop-dark.png
   ```
-- [ ] **Migration**: Move existing `layout.html.tmpl` into `layouts/`, screenshots into `screenshots/`.
-- [ ] **Embedded themes update**: Rework all bundled themes (`cmd/gomddoc/assets/themes/*`) to the
-      new structure. Update `go:embed` directives and the overlay filesystem accordingly.
+- [x] **Migration**: Moved `default.html.tmpl` into `layouts/`, screenshots into `screenshots/`.
+- [x] **Embedded themes update**: Reworked default theme (`cmd/gomddoc/assets/themes/default/`) and
+      all 7 material themes to the new structure. Template renderer updated to parse layouts + partials.
+- [ ] **Page type templates**: Support `page.html.tmpl` and other layout variants (future).
+- [ ] **Static asset directory**: Theme-specific `static/` directory for non-inline assets (future).
 
 ### 8b: Template Partials
 
-Break the monolithic `layout.html.tmpl` into composable partials that themes can selectively override.
+Break the monolithic `default.html.tmpl` into composable partials that themes can selectively override.
 
-- [ ] **Partial system**: Split layout into `header.html.tmpl`, `footer.html.tmpl`, `nav.html.tmpl`,
-      `toc.html.tmpl`, `head.html.tmpl`, `scripts.html.tmpl`. Main layout assembles partials via
-      `{{ template "header" . }}`.
+- [x] **Partial system**: Split all theme layouts into `head.html.tmpl`, `header.html.tmpl`, `nav.html.tmpl`,
+      `toc.html.tmpl`, `scripts.html.tmpl`. Main layout assembles partials via `{{ template "head" . }}` etc.
+      Each partial is self-contained and calls its own template functions.
 - [ ] **Partial override resolution**: Theme provides base partials; site `.gomddoc/partials/` overrides
       specific ones without copying the whole theme. Resolution order: site partials > theme partials > default.
 - [x] **UI polish**: Copy-to-clipboard for code blocks.
@@ -221,10 +219,10 @@ overridable from the site config.
 
 Support multiple layout variants selectable from content frontmatter.
 
-- [ ] **Page type templates**: Themes provide a generic `layout.html.tmpl` (default) plus optional
+- [ ] **Page type templates**: Themes provide a generic `default.html.tmpl` (default) plus optional
       type-specific layouts: `page.html.tmpl`, `api.html.tmpl`, `changelog.html.tmpl`, etc.
 - [ ] **Frontmatter `layout` field**: Content files select their layout via `layout: api` in frontmatter.
-      Falls back to `layout.html.tmpl` if the specified type doesn't exist in the theme.
+      Falls back to `default.html.tmpl` if the specified type doesn't exist in the theme.
 - [ ] **Layout inheritance**: Type-specific layouts can extend the base layout, overriding only the
       content block while inheriting header, footer, and scripts.
 
@@ -272,7 +270,7 @@ _Enable community theme sharing via a GitHub-based registry._
 - [ ] **Default marketplace repository**: A GitHub repository (e.g. `gomddoc/themes`) acts as the theme
       registry. Contains an `index.json` manifest listing available themes with name, description, author,
       version, repository URL, and preview image URLs.
-- [ ] **Theme package format**: Each theme is a Git repository containing `layout.html.tmpl`, optional
+- [ ] **Theme package format**: Each theme is a Git repository containing `default.html.tmpl`, optional
       partials, a `README.md` with frontmatter metadata (name, category, fonts, colors), and screenshot
       previews (`light.png`, `dark.png`).
 - [ ] **Custom registries**: Users can configure alternative marketplace URLs in `.gomddoc/config.yml`

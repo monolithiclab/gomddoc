@@ -189,7 +189,7 @@ func (b *BuildCmd) buildMarkdownFile(
 		},
 	}
 
-	rendered, err := templateRenderer.Render(ctx, "layout.html.tmpl", templateCtx)
+	rendered, err := templateRenderer.Render(ctx, "default.html.tmpl", templateCtx)
 	if err != nil {
 		return fmt.Errorf("template render %s: %w", filePath, err)
 	}

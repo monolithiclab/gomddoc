@@ -50,7 +50,7 @@ To customize your site, create a `.gomddoc` folder in your content root:
 │   └── assets/
 │       └── themes/
 │           └── default/
-│               └── layout.html.tmpl  <-- Overrides built-in layout
+│               └── default.html.tmpl  <-- Overrides built-in layout
 └── README.md
 ```
 
@@ -63,7 +63,9 @@ The overlay filesystem checks your `.gomddoc/assets/` first, then falls back to 
     theme:
       name: "custom"
     ```
-2.  **Create Template:** Create `.gomddoc/assets/themes/custom/layout.html.tmpl`.
+2.  **Create Template:** Create `.gomddoc/assets/themes/custom/layouts/default.html.tmpl` with a
+    skeleton that calls partials. Add partials in `.gomddoc/assets/themes/custom/partials/`
+    (e.g., `head.html.tmpl`, `header.html.tmpl`, `nav.html.tmpl`, `toc.html.tmpl`, `scripts.html.tmpl`).
 
 ### Template Variables
 

@@ -169,10 +169,10 @@ Extracted from completed spec files before deletion.
 
 ## Theme System
 
-**Chosen**: 8 bundled themes with full feature parity, single-file `layout.html.tmpl` architecture
+**Chosen**: 8 bundled themes with full feature parity, single-file `default.html.tmpl` architecture
 
 **Key decisions**:
-- **Single-file themes**: Each theme is one `layout.html.tmpl` with inline CSS/JS. Simpler than multi-file setups; entire theme is self-contained and easy to copy/customize.
+- **Single-file themes**: Each theme is one `default.html.tmpl` with inline CSS/JS. Simpler than multi-file setups; entire theme is self-contained and easy to copy/customize.
 - **Feature parity**: All themes must support: light/dark mode, TOC, navigation, breadcrumbs, admonitions, color chips, code copy, heading anchors, KaTeX, Mermaid, touch accessibility. Prevents "works in default theme but not in X" bugs.
 - **Client-side KaTeX/Mermaid**: Loaded from jsDelivr CDN. Zero server-side deps. Theme-aware (Mermaid initializes with dark/light theme based on `data-theme` attribute).
 - **`prefers-color-scheme` CSS fallback**: All themes include `@media (prefers-color-scheme: dark) { :root:not([data-theme]) { ... } }` so dark mode works even without JavaScript/localStorage.

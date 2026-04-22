@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+{{ template "head" . }}
+<body>
+  {{ template "header" . }}
+
+  <main>
+    <div class="page-layout">
+      {{ template "nav" . }}
+
+      <div class="content-area">
+        {{- $crumbs := breadcrumbs .Page.Path }}
+        {{- if gt (len $crumbs) 1 }}
+        <nav aria-label="Breadcrumb" class="breadcrumb-bar">
+          <ul>
+            {{- range $crumbs }}
+            <li><a href="{{ .Path }}">{{ .Label }}</a></li>
+            {{- end }}
+          </ul>
+        </nav>
+        {{- end }}
+
+        <div class="content-with-toc">
+          <article>
+            {{ .Page.Content }}
+
+            {{ template "footer" . }}
+          </article>
+
+          {{ template "toc" . }}
+        </div>
+      </div>
+    </div>
+  </main>
+
+  {{ template "scripts" . }}
+</body>
+</html>

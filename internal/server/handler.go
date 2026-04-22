@@ -125,7 +125,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		},
 	}
 
-	rendered, err := h.templateRenderer.Render(r.Context(), "layout.html.tmpl", context)
+	rendered, err := h.templateRenderer.Render(r.Context(), "default.html.tmpl", context)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return

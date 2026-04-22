@@ -1,0 +1,11 @@
+{{ define "nav" }}
+{{- $nav := navigation .Page.Path }}
+{{- if $nav }}
+      <aside id="nav-sidebar" aria-label="Navigation">
+        <nav>
+          {{ $nav }}
+        </nav>
+      </aside>
+      <div id="nav-overlay"></div>
+{{- end }}
+{{ end }}

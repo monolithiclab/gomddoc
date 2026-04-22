@@ -57,7 +57,7 @@ func TestNewHTTPServer(t *testing.T) {
 </html>`
 
 	testFS := fstest.MapFS{
-		"assets/themes/default/layout.html.tmpl": {
+		"assets/themes/default/layouts/default.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -136,7 +136,7 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 
 	templateContent := `<!DOCTYPE html><html><body>{{.Page.Content}}</body></html>`
 	testFS := fstest.MapFS{
-		"assets/themes/default/layout.html.tmpl": {Data: []byte(templateContent)},
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(templateContent)},
 	}
 	rend := template.NewHTMLRenderer(&siteConfig, testFS)
 

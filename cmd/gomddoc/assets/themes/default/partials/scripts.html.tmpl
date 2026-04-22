@@ -1,0 +1,211 @@
+{{ define "scripts" }}
+  <script>
+    // Theme Toggle with localStorage persistence
+    (function() {
+      'use strict';
+
+      const toggle = document.getElementById('theme-toggle');
+      const html = document.documentElement;
+
+      // Initialize theme from localStorage or system preference
+      const stored = localStorage.getItem('theme');
+      if (stored) {
+        html.setAttribute('data-theme', stored);
+      }
+
+      function updateIcon() {
+        let current = html.getAttribute('data-theme');
+        if (!current) {
+          current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        toggle.textContent = current === 'dark' ? '☀️' : '🌙';
+      }
+
+      updateIcon();
+
+      toggle.addEventListener('click', () => {
+        let current = html.getAttribute('data-theme');
+        if (!current) {
+          current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        const next = current === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        updateIcon();
+      });
+
+      // Listen for system theme changes
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (!localStorage.getItem('theme')) {
+          updateIcon();
+        }
+      });
+    })();
+
+    // Mobile Navigation Toggle
+    (function() {
+      'use strict';
+
+      const navToggle = document.getElementById('nav-toggle');
+      const navSidebar = document.getElementById('nav-sidebar');
+      const navOverlay = document.getElementById('nav-overlay');
+
+      if (navToggle && navSidebar) {
+        const closeNav = () => {
+          navSidebar.classList.remove('show');
+          if (navOverlay) navOverlay.classList.remove('show');
+        };
+
+        navToggle.addEventListener('click', () => {
+          const isShown = navSidebar.classList.contains('show');
+          navSidebar.classList.toggle('show', !isShown);
+          if (navOverlay) navOverlay.classList.toggle('show', !isShown);
+        });
+        if (navOverlay) navOverlay.addEventListener('click', closeNav);
+
+        // Close on link click
+        navSidebar.addEventListener('click', (e) => {
+          if (e.target.closest('a')) {
+            closeNav();
+          }
+        });
+      }
+    })();
+
+    // Mobile TOC Toggle
+    (function() {
+      'use strict';
+
+      const tocToggle = document.getElementById('toc-toggle');
+      const tocSidebar = document.getElementById('toc-sidebar');
+      const tocOverlay = document.getElementById('toc-overlay');
+
+      if (tocToggle && tocSidebar) {
+        const closeToc = () => {
+          tocSidebar.classList.remove('show');
+          if (tocOverlay) tocOverlay.classList.remove('show');
+        };
+
+        tocToggle.addEventListener('click', () => {
+          const isShown = tocSidebar.classList.contains('show');
+          tocSidebar.classList.toggle('show', !isShown);
+          if (tocOverlay) tocOverlay.classList.toggle('show', !isShown);
+        });
+        if (tocOverlay) tocOverlay.addEventListener('click', closeToc);
+
+        // Close on link click
+        tocSidebar.addEventListener('click', (e) => {
+          if (e.target.closest('a')) {
+            closeToc();
+          }
+        });
+      }
+    })();
+
+    // TOC Scroll Highlighting
+    (function() {
+      'use strict';
+
+      const tocSidebar = document.getElementById('toc-sidebar');
+      if (!tocSidebar) return;
+
+      const headings = document.querySelectorAll('article h1[id], article h2[id], article h3[id], article h4[id]');
+      const tocLinks = tocSidebar.querySelectorAll('a');
+      if (!headings.length || !tocLinks.length) return;
+
+      // Build a set of IDs that have TOC links for quick lookup
+      const tocIds = new Set();
+      tocLinks.forEach(link => {
+        const href = link.getAttribute('href');
+        if (href && href.startsWith('#')) tocIds.add(href.slice(1));
+      });
+
+      let prevId = null;
+
+      function updateActive() {
+        // Find the last heading that scrolled past the top of the viewport
+        let current = null;
+        for (const h of headings) {
+          if (h.getBoundingClientRect().top <= 100) current = h;
+        }
+
+        // If the current heading isn't in the TOC (e.g. h3/h4 sub-heading),
+        // walk backwards to find the nearest ancestor heading that is
+        if (current && !tocIds.has(current.id)) {
+          const arr = Array.from(headings);
+          let idx = arr.indexOf(current);
+          while (idx >= 0 && !tocIds.has(arr[idx].id)) idx--;
+          current = idx >= 0 ? arr[idx] : null;
+        }
+
+        const id = current ? current.id : null;
+        if (id === prevId) return;
+        prevId = id;
+
+        tocLinks.forEach(link => {
+          const isActive = id && link.getAttribute('href') === '#' + id;
+          link.classList.toggle('active', isActive);
+          if (isActive) {
+            const linkTop = link.offsetTop - tocSidebar.offsetTop;
+            tocSidebar.scrollTo({ top: linkTop - tocSidebar.clientHeight / 2, behavior: 'smooth' });
+          }
+        });
+      }
+
+      window.addEventListener('scroll', updateActive, { passive: true });
+      updateActive();
+    })();
+
+    // Code Block Copy Button
+    (function() {
+      'use strict';
+
+      document.querySelectorAll('article pre > code').forEach(codeBlock => {
+        const pre = codeBlock.parentNode;
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = 'Copy';
+        btn.setAttribute('aria-label', 'Copy code to clipboard');
+
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(codeBlock.textContent);
+            btn.textContent = 'Copied!';
+            btn.classList.add('copied');
+            setTimeout(() => {
+              btn.textContent = 'Copy';
+              btn.classList.remove('copied');
+            }, 2000);
+          } catch (err) {
+            console.error('Failed to copy:', err);
+          }
+        });
+
+        pre.appendChild(btn);
+      });
+    })();
+  </script>
+
+  <!-- Color Chip Web Component -->
+  <script type="module">{{ inlineAsset "color-chip.mjs" }}</script>
+
+  <!-- KaTeX Auto-render -->
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ]
+    });"></script>
+
+  <!-- Mermaid -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+    });
+    await mermaid.run({ querySelector: '.language-mermaid' });
+  </script>
+{{ end }}

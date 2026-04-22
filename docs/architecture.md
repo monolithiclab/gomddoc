@@ -280,7 +280,7 @@ sequenceDiagram
     H->>R: Render(ctx, content)
     R-->>H: RenderResult{HTML, metadata, TOC}
     H->>H: Content negotiation (Accept vs text/html)
-    H->>T: Render("layout.html.tmpl", {Site, Page})
+    H->>T: Render("default.html.tmpl", {Site, Page})
     T-->>H: Templated HTML
     H-->>C: 200 OK (HTML + ETag + Cache-Control)
 ```
@@ -483,5 +483,5 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Static Site Generation**: `gomddoc build` output for deployment to static hosts
 - **Color Chip**: `<color-chip>` web component that renders hex color codes as interactive swatches
 - **Post-Processing Pipeline**: Sequential HTML transformations after goldmark rendering (anchors → admonitions → color chips)
-- **Theme**: A `layout.html.tmpl` file with CSS/JS that defines the visual presentation of rendered content
+- **Theme**: A `default.html.tmpl` file with CSS/JS that defines the visual presentation of rendered content
 - **`inlineAsset`**: Template function that loads JS/CSS from theme directory with shared directory fallback

@@ -15,7 +15,7 @@ import (
 
 func TestNewHTMLRenderer(t *testing.T) {
 	testFS := fstest.MapFS{
-		"assets/themes/default/test.html.tmpl": {
+		"assets/themes/default/layouts/test.html.tmpl": {
 			Data: []byte("<html></html>"),
 		},
 	}
@@ -77,7 +77,7 @@ func TestHTMLRendererRender(t *testing.T) {
 </html>`
 
 	testFS := fstest.MapFS{
-		"assets/themes/default/layout.html.tmpl": {
+		"assets/themes/default/layouts/default.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -95,7 +95,7 @@ func TestHTMLRendererRender(t *testing.T) {
 		},
 	}
 
-	result, err := renderer.Render(context.Background(), "layout.html.tmpl", ctx)
+	result, err := renderer.Render(context.Background(), "default.html.tmpl", ctx)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
@@ -133,7 +133,7 @@ Path: {{ .Path }}, Label: {{ .Label }}|
 {{- end -}}
 `
 	testFS := fstest.MapFS{
-		"assets/themes/default/breadcrumbs.html.tmpl": {
+		"assets/themes/default/layouts/breadcrumbs.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -187,7 +187,7 @@ func TestTOCFunction(t *testing.T) {
 	// Template that uses the toc function
 	templateContent := `{{ toc .Page.TOC }}`
 	testFS := fstest.MapFS{
-		"assets/themes/default/toc.html.tmpl": {
+		"assets/themes/default/layouts/toc.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -232,7 +232,7 @@ func TestTOCFunction_Filtering(t *testing.T) {
 	// Template filtering levels 2-3
 	templateContent := `{{ toc .Page.TOC 2 3 }}`
 	testFS := fstest.MapFS{
-		"assets/themes/default/toc_filter.html.tmpl": {
+		"assets/themes/default/layouts/toc_filter.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -291,7 +291,7 @@ func TestTemplateCache(t *testing.T) {
 	// Create test filesystem
 	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
 	testFS := fstest.MapFS{
-		"assets/themes/default/test.html.tmpl": {
+		"assets/themes/default/layouts/test.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -335,7 +335,7 @@ func TestRenderWithContextCancellation(t *testing.T) {
 
 	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
 	testFS := fstest.MapFS{
-		"assets/themes/default/test.html.tmpl": {
+		"assets/themes/default/layouts/test.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -361,7 +361,7 @@ func TestRenderWithContextCancellation(t *testing.T) {
 func TestValidateDefaultTheme(t *testing.T) {
 	t.Run("valid default theme", func(t *testing.T) {
 		testFS := fstest.MapFS{
-			"assets/themes/default/layout.html.tmpl": {
+			"assets/themes/default/layouts/default.html.tmpl": {
 				Data: []byte("<html></html>"),
 			},
 		}
@@ -376,7 +376,7 @@ func TestValidateDefaultTheme(t *testing.T) {
 
 	t.Run("missing default theme", func(t *testing.T) {
 		testFS := fstest.MapFS{
-			"assets/themes/other/layout.html.tmpl": {
+			"assets/themes/other/layouts/default.html.tmpl": {
 				Data: []byte("<html></html>"),
 			},
 		}
@@ -393,7 +393,7 @@ func TestValidateDefaultTheme(t *testing.T) {
 func TestClearCache(t *testing.T) {
 	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
 	testFS := fstest.MapFS{
-		"assets/themes/default/test.html.tmpl": {
+		"assets/themes/default/layouts/test.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -414,7 +414,7 @@ func TestClearCache(t *testing.T) {
 	}
 
 	// Verify cache has entry
-	templatePath := "assets/themes/default/test.html.tmpl"
+	templatePath := "assets/themes/default/layouts/test.html.tmpl"
 	if cache.Get(templatePath) == nil {
 		t.Error("Cache should have entry after render")
 	}
@@ -428,10 +428,63 @@ func TestClearCache(t *testing.T) {
 	}
 }
 
+func TestParseTemplateWithPartials(t *testing.T) {
+	t.Parallel()
+
+	// Layout skeleton that calls partials
+	layoutContent := `<!DOCTYPE html>
+<html>
+{{ template "head" . }}
+<body>
+{{ template "header" . }}
+{{ .Page.Content }}
+</body>
+</html>`
+
+	headPartial := `{{ define "head" }}<head><title>{{ .Site.Meta.Title }}</title></head>{{ end }}`
+	headerPartial := `{{ define "header" }}<header>{{ .Site.Meta.Title }}</header>{{ end }}`
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layoutContent)},
+		"assets/themes/default/partials/head.html.tmpl":   {Data: []byte(headPartial)},
+		"assets/themes/default/partials/header.html.tmpl": {Data: []byte(headerPartial)},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Partials Test"
+
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			Content: "<p>Hello</p>",
+			Path:    "/",
+		},
+	}
+
+	result, err := r.Render(context.Background(), "default.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render with partials failed: %v", err)
+	}
+
+	resultStr := string(result)
+
+	if !strings.Contains(resultStr, "<title>Partials Test</title>") {
+		t.Error("Expected head partial to render title")
+	}
+	if !strings.Contains(resultStr, "<header>Partials Test</header>") {
+		t.Error("Expected header partial to render site title")
+	}
+	if !strings.Contains(resultStr, "<p>Hello</p>") {
+		t.Error("Expected content to be rendered")
+	}
+}
+
 func TestParseTemplateFallback(t *testing.T) {
 	// Only default theme has the template
 	testFS := fstest.MapFS{
-		"assets/themes/default/layout.html.tmpl": {
+		"assets/themes/default/layouts/default.html.tmpl": {
 			Data: []byte("<html>default</html>"),
 		},
 	}
@@ -448,7 +501,7 @@ func TestParseTemplateFallback(t *testing.T) {
 	}
 
 	// Should fallback to default theme
-	result, err := renderer.Render(context.Background(), "layout.html.tmpl", ctx)
+	result, err := renderer.Render(context.Background(), "default.html.tmpl", ctx)
 	if err != nil {
 		t.Fatalf("Render should succeed with fallback, got error: %v", err)
 	}
@@ -461,7 +514,7 @@ func TestParseTemplateFallback(t *testing.T) {
 func TestTOCFunction_EmptyTOC(t *testing.T) {
 	templateContent := `{{ toc .Page.TOC }}`
 	testFS := fstest.MapFS{
-		"assets/themes/default/toc_empty.html.tmpl": {
+		"assets/themes/default/layouts/toc_empty.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -502,7 +555,7 @@ func TestHasVisibleDescendants(t *testing.T) {
 	// Template filtering levels 2-2 (only H2)
 	templateContent := `{{ toc .Page.TOC 2 2 }}`
 	testFS := fstest.MapFS{
-		"assets/themes/default/toc_deep.html.tmpl": {
+		"assets/themes/default/layouts/toc_deep.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -608,7 +661,7 @@ func TestEditURLFunction(t *testing.T) {
 			siteConfig.EditURL = tt.editURL
 
 			testFS := fstest.MapFS{
-				"assets/themes/default/test.html.tmpl": {
+				"assets/themes/default/layouts/test.html.tmpl": {
 					Data: []byte("<html></html>"),
 				},
 			}
@@ -627,7 +680,7 @@ func TestEditURLInTemplate(t *testing.T) {
 
 	templateContent := `{{- $editLink := editURL .Page.Path }}{{- if $editLink }}<a href="{{ $editLink }}">Edit</a>{{- end }}`
 	testFS := fstest.MapFS{
-		"assets/themes/default/edit.html.tmpl": {
+		"assets/themes/default/layouts/edit.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -688,7 +741,7 @@ func TestNavigationFunction(t *testing.T) {
 
 	templateContent := `{{ navigation .Page.Path }}`
 	testFS := fstest.MapFS{
-		"assets/themes/default/nav.html.tmpl": {
+		"assets/themes/default/layouts/nav.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -729,7 +782,7 @@ func TestNavigationFunction_NilGenerator(t *testing.T) {
 
 	templateContent := `[{{ navigation .Page.Path }}]`
 	testFS := fstest.MapFS{
-		"assets/themes/default/nav_nil.html.tmpl": {
+		"assets/themes/default/layouts/nav_nil.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
@@ -758,7 +811,7 @@ func TestNavigationFunction_NilGenerator(t *testing.T) {
 func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
 	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
 	testFS := fstest.MapFS{
-		"assets/themes/default/bc.html.tmpl": {
+		"assets/themes/default/layouts/bc.html.tmpl": {
 			Data: []byte(templateContent),
 		},
 	}
