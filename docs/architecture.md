@@ -183,8 +183,9 @@ type Index struct {
 }
 ```
 
-Built at startup by walking `RootFS()` and parsing YAML frontmatter (lightweight `---` delimiter parser,
-no full goldmark render). Provides `AllPages()`, `AllTags()`, and `ByTag(tag)` lookups.
+Built at startup by walking `RootFS()` and parsing YAML frontmatter concurrently with `errgroup`
+(three-phase: collect paths → parse in parallel → merge sequentially). Uses a lightweight `---` delimiter
+parser, no full goldmark render. Provides `AllPages()`, `AllTags()`, and `ByTag(tag)` lookups.
 
 Exposed via JSON API:
 - `GET /api/tags` — All tags (sorted)

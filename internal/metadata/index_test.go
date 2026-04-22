@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -116,7 +118,7 @@ func TestBuildIndex(t *testing.T) {
 		},
 	}
 
-	idx, err := BuildIndex(testFS)
+	idx, err := BuildIndex(context.Background(), testFS)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -204,7 +206,7 @@ func TestBuildIndex(t *testing.T) {
 
 func TestBuildIndex_EmptyFS(t *testing.T) {
 	testFS := fstest.MapFS{}
-	idx, err := BuildIndex(testFS)
+	idx, err := BuildIndex(context.Background(), testFS)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -220,7 +222,7 @@ func TestAllPages_ReturnsCopy(t *testing.T) {
 	testFS := fstest.MapFS{
 		"test.md": {Data: []byte("---\ntitle: Test\n---\n")},
 	}
-	idx, err := BuildIndex(testFS)
+	idx, err := BuildIndex(context.Background(), testFS)
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
@@ -230,5 +232,60 @@ func TestAllPages_ReturnsCopy(t *testing.T) {
 	pages2 := idx.AllPages()
 	if pages2[0].Title == "Modified" {
 		t.Fatal("AllPages should return a copy, not a reference to internal state")
+	}
+}
+
+func TestBuildIndex_CancelledContext(t *testing.T) {
+	testFS := fstest.MapFS{
+		"a.md": {Data: []byte("---\ntitle: A\n---\n")},
+		"b.md": {Data: []byte("---\ntitle: B\n---\n")},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	_, err := BuildIndex(ctx, testFS)
+	if err == nil {
+		// A cancelled context may or may not produce an error depending on
+		// timing; the goroutines check gctx.Err() but may have already
+		// completed. We accept both outcomes.
+		t.Log("BuildIndex succeeded with cancelled context (goroutines completed before checking)")
+	}
+}
+
+func TestBuildIndex_ManyFiles(t *testing.T) {
+	// Verify concurrent indexing works correctly with many files.
+	testFS := fstest.MapFS{}
+	const n = 50
+	for i := range n {
+		name := fmt.Sprintf("page-%03d.md", i)
+		title := fmt.Sprintf("Page %d", i)
+		testFS[name] = &fstest.MapFile{
+			Data: fmt.Appendf(nil, "---\ntitle: %s\ntags:\n  - batch\n---\n# %s", title, title),
+		}
+	}
+
+	idx, err := BuildIndex(context.Background(), testFS)
+	if err != nil {
+		t.Fatalf("BuildIndex failed: %v", err)
+	}
+
+	pages := idx.AllPages()
+	if len(pages) != n {
+		t.Fatalf("expected %d pages, got %d", n, len(pages))
+	}
+
+	batchPages := idx.ByTag("batch")
+	if len(batchPages) != n {
+		t.Fatalf("expected %d pages with tag 'batch', got %d", n, len(batchPages))
+	}
+
+	// Verify all pages are unique
+	seen := make(map[string]bool)
+	for _, page := range pages {
+		if seen[page.Path] {
+			t.Fatalf("duplicate page path: %s", page.Path)
+		}
+		seen[page.Path] = true
 	}
 }

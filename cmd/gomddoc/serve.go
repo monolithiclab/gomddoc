@@ -93,7 +93,7 @@ func (s *ServeCmd) Run() error {
 		return err
 	}
 
-	metaIndex, err := metadata.BuildIndex(contentRoot)
+	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot)
 	if err != nil {
 		slog.Warn("Failed to build metadata index", slog.Any("error", err))
 	}

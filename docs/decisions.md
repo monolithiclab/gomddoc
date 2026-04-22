@@ -121,7 +121,7 @@ Extracted from completed spec files before deletion.
 - **Database-backed index** (SQLite/bbolt): Persistent but adds complexity and deps for a read-only use case
 - **No aggregation** (per-page only): Simplest but blocks tag-based discovery features
 
-**Why lightweight parser**: Custom `extractFrontmatter()` finds `---` delimiters and calls `yaml.Unmarshal` — no goldmark needed. Index built at startup by walking `RootFS()`. Tags normalized to lowercase. API: `GET /api/tags` (all tags) and `GET /api/tags/{tag}` (pages by tag). Routes registered before the catch-all handler in `server.go`.
+**Why lightweight parser**: Custom `extractFrontmatter()` finds `---` delimiters and calls `yaml.Unmarshal` — no goldmark needed. Index built at startup with three-phase concurrent approach: collect file paths → parse frontmatter in parallel with `errgroup` → merge results sequentially (deterministic output). Tags normalized to lowercase. API: `GET /api/tags` (all tags) and `GET /api/tags/{tag}` (pages by tag). Routes registered before the catch-all handler in `server.go`.
 
 ## Static Site Generation (`gomddoc build`)
 

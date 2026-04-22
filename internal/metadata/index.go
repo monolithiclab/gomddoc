@@ -2,13 +2,16 @@ package metadata
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,11 +35,11 @@ type Index struct {
 // Markdown files, and builds a metadata index. Hidden directories and
 // files (starting with '.') are skipped. Parse errors on individual
 // files are logged but do not cause the build to fail.
-func BuildIndex(rootFS fs.FS) (*Index, error) {
-	idx := &Index{
-		byTag: make(map[string][]int),
-	}
-
+//
+// Frontmatter parsing runs concurrently, bounded by runtime.NumCPU().
+func BuildIndex(ctx context.Context, rootFS fs.FS) (*Index, error) {
+	// Phase 1: Collect all markdown file paths sequentially.
+	var paths []string
 	err := fs.WalkDir(rootFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("walk error at %s: %w", path, err)
@@ -56,82 +59,121 @@ func BuildIndex(rootFS fs.FS) (*Index, error) {
 			return nil
 		}
 
-		// Only process Markdown files
+		// Only collect Markdown files
 		if ext := filepath.Ext(name); ext != ".md" && ext != ".markdown" {
 			return nil
 		}
 
-		content, readErr := fs.ReadFile(rootFS, path)
-		if readErr != nil {
-			return nil // skip unreadable files
-		}
-
-		fm, parseErr := extractFrontmatter(content)
-		if parseErr != nil || fm == nil {
-			return nil // skip files without valid frontmatter
-		}
-
-		page := PageInfo{
-			Path: "/" + path,
-			Meta: make(map[string]any),
-		}
-
-		// Extract known fields
-		if v, ok := fm["title"]; ok {
-			if s, ok := v.(string); ok {
-				page.Title = s
-			}
-		}
-		if v, ok := fm["description"]; ok {
-			if s, ok := v.(string); ok {
-				page.Description = s
-			}
-		}
-		if v, ok := fm["date"]; ok {
-			switch d := v.(type) {
-			case time.Time:
-				page.Date = d
-			case string:
-				if t, err := time.Parse(time.DateOnly, d); err == nil {
-					page.Date = t
-				}
-			}
-		}
-		if v, ok := fm["tags"]; ok {
-			if tags, ok := v.([]any); ok {
-				for _, tag := range tags {
-					if s, ok := tag.(string); ok {
-						page.Tags = append(page.Tags, strings.ToLower(s))
-					}
-				}
-			}
-		}
-
-		// Store remaining fields in Meta
-		knownKeys := map[string]bool{"title": true, "description": true, "date": true, "tags": true}
-		for k, v := range fm {
-			if !knownKeys[k] {
-				page.Meta[k] = v
-			}
-		}
-		if len(page.Meta) == 0 {
-			page.Meta = nil
-		}
-
-		pageIdx := len(idx.pages)
-		idx.pages = append(idx.pages, page)
-
-		for _, tag := range page.Tags {
-			idx.byTag[tag] = append(idx.byTag[tag], pageIdx)
-		}
-
+		paths = append(paths, path)
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("building metadata index: %w", err)
 	}
 
+	// Phase 2: Parse frontmatter in parallel.
+	type parseResult struct {
+		page PageInfo
+		ok   bool // false if file should be skipped
+	}
+
+	results := make([]parseResult, len(paths))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(runtime.NumCPU())
+
+	for i, p := range paths {
+		g.Go(func() error {
+			if gctx.Err() != nil {
+				return gctx.Err()
+			}
+
+			content, readErr := fs.ReadFile(rootFS, p)
+			if readErr != nil {
+				return nil // skip unreadable files
+			}
+
+			fm, parseErr := extractFrontmatter(content)
+			if parseErr != nil || fm == nil {
+				return nil // skip files without valid frontmatter
+			}
+
+			results[i] = parseResult{page: pageFromFrontmatter(p, fm), ok: true}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("building metadata index: %w", err)
+	}
+
+	// Phase 3: Merge results sequentially into the final index.
+	idx := &Index{
+		byTag: make(map[string][]int),
+	}
+
+	for _, r := range results {
+		if !r.ok {
+			continue
+		}
+		pageIdx := len(idx.pages)
+		idx.pages = append(idx.pages, r.page)
+		for _, tag := range r.page.Tags {
+			idx.byTag[tag] = append(idx.byTag[tag], pageIdx)
+		}
+	}
+
 	return idx, nil
+}
+
+// pageFromFrontmatter converts parsed frontmatter into a PageInfo.
+func pageFromFrontmatter(path string, fm map[string]any) PageInfo {
+	page := PageInfo{
+		Path: "/" + path,
+		Meta: make(map[string]any),
+	}
+
+	if v, ok := fm["title"]; ok {
+		if s, ok := v.(string); ok {
+			page.Title = s
+		}
+	}
+	if v, ok := fm["description"]; ok {
+		if s, ok := v.(string); ok {
+			page.Description = s
+		}
+	}
+	if v, ok := fm["date"]; ok {
+		switch d := v.(type) {
+		case time.Time:
+			page.Date = d
+		case string:
+			if t, err := time.Parse(time.DateOnly, d); err == nil {
+				page.Date = t
+			}
+		}
+	}
+	if v, ok := fm["tags"]; ok {
+		if tags, ok := v.([]any); ok {
+			for _, tag := range tags {
+				if s, ok := tag.(string); ok {
+					page.Tags = append(page.Tags, strings.ToLower(s))
+				}
+			}
+		}
+	}
+
+	// Store remaining fields in Meta
+	knownKeys := map[string]bool{"title": true, "description": true, "date": true, "tags": true}
+	for k, v := range fm {
+		if !knownKeys[k] {
+			page.Meta[k] = v
+		}
+	}
+	if len(page.Meta) == 0 {
+		page.Meta = nil
+	}
+
+	return page
 }
 
 // AllPages returns all indexed pages.
