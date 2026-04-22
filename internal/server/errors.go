@@ -26,6 +26,21 @@ func classifyError(err error) int {
 		return 499 // Client closed request (non-standard but widely used)
 	case errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout // 504
+
+	// Git provider errors
+	case errors.Is(err, provider.ErrInvalidGitURL):
+		return http.StatusBadRequest // 400
+	case errors.Is(err, provider.ErrGitAuthFailed):
+		return http.StatusUnauthorized // 401
+	case errors.Is(err, provider.ErrGitConnectFailed):
+		return http.StatusBadGateway // 502
+	case errors.Is(err, provider.ErrGitRefNotFound):
+		return http.StatusNotFound // 404
+	case errors.Is(err, provider.ErrGitLFSNotSupported):
+		return http.StatusNotImplemented // 501
+	case errors.Is(err, provider.ErrFileTooLarge):
+		return http.StatusRequestEntityTooLarge // 413
+
 	default:
 		return http.StatusInternalServerError // 500
 	}

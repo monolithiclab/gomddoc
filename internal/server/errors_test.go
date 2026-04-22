@@ -90,6 +90,67 @@ func TestClassifyError(t *testing.T) {
 			err:  nil,
 			want: http.StatusInternalServerError,
 		},
+		// Git provider errors
+		{
+			name: "ErrInvalidGitURL",
+			err:  provider.ErrInvalidGitURL,
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "ErrInvalidGitURL wrapped",
+			err:  fmt.Errorf("failed to parse URL: %w", provider.ErrInvalidGitURL),
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "ErrGitAuthFailed",
+			err:  provider.ErrGitAuthFailed,
+			want: http.StatusUnauthorized,
+		},
+		{
+			name: "ErrGitAuthFailed wrapped",
+			err:  fmt.Errorf("SSH key not found: %w", provider.ErrGitAuthFailed),
+			want: http.StatusUnauthorized,
+		},
+		{
+			name: "ErrGitConnectFailed",
+			err:  provider.ErrGitConnectFailed,
+			want: http.StatusBadGateway,
+		},
+		{
+			name: "ErrGitConnectFailed wrapped",
+			err:  fmt.Errorf("network error: %w", provider.ErrGitConnectFailed),
+			want: http.StatusBadGateway,
+		},
+		{
+			name: "ErrGitRefNotFound",
+			err:  provider.ErrGitRefNotFound,
+			want: http.StatusNotFound,
+		},
+		{
+			name: "ErrGitRefNotFound wrapped",
+			err:  fmt.Errorf("branch main not found: %w", provider.ErrGitRefNotFound),
+			want: http.StatusNotFound,
+		},
+		{
+			name: "ErrGitLFSNotSupported",
+			err:  provider.ErrGitLFSNotSupported,
+			want: http.StatusNotImplemented,
+		},
+		{
+			name: "ErrGitLFSNotSupported wrapped",
+			err:  fmt.Errorf("file is LFS pointer: %w", provider.ErrGitLFSNotSupported),
+			want: http.StatusNotImplemented,
+		},
+		{
+			name: "ErrFileTooLarge",
+			err:  provider.ErrFileTooLarge,
+			want: http.StatusRequestEntityTooLarge,
+		},
+		{
+			name: "ErrFileTooLarge wrapped",
+			err:  fmt.Errorf("100MB exceeds 50MB limit: %w", provider.ErrFileTooLarge),
+			want: http.StatusRequestEntityTooLarge,
+		},
 	}
 
 	for _, tt := range tests {
