@@ -3,6 +3,7 @@ package template
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -19,6 +20,10 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/seo"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
+
+// errTemplateNotFound is returned when a theme layout file does not exist.
+// This is used to distinguish "not found" (fallback to default) from parse errors (surface immediately).
+var errTemplateNotFound = errors.New("theme template not found")
 
 // Renderer defines the interface for template rendering
 type Renderer interface {
@@ -195,7 +200,11 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 func (h *HTMLRenderer) parseTemplate(templateName string) (*template.Template, error) {
 	tmpl, err := h.parseThemeTemplate(templateName, h.siteConfig.Theme.Name)
 	if err != nil && h.siteConfig.Theme.Name != config.DefaultThemeName {
-		// Fallback to default theme
+		// Only fall back to default theme if the layout file is missing.
+		// If the file exists but fails to compile, surface the error for debugging.
+		if !errors.Is(err, errTemplateNotFound) {
+			return nil, err
+		}
 		slog.Warn("Theme template not found, falling back to default",
 			slog.String("theme", h.siteConfig.Theme.Name),
 			slog.String("template", templateName))
@@ -215,6 +224,12 @@ func (h *HTMLRenderer) parseTemplate(templateName string) (*template.Template, e
 func (h *HTMLRenderer) parseThemeTemplate(templateName, theme string) (*template.Template, error) {
 	layoutPath := path.Join("assets", "themes", theme, "layouts", templateName)
 	themePartialsGlob := path.Join("assets", "themes", theme, "partials", "*.html.tmpl")
+
+	// Check if the layout file exists before attempting to parse it.
+	// This distinguishes "not found" (safe to fallback) from "found but broken" (must surface).
+	if _, err := fs.Stat(h.assetsFS, layoutPath); err != nil {
+		return nil, fmt.Errorf("%w: %s in theme %q", errTemplateNotFound, templateName, theme)
+	}
 
 	// Start with layout only; partials are layered in priority order below.
 	tmpl, err := template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, layoutPath)
