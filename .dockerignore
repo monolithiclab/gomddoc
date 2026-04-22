@@ -1,0 +1,12 @@
+.git
+.github
+.claude
+.gomddoc
+build/
+*.md
+!README.md
+Makefile
+common-go.mk
+PLAN.md
+REVIEW.md
+docs/
