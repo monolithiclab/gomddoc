@@ -530,9 +530,29 @@ func (b *BuildCmd) isDefaultIndex(filePath, defaultIndex string) bool {
 
 // writeOutputFile writes content to a file in the output directory, creating parent directories as needed.
 func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
-	outPath := filepath.Join(b.Output, relPath)
-	dir := filepath.Dir(outPath)
+	// Reject absolute paths early (before filepath.Join).
+	// On Unix, filepath.IsAbs checks for leading "/".
+	// On Windows, it checks for drive letters and UNC paths.
+	if filepath.IsAbs(relPath) {
+		return fmt.Errorf("path %q escapes outside output directory", relPath)
+	}
 
+	outPath := filepath.Join(b.Output, relPath)
+
+	// Resolve to absolute paths and verify containment.
+	absOutput, err := filepath.Abs(b.Output)
+	if err != nil {
+		return fmt.Errorf("resolve output directory: %w", err)
+	}
+	absOut, err := filepath.Abs(outPath)
+	if err != nil {
+		return fmt.Errorf("resolve output path: %w", err)
+	}
+	if !strings.HasPrefix(absOut, absOutput+string(filepath.Separator)) && absOut != absOutput {
+		return fmt.Errorf("path %q escapes outside output directory", relPath)
+	}
+
+	dir := filepath.Dir(outPath)
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("create directory %s: %w", dir, err)
 	}

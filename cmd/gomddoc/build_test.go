@@ -551,6 +551,35 @@ func TestWriteOutputFile_ReadOnlyDir(t *testing.T) {
 	}
 }
 
+func TestWriteOutputFile_PathTraversal(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+
+	tests := []struct {
+		name    string
+		relPath string
+	}{
+		{"dot-dot prefix", "../escape.html"},
+		{"nested dot-dot", "sub/../../escape.html"},
+		{"absolute path", "/etc/passwd"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := b.writeOutputFile(tt.relPath, []byte("pwned"))
+			if err == nil {
+				t.Error("writeOutputFile should reject path traversal")
+			}
+			if !strings.Contains(err.Error(), "outside output directory") {
+				t.Errorf("error = %q, want substring %q", err, "outside output directory")
+			}
+		})
+	}
+}
+
 func TestCopyFile_MissingFile(t *testing.T) {
 	t.Parallel()
 

@@ -276,3 +276,32 @@ func TestReadAsset_ThemeOverridesShared(t *testing.T) {
 		t.Errorf("Expected theme asset to take precedence, got %q", got)
 	}
 }
+
+func TestReadAsset_PathTraversal(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte("ok")},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"dot-dot", "../../../etc/passwd"},
+		{"absolute", "/etc/passwd"},
+		{"dot prefix", "./test.js"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := r.readAsset(tt.path)
+			if err == nil {
+				t.Errorf("readAsset(%q) should reject invalid path", tt.path)
+			}
+		})
+	}
+}

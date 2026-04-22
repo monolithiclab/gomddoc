@@ -10,6 +10,9 @@ import (
 // readAsset searches for a named asset in the theme directory first,
 // then falls back to the shared assets directory (overlay semantics).
 func (h *HTMLRenderer) readAsset(name string) ([]byte, error) {
+	if !fs.ValidPath(name) {
+		return nil, fmt.Errorf("invalid asset path %q", name)
+	}
 	themeDir := path.Join("assets", "themes", h.siteConfig.Theme.Name)
 	for _, dir := range []string{themeDir, "assets/shared"} {
 		data, err := fs.ReadFile(h.assetsFS, path.Join(dir, name))
