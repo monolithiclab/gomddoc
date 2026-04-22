@@ -88,6 +88,7 @@ testsite/              # Lorem ipsum test site for quick testing
 3. Run `make ci` — must pass before drafting commit
 4. Update relevant documentation in `docs/`
 5. Draft and print the Git commit message (let user commit manually)
+6. Never squash commits — each commit must be atomic and self-contained
 
 ### Conventions
 

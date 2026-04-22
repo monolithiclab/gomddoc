@@ -396,6 +396,15 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 - **Shadow DOM for heading anchors and color chips**: Self-contained elements with no inner content from markdown. Encapsulation prevents style leakage.
 - **`gmd-` prefix**: Namespaces all custom elements to avoid collisions. Applied retroactively to `<color-chip>` → `<gmd-color-chip>`.
 
+## `cases.Title` Per-Call Allocation
+
+**Chosen**: Create a fresh `cases.Title(language.English)` at every call site
+
+**Alternative considered**:
+- **Package-level `var caser = cases.Title(language.English)`**: Avoids per-call allocation but `cases.Caser` holds mutable internal state (`x/text/transform` writes to internal buffers on every `.String()` call). Confirmed not goroutine-safe by `-race` detector.
+
+**Why per-call**: The allocation is negligible. A `sync.Pool` of casers could be used if this becomes a hot path, but benchmarks show no need.
+
 ## Deferred / Discarded Ideas
 
 | Idea | Status | Reason |
@@ -407,6 +416,7 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 | VS Code extension | Deferred | Low priority |
 | Plugin architecture / dynamic loading | Deferred | Interface-based extensibility is sufficient |
 | Content versioning | Discarded | Use Git history directly |
+| BOM (byte order mark) stripping | Discarded | Unnecessary edge case; not worth the complexity |
 | TOML/JSON frontmatter | Deferred | YAML is standard; others can be added later |
 | Fuzz testing for MarkdownRenderer | Deferred | Recommended in spec but not yet implemented |
 | Panic recovery in Handler | Deferred | Nice-to-have, not critical |
