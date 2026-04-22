@@ -159,6 +159,88 @@ og_type: website
 ---
 ```
 
+## Structured Data (JSON-LD)
+
+When a domain is configured, gomddoc injects [Schema.org](https://schema.org/) structured data
+into every page as `<script type="application/ld+json">`. This helps search engines understand
+your content and can enable rich results (enhanced search snippets).
+
+Three schema types are generated:
+
+### TechArticle (every page)
+
+Every page gets a `TechArticle` schema with fields populated from frontmatter:
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Setup Guide",
+  "description": "How to install and configure the project",
+  "author": {"@type": "Person", "name": "Alice"},
+  "datePublished": "2025-06-15T00:00:00Z",
+  "url": "https://docs.example.com/guide/setup.md"
+}
+```
+
+Fields are omitted when not present in frontmatter — only `url` and `mainEntityOfPage` are always
+included.
+
+### BreadcrumbList (pages with navigation depth)
+
+Pages with more than one breadcrumb get a `BreadcrumbList` schema that mirrors the visible
+breadcrumb trail:
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://docs.example.com/"},
+    {"@type": "ListItem", "position": 2, "name": "Guide", "item": "https://docs.example.com/guide/"}
+  ]
+}
+```
+
+### WebSite (index page only)
+
+The site's index page (root or default index file) includes a `WebSite` schema. When search is
+enabled, it includes a `SearchAction` that tells Google about your site's search endpoint:
+
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "My Project Docs",
+  "url": "https://docs.example.com/",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://docs.example.com/api/search?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+```
+
+### Customizing JSON-LD
+
+The JSON-LD output is rendered via an overridable template partial called `jsonld`. To customize
+or disable JSON-LD, create a `.gomddoc/partials/jsonld.html.tmpl` file:
+
+```html
+{{/* Disable JSON-LD entirely */}}
+{{ define "jsonld" }}{{ end }}
+```
+
+Or override with custom schemas:
+
+```html
+{{ define "jsonld" }}
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "Organization", "name": "My Company"}
+</script>
+{{ end }}
+```
+
 ## Static Site Generation
 
 All SEO features work seamlessly with `gomddoc build`:

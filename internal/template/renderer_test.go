@@ -1349,6 +1349,149 @@ func TestLayoutSelectionRendering(t *testing.T) {
 	}
 }
 
+func TestJSONLDFunction(t *testing.T) {
+	t.Parallel()
+
+	templateContent := `{{- jsonLD .Page -}}`
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/jsonld.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	t.Run("with domain produces script tag", func(t *testing.T) {
+		t.Parallel()
+
+		siteConfig := config.NewSiteConfig(".")
+		siteConfig.Meta.Domain = "docs.example.com"
+		siteConfig.Meta.Title = "My Docs"
+		siteConfig.HasSearch = true
+
+		r := NewHTMLRenderer(&siteConfig, testFS)
+		ctx := &TemplateContext{
+			Site: &siteConfig,
+			Page: PageContext{
+				Path: "/guide.md",
+				Meta: map[string]any{
+					"title":       "Guide",
+					"description": "A guide",
+					"author":      "Alice",
+				},
+			},
+		}
+
+		result, err := r.Render(context.Background(), "jsonld.html.tmpl", ctx)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+
+		output := string(result)
+		if !strings.Contains(output, `<script type="application/ld+json">`) {
+			t.Error("Expected script tag in output")
+		}
+		if !strings.Contains(output, `"TechArticle"`) {
+			t.Error("Expected TechArticle type")
+		}
+		if !strings.Contains(output, `"Guide"`) {
+			t.Error("Expected headline")
+		}
+	})
+
+	t.Run("without domain produces empty", func(t *testing.T) {
+		t.Parallel()
+
+		siteConfig := config.NewSiteConfig(".")
+
+		r := NewHTMLRenderer(&siteConfig, testFS)
+		ctx := &TemplateContext{
+			Site: &siteConfig,
+			Page: PageContext{
+				Path: "/guide.md",
+				Meta: map[string]any{"title": "Guide"},
+			},
+		}
+
+		result, err := r.Render(context.Background(), "jsonld.html.tmpl", ctx)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+
+		if string(result) != "" {
+			t.Errorf("Expected empty output without domain, got %q", string(result))
+		}
+	})
+
+	t.Run("index page includes WebSite schema", func(t *testing.T) {
+		t.Parallel()
+
+		siteConfig := config.NewSiteConfig(".")
+		siteConfig.Meta.Domain = "docs.example.com"
+		siteConfig.Meta.Title = "My Docs"
+		siteConfig.DefaultIndex = "README.md"
+
+		r := NewHTMLRenderer(&siteConfig, testFS)
+		ctx := &TemplateContext{
+			Site: &siteConfig,
+			Page: PageContext{
+				Path: "/README.md",
+				Meta: map[string]any{"title": "Home"},
+			},
+		}
+
+		result, err := r.Render(context.Background(), "jsonld.html.tmpl", ctx)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+
+		output := string(result)
+		if !strings.Contains(output, `"WebSite"`) {
+			t.Error("Expected WebSite schema for index page")
+		}
+	})
+
+	t.Run("with breadcrumb generator", func(t *testing.T) {
+		t.Parallel()
+
+		siteConfig := config.NewSiteConfig(".")
+		siteConfig.Meta.Domain = "docs.example.com"
+
+		stubGen := &stubBreadcrumbGen{
+			crumbs: []breadcrumb.Breadcrumb{
+				{Path: "/", Label: "Home"},
+				{Path: "/guide/", Label: "Guide"},
+				{Path: "/guide/setup.md", Label: "Setup"},
+			},
+		}
+
+		r := NewHTMLRenderer(&siteConfig, testFS, WithBreadcrumbGenerator(stubGen))
+		ctx := &TemplateContext{
+			Site: &siteConfig,
+			Page: PageContext{
+				Path: "/guide/setup.md",
+				Meta: map[string]any{"title": "Setup"},
+			},
+		}
+
+		result, err := r.Render(context.Background(), "jsonld.html.tmpl", ctx)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+
+		output := string(result)
+		if !strings.Contains(output, `"BreadcrumbList"`) {
+			t.Error("Expected BreadcrumbList schema with breadcrumbs")
+		}
+	})
+}
+
+type stubBreadcrumbGen struct {
+	crumbs []breadcrumb.Breadcrumb
+}
+
+func (s *stubBreadcrumbGen) Generate(_ string) []breadcrumb.Breadcrumb {
+	return s.crumbs
+}
+
 func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
 	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
 	testFS := fstest.MapFS{

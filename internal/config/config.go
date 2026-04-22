@@ -78,6 +78,7 @@ type SiteConfig struct {
 	Meta         MetaConfig      `env:"META" yaml:"meta"`
 	Theme        ThemeConfig     `env:"THEME" yaml:"theme"`
 	Highlighting HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
+	HasSearch    bool            `yaml:"-"` // Set at runtime, not from config file
 }
 
 // MetaConfig holds site metadata

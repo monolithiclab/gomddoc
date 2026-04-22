@@ -246,6 +246,9 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"canonicalURL": func(pagePath string) string {
 			return seo.PageURL(h.siteConfig.Meta.Domain, pagePath, h.siteConfig.DefaultIndex)
 		},
+		"jsonLD": func(page PageContext) template.HTML {
+			return h.generateJSONLD(page)
+		},
 		"assetURL": func(name string) string {
 			return "/_assets/" + name
 		},
@@ -260,6 +263,53 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 			return "", fmt.Errorf("asset %q not found in theme or shared", name)
 		},
 	}
+}
+
+// generateJSONLD produces JSON-LD structured data script tags for a page.
+func (h *HTMLRenderer) generateJSONLD(page PageContext) template.HTML {
+	cfg := seo.JSONLDConfig{
+		Domain:       h.siteConfig.Meta.Domain,
+		SiteName:     h.siteConfig.Meta.Title,
+		DefaultIndex: h.siteConfig.DefaultIndex,
+		HasSearch:    h.siteConfig.HasSearch,
+	}
+
+	// Build breadcrumbs with full URLs
+	var breadcrumbs []seo.BreadcrumbItem
+	if h.breadcrumbGen != nil {
+		for _, bc := range h.breadcrumbGen.Generate(page.Path) {
+			breadcrumbs = append(breadcrumbs, seo.BreadcrumbItem{
+				Name: bc.Label,
+				URL:  seo.PageURL(cfg.Domain, bc.Path, cfg.DefaultIndex),
+			})
+		}
+	}
+
+	// Detect index page
+	isIndex := page.Path == "/" || path.Base(page.Path) == h.siteConfig.DefaultIndex
+
+	p := seo.JSONLDPage{
+		Path:        page.Path,
+		Breadcrumbs: breadcrumbs,
+		IsIndex:     isIndex,
+	}
+
+	// Extract metadata fields
+	if title, ok := page.Meta["title"].(string); ok {
+		p.Title = title
+	}
+	if desc, ok := page.Meta["description"].(string); ok {
+		p.Description = desc
+	}
+	if author, ok := page.Meta["author"].(string); ok {
+		p.Author = author
+	}
+
+	raw := seo.GenerateJSONLD(cfg, p)
+	if raw == "" {
+		return ""
+	}
+	return template.HTML(`<script type="application/ld+json">` + raw + `</script>`) // #nosec G203 -- trusted JSON-LD output
 }
 
 // generateEditURL generates the full edit URL for a page by combining

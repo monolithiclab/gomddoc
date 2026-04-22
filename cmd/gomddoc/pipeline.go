@@ -107,6 +107,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 			slog.Warn("Failed to build search index", slog.Any("error", searchErr))
 		} else {
 			p.SearchIndex = searchIdx
+			cfg.Site.HasSearch = true
 		}
 	}
 
