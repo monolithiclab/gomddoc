@@ -198,6 +198,40 @@ Extracted from completed spec files before deletion.
 
 **Why content hashes**: FNV-64a ETag on the rendered HTML means only genuinely changed pages are invalidated. No dependency on Git metadata at serve time. Works identically for filesystem and git providers.
 
+## Benchmark Strategy
+
+**Chosen**: Per-package `*_bench_test.go` files with table-driven small/medium/large document sizes
+
+**Key decisions**:
+- **`b.Loop()` over `b.N`**: Go 1.25+ `b.Loop()` eliminates common benchmark pitfalls (compiler optimization, timer management)
+- **Three document sizes**: Small (~50B), medium (~2KB), large (~20KB) — covers cache-friendly and cache-busting scenarios
+- **Separate bench files**: `*_bench_test.go` keeps benchmarks isolated from unit tests; `make bench` uses `-run=^$` to skip unit tests
+- **`benchstat` comparison**: `make bench-save` captures baseline, `make bench-compare` detects regressions. Count=6 for statistical significance
+- **No CI integration yet**: Deferred until GitHub Actions is set up
+
+## pprof Integration
+
+**Chosen**: `--pprof` CLI flag enabling `net/http/pprof` handlers on the existing mux
+
+**Alternatives considered**:
+- **Always-on pprof on separate port**: Avoids accidental production exposure but adds port management complexity
+- **Build tag (`-tags pprof`)**: Zero overhead when disabled but complicates the build process
+
+**Why CLI flag**: Simplest approach. Disabled by default, logs `slog.Warn` when enabled. Routes registered directly on the mux (bypass content middleware, like `/health/` and `/metrics`). Config flows through `ServerConfig.Pprof` and is overridable via `GOMDDOC_SERVER_PPROF` env var.
+
+## Pre-Launch SEO (Phase 9a)
+
+**Chosen**: Template functions + dedicated handlers + shared `internal/seo` package
+
+**Key decisions**:
+- **Shared URL construction**: `seo.PageURL(domain, path, defaultIndex)` in `internal/seo/url.go` used by template functions, sitemap handler, and build command. Uses `net/url` for proper URL building. Default index filename from config (not hardcoded).
+- **Single head partial**: All SEO tags in `default/partials/head.html.tmpl` — inherited by all 8 themes via partial override system. No per-theme changes needed.
+- **`og:type` overridable**: Defaults to `article` but frontmatter `og_type` field overrides it (e.g., `og_type: website` for landing pages).
+- **Conditional tags**: All SEO tags degrade gracefully — canonical/OG URL tags only render when `meta.domain` is configured. Description falls back from page to site level.
+- **Sitemap handler**: Only registered when both `MetaIndex` and `Meta.Domain` are available. Uses `metadata.Index.AllPages()` for page discovery.
+- **robots.txt handler**: Always registered (useful even without domain). `Sitemap:` directive only included when domain is set.
+- **Build integration**: `robots.txt` always generated. `sitemap.xml` only generated when `Meta.Domain` is configured. Uses same `GenerateSitemap`/`GenerateRobotsTxt` functions as serve handlers.
+
 ## Full-Text Search (Decision Pending)
 
 **Options analyzed** (not yet implemented):

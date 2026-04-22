@@ -73,6 +73,14 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		mux.HandleFunc("GET /api/tags/{tag}", metaHandler.TagPagesHandler)
 	}
 
+	robotsHandler := NewRobotsHandler(cfg.Site.Meta.Domain)
+	mux.Handle("GET /robots.txt", robotsHandler)
+
+	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
+		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex)
+		mux.Handle("GET /sitemap.xml", sitemapHandler)
+	}
+
 	if opts.StaticFS != nil {
 		assetsHandler := NewAssetsHandler(opts.StaticFS)
 		mux.Handle("GET /_assets/", http.StripPrefix("/_assets/", assetsHandler))

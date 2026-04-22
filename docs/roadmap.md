@@ -17,252 +17,36 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 - **Performance-first**: Built for speed with intelligent caching
 - **Security by design**: Path traversal protection, content sanitization, secure defaults
 
-## Current State (Phase 8 Complete)
+## Current State
 
-The foundation is production-ready with comprehensive test coverage across internal packages:
+The foundation is production-ready with 87.9% test coverage. For a full description
+of current capabilities, see `docs/architecture.md`.
 
-- **CLI**: Kong-based subcommand architecture (`gomddoc serve`, `gomddoc build`, `gomddoc preview`), version
-  injection via ldflags, exhaustive `--help` with env var discovery.
-- **Configuration**: Reflection-based env var walking, CLI flags, YAML config files with proper validation
-  and correct prefix nesting (`GOMDDOC_SITE_*`). Priority: flags > env > file > defaults.
-- **Providers**: Filesystem (os.DirFS with path traversal protection) and Git (go-git, memory or disk-based
-  storage, SSH auth with known_hosts, fail-closed).
-- **Rendering**: Markdown (goldmark, GFM, syntax highlighting, admonitions, color chips, TOC, heading anchors,
-  YAML frontmatter), passthrough for all other MIME types via `*/*` wildcard. Post-processing pipeline:
-  goldmark → heading anchors → admonitions → color chips.
-- **Theming**: 8 bundled themes (default, academic, gitbook, material, midnight, minimal, nord, ocean) with
-  composable partials, site-level partial overrides, theme variables (`--theme-*` CSS custom properties),
-  page type templates (frontmatter `layout` field), light/dark mode, TOC scroll highlighting, touch device
-  accessibility, copy-to-clipboard code blocks, KaTeX math rendering, and Mermaid diagram support. Color chips
-  rendered via a `<color-chip>` web component with Shadow DOM encapsulation.
-- **Static assets**: `/_assets/` route serving theme and shared static files with overlay resolution
-  (site > theme > shared), ETag caching, and build-mode copy.
-- **HTTP**: Two-dimensional content negotiation (input type + Accept header), gzip compression,
-  security headers, ETag, request ID tracking, graceful shutdown.
-- **Monitoring**: Prometheus metrics (`/metrics`), health probes (`/health/live`, `/health/ready`).
-- **Security**: Hidden file blocking, method filtering (GET/HEAD), clone timeout, file size limits.
-- **Navigation**: Auto-generated sidebar from directory structure with collapsible directories, active state
-  tracking, and title extraction from markdown headings.
-- **Metadata**: Frontmatter indexing across all pages with JSON API (`/api/tags`, `/api/tags/{tag}`).
-- **Static site generation**: `gomddoc build` command for deploying to S3, Netlify, GitHub Pages.
-- **Edit links**: Configurable `edit_url` in site config with "Edit this page" footer links.
-- **Template functions**: `navigation`, `toc`, `breadcrumbs`, `editURL`, `inlineAsset`, `themeVarsCSS`,
-  `assetURL` available in themes.
-- **Documentation**: User guides (`docs/guide/`), architecture reference (`docs/architecture.md`).
+**Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
+7 (partial), 7b (preview), 8 (theming engine), 9a (pre-launch SEO).
 
-See `docs/architecture.md` for detailed architecture and `docs/guide/` for user documentation.
+## Phase 4: Performance and Scaling
 
-## Phase 4: Performance and Scaling (Partial)
-
-- [x] **Disk-based Git storage**: `DiskStorageFactory` for the Git provider via `--git-storage-dir` flag.
-      Prevents OOM on large repos by cloning to disk instead of memory.
 - [ ] **Partial clones**: `git clone --filter=blob:none` when upstream library support matures.
-- [x] **Auto-port assignment**: `--port :auto` (or `-p :auto`) scans for an available port starting from
-      8080. Works in any mode, not just dev. Port discovery via sequential `net.Listen` scan.
-- [x] **Profiling and benchmarks**: Comprehensive benchmarks and `pprof` integration for
-      data-driven performance optimization.
-  - [x] **Benchmark suite**: Table-driven benchmarks for hot-path functions: markdown rendering
-        (`MarkdownRenderer.Render`), enrichment (`MarkdownEnricher.Enrich`), content negotiation
-        (`DefaultRegistry.Get`), template rendering (`HTMLRenderer.Render`), and compression
-        (`compressionWriter`). Include small, medium, and large document sizes.
-  - [x] **`pprof` endpoint**: Expose `/debug/pprof/` behind a `--pprof` flag (disabled by default,
-        never in production). CPU, heap, goroutine, and mutex profiles available at runtime.
-  - [ ] **CI benchmark tracking**: Run benchmarks in CI with `go test -bench -benchmem`. Use
-        `benchstat` to detect regressions against the baseline. Fail CI on >10% degradation.
-  - [ ] **Allocation reduction**: Profile and reduce allocations in the request hot path
-        (provider → enricher → renderer → template → compress → serve). Target zero-alloc for
-        ETag checks and content negotiation.
+- [ ] **CI benchmark tracking**: Run benchmarks in CI with `go test -bench -benchmem`. Use
+      `benchstat` to detect regressions against the baseline. Fail CI on >10% degradation.
+- [ ] **Allocation reduction**: Profile and reduce allocations in the request hot path
+      (provider → enricher → renderer → template → compress → serve). Target zero-alloc for
+      ETag checks and content negotiation.
 
-## Phase 5: Search and Discovery (Partial)
+## Phase 5: Search and Discovery
 
 - [ ] **Full-text search**: Decision pending — Option C (stdlib inverted index) for serve, Option B (Pagefind)
       for build. See `docs/decisions.md` for analysis.
-- [x] **Auto-navigation**: Sidebar navigation generated from directory structure with collapsible `<details>`
-      elements, title extraction, and active path highlighting.
-- [x] **Metadata indexing**: Lightweight frontmatter parser indexes tags/categories across all pages.
-      JSON API: `GET /api/tags` and `GET /api/tags/{tag}`.
-- [x] **Rethink `dir_index`**: When `dir_index=false` (default), directories without an index file now
-      redirect (302) to the first page in the navigation tree instead of returning 403. The synthetic
-      listing (`dir_index=true`) is preserved as a legacy option. Empty directories still return 403.
 
-## Phase 6: Renderer Enhancement (Partial)
+## Phase 7: Static Site Generation
 
-_Expand the rendering pipeline with proper content negotiation, enrichment, and format support._
-
-### 6a: Two-Dimensional Content Negotiation (Done)
-
-Reworked the renderer registry so renderers declare both **input** and **output** MIME types. The handler
-uses the file's MIME type and the client's `Accept` header to select the best renderer before rendering.
-
-- [x] **`internal/negotiate` package**: Extracted `MediaType`, `ParseAccept`, `Matches` from
-      `internal/server/accept.go` into a standalone package to avoid import cycles between renderer and server.
-- [x] **Renderer interface change**: Replaced `SupportedMimeTypes() []string` with two methods:
-      `InputMimeTypes() []string` and `OutputMimeTypes() []string`. Each renderer declares its
-      input→output transformation.
-- [x] **Registry two-dimensional lookup**: `Get(inputMimeType, acceptedTypes)` returns `(renderer,
-      selectedOutputType, error)`. Selection algorithm: filter by input match, then rank by output
-      specificity (exact=3 > type/*=2 > */*=1). On tie, latest registered wins (allows overrides).
-      Wildcard outputs resolve to the input type before matching.
-- [x] **MarkdownRenderer**: input `["text/markdown"]`, output `["text/html"]`. Unchanged behavior.
-- [x] **MarkdownPassthroughRenderer**: input `["text/markdown"]`, output `["text/markdown"]`. Returns
-      raw markdown with frontmatter stripped and metadata/TOC extracted. Enables LLM-friendly API access
-      via `Accept: text/markdown`.
-- [x] **PassthroughRenderer**: input `["*/*"]`, output `["*/*"]`. Catch-all fallback, lowest priority.
-- [x] **Handler update**: Content negotiation now happens _before_ rendering. New flow:
-      `ReadFile → ParseAccept → Get(input, accepted) → Render → Serve`. No wasted CPU on 406 responses.
-- [x] **406 Not Acceptable**: When no renderer matches, returns 406 with a list of available output types.
-- [x] **Build command**: Registry-based dispatch replaces hardcoded `text/markdown` check. Uses
-      `registry.Get(mimeType, htmlAccept)` to determine renderable files.
-
-### 6b: Content Enricher Pipeline (Done)
-
-Introduced an `Enricher` step that runs before rendering. The enricher extracts structured data from
-content (metadata, TOC, navigation, related documents) independent of the output format. Renderers
-receive enrichment data and focus solely on content transformation.
-
-- [x] **`internal/enricher/` package**: New package with `EnrichmentData`, `TOCNode`, `NavTree`, `NavItem`,
-      `RelatedDoc` types, `Enricher` and `EnricherRegistry` interfaces.
-- [x] **MarkdownEnricher**: Lightweight goldmark (GFM + meta, no highlighting) extracts YAML frontmatter,
-      builds TOC from headings, and finds related documents via shared tags (using metadata index).
-      Accepts `NavBuilder` function for navigation (avoids import cycles).
-- [x] **NoOpEnricher**: Returns empty `EnrichmentData{}`. Used as registry fallback for non-markdown types.
-- [x] **Enricher registry**: MIME-type-keyed `DefaultEnricherRegistry` with `sync.RWMutex`. `Get()` never
-      returns nil — falls back to NoOpEnricher. Normalizes MIME types (strips charset params).
-- [x] **Render signature change**: `Render(ctx, content, enrichment)` — renderers receive `*EnrichmentData`.
-      Simplified `RenderResult` to just `Content` + `MimeType` (metadata/TOC removed, provided by enricher).
-- [x] **Handler pipeline**: `ReadFile → Enrich(content, path) → ParseAccept → Get(input, accepted)
-      → Render(content, enrichment) → serveHTML(content, enrichment)`. Enrichment happens before rendering.
-- [x] **TOCNode moved**: From `renderer` to `enricher` package. Template package imports `enricher` directly.
-- [x] **Renderer cleanup**: MarkdownRenderer removed metadata/TOC extraction (still parses markdown for
-      HTML + post-processing). MarkdownPassthroughRenderer simplified to just frontmatter stripping.
-- [x] **Navigation via enricher**: Navigation tree generation moved from template layer into the enricher
-      pipeline. `MarkdownEnricher` accepts a `NavBuilder` function (wraps `navigation.Generator` to avoid
-      import cycles), stores the tree in `EnrichmentData.Navigation`, and passes it to templates via
-      `PageContext.Navigation`. Template `{{ navigation .Page.Navigation }}` renders from the enriched data.
-      Handler uses a `RedirectFinder` closure for dir-no-index redirects, breaking the server→navigation
-      import dependency.
-
-### 6c: Additional Renderers (Partial)
-
-_Expand format support for technical documentation._
-
-- [x] **KaTeX math rendering**: Client-side via CDN with `$...$` (inline) and `$$...$$` (display) delimiters.
-      Auto-render extension scans page content on load.
-- [x] **Mermaid diagrams**: Client-side via CDN with fenced `mermaid` code blocks. Theme-aware (dark/light).
-
-## Phase 7: Static Site Generation (Partial)
-
-- [x] **`gomddoc build` command**: Walk content tree, render markdown through template pipeline, output
-      static HTML. Generates `index.html` alongside `README.html` for clean URLs. Copies non-markdown files as-is.
 - [ ] **Sitemap generation**: Generate `sitemap.xml` during build with `<url>` entries for all rendered
       pages. Include `<lastmod>` from Git commit dates (filesystem provider falls back to file mtime).
       Respects `base_url` from site config for absolute URLs. Excludes hidden files and non-HTML outputs.
       See also Phase 9a for dynamic `/sitemap.xml` in serve mode.
 - [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
 - [ ] **Static host compatibility**: Output structure compatible with S3, Netlify, Cloudflare Pages.
-
-## Phase 7b: `gomddoc preview` — Quick Local Preview (Done)
-
-_A zero-friction subcommand for previewing documentation locally, distinct from the production-grade `serve`._
-
-- [x] **`gomddoc preview [dir]`**: Serve a directory (defaults to `.`) with sensible defaults optimized for
-      local authoring. Differences from `serve`:
-  - **Auto port**: Find an available port starting from 8080 (`--port :auto`).
-  - **Browser open**: Launch the default browser with `--open` flag.
-  - **Dev mode on**: Implies `--dev` (no caching) without requiring the flag.
-  - **Minimal output**: Print only the URL and "Press Ctrl+C to stop".
-- [x] **Port discovery**: Sequential scan from 8080 via `net.Listen`. Port is resolved before server
-      creation so the startup log shows a working clickable URL.
-- [x] **Browser open**: Uses `open` (macOS), `xdg-open` (Linux), `start` (Windows). Respects `$BROWSER`.
-
-## Phase 8: Theming Engine
-
-_Transform themes from monolithic templates into composable, configurable, distributable packages._
-
-### 8a: Theme Folder Structure
-
-Rework the current flat structure (`<theme>/default.html.tmpl`) into a well-defined package layout
-that supports partials, multiple page types, and static assets.
-
-- [x] **Canonical structure**: Restructured each theme directory to composable layout:
-  ```
-  <theme>/
-  ├── README.md              # Enriched frontmatter metadata + description
-  ├── layouts/
-  │   └── default.html.tmpl   # Skeleton calling partials (~40-50 lines)
-  ├── partials/
-  │   ├── head.html.tmpl     # <head>: meta, fonts, CSS
-  │   ├── header.html.tmpl   # Site header bar
-  │   ├── nav.html.tmpl      # Navigation sidebar (self-contained)
-  │   ├── toc.html.tmpl      # TOC sidebar (self-contained)
-  │   └── scripts.html.tmpl  # All <script> blocks
-  └── screenshots/
-      ├── desktop-light.png
-      └── desktop-dark.png
-  ```
-- [x] **Migration**: Moved `default.html.tmpl` into `layouts/`, screenshots into `screenshots/`.
-- [x] **Embedded themes update**: Reworked default theme (`cmd/gomddoc/assets/themes/default/`) and
-      all 7 material themes to the new structure. Template renderer updated to parse layouts + partials.
-- [x] **Page type templates**: Frontmatter `layout` field selects alternative layouts (see 8d).
-- [x] **Static asset directory**: Theme-specific `static/` served via `/_assets/` (see 8e).
-
-### 8b: Template Partials
-
-Break the monolithic `default.html.tmpl` into composable partials that themes can selectively override.
-
-- [x] **Partial system**: Split all theme layouts into `head.html.tmpl`, `header.html.tmpl`, `nav.html.tmpl`,
-      `toc.html.tmpl`, `scripts.html.tmpl`. Main layout assembles partials via `{{ template "head" . }}` etc.
-      Each partial is self-contained and calls its own template functions.
-- [x] **Partial override resolution**: Theme provides base partials; site `.gomddoc/partials/` overrides
-      specific ones without copying the whole theme. Resolution order: site partials > theme partials > default.
-      Implemented via `parseGlob` helper that parses matching files into the template — last `{{ define }}` wins.
-- [x] **UI polish**: Copy-to-clipboard for code blocks.
-- [x] **Dark mode**: Native light/dark toggle with `prefers-color-scheme` fallback.
-- [x] **8 bundled themes**: default, academic, gitbook, material, midnight, minimal, nord, ocean.
-      Each with light/dark screenshots, responsive design, and full feature parity.
-- [x] **TOC scroll highlighting**: Active heading tracking in table of contents sidebar.
-- [x] **Touch device accessibility**: `@media (hover: none)` shows copy buttons and heading anchors by default.
-- [x] **Color chip web component**: `<color-chip>` custom element with Shadow DOM, click-to-copy, accessible.
-- [x] **`inlineAsset` template function**: Load shared assets (JS/CSS) from theme or shared directory.
-
-### 8c: Theme Variables (Done)
-
-Inject CSS custom properties from site configuration, enabling color and typography customization
-without forking themes.
-
-- [x] **Config-driven variables**: `theme.vars` map in `.gomddoc/config.yml` defines CSS custom properties.
-      Each key-value pair becomes `--theme-{key}: {value}` in a `:root` CSS block. Dark mode variables use
-      naming convention: `dark-bg`, `dark-text`, etc.
-- [x] **`themeVarsCSS` template function**: Generates a `<style>` block with CSS custom properties from
-      config. Cached via `sync.Once` for thread safety. Called in theme `head.html.tmpl` partials.
-- [x] **Theme CSS integration**: Default theme's `head.html.tmpl` uses `var(--theme-bg, #ffffff)` with
-      hardcoded fallbacks, so themes work without any vars configured.
-
-### 8d: Page Types (Done)
-
-Support multiple layout variants selectable from content frontmatter.
-
-- [x] **Page type templates**: Themes provide `default.html.tmpl` plus optional type-specific layouts
-      (e.g., `page.html.tmpl`, `api.html.tmpl`). Layouts live in `<theme>/layouts/`.
-- [x] **Frontmatter `layout` field**: Content files select their layout via `layout: page` in frontmatter.
-      `ResolveLayout()` checks enrichment metadata, appends `.html.tmpl`, and falls back to
-      `default.html.tmpl` if the specified layout doesn't exist via `HasTemplate()`.
-- [x] **Build mode support**: `gomddoc build` uses the same `ResolveLayout()` logic for layout selection.
-
-### 8e: Static Asset Serving (Done)
-
-Serve theme-specific and shared static files (JS, CSS, images, fonts) via a dedicated `/_assets/` route,
-using the overlay filesystem to allow themes to override shared resources.
-
-- [x] **Overlay resolution for statics**: `BuildStaticFS()` in `internal/assets/` creates a 3-layer overlay:
-      site `.gomddoc/static/` > theme `static/` > `assets/shared/static/`. Reuses `OverlayFS`.
-- [x] **`/_assets/` HTTP handler**: `assets_handler.go` serves files from the static overlay FS with proper
-      MIME types, FNV-64a ETags, `Cache-Control: public, max-age=31536000, immutable`, directory listing
-      and dotfile blocking. Registered before the catch-all `/` route.
-- [x] **Template `assetURL` function**: `{{ assetURL "color-chip.js" }}` resolves to `/_assets/color-chip.js`.
-      Verifies file exists in the static overlay FS.
-- [x] **Build mode**: `gomddoc build` copies the resolved static overlay into the output `_assets/`
-      directory via `copyStaticAssets()`. Same overlay precedence as serve mode.
 
 ## Phase 9: SEO and Discoverability
 
@@ -275,20 +59,17 @@ See `docs/seo-competitive-analysis.md` for full competitive analysis._
 
 _Must ship before public launch. These are table-stakes features that every documentation tool provides._
 
-- [ ] **Canonical URLs**: Add `<link rel="canonical" href="...">` to every page's `<head>`.
-      Constructed from `domain` config + page path. Prevents duplicate content penalties when
-      content is accessible via multiple URLs (trailing slash, `README.md` vs `index.html`).
-      Expose `canonicalURL` in `TemplateContext` or as a template function. Low complexity.
-- [ ] **XML sitemap**: _Already planned in Phase 7._ Additionally, serve `/sitemap.xml` dynamically
-      in `serve` mode (not just `build`). Include `<lastmod>` from Git commit dates (see Git-based
-      timestamps below).
-- [ ] **`robots.txt`**: Serve `/robots.txt` with `Sitemap:` directive and sensible defaults
-      (allow all, block `/_assets/`, `/api/`, `/.well-known/`). In `build` mode, write file to
-      output directory. In `serve` mode, serve from a dedicated handler. Low complexity.
-- [ ] **Open Graph meta tags**: Add `og:title`, `og:description`, `og:url`, `og:type` ("article"),
-      `og:site_name` to every page. Add corresponding `twitter:card` (summary) tags. All data
-      already available from frontmatter and site config. Optional `og:image` (see P1 social
-      images). Add to theme `head.html.tmpl` partials. Low complexity.
+- [x] **Canonical URLs**: `<link rel="canonical">` on every page via `canonicalURL` template function.
+      Uses `meta.domain` config + page path with `net/url` for proper URL construction. Default index
+      files stripped from URLs.
+- [x] **XML sitemap**: `/sitemap.xml` served dynamically in `serve` mode and generated during `build`.
+      Uses metadata index for page discovery. `<lastmod>` deferred to Git-based timestamps (Phase 9b).
+- [x] **`robots.txt`**: `/robots.txt` served in `serve` mode and generated during `build`.
+      Blocks `/_assets/`, `/api/`, `/debug/`. Includes `Sitemap:` directive when domain is configured.
+- [x] **Open Graph meta tags**: `og:title`, `og:description`, `og:url`, `og:type`, `og:site_name` on
+      every page. `og:type` defaults to `article` but overridable via frontmatter `og_type` field.
+      Matching `twitter:card` summary tags. All in default theme's `head.html.tmpl` partial (inherited
+      by all 8 themes).
 
 ### 9b: Post-Launch SEO (P1)
 
@@ -493,9 +274,8 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus (Phase 9a):** Canonical URLs, robots.txt, Open Graph — table-stakes SEO before public release.
-**Next up (Phase 4 & 5):** Profiling/benchmarks for data-driven optimization, full-text search for content discovery.
-**Then (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
+**Immediate focus (Phase 4 & 5):** CI benchmark tracking, allocation reduction, full-text search for content discovery.
+**Next up (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
 **High-value (Phase 10a):** MCP interface — low complexity (thin adapter over existing layers), high differentiation.
 
 ## Deferred (Not Planned)

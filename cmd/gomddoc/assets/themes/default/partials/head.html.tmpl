@@ -4,6 +4,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{ .Site.Meta.Description }}">
   <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
+  {{ $url := canonicalURL .Page.Path }}{{ if $url }}
+  <link rel="canonical" href="{{ $url }}">{{ end }}
+
+  <!-- Open Graph -->{{ if $url }}
+  <meta property="og:url" content="{{ $url }}">{{ end }}
+  {{ if .Page.Meta.og_type }}<meta property="og:type" content="{{ .Page.Meta.og_type }}">{{ else }}<meta property="og:type" content="article">{{ end }}
+  <meta property="og:site_name" content="{{ .Site.Meta.Title }}">
+  {{ if .Page.Meta.title }}<meta property="og:title" content="{{ .Page.Meta.title }}">{{ end }}
+  {{ if .Page.Meta.description }}<meta property="og:description" content="{{ .Page.Meta.description }}">
+  {{ else if .Site.Meta.Description }}<meta property="og:description" content="{{ .Site.Meta.Description }}">{{ end }}
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  {{ if .Page.Meta.title }}<meta name="twitter:title" content="{{ .Page.Meta.title }}">{{ end }}
+  {{ if .Page.Meta.description }}<meta name="twitter:description" content="{{ .Page.Meta.description }}">
+  {{ else if .Site.Meta.Description }}<meta name="twitter:description" content="{{ .Site.Meta.Description }}">{{ end }}
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">

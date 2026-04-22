@@ -18,9 +18,11 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/common"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/server"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
@@ -85,6 +87,11 @@ func (b *BuildCmd) Run() error {
 		if err := b.copyStaticAssets(pipeline.StaticFS, stats); err != nil {
 			return fmt.Errorf("copy static assets: %w", err)
 		}
+	}
+
+	// Generate SEO files (robots.txt and sitemap.xml)
+	if err := b.generateSEOFiles(contentRoot, &cfg.Site); err != nil {
+		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
 	elapsed := time.Since(start)
@@ -284,6 +291,36 @@ func (b *BuildCmd) copyStaticAssets(staticFS fs.FS, stats *buildStats) error {
 		slog.Debug("Copied static asset", slog.String("file", outPath))
 		return nil
 	})
+}
+
+// generateSEOFiles generates robots.txt and optionally sitemap.xml in the output directory.
+func (b *BuildCmd) generateSEOFiles(contentRoot fs.FS, siteConfig *config.SiteConfig) error {
+	// Always generate robots.txt
+	robotsTxt := server.GenerateRobotsTxt(siteConfig.Meta.Domain)
+	if err := b.writeOutputFile("robots.txt", []byte(robotsTxt)); err != nil {
+		return fmt.Errorf("write robots.txt: %w", err)
+	}
+	slog.Debug("Generated", slog.String("file", "robots.txt"))
+
+	// Generate sitemap.xml only if domain is configured
+	if siteConfig.Meta.Domain != "" {
+		idx, err := metadata.BuildIndex(context.Background(), contentRoot)
+		if err != nil {
+			return fmt.Errorf("build metadata index for sitemap: %w", err)
+		}
+
+		sitemapData, err := server.GenerateSitemap(idx, siteConfig.Meta.Domain, siteConfig.DefaultIndex)
+		if err != nil {
+			return fmt.Errorf("generate sitemap: %w", err)
+		}
+
+		if err := b.writeOutputFile("sitemap.xml", sitemapData); err != nil {
+			return fmt.Errorf("write sitemap.xml: %w", err)
+		}
+		slog.Debug("Generated", slog.String("file", "sitemap.xml"))
+	}
+
+	return nil
 }
 
 // writeOutputFile writes content to a file in the output directory, creating parent directories as needed.

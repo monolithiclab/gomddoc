@@ -13,6 +13,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/seo"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
@@ -244,6 +245,12 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"editURL":      h.generateEditURL,
 		"navigation":   h.generateNavigation,
 		"themeVarsCSS": h.generateThemeVarsCSS,
+		"canonicalURL": func(pagePath string) string {
+			return seo.PageURL(h.siteConfig.Meta.Domain, pagePath, h.siteConfig.DefaultIndex)
+		},
+		"pageURL": func(pagePath string) string {
+			return seo.PageURL(h.siteConfig.Meta.Domain, pagePath, h.siteConfig.DefaultIndex)
+		},
 		"assetURL": func(name string) string {
 			return "/_assets/" + name
 		},

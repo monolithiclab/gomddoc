@@ -441,6 +441,15 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 - **File size limits**: Git provider enforces 50MB max (configurable)
 - **Log injection**: `text.SafeString` sanitizes user input in log messages
 
+## SEO
+
+- **Canonical URLs**: `<link rel="canonical">` on every page via `canonicalURL` template function. Requires `meta.domain` config.
+- **Open Graph**: `og:title`, `og:description`, `og:url`, `og:type`, `og:site_name` meta tags. `og:type` overridable via frontmatter `og_type`.
+- **Twitter Cards**: `twitter:card` summary tags with title and description.
+- **XML Sitemap**: `/sitemap.xml` served dynamically (serve) and generated as static file (build). Uses metadata index.
+- **robots.txt**: `/robots.txt` served dynamically (serve) and generated as static file (build). Blocks `/_assets/`, `/api/`, `/debug/`.
+- **URL construction**: Shared `internal/seo.PageURL()` normalizes domain + path using `net/url`. Strips default index files.
+
 ## Configuration
 
 ### Loading Priority (highest wins)

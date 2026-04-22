@@ -124,7 +124,7 @@ A short summary of your site, used for the HTML `<meta name="description">` SEO 
 *   **Default:** Empty.
 
 **Domain**
-The primary domain name for your site (e.g., `docs.example.com`). Used for internal validation and canonical URL generation.
+The primary domain name for your site (e.g., `docs.example.com`). Used for canonical URL generation, XML sitemap, robots.txt `Sitemap:` directive, and Open Graph `og:url` tags. When set, every page gets a `<link rel="canonical">` tag and a `/sitemap.xml` endpoint becomes available. May include a scheme (`https://docs.example.com`) or not (`docs.example.com` — defaults to `https://`).
 *   **YAML:** `meta.domain`
 *   **Env Var:** `GOMDDOC_SITE_META_DOMAIN`
 *   **Default:** Empty.
