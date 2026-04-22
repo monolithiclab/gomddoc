@@ -25,7 +25,7 @@ type SitemapHandler struct {
 	provider     provider.Provider
 	resolver     *resolve.PathResolver
 
-	once   sync.Once
+	mu     sync.Mutex
 	cached []byte
 }
 
@@ -55,25 +55,34 @@ type sitemapURL struct {
 
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.once.Do(func() {
-		// Use Background context — generation is a one-time init that must not
-		// be tied to (and cancelled with) the first incoming request.
-		out, err := GenerateSitemap(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver)
-		if err != nil {
-			slog.Error("Failed to generate sitemap", slog.Any("error", err))
-			return
-		}
-		h.cached = out
-	})
-
-	if h.cached == nil {
+	data, err := h.getOrGenerate()
+	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(h.cached)
+	_, _ = w.Write(data)
+}
+
+// getOrGenerate returns cached sitemap XML, generating it on first successful
+// call. Unlike sync.Once, subsequent requests retry if generation failed.
+func (h *SitemapHandler) getOrGenerate() ([]byte, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.cached != nil {
+		return h.cached, nil
+	}
+
+	out, err := GenerateSitemap(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver)
+	if err != nil {
+		slog.Error("Failed to generate sitemap", slog.Any("error", err))
+		return nil, err
+	}
+	h.cached = out
+	return h.cached, nil
 }
 
 // GenerateSitemap produces the sitemap XML bytes.

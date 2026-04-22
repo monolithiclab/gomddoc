@@ -30,7 +30,7 @@ type FeedHandler struct {
 	siteTitle    string
 	resolver     *resolve.PathResolver
 
-	once   sync.Once
+	mu     sync.Mutex
 	cached []byte
 }
 
@@ -48,25 +48,34 @@ func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov pro
 
 // ServeHTTP writes the Atom feed response.
 func (h *FeedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.once.Do(func() {
-		// Use Background context — generation is a one-time init that must not
-		// be tied to (and cancelled with) the first incoming request.
-		out, err := GenerateFeed(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver)
-		if err != nil {
-			slog.Error("Failed to generate feed", slog.Any("error", err))
-			return
-		}
-		h.cached = out
-	})
-
-	if h.cached == nil {
+	data, err := h.getOrGenerate()
+	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(h.cached)
+	_, _ = w.Write(data)
+}
+
+// getOrGenerate returns cached feed XML, generating it on first successful
+// call. Unlike sync.Once, subsequent requests retry if generation failed.
+func (h *FeedHandler) getOrGenerate() ([]byte, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.cached != nil {
+		return h.cached, nil
+	}
+
+	out, err := GenerateFeed(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver)
+	if err != nil {
+		slog.Error("Failed to generate feed", slog.Any("error", err))
+		return nil, err
+	}
+	h.cached = out
+	return h.cached, nil
 }
 
 // atomFeed is the root element of an Atom feed.
