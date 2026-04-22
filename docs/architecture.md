@@ -427,7 +427,7 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 
 ### Loading Priority (highest wins)
 
-1. CLI flags (`-d`, `-p`, `-dev`, `--git-key-file`, `--git-storage-dir`)
+1. CLI flags/arguments (positional `dir`, `-p`, `--dev`, `--git-key-file`, `--git-storage-dir`)
 2. Environment variables (`GOMDDOC_SERVER_*`, `GOMDDOC_SITE_*`)
 3. Config file (`.gomddoc/config.yml`)
 4. Defaults

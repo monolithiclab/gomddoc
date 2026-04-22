@@ -29,7 +29,7 @@ import (
 
 // BuildCmd holds all flags for the build subcommand.
 type BuildCmd struct {
-	Dir    string `name:"dir" short:"d" default:"." help:"Markdown source directory or Git URL."`
+	Dir    string `arg:"" optional:"" default:"." help:"Markdown source directory or Git URL."`
 	Output string `name:"output" short:"o" default:"build/site" help:"Output directory for generated static site."`
 }
 

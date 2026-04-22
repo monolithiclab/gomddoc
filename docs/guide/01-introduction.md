@@ -66,7 +66,7 @@ Open your browser to `http://localhost:8080`. You'll see your markdown rendered 
 Serve a specific directory on a different port:
 
 ```bash
-gomddoc serve -d ./my-docs -p :3000
+gomddoc serve ./my-docs -p :3000
 ```
 
 ### 5. Serving from Git
@@ -74,7 +74,7 @@ gomddoc serve -d ./my-docs -p :3000
 Serve directly from a public repository without cloning it manually (lazy clone on first request):
 
 ```bash
-gomddoc serve -d "git+https://github.com/monolithiclab/gomddoc.git"
+gomddoc serve "git+https://github.com/monolithiclab/gomddoc.git"
 ```
 
 ### 6. Static Site Generation
@@ -82,7 +82,7 @@ gomddoc serve -d "git+https://github.com/monolithiclab/gomddoc.git"
 Build a static site for deployment:
 
 ```bash
-gomddoc build -d ./my-docs -o ./public
+gomddoc build ./my-docs -o ./public
 ```
 
 This generates HTML files in `./public/` ready for S3, Netlify, or GitHub Pages.

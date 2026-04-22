@@ -11,10 +11,10 @@ disk or in a remote repository, gomddoc serves them seamlessly.
 
 ## 1. Local Filesystem
 
-This is the default mode. Point `-d` to any directory.
+This is the default mode. Pass the directory as an argument.
 
 ```bash
-gomddoc -d /path/to/docs
+gomddoc serve /path/to/docs
 ```
 
 ### Features
@@ -45,7 +45,7 @@ lazily on first request (not at startup), using a shallow clone for speed.
 #### Public Repository (HTTPS)
 
 ```bash
-gomddoc -d "git+https://github.com/user/repo.git"
+gomddoc serve "git+https://github.com/user/repo.git"
 ```
 
 #### Specific Branch
@@ -53,7 +53,7 @@ gomddoc -d "git+https://github.com/user/repo.git"
 Serve the `develop` branch:
 
 ```bash
-gomddoc -d "git+https://github.com/user/repo.git#develop"
+gomddoc serve "git+https://github.com/user/repo.git#develop"
 ```
 
 #### Specific Subdirectory
@@ -61,7 +61,7 @@ gomddoc -d "git+https://github.com/user/repo.git#develop"
 Serve only the `/docs` folder from the `main` branch:
 
 ```bash
-gomddoc -d "git+https://github.com/user/repo.git#main:docs"
+gomddoc serve "git+https://github.com/user/repo.git#main:docs"
 ```
 
 ### Private Repositories (SSH Authentication)
@@ -72,8 +72,8 @@ To serve private repositories, you must use the SSH protocol and provide a priva
 2. **Run with Key:**
 
 ```bash
-gomddoc \
-  -d "git+ssh://git@github.com/my-org/private-docs.git" \
+gomddoc serve \
+  "git+ssh://git@github.com/my-org/private-docs.git" \
   --git-key-file ~/.ssh/id_rsa_deploy_key
 ```
 
@@ -81,7 +81,7 @@ gomddoc \
 
 ```bash
 export GOMDDOC_SERVER_GIT_SSH_KEY=/etc/secrets/ssh-key
-gomddoc -d "git+ssh://git@gitlab.company.com/group/project.git"
+gomddoc serve "git+ssh://git@gitlab.company.com/group/project.git"
 ```
 
 ### SSH Security
@@ -111,7 +111,7 @@ this can cause out-of-memory errors. Use `--git-storage-dir` to clone to disk in
 
 ```bash
 gomddoc serve \
-  -d "git+https://github.com/large-org/monorepo.git#main:docs" \
+  "git+https://github.com/large-org/monorepo.git#main:docs" \
   --git-storage-dir /var/cache/gomddoc
 ```
 
@@ -119,7 +119,7 @@ Or via environment variable:
 
 ```bash
 export GOMDDOC_SERVER_GIT_STORAGE_DIR=/var/cache/gomddoc
-gomddoc serve -d "git+https://github.com/large-org/monorepo.git"
+gomddoc serve "git+https://github.com/large-org/monorepo.git"
 ```
 
 Each repository URL gets a unique subdirectory (SHA-256 hash of the URL), so multiple repos can safely share the

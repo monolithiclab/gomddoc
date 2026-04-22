@@ -23,7 +23,7 @@ import (
 
 // PreviewCmd holds all flags for the preview subcommand.
 type PreviewCmd struct {
-	Dir    string `name:"dir" short:"d" default:"." help:"Markdown directory to preview."`
+	Dir    string `arg:"" optional:"" default:"." help:"Markdown directory to preview."`
 	Port   string `name:"port" short:"p" default:":auto" help:"HTTP listen address (host:port). Defaults to auto-assigned port."`
 	NoOpen bool   `name:"no-open" default:"false" help:"Do not open the browser automatically."`
 }

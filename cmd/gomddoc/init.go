@@ -13,7 +13,7 @@ import (
 
 // InitCmd holds all flags for the init subcommand.
 type InitCmd struct {
-	Dir   string `name:"dir" short:"d" default:"." help:"Directory to initialize."`
+	Dir   string `arg:"" optional:"" default:"." help:"Directory to initialize."`
 	Theme string `name:"theme" short:"t" default:"default" help:"Theme to use (default, academic, gitbook, material, midnight, minimal, nord, ocean)."`
 }
 

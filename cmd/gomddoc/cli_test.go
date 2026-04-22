@@ -45,7 +45,7 @@ func TestCLI_ServeHelp_ShowsFlagsAndEnvVars(t *testing.T) {
 	out := string(output)
 
 	// Verify flags are listed
-	for _, want := range []string{"--dir", "--port", "--dev", "--git-key-file"} {
+	for _, want := range []string{"--port", "--dev", "--git-key-file"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Expected %q in serve --help output, got:\n%s", want, out)
 		}

@@ -23,7 +23,7 @@ func TestBuildCmd_GeneratesHTMLFromMarkdown(t *testing.T) {
 
 	writeTestFile(t, srcDir, "hello.md", "# Hello World\n\nThis is a test.")
 
-	cmd := exec.Command(binary, "build", "--dir", srcDir, "--output", outDir)
+	cmd := exec.Command(binary, "build", srcDir, "--output", outDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)
@@ -46,7 +46,7 @@ func TestBuildCmd_READMECreatesIndexHTML(t *testing.T) {
 	writeTestFile(t, srcDir, "README.md", "# Project README\n\nWelcome.")
 	writeTestFile(t, filepath.Join(srcDir, "docs"), "README.md", "# Docs README")
 
-	cmd := exec.Command(binary, "build", "--dir", srcDir, "--output", outDir)
+	cmd := exec.Command(binary, "build", srcDir, "--output", outDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)
@@ -77,7 +77,7 @@ func TestBuildCmd_CopiesNonMarkdownFiles(t *testing.T) {
 	writeTestFile(t, srcDir, "style.css", "body { color: red; }")
 	writeTestFile(t, filepath.Join(srcDir, "images"), "logo.txt", "logo-placeholder")
 
-	cmd := exec.Command(binary, "build", "--dir", srcDir, "--output", outDir)
+	cmd := exec.Command(binary, "build", srcDir, "--output", outDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)
@@ -103,7 +103,7 @@ func TestBuildCmd_SkipsHiddenFiles(t *testing.T) {
 	writeTestFile(t, srcDir, ".hidden.md", "# Hidden")
 	writeTestFile(t, filepath.Join(srcDir, ".hiddendir"), "secret.md", "# Secret")
 
-	cmd := exec.Command(binary, "build", "--dir", srcDir, "--output", outDir)
+	cmd := exec.Command(binary, "build", srcDir, "--output", outDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)
@@ -132,7 +132,7 @@ func TestBuildCmd_CreatesOutputDirectory(t *testing.T) {
 
 	writeTestFile(t, srcDir, "page.md", "# Page")
 
-	cmd := exec.Command(binary, "build", "--dir", srcDir, "--output", outDir)
+	cmd := exec.Command(binary, "build", srcDir, "--output", outDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)
@@ -158,7 +158,7 @@ func TestBuildCmd_ParallelBuildProcessesAllFiles(t *testing.T) {
 		writeTestFile(t, srcDir, fmt.Sprintf("asset-%03d.css", i), fmt.Sprintf("body { color: #%03d; }", i))
 	}
 
-	cmd := exec.Command(binary, "build", "--dir", srcDir, "--output", outDir)
+	cmd := exec.Command(binary, "build", srcDir, "--output", outDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build failed: %v\n%s", err, output)

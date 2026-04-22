@@ -385,7 +385,7 @@ _Minimum viable MCP server with file access and metadata._
       metadata Index references.
 - [ ] **`gomddoc mcp` subcommand**: stdio transport for local use. Speaks MCP JSON-RPC over
       stdin/stdout. Works with Claude Desktop (`claude_desktop_config.json`), Cursor, and any
-      MCP-compatible client. Kong subcommand with same `--dir`/`--git-url` flags as `serve`.
+      MCP-compatible client. Kong subcommand with same positional `dir` argument as `serve`.
 - [ ] **Resource: `docs://list`**: List all documentation files in the content tree. Returns
       paths, titles (from frontmatter or filename), and MIME types. Backed by `Provider.RootFS`
       + `fs.WalkDir`. Supports optional `path` parameter to list a subdirectory.

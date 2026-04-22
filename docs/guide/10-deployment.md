@@ -7,7 +7,7 @@ gomddoc supports two deployment models: **dynamic serving** via `gomddoc serve` 
 Generate a static site and deploy to any static host:
 
 ```bash
-gomddoc build -d ./docs -o ./public
+gomddoc build ./docs -o ./public
 ```
 
 This walks your content directory, renders all markdown through the full template pipeline (with navigation,
@@ -45,7 +45,7 @@ The final image contains only the gomddoc binary -- no shell, no package manager
 Serve Markdown files from a local directory:
 
 ```bash
-docker run -p 8080:8080 -v /path/to/docs:/content:ro gomddoc -d /content
+docker run -p 8080:8080 -v /path/to/docs:/content:ro gomddoc serve /content
 ```
 
 The `:ro` flag mounts the volume as read-only, which is recommended since gomddoc only reads content.
@@ -57,7 +57,7 @@ gomddoc accepts configuration via CLI flags and environment variables. Both work
 **CLI flags:**
 
 ```bash
-docker run -p 9000:9000 -v ./docs:/content:ro gomddoc -d /content -p :9000
+docker run -p 9000:9000 -v ./docs:/content:ro gomddoc serve /content -p :9000
 ```
 
 **Environment variables:**
@@ -79,7 +79,7 @@ See [Configuration](02-configuration.md) for the full list of environment variab
 If your content directory contains a `.gomddoc/config.yml` file, it will be picked up automatically when you mount the directory:
 
 ```bash
-docker run -p 8080:8080 -v ./my-site:/content:ro gomddoc -d /content
+docker run -p 8080:8080 -v ./my-site:/content:ro gomddoc serve /content
 ```
 
 Where `./my-site/.gomddoc/config.yml` might contain:
