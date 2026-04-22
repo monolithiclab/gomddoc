@@ -56,6 +56,7 @@ type ServerConfig struct {
 	DevMode   bool       `env:"DEV_MODE"`
 	Dir       string     `env:"DIR"`
 	GitSSHKey string     `env:"GIT_SSH_KEY"`
+	Pprof     bool       `env:"PPROF"`
 	HTTP      HTTPConfig `env:"HTTP"`
 }
 

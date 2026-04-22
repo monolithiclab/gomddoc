@@ -59,13 +59,13 @@ See `docs/architecture.md` for detailed architecture and `docs/guide/` for user 
 - [ ] **Partial clones**: `git clone --filter=blob:none` when upstream library support matures.
 - [x] **Auto-port assignment**: `--port :auto` (or `-p :auto`) scans for an available port starting from
       8080. Works in any mode, not just dev. Port discovery via sequential `net.Listen` scan.
-- [ ] **Profiling and benchmarks**: Add comprehensive benchmarks and `pprof` integration for
+- [x] **Profiling and benchmarks**: Comprehensive benchmarks and `pprof` integration for
       data-driven performance optimization.
-  - [ ] **Benchmark suite**: Table-driven benchmarks for hot-path functions: markdown rendering
+  - [x] **Benchmark suite**: Table-driven benchmarks for hot-path functions: markdown rendering
         (`MarkdownRenderer.Render`), enrichment (`MarkdownEnricher.Enrich`), content negotiation
         (`DefaultRegistry.Get`), template rendering (`HTMLRenderer.Render`), and compression
-        (`CompressResponseWriter`). Include small, medium, and large document sizes.
-  - [ ] **`pprof` endpoint**: Expose `/debug/pprof/` behind a `--pprof` flag (disabled by default,
+        (`compressionWriter`). Include small, medium, and large document sizes.
+  - [x] **`pprof` endpoint**: Expose `/debug/pprof/` behind a `--pprof` flag (disabled by default,
         never in production). CPU, heap, goroutine, and mutex profiles available at runtime.
   - [ ] **CI benchmark tracking**: Run benchmarks in CI with `go test -bench -benchmem`. Use
         `benchstat` to detect regressions against the baseline. Fail CI on >10% degradation.

@@ -49,6 +49,12 @@ Directory for disk-based Git clone storage. When set, repositories are cloned to
 *   **Env Var:** `GOMDDOC_SERVER_GIT_STORAGE_DIR`
 *   **Default:** Empty (in-memory storage)
 
+**pprof Profiling**
+Enables Go's built-in profiling endpoints at `/debug/pprof/` for CPU, memory, goroutine, and trace analysis. Do not enable in production — the endpoints bypass authentication and expose internal runtime details.
+*   **CLI Flag:** `--pprof`
+*   **Env Var:** `GOMDDOC_SERVER_PPROF`
+*   **Default:** `false`
+
 ### Network Tuning (`SERVER.HTTP`)
 
 Advanced settings to tune the HTTP server timeouts and limits.

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -75,6 +76,15 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	if opts.StaticFS != nil {
 		assetsHandler := NewAssetsHandler(opts.StaticFS)
 		mux.Handle("GET /_assets/", http.StripPrefix("/_assets/", assetsHandler))
+	}
+
+	if cfg.Server.Pprof {
+		slog.Warn("pprof profiling enabled — do not use in production")
+		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+		mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
 	}
 
 	mux.Handle("/", h)

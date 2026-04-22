@@ -78,4 +78,4 @@ update-deps:  ## Update dependencies
 .SILENT: clean
 .PHONY: clean
 clean:  ## Purge temporary files
-	rm -rf build cover.out coverage.html
+	rm -rf build bench.txt cover.out coverage.html

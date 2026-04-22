@@ -61,6 +61,61 @@ hidden-path checks:
 SecurityHeaders -> BlockHiddenPaths -> Metrics -> Handler
 ```
 
+## pprof Profiling
+
+gomddoc can expose Go's built-in profiling endpoints for performance analysis.
+This is disabled by default and should never be enabled in production.
+
+### Enabling pprof
+
+```bash
+gomddoc serve --pprof ./docs
+```
+
+Or via environment variable:
+
+```bash
+GOMDDOC_SERVER_PPROF=true gomddoc serve ./docs
+```
+
+### Available Profiles
+
+When enabled, the following endpoints are available at `/debug/pprof/`:
+
+| Endpoint | Description |
+|---|---|
+| `/debug/pprof/` | Index page listing all profiles |
+| `/debug/pprof/profile` | CPU profile (30s default, use `?seconds=N`) |
+| `/debug/pprof/heap` | Heap memory allocations |
+| `/debug/pprof/goroutine` | All current goroutines |
+| `/debug/pprof/allocs` | Past memory allocations |
+| `/debug/pprof/trace` | Execution trace (use `?seconds=N`) |
+
+### Example Usage
+
+Capture a 10-second CPU profile:
+
+```bash
+go tool pprof http://localhost:8080/debug/pprof/profile?seconds=10
+```
+
+Analyze heap allocations:
+
+```bash
+go tool pprof http://localhost:8080/debug/pprof/heap
+```
+
+View all goroutines in the browser:
+
+```bash
+curl http://localhost:8080/debug/pprof/goroutine?debug=1
+```
+
+> **Warning:** pprof endpoints bypass authentication and expose internal runtime
+> details. Only enable on trusted networks for debugging purposes.
+
+---
+
 ## Grafana Dashboard
 
 Import the queries above into a Grafana dashboard to visualize:

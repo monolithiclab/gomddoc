@@ -445,7 +445,7 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 
 ### Loading Priority (highest wins)
 
-1. CLI flags/arguments (positional `dir`, `-p`, `--dev`, `--git-key-file`, `--git-storage-dir`)
+1. CLI flags/arguments (positional `dir`, `-p`, `--dev`, `--git-key-file`, `--git-storage-dir`, `--pprof`)
 2. Environment variables (`GOMDDOC_SERVER_*`, `GOMDDOC_SITE_*`)
 3. Config file (`.gomddoc/config.yml`)
 4. Defaults
@@ -463,6 +463,7 @@ type ServerConfig struct {
     DevMode   bool       `env:"DEV_MODE"`    // false
     Dir       string     `env:"DIR"`         // "."
     GitSSHKey string     `env:"GIT_SSH_KEY"` // ""
+    Pprof     bool       `env:"PPROF"`       // false
     HTTP      HTTPConfig `env:"HTTP"`        // Timeout tuning
 }
 
@@ -495,6 +496,10 @@ that don't count toward Go's coverage instrumentation). Internal packages averag
 - **Parallel tests**: `t.Parallel()` where possible
 - **Integration tests**: End-to-end request flow with real Provider + Registry + Handler
 - **Context cancellation**: Tested in renderers and template layer
+- **Benchmarks**: Hot-path benchmarks with small/medium/large document sizes for
+  `MarkdownRenderer.Render`, `MarkdownEnricher.Enrich`, `DefaultRegistry.Get`,
+  `HTMLRenderer.Render`, and `compressionWriter`. Run via `make bench` (quick) or
+  `make bench-compare` (regression detection with benchstat)
 
 ## Extensibility
 

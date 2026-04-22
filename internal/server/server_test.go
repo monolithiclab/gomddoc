@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"testing/fstest"
@@ -180,6 +182,63 @@ func TestHTTPServer_StartAndShutdown(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("Start did not return after shutdown")
+	}
+}
+
+func TestPprofEndpoints(t *testing.T) {
+	tests := []struct {
+		name       string
+		pprof      bool
+		wantStatus int
+	}{
+		{
+			name:       "pprof enabled returns 200",
+			pprof:      true,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "pprof disabled returns 404",
+			pprof:      false,
+			wantStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Server: config.ServerConfig{
+					Port:  ":8080",
+					Dir:   ".",
+					Pprof: tt.pprof,
+					HTTP: config.HTTPConfig{
+						ShutdownTimeout:   1 * time.Second,
+						ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+						WriteTimeout:      config.DefaultWriteTimeout,
+						IdleTimeout:       config.DefaultIdleTimeout,
+						MaxHeaderMB:       config.DefaultMaxHeaderMB,
+					},
+				},
+				Site: config.NewSiteConfig("."),
+			}
+
+			prov := newMemoryProvider(fstest.MapFS{}, "README.md", false)
+
+			srv := NewHTTPServer(HTTPServerConfig{
+				Config:           cfg,
+				Provider:         prov,
+				Registry:         setupTestRegistry(),
+				EnricherRegistry: setupTestEnricherRegistry(),
+				TemplateRenderer: setupTestRenderer(),
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
+			w := httptest.NewRecorder()
+			srv.server.Handler.ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("GET /debug/pprof/ status = %d, want %d", w.Code, tt.wantStatus)
+			}
+		})
 	}
 }
 

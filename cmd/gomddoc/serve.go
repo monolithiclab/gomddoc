@@ -22,6 +22,7 @@ type ServeCmd struct {
 	DevMode       bool   `name:"dev" default:"false" env:"GOMDDOC_SERVER_DEV_MODE" help:"Enable development mode (no caching, verbose logging)."`
 	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
 	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
+	Pprof         bool   `name:"pprof" default:"false" env:"GOMDDOC_SERVER_PPROF" help:"Enable pprof profiling endpoints at /debug/pprof/."`
 }
 
 // resolvePort resolves the port, handling auto-port assignment.
@@ -55,6 +56,8 @@ func (s *ServeCmd) setup() (*serveSetupResult, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	cfg.Server.Pprof = s.Pprof
 
 	if cfg.Server.DevMode {
 		slog.Info("Development mode enabled", slog.Any("config", cfg))
