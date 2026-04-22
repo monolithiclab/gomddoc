@@ -1,0 +1,237 @@
+package renderer
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// mockRenderer is a test renderer implementation
+type mockRenderer struct {
+	name          string
+	supportedMime []string
+}
+
+func (m *mockRenderer) SupportedMimeTypes() []string {
+	return m.supportedMime
+}
+
+func (m *mockRenderer) Render(ctx context.Context, content []byte) ([]byte, string, error) {
+	return content, "", nil
+}
+
+func TestDefaultRegistry_Register(t *testing.T) {
+	tests := []struct {
+		name      string
+		renderers []ContentRenderer
+		lookupFor string
+		wantFound bool
+		wantName  string
+	}{
+		{
+			name: "single renderer registration",
+			renderers: []ContentRenderer{
+				&mockRenderer{name: "markdown", supportedMime: []string{"text/markdown"}},
+			},
+			lookupFor: "text/markdown",
+			wantFound: true,
+			wantName:  "markdown",
+		},
+		{
+			name: "multiple MIME types",
+			renderers: []ContentRenderer{
+				&mockRenderer{name: "html", supportedMime: []string{"text/html", "application/xhtml+xml"}},
+			},
+			lookupFor: "application/xhtml+xml",
+			wantFound: true,
+			wantName:  "html",
+		},
+		{
+			name: "override existing renderer",
+			renderers: []ContentRenderer{
+				&mockRenderer{name: "old", supportedMime: []string{"text/plain"}},
+				&mockRenderer{name: "new", supportedMime: []string{"text/plain"}},
+			},
+			lookupFor: "text/plain",
+			wantFound: true,
+			wantName:  "new",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := NewDefaultRegistry()
+
+			for _, r := range tt.renderers {
+				registry.Register(r)
+			}
+
+			renderer, err := registry.Get(tt.lookupFor)
+			if tt.wantFound {
+				if err != nil {
+					t.Fatalf("Get() error = %v, want nil", err)
+				}
+				if mock, ok := renderer.(*mockRenderer); ok {
+					if mock.name != tt.wantName {
+						t.Errorf("Get() returned renderer %q, want %q", mock.name, tt.wantName)
+					}
+				} else {
+					t.Error("Get() returned non-mock renderer")
+				}
+			} else if err == nil {
+				t.Error("Get() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestDefaultRegistry_Get_Wildcards(t *testing.T) {
+	tests := []struct {
+		name         string
+		registerMime []string
+		lookupFor    string
+		wantFound    bool
+		wantRenderer string
+	}{
+		{
+			name:         "exact match",
+			registerMime: []string{"text/markdown"},
+			lookupFor:    "text/markdown",
+			wantFound:    true,
+			wantRenderer: "markdown",
+		},
+		{
+			name:         "type wildcard match",
+			registerMime: []string{"text/*"},
+			lookupFor:    "text/plain",
+			wantFound:    true,
+			wantRenderer: "text-wildcard",
+		},
+		{
+			name:         "catch-all wildcard match",
+			registerMime: []string{"*/*"},
+			lookupFor:    "application/json",
+			wantFound:    true,
+			wantRenderer: "catch-all",
+		},
+		{
+			name:         "exact match wins over wildcard",
+			registerMime: []string{"text/markdown", "text/*"},
+			lookupFor:    "text/markdown",
+			wantFound:    true,
+			wantRenderer: "exact",
+		},
+		{
+			name:         "type wildcard wins over catch-all",
+			registerMime: []string{"text/*", "*/*"},
+			lookupFor:    "text/plain",
+			wantFound:    true,
+			wantRenderer: "type-wildcard",
+		},
+		{
+			name:         "MIME type with charset normalized",
+			registerMime: []string{"text/html"},
+			lookupFor:    "text/html; charset=utf-8",
+			wantFound:    true,
+			wantRenderer: "html",
+		},
+		{
+			name:         "no match",
+			registerMime: []string{"text/markdown"},
+			lookupFor:    "application/json",
+			wantFound:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := NewDefaultRegistry()
+
+			// Register renderers based on test case
+			switch tt.name {
+			case "exact match wins over wildcard":
+				registry.Register(&mockRenderer{name: "exact", supportedMime: []string{"text/markdown"}})
+				registry.Register(&mockRenderer{name: "wildcard", supportedMime: []string{"text/*"}})
+			case "type wildcard wins over catch-all":
+				registry.Register(&mockRenderer{name: "type-wildcard", supportedMime: []string{"text/*"}})
+				registry.Register(&mockRenderer{name: "catch-all", supportedMime: []string{"*/*"}})
+			default:
+				name := tt.wantRenderer
+				if name == "" {
+					name = "test"
+				}
+				registry.Register(&mockRenderer{name: name, supportedMime: tt.registerMime})
+			}
+
+			renderer, err := registry.Get(tt.lookupFor)
+
+			if tt.wantFound {
+				if err != nil {
+					t.Fatalf("Get() error = %v, want nil", err)
+				}
+				if mock, ok := renderer.(*mockRenderer); ok {
+					if mock.name != tt.wantRenderer {
+						t.Errorf("Get() returned renderer %q, want %q", mock.name, tt.wantRenderer)
+					}
+				}
+			} else {
+				if err == nil {
+					t.Error("Get() error = nil, want error")
+				}
+				if !strings.Contains(err.Error(), "no renderer for MIME type") {
+					t.Errorf("Get() error = %v, want 'no renderer for MIME type'", err)
+				}
+			}
+		})
+	}
+}
+
+func TestDefaultRegistry_ThreadSafety(t *testing.T) {
+	registry := NewDefaultRegistry()
+
+	var wg sync.WaitGroup
+	concurrency := 100
+
+	// Concurrent registrations
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			renderer := &mockRenderer{
+				name:          string(rune('A' + (n % 26))),
+				supportedMime: []string{"application/test"},
+			}
+			registry.Register(renderer)
+		}(i)
+	}
+
+	// Concurrent lookups
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = registry.Get("application/test")
+		}()
+	}
+
+	wg.Wait()
+
+	// Verify registry is still functional
+	_, err := registry.Get("application/test")
+	if err != nil {
+		t.Errorf("Registry not functional after concurrent access: %v", err)
+	}
+}
+
+func TestDefaultRegistry_EmptyRegistry(t *testing.T) {
+	registry := NewDefaultRegistry()
+
+	_, err := registry.Get("text/plain")
+	if err == nil {
+		t.Error("Get() on empty registry should return error")
+	}
+	if !strings.Contains(err.Error(), "no renderer for MIME type") {
+		t.Errorf("Get() error = %v, want 'no renderer for MIME type'", err)
+	}
+}
