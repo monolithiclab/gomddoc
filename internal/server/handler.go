@@ -144,7 +144,8 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		},
 	}
 
-	rendered, err := h.templateRenderer.Render(r.Context(), "default.html.tmpl", context)
+	templateName := tmpl.ResolveLayout(h.templateRenderer, metadata)
+	rendered, err := h.templateRenderer.Render(r.Context(), templateName, context)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return
@@ -162,7 +163,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(rendered)))
 	w.WriteHeader(http.StatusOK)
-	_, writeErr := w.Write(rendered)
+	_, writeErr := w.Write(rendered) // #nosec G705 -- template-rendered HTML served with correct Content-Type
 	if writeErr != nil {
 		slog.Error("Cannot write response",
 			slog.String("request_id", GetRequestID(r.Context())),

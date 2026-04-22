@@ -21,6 +21,9 @@ type Renderer interface {
 	// Render renders a template with the given data
 	// The context can be used for cancellation, timeouts, and request-scoped values
 	Render(ctx context.Context, templateName string, data any) ([]byte, error)
+
+	// HasTemplate checks if a layout template exists for the current theme
+	HasTemplate(name string) bool
 }
 
 // TemplateContext holds the data passed to templates
@@ -403,6 +406,31 @@ func hasVisibleDescendants(node *enricher.TOCNode, min, max int) bool {
 		}
 	}
 	return false
+}
+
+// ResolveLayout determines the template name to use based on frontmatter metadata.
+// If the metadata contains a "layout" field and the corresponding template exists,
+// it returns "{layout}.html.tmpl". Otherwise, it falls back to "default.html.tmpl".
+func ResolveLayout(r Renderer, metadata map[string]any) string {
+	const defaultTemplate = "default.html.tmpl"
+	layout, ok := metadata["layout"].(string)
+	if !ok || layout == "" {
+		return defaultTemplate
+	}
+	candidate := layout + ".html.tmpl"
+	if r.HasTemplate(candidate) {
+		return candidate
+	}
+	return defaultTemplate
+}
+
+// HasTemplate checks if a layout template exists for the current theme.
+// It checks only the configured theme directory (not the default fallback),
+// since parseTemplate already handles theme-to-default fallback during rendering.
+func (h *HTMLRenderer) HasTemplate(name string) bool {
+	layoutPath := path.Join("assets", "themes", h.siteConfig.Theme.Name, "layouts", name)
+	_, err := fs.Stat(h.assetsFS, layoutPath)
+	return err == nil
 }
 
 // ClearCache clears the template cache (used in dev mode hot reload)

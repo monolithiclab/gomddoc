@@ -1187,6 +1187,164 @@ func TestPartialOverrideResolution(t *testing.T) {
 	}
 }
 
+func TestHasTemplate(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte("<html></html>")},
+		"assets/themes/default/layouts/page.html.tmpl":    {Data: []byte("<html>page</html>")},
+	}
+
+	tests := []struct {
+		name         string
+		templateName string
+		want         bool
+	}{
+		{"existing default template", "default.html.tmpl", true},
+		{"existing page template", "page.html.tmpl", true},
+		{"nonexistent template", "missing.html.tmpl", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			siteConfig := config.NewSiteConfig(".")
+			r := NewHTMLRenderer(&siteConfig, testFS)
+
+			got := r.HasTemplate(tt.templateName)
+			if got != tt.want {
+				t.Errorf("HasTemplate(%q) = %v, want %v", tt.templateName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveLayout(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte("<html></html>")},
+		"assets/themes/default/layouts/page.html.tmpl":    {Data: []byte("<html>page</html>")},
+		"assets/themes/default/layouts/wide.html.tmpl":    {Data: []byte("<html>wide</html>")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		want     string
+	}{
+		{
+			name:     "no layout field uses default",
+			metadata: map[string]any{"title": "Test"},
+			want:     "default.html.tmpl",
+		},
+		{
+			name:     "nil metadata uses default",
+			metadata: nil,
+			want:     "default.html.tmpl",
+		},
+		{
+			name:     "empty layout uses default",
+			metadata: map[string]any{"layout": ""},
+			want:     "default.html.tmpl",
+		},
+		{
+			name:     "existing layout is used",
+			metadata: map[string]any{"layout": "page"},
+			want:     "page.html.tmpl",
+		},
+		{
+			name:     "another existing layout",
+			metadata: map[string]any{"layout": "wide"},
+			want:     "wide.html.tmpl",
+		},
+		{
+			name:     "nonexistent layout falls back to default",
+			metadata: map[string]any{"layout": "nonexistent"},
+			want:     "default.html.tmpl",
+		},
+		{
+			name:     "non-string layout type falls back to default",
+			metadata: map[string]any{"layout": 42},
+			want:     "default.html.tmpl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := ResolveLayout(r, tt.metadata)
+			if got != tt.want {
+				t.Errorf("ResolveLayout() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLayoutSelectionRendering(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(`DEFAULT:{{.Page.Content}}`)},
+		"assets/themes/default/layouts/page.html.tmpl":    {Data: []byte(`PAGE:{{.Page.Content}}`)},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		contains string
+	}{
+		{
+			name:     "default layout renders with DEFAULT prefix",
+			metadata: map[string]any{},
+			contains: "DEFAULT:",
+		},
+		{
+			name:     "page layout renders with PAGE prefix",
+			metadata: map[string]any{"layout": "page"},
+			contains: "PAGE:",
+		},
+		{
+			name:     "nonexistent layout falls back to DEFAULT prefix",
+			metadata: map[string]any{"layout": "nonexistent"},
+			contains: "DEFAULT:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			templateName := ResolveLayout(r, tt.metadata)
+			ctx := &TemplateContext{
+				Site: &siteConfig,
+				Page: PageContext{
+					Content: "hello",
+					Path:    "/",
+					Meta:    tt.metadata,
+				},
+			}
+
+			result, err := r.Render(context.Background(), templateName, ctx)
+			if err != nil {
+				t.Fatalf("Render failed: %v", err)
+			}
+
+			if !strings.Contains(string(result), tt.contains) {
+				t.Errorf("Expected output to contain %q, got %q", tt.contains, string(result))
+			}
+		})
+	}
+}
+
 func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
 	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
 	testFS := fstest.MapFS{

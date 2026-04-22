@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
@@ -261,6 +262,86 @@ func TestHandlerDirectoryRedirect(t *testing.T) {
 	location := w.Header().Get("Location")
 	if location != "/docs/guide.md" {
 		t.Errorf("Location = %q, want /docs/guide.md", location)
+	}
+}
+
+func TestHandlerLayoutSelection(t *testing.T) {
+	t.Parallel()
+
+	// Create a template renderer with multiple layouts
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`DEFAULT:{{.Page.Content}}`),
+		},
+		"assets/themes/default/layouts/page.html.tmpl": {
+			Data: []byte(`PAGE:{{.Page.Content}}`),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	rend := tmpl.NewHTMLRenderer(&siteConfig, testFS)
+	registry := setupTestRegistry()
+
+	tests := []struct {
+		name         string
+		markdown     string
+		wantContains string
+		wantAbsent   string
+	}{
+		{
+			name:         "page with layout:page uses page template",
+			markdown:     "---\nlayout: page\n---\n# Page Layout",
+			wantContains: "PAGE:",
+			wantAbsent:   "DEFAULT:",
+		},
+		{
+			name:         "page with no layout uses default template",
+			markdown:     "---\ntitle: Hello\n---\n# Default Layout",
+			wantContains: "DEFAULT:",
+			wantAbsent:   "PAGE:",
+		},
+		{
+			name:         "page with nonexistent layout falls back to default",
+			markdown:     "---\nlayout: nonexistent\n---\n# Fallback",
+			wantContains: "DEFAULT:",
+			wantAbsent:   "PAGE:",
+		},
+		{
+			name:         "page with no frontmatter uses default template",
+			markdown:     "# No Frontmatter",
+			wantContains: "DEFAULT:",
+			wantAbsent:   "PAGE:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			files := fstest.MapFS{
+				"test.md": &fstest.MapFile{Data: []byte(tt.markdown)},
+			}
+
+			prov := newMemoryProvider(files, "README.md", false)
+			handler := NewHandler(prov, registry, setupTestEnricherRegistry(), rend, &siteConfig, nil)
+
+			req := httptest.NewRequest("GET", "/test.md", nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeContent(w, req)
+
+			if w.Code != 200 {
+				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+			}
+
+			body := w.Body.String()
+			if !strings.Contains(body, tt.wantContains) {
+				t.Errorf("response should contain %q, got %q", tt.wantContains, body)
+			}
+			if tt.wantAbsent != "" && strings.Contains(body, tt.wantAbsent) {
+				t.Errorf("response should not contain %q, got %q", tt.wantAbsent, body)
+			}
+		})
 	}
 }
 

@@ -228,7 +228,8 @@ func (b *BuildCmd) buildFile(
 		},
 	}
 
-	rendered, err := templateRenderer.Render(ctx, "default.html.tmpl", templateCtx)
+	templateName := tmpl.ResolveLayout(templateRenderer, metadata)
+	rendered, err := templateRenderer.Render(ctx, templateName, templateCtx)
 	if err != nil {
 		return fmt.Errorf("template render %s: %w", filePath, err)
 	}
