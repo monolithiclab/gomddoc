@@ -151,6 +151,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	}
 
 	etag := generateETag(rendered)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=300")
 
@@ -159,7 +160,6 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(rendered)))
 	w.WriteHeader(http.StatusOK)
 	_, writeErr := w.Write(rendered) // #nosec G705 -- template-rendered HTML served with correct Content-Type
@@ -173,6 +173,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 // serveRaw serves content directly without template wrapping (passthrough).
 func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byte, mimeType string) {
 	etag := generateETag(content)
+	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=300")
 
@@ -181,7 +182,6 @@ func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byt
 		return
 	}
 
-	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	w.WriteHeader(http.StatusOK)
 	_, writeErr := w.Write(content) // #nosec G705 -- static file content served with correct Content-Type and nosniff header

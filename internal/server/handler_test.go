@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -204,6 +205,60 @@ func TestHandlerCacheHeaders(t *testing.T) {
 
 	if cacheControl := w.Header().Get("Cache-Control"); cacheControl != "public, max-age=300" {
 		t.Errorf("cache-control = %q, want public, max-age=300", cacheControl)
+	}
+}
+
+func TestHandler304IncludesContentType(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"test.md":   &fstest.MapFile{Data: []byte("# Hello")},
+		"style.css": &fstest.MapFile{Data: []byte("body{}")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	prov := newMemoryProvider(files, "README.md", false)
+	handler := NewHandler(prov, setupTestRegistry(), setupTestEnricherRegistry(), setupTestRenderer(), &siteConfig, nil)
+
+	tests := []struct {
+		name     string
+		path     string
+		accept   string
+		wantType string
+	}{
+		{"html content", "/test.md", "text/html", "text/html; charset=utf-8"},
+		{"raw content", "/style.css", "*/*", "text/css; charset=utf-8"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// First request to get the ETag
+			req := httptest.NewRequest("GET", tt.path, nil)
+			req.Header.Set("Accept", tt.accept)
+			w := httptest.NewRecorder()
+			handler.ServeContent(w, req)
+
+			etag := w.Header().Get("ETag")
+			if etag == "" {
+				t.Fatal("expected ETag on first request")
+			}
+
+			// Conditional request should return 304 with Content-Type
+			req2 := httptest.NewRequest("GET", tt.path, nil)
+			req2.Header.Set("Accept", tt.accept)
+			req2.Header.Set("If-None-Match", etag)
+			w2 := httptest.NewRecorder()
+			handler.ServeContent(w2, req2)
+
+			if w2.Code != http.StatusNotModified {
+				t.Fatalf("status = %d, want 304", w2.Code)
+			}
+			if ct := w2.Header().Get("Content-Type"); ct != tt.wantType {
+				t.Errorf("304 Content-Type = %q, want %q", ct, tt.wantType)
+			}
+		})
 	}
 }
 
