@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is `gomddoc`, a production-ready HTTP server that serves Markdown files as HTML. It's a single-file Go application that:
+This is `gomddoc`, a production-ready HTTP server that serves Markdown files as HTML.
+It's a single-file Go application that:
 
 - Serves Markdown files from a directory as rendered HTML
 - Uses the gomarkdown library for Markdown to HTML conversion
@@ -75,6 +76,7 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 ## Current Implementation Status
 
 ### ✅ **COMPLETED FEATURES**
+
 - **HTTP Compliance**: Proper 404/500 status codes, Content-Type headers
 - **Security Headers**: X-Content-Type-Options and X-Frame-Options middleware
 - **Comprehensive Testing**: 55%+ coverage with unit and integration tests
@@ -84,18 +86,20 @@ Use `make lint -j8` to parallelize linting and `FORCE_UPDATE=1 make lint` to rei
 - **Graceful Shutdown**: Signal handling for clean server shutdown
 
 ### **IMPORTANT NOTES**
+
 - **Path Traversal**: Already secured by `os.OpenRoot()` - no manual validation needed
 - **Single File**: Keep architecture simple, only split if >300 lines
 - **Testing**: Focus on HTTP compliance, error handling, and security boundaries
 - **Performance**: Current implementation is sufficient for typical use cases
 
 ### **DEVELOPMENT WORKFLOW**
+
 1. Make code changes in `main.go`
 2. Update tests in `main_test.go` if needed
-3. Run `make lint` to verify code quality
-4. Run `make test` to ensure all tests pass
-5. Run `make build` to create production binary
-6. Commit changes with descriptive messages
+3. Run `make format` to verify code quality
+4. Run `make lint` to verify code quality
+5. Run `make test` to ensure all tests pass
+6. Run `make build` to create production binary
+7. Commit changes with descriptive messages
 
 The application is now production-ready with proper security, testing, and HTTP compliance.
-
