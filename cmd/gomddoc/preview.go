@@ -14,9 +14,9 @@ import (
 
 // PreviewCmd holds all flags for the preview subcommand.
 type PreviewCmd struct {
-	Dir  string `arg:"" optional:"" default:"." help:"Markdown directory to preview."`
-	Port string `name:"port" short:"p" default:":auto" help:"HTTP listen address (host:port). Defaults to auto-assigned port."`
-	Open bool   `name:"open" default:"false" help:"Open the browser automatically on startup."`
+	Dir  string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown directory to preview."`
+	Port string `name:"port" short:"p" default:":auto" env:"GOMDDOC_SERVER_PORT" help:"HTTP listen address (host:port). Defaults to auto-assigned port."`
+	Open bool   `name:"open" default:"false" env:"GOMDDOC_PREVIEW_OPEN" help:"Open the browser automatically on startup."`
 }
 
 // previewSetupResult holds the assembled preview server and cleanup function.

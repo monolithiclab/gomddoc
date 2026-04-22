@@ -34,10 +34,6 @@ func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 		return err
 	}
 
-	if ctx.Command() != "serve" {
-		return nil
-	}
-
 	return writeEnvVarsHelp(ctx.Stdout)
 }
 

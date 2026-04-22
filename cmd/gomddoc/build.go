@@ -29,8 +29,8 @@ import (
 
 // BuildCmd holds all flags for the build subcommand.
 type BuildCmd struct {
-	Dir    string `arg:"" optional:"" default:"." help:"Markdown source directory or Git URL."`
-	Output string `name:"output" short:"o" default:"build/site" help:"Output directory for generated static site."`
+	Dir    string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown source directory or Git URL."`
+	Output string `name:"output" short:"o" default:"build/site" env:"GOMDDOC_BUILD_OUTPUT" help:"Output directory for generated static site."`
 }
 
 // buildStats tracks statistics for the build process.
