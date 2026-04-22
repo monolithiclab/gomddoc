@@ -78,9 +78,9 @@ go-git library limitations.
 
 _Usability improvements to the serve, build, and preview subcommands._
 
-- [x] **Guard build output directory**: `gomddoc build` fails if the output directory already
-      exists, preventing stale content accumulation. Use `--force` / `-f` to remove the existing
-      output and rebuild cleanly. Low complexity.
+- [x] **Guard build output directory**: `gomddoc build` uses a `.gomddoc-build` sentinel file to
+      track directories it created. Non-empty directories without the sentinel are refused,
+      preventing accidental deletion of unrelated files. Low complexity.
 - [x] **Remove `--dev` from `serve`**: `serve` is always production mode. `preview` is the
       designated dev command (no caching, template re-parsing, verbose logging).
 - [ ] **Autoreload in `preview`**: Automatically reload the browser when content files change.

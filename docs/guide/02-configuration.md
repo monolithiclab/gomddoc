@@ -68,10 +68,9 @@ gomddoc build [DIR] [flags]
 | `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Markdown source directory or Git URL |
 | `-o, --output` | `GOMDDOC_BUILD_OUTPUT` | `build/site` | Output directory |
 | `-d, --domain` | `GOMDDOC_DOMAIN` | | Override site domain for SEO (canonical, sitemap, etc.) |
-| `-f, --force` | `GOMDDOC_BUILD_FORCE` | `false` | Overwrite output directory if it exists |
 
 **Build behavior:**
-- The build fails if the output directory already exists (prevents stale content). Use `--force` to remove it and rebuild cleanly.
+- A `.gomddoc-build` sentinel file is written to the output directory. On subsequent builds, the sentinel proves the directory was created by gomddoc and is safe to overwrite. Non-empty directories without the sentinel are refused.
 - Markdown files are rendered to HTML through the full template pipeline
 - `README.md` files generate both `README.html` and `index.html` for clean URLs (unless `index.md` exists in the same directory)
 - Non-markdown files (images, CSS, JS) are copied as-is
