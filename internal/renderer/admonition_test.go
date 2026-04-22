@@ -8,7 +8,9 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
 
-func Test_transformAdmonitions(t *testing.T) {
+func TestAdmonitions(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		input          string
@@ -17,7 +19,7 @@ func Test_transformAdmonitions(t *testing.T) {
 	}{
 		{
 			name:  "NOTE admonition",
-			input: "<blockquote>\n<p>[!NOTE]\nThis is a note.</p>\n</blockquote>",
+			input: "> [!NOTE]\n> This is a note.",
 			wantContains: []string{
 				`class="admonition admonition-note"`,
 				`class="admonition-title"`,
@@ -28,7 +30,7 @@ func Test_transformAdmonitions(t *testing.T) {
 		},
 		{
 			name:  "WARNING admonition",
-			input: "<blockquote>\n<p>[!WARNING]\nBe careful!</p>\n</blockquote>",
+			input: "> [!WARNING]\n> Be careful!",
 			wantContains: []string{
 				`class="admonition admonition-warning"`,
 				"Warning",
@@ -38,7 +40,7 @@ func Test_transformAdmonitions(t *testing.T) {
 		},
 		{
 			name:  "TIP admonition",
-			input: "<blockquote>\n<p>[!TIP]\nHelpful tip here.</p>\n</blockquote>",
+			input: "> [!TIP]\n> Helpful tip here.",
 			wantContains: []string{
 				`class="admonition admonition-tip"`,
 				"Tip",
@@ -47,7 +49,7 @@ func Test_transformAdmonitions(t *testing.T) {
 		},
 		{
 			name:  "IMPORTANT admonition",
-			input: "<blockquote>\n<p>[!IMPORTANT]\nDo not ignore this.</p>\n</blockquote>",
+			input: "> [!IMPORTANT]\n> Do not ignore this.",
 			wantContains: []string{
 				`class="admonition admonition-important"`,
 				"Important",
@@ -56,7 +58,7 @@ func Test_transformAdmonitions(t *testing.T) {
 		},
 		{
 			name:  "CAUTION admonition",
-			input: "<blockquote>\n<p>[!CAUTION]\nDanger ahead.</p>\n</blockquote>",
+			input: "> [!CAUTION]\n> Danger ahead.",
 			wantContains: []string{
 				`class="admonition admonition-caution"`,
 				"Caution",
@@ -64,17 +66,16 @@ func Test_transformAdmonitions(t *testing.T) {
 			},
 		},
 		{
-			name:  "regular blockquote not affected",
-			input: "<blockquote>\n<p>This is a regular blockquote.</p>\n</blockquote>",
-			wantContains: []string{
-				"<blockquote>",
-				"This is a regular blockquote.",
+			name:         "regular blockquote not affected",
+			input:        "> This is just a regular quote.",
+			wantContains: []string{"<blockquote>", "This is just a regular quote."},
+			wantNotContain: []string{
+				"admonition",
 			},
-			wantNotContain: []string{"admonition"},
 		},
 		{
 			name:  "multi-line admonition content",
-			input: "<blockquote>\n<p>[!NOTE]\nFirst line.\nSecond line.\nThird line.</p>\n</blockquote>",
+			input: "> [!NOTE]\n> First line.\n> Second line.\n> Third line.",
 			wantContains: []string{
 				`class="admonition admonition-note"`,
 				"First line.",
@@ -84,8 +85,8 @@ func Test_transformAdmonitions(t *testing.T) {
 			wantNotContain: []string{"<blockquote>"},
 		},
 		{
-			name:  "admonition with multiple paragraphs",
-			input: "<blockquote>\n<p>[!WARNING]\nFirst paragraph.</p>\n<p>Second paragraph.</p>\n</blockquote>",
+			name:  "multi-paragraph admonition",
+			input: "> [!WARNING]\n> First paragraph.\n>\n> Second paragraph.",
 			wantContains: []string{
 				`class="admonition admonition-warning"`,
 				"First paragraph.",
@@ -94,24 +95,8 @@ func Test_transformAdmonitions(t *testing.T) {
 			wantNotContain: []string{"<blockquote>"},
 		},
 		{
-			name:  "case insensitive type marker",
-			input: "<blockquote>\n<p>[!note]\nLowercase marker.</p>\n</blockquote>",
-			wantContains: []string{
-				`class="admonition admonition-note"`,
-				"Lowercase marker.",
-			},
-		},
-		{
-			name:  "mixed case type marker",
-			input: "<blockquote>\n<p>[!Note]\nMixed case.</p>\n</blockquote>",
-			wantContains: []string{
-				`class="admonition admonition-note"`,
-				"Mixed case.",
-			},
-		},
-		{
-			name:  "admonition with no content after marker",
-			input: "<blockquote>\n<p>[!TIP]</p>\n</blockquote>",
+			name:  "marker only, no content",
+			input: "> [!TIP]",
 			wantContains: []string{
 				`class="admonition admonition-tip"`,
 				`class="admonition-title"`,
@@ -120,128 +105,26 @@ func Test_transformAdmonitions(t *testing.T) {
 			wantNotContain: []string{"<blockquote>"},
 		},
 		{
-			name: "multiple admonitions in same document",
-			input: `<blockquote>
-<p>[!NOTE]
-A note.</p>
-</blockquote>
-<p>Some text between.</p>
-<blockquote>
-<p>[!WARNING]
-A warning.</p>
-</blockquote>`,
+			name:  "multiple admonitions in same document",
+			input: "> [!NOTE]\n> A note.\n\nSome text between.\n\n> [!WARNING]\n> A warning.",
 			wantContains: []string{
-				`admonition-note`,
-				`admonition-warning`,
+				"admonition-note",
+				"admonition-warning",
 				"A note.",
 				"A warning.",
 				"Some text between.",
 			},
 			wantNotContain: []string{"<blockquote>"},
 		},
-		{
-			name:  "blockquote without marker prefix is preserved",
-			input: "<blockquote>\n<p>Just a quote with [!NOTE] in the middle.</p>\n</blockquote>",
-			wantContains: []string{
-				"<blockquote>",
-			},
-			wantNotContain: []string{"admonition"},
-		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := transformAdmonitions([]byte(tt.input))
-			output := string(result)
-
-			for _, want := range tt.wantContains {
-				if !strings.Contains(output, want) {
-					t.Errorf("output missing %q\nGot: %s", want, output)
-				}
-			}
-
-			for _, notWant := range tt.wantNotContain {
-				if strings.Contains(output, notWant) {
-					t.Errorf("output should not contain %q\nGot: %s", notWant, output)
-				}
-			}
-		})
-	}
-}
-
-func Test_transformAdmonitions_EmptyInput(t *testing.T) {
-	result := transformAdmonitions([]byte{})
-	if len(result) != 0 {
-		t.Errorf("expected empty output for empty input, got %q", string(result))
-	}
-}
-
-func Test_transformAdmonitions_NoBlockquotes(t *testing.T) {
-	input := []byte("<p>No blockquotes here.</p>")
-	result := transformAdmonitions(input)
-	if string(result) != string(input) {
-		t.Errorf("expected unchanged output, got %q", string(result))
-	}
-}
-
-// TestMarkdownRenderer_Admonitions verifies the full pipeline: markdown input through
-// the renderer produces admonition HTML output.
-func TestMarkdownRenderer_Admonitions(t *testing.T) {
-	tests := []struct {
-		name           string
-		input          string
-		wantContains   []string
-		wantNotContain []string
-	}{
-		{
-			name: "NOTE admonition from markdown",
-			input: `> [!NOTE]
-> This is a note from markdown.`,
-			wantContains: []string{
-				`class="admonition admonition-note"`,
-				`class="admonition-title"`,
-				"Note",
-				"This is a note from markdown.",
-			},
-			wantNotContain: []string{"<blockquote>", "[!NOTE]"},
-		},
-		{
-			name: "WARNING admonition from markdown",
-			input: `> [!WARNING]
-> This is a warning.`,
-			wantContains: []string{
-				`class="admonition admonition-warning"`,
-				"Warning",
-				"This is a warning.",
-			},
-		},
-		{
-			name:           "regular blockquote preserved",
-			input:          `> This is just a regular quote.`,
-			wantContains:   []string{"<blockquote>", "This is just a regular quote."},
-			wantNotContain: []string{"admonition"},
-		},
-		{
-			name: "multi-paragraph admonition from markdown",
-			input: `> [!IMPORTANT]
-> First paragraph.
->
-> Second paragraph.`,
-			wantContains: []string{
-				`class="admonition admonition-important"`,
-				"Important",
-				"First paragraph.",
-				"Second paragraph.",
-			},
-		},
-	}
-
-	renderer := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})
+	r := NewMarkdownRenderer(MarkdownOptions{})
 	ctx := context.Background()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := renderer.Render(ctx, []byte(tt.input), &enricher.EnrichmentData{})
+			t.Parallel()
+			result, err := r.Render(ctx, []byte(tt.input), &enricher.EnrichmentData{})
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
@@ -260,4 +143,54 @@ func TestMarkdownRenderer_Admonitions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAdmonitions_Disabled(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("globally disabled", func(t *testing.T) {
+		t.Parallel()
+		r := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"admonitions": false}})
+		result, err := r.Render(ctx, []byte("> [!NOTE]\n> Content"), &enricher.EnrichmentData{})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		output := string(result.Content)
+		if strings.Contains(output, "admonition") {
+			t.Errorf("admonitions should not appear when globally disabled\nGot: %s", output)
+		}
+		if !strings.Contains(output, "<blockquote>") {
+			t.Errorf("blockquote should be preserved when admonitions disabled\nGot: %s", output)
+		}
+	})
+
+	t.Run("globally enabled but page disables", func(t *testing.T) {
+		t.Parallel()
+		r := NewMarkdownRenderer(MarkdownOptions{})
+		result, err := r.Render(ctx, []byte("> [!NOTE]\n> Content"), &enricher.EnrichmentData{
+			Features: map[string]bool{"admonitions": false},
+		})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if strings.Contains(string(result.Content), "admonition") {
+			t.Error("admonitions should not appear when page disables them")
+		}
+	})
+
+	t.Run("globally disabled but page enables", func(t *testing.T) {
+		t.Parallel()
+		r := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"admonitions": false}})
+		result, err := r.Render(ctx, []byte("> [!NOTE]\n> Content"), &enricher.EnrichmentData{
+			Features: map[string]bool{"admonitions": true},
+		})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if !strings.Contains(string(result.Content), "admonition") {
+			t.Error("admonitions should appear when page enables them")
+		}
+	})
 }

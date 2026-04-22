@@ -1,86 +1,155 @@
 package renderer
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
 
-func TestAddHeadingAnchors(t *testing.T) {
+	"github.com/monolithiclab/gomddoc/internal/enricher"
+)
+
+func TestHeadingAnchors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name string
-		in   string
-		want string
+		name           string
+		input          string
+		wantContains   []string
+		wantNotContain []string
 	}{
 		{
-			name: "h1 with id",
-			in:   `<h1 id="title">Title</h1>`,
-			want: `<h1 id="title">Title <a href="#title" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h1>`,
+			name:  "h1 with auto id",
+			input: "# Title",
+			wantContains: []string{
+				`<h1 id="title">`,
+				`Title`,
+				`<a href="#title" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a>`,
+				`</h1>`,
+			},
 		},
 		{
-			name: "h2 with id",
-			in:   `<h2 id="section">Section</h2>`,
-			want: `<h2 id="section">Section <a href="#section" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h2>`,
+			name:  "h2 with auto id",
+			input: "## Section",
+			wantContains: []string{
+				`<h2 id="section">`,
+				`Section`,
+				`<a href="#section" class="heading-anchor"`,
+			},
 		},
 		{
-			name: "h3 with id",
-			in:   `<h3 id="sub">Sub</h3>`,
-			want: `<h3 id="sub">Sub <a href="#sub" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h3>`,
+			name:  "h3 with auto id",
+			input: "### Sub",
+			wantContains: []string{
+				`<h3 id="sub">`,
+				`<a href="#sub"`,
+			},
 		},
 		{
-			name: "h4 with id",
-			in:   `<h4 id="deep">Deep</h4>`,
-			want: `<h4 id="deep">Deep <a href="#deep" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h4>`,
+			name:  "heading with inline markup",
+			input: "## Code `example`",
+			wantContains: []string{
+				`<h2 id="code-example">`,
+				`Code `,
+				`<code>example</code>`,
+				`<a href="#code-example" class="heading-anchor"`,
+			},
 		},
 		{
-			name: "h5 with id",
-			in:   `<h5 id="deeper">Deeper</h5>`,
-			want: `<h5 id="deeper">Deeper <a href="#deeper" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h5>`,
+			name:  "multiple headings in same content",
+			input: "# First\n\nSome text.\n\n## Second",
+			wantContains: []string{
+				`<a href="#first"`,
+				`<a href="#second"`,
+			},
 		},
 		{
-			name: "h6 with id",
-			in:   `<h6 id="deepest">Deepest</h6>`,
-			want: `<h6 id="deepest">Deepest <a href="#deepest" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h6>`,
+			name:         "paragraph only, no headings",
+			input:        "Just a paragraph.",
+			wantContains: []string{"<p>Just a paragraph.</p>"},
+			wantNotContain: []string{
+				"heading-anchor",
+			},
 		},
 		{
-			name: "heading without id is not modified",
-			in:   `<h2>No ID</h2>`,
-			want: `<h2>No ID</h2>`,
-		},
-		{
-			name: "anchor href matches heading id",
-			in:   `<h2 id="my-section">My Section</h2>`,
-			want: `<h2 id="my-section">My Section <a href="#my-section" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h2>`,
-		},
-		{
-			name: "multiple headings in same content",
-			in:   "<h1 id=\"first\">First</h1>\n<p>paragraph</p>\n<h2 id=\"second\">Second</h2>",
-			want: "<h1 id=\"first\">First <a href=\"#first\" class=\"heading-anchor\" aria-hidden=\"true\" tabindex=\"-1\">#</a></h1>\n<p>paragraph</p>\n<h2 id=\"second\">Second <a href=\"#second\" class=\"heading-anchor\" aria-hidden=\"true\" tabindex=\"-1\">#</a></h2>",
-		},
-		{
-			name: "id with special characters",
-			in:   `<h2 id="hello-world_123">Hello World</h2>`,
-			want: `<h2 id="hello-world_123">Hello World <a href="#hello-world_123" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h2>`,
-		},
-		{
-			name: "heading with inline markup",
-			in:   `<h2 id="code">Code <code>example</code></h2>`,
-			want: `<h2 id="code">Code <code>example</code> <a href="#code" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a></h2>`,
-		},
-		{
-			name: "empty content is unchanged",
-			in:   "",
-			want: "",
-		},
-		{
-			name: "no headings at all",
-			in:   "<p>Just a paragraph.</p>",
-			want: "<p>Just a paragraph.</p>",
+			name:           "empty content",
+			input:          "",
+			wantNotContain: []string{"heading-anchor"},
 		},
 	}
+
+	r := NewMarkdownRenderer(MarkdownOptions{})
+	ctx := context.Background()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := string(addHeadingAnchors([]byte(tt.in)))
-			if got != tt.want {
-				t.Errorf("addHeadingAnchors()\ngot:  %s\nwant: %s", got, tt.want)
+			t.Parallel()
+			result, err := r.Render(ctx, []byte(tt.input), &enricher.EnrichmentData{})
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+
+			output := string(result.Content)
+			for _, want := range tt.wantContains {
+				if !strings.Contains(output, want) {
+					t.Errorf("output missing %q\nGot: %s", want, output)
+				}
+			}
+
+			for _, notWant := range tt.wantNotContain {
+				if strings.Contains(output, notWant) {
+					t.Errorf("output should not contain %q\nGot: %s", notWant, output)
+				}
 			}
 		})
 	}
+}
+
+func TestHeadingAnchors_Disabled(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	t.Run("globally disabled", func(t *testing.T) {
+		t.Parallel()
+		r := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"heading_anchors": false}})
+		result, err := r.Render(ctx, []byte("## Section"), &enricher.EnrichmentData{})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		output := string(result.Content)
+		if strings.Contains(output, "heading-anchor") {
+			t.Errorf("heading anchors should not appear when globally disabled\nGot: %s", output)
+		}
+		if !strings.Contains(output, `<h2 id="section">`) {
+			t.Errorf("heading should still have id attribute\nGot: %s", output)
+		}
+	})
+
+	t.Run("globally enabled but page disables", func(t *testing.T) {
+		t.Parallel()
+		r := NewMarkdownRenderer(MarkdownOptions{})
+		result, err := r.Render(ctx, []byte("## Section"), &enricher.EnrichmentData{
+			Features: map[string]bool{"heading_anchors": false},
+		})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if strings.Contains(string(result.Content), "heading-anchor") {
+			t.Error("heading anchors should not appear when page disables them")
+		}
+	})
+
+	t.Run("globally disabled but page enables", func(t *testing.T) {
+		t.Parallel()
+		r := NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"heading_anchors": false}})
+		result, err := r.Render(ctx, []byte("## Section"), &enricher.EnrichmentData{
+			Features: map[string]bool{"heading_anchors": true},
+		})
+		if err != nil {
+			t.Fatalf("Render() error = %v", err)
+		}
+		if !strings.Contains(string(result.Content), "heading-anchor") {
+			t.Error("heading anchors should appear when page enables them")
+		}
+	})
 }

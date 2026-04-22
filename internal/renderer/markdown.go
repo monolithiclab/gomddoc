@@ -8,6 +8,7 @@ import (
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	meta "github.com/yuin/goldmark-meta"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
@@ -34,7 +35,7 @@ type MarkdownOptions struct {
 	// code blocks. Defaults to "github" when empty.
 	HighlightTheme string
 
-	// Features controls which markdown post-processing features are enabled.
+	// Features controls which markdown rendering features are enabled.
 	// If nil, all features default to enabled.
 	// Per-page frontmatter can override site-level settings.
 	Features map[string]bool
@@ -56,6 +57,9 @@ type MarkdownRenderer struct {
 //   - extension.GFM: Tables, strikethrough, linkify, task lists
 //   - meta.Meta: Strips YAML frontmatter from rendered output (metadata extraction is in enricher)
 //   - highlighting: Syntax highlighting via Chroma with the specified theme
+//   - HeadingAnchorExtension: Appends anchor links to headings with IDs
+//   - AdmonitionExtension: Transforms [!TYPE] blockquotes to admonition divs
+//   - ColorChipExtension: Transforms hex color code spans to <color-chip> elements
 //   - parser.WithAutoHeadingID: Automatic ID generation for headings
 //   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
 func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
@@ -71,6 +75,9 @@ func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
 			highlighting.NewHighlighting(
 				highlighting.WithStyle(highlightTheme),
 			),
+			&HeadingAnchorExtension{},
+			&AdmonitionExtension{},
+			&ColorChipExtension{},
 		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
@@ -103,36 +110,30 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 		return nil, err
 	}
 
-	pCtx := parser.NewContext()
-	reader := text.NewReader(content)
-	doc := m.md.Parser().Parse(reader, parser.WithContext(pCtx))
-
-	var buf bytes.Buffer
-	if err := m.md.Renderer().Render(&buf, content, doc); err != nil {
-		return nil, err
-	}
-
-	// Post-process: conditionally apply post-processors based on features.
-	// Per-page frontmatter can override site-level feature settings.
+	// Merge site-level and per-page feature flags.
 	var pageFeatures map[string]bool
 	if enrichment != nil {
 		pageFeatures = enrichment.Features
 	}
 	merged := config.MergeFeatures(m.features, pageFeatures)
 
-	rendered := buf.Bytes()
-	if config.FeatureEnabled("heading_anchors", merged) {
-		rendered = addHeadingAnchors(rendered)
-	}
-	if config.FeatureEnabled("admonitions", merged) {
-		rendered = transformAdmonitions(rendered)
-	}
-	if config.FeatureEnabled("color_chips", merged) {
-		rendered = transformColorChips(rendered)
+	// Set features on parser context for AST transformers.
+	pCtx := parser.NewContext()
+	pCtx.Set(featuresContextKey, merged)
+
+	reader := text.NewReader(content)
+	doc := m.md.Parser().Parse(reader, parser.WithContext(pCtx))
+
+	// Set features on document node for node renderers.
+	setDocFeatures(doc.(*ast.Document), merged)
+
+	var buf bytes.Buffer
+	if err := m.md.Renderer().Render(&buf, content, doc); err != nil {
+		return nil, err
 	}
 
 	return &RenderResult{
-		Content:  rendered,
+		Content:  buf.Bytes(),
 		MimeType: "text/html; charset=utf-8",
 	}, nil
 }
