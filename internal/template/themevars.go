@@ -28,6 +28,12 @@ func (h *HTMLRenderer) generateThemeVarsCSS() template.CSS {
 // alphanumeric characters and hyphens only.
 var validThemeVarKey = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
+// unsafeCSSValue returns true if the value contains characters that could
+// escape a CSS property value context (braces, semicolons, angle brackets).
+func unsafeCSSValue(v string) bool {
+	return strings.ContainsAny(v, "{}<>;")
+}
+
 func buildThemeVarsCSS(vars map[string]string) template.CSS {
 	if len(vars) == 0 {
 		return ""
@@ -38,6 +44,10 @@ func buildThemeVarsCSS(vars map[string]string) template.CSS {
 	for k, v := range vars {
 		if !validThemeVarKey.MatchString(k) {
 			slog.Warn("skipping theme var with invalid key (only a-z/0-9 allowed)", "key", k)
+			continue
+		}
+		if unsafeCSSValue(v) {
+			slog.Warn("skipping theme var with unsafe value", "key", k, "value", v)
 			continue
 		}
 		b.WriteString("  --theme-")

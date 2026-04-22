@@ -91,6 +91,36 @@ func TestBuildThemeVarsCSS(t *testing.T) {
 				"evil",
 			},
 		},
+		{
+			name: "value with CSS injection via braces rejected",
+			vars: map[string]string{
+				"bg": "red; } body { display:none } :root {",
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "value with semicolon rejected",
+			vars: map[string]string{
+				"bg": "red; background: url(evil)",
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "value with HTML tag rejected",
+			vars: map[string]string{
+				"bg": "</style><script>alert(1)</script>",
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "safe value with parentheses allowed",
+			vars: map[string]string{
+				"font": "rgb(255, 0, 0)",
+			},
+			wantContains: []string{
+				"--theme-font: rgb(255, 0, 0)",
+			},
+		},
 	}
 
 	for _, tt := range tests {
