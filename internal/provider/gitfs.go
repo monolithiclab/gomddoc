@@ -141,9 +141,6 @@ func (d *gitDirFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	if n <= 0 {
 		entries := d.entries[d.offset:]
 		d.offset = len(d.entries)
-		if len(entries) == 0 {
-			return nil, io.EOF
-		}
 		return entries, nil
 	}
 

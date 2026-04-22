@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"gopkg.in/yaml.v3"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
@@ -328,19 +329,21 @@ func (s *MCPServer) buildPageHeader(filePath string) string {
 		return ""
 	}
 
-	var b strings.Builder
-	b.WriteString("---\n")
-	if p.Title != "" {
-		fmt.Fprintf(&b, "title: %s\n", p.Title)
+	header := struct {
+		Title       string   `yaml:"title,omitempty"`
+		Description string   `yaml:"description,omitempty"`
+		Tags        []string `yaml:"tags,omitempty,flow"`
+	}{
+		Title:       p.Title,
+		Description: p.Description,
+		Tags:        p.Tags,
 	}
-	if p.Description != "" {
-		fmt.Fprintf(&b, "description: %s\n", p.Description)
+
+	data, err := yaml.Marshal(header)
+	if err != nil {
+		return ""
 	}
-	if len(p.Tags) > 0 {
-		fmt.Fprintf(&b, "tags: [%s]\n", strings.Join(p.Tags, ", "))
-	}
-	b.WriteString("---\n\n")
-	return b.String()
+	return "---\n" + string(data) + "---\n\n"
 }
 
 type pageEntry struct {

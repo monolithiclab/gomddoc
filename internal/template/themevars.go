@@ -41,6 +41,7 @@ func buildThemeVarsCSS(vars map[string]string) template.CSS {
 
 	var b strings.Builder
 	b.WriteString(":root {\n")
+	varsWritten := 0
 	for k, v := range vars {
 		if !validThemeVarKey.MatchString(k) {
 			slog.Warn("skipping theme var with invalid key (only a-z/0-9 allowed)", "key", k)
@@ -55,11 +56,11 @@ func buildThemeVarsCSS(vars map[string]string) template.CSS {
 		b.WriteString(": ")
 		b.WriteString(v)
 		b.WriteString(";\n")
+		varsWritten++
 	}
 	b.WriteString("}\n")
 
-	// If all vars were invalid, return empty instead of an empty :root block.
-	if b.Len() == len(":root {\n}\n") {
+	if varsWritten == 0 {
 		return ""
 	}
 

@@ -34,7 +34,7 @@ func NormalizeMimeType(mimeType string) string {
 	}
 	mediaType, _, err := mime.ParseMediaType(mimeType)
 	if err != nil || mediaType == "" {
-		return strings.TrimSpace(mimeType)
+		return strings.ToLower(strings.TrimSpace(mimeType))
 	}
 	return mediaType
 }

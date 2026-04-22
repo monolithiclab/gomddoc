@@ -292,10 +292,11 @@ func TestGitDirFile_ReadDir(t *testing.T) {
 			t.Errorf("ReadDir() returned %d entries, want 3", len(entries))
 		}
 
-		// Second call with n<=0 should return io.EOF (all consumed)
+		// Second call with n<=0 should return empty slice with nil error
+		// per io/fs.ReadDirFile spec: n<=0 returns all remaining entries with nil error.
 		entries2, err := dirFile.ReadDir(0)
-		if !errors.Is(err, io.EOF) {
-			t.Errorf("second ReadDir(0) error = %v, want io.EOF", err)
+		if err != nil {
+			t.Errorf("second ReadDir(0) error = %v, want nil", err)
 		}
 		if len(entries2) != 0 {
 			t.Errorf("second ReadDir(0) returned %d entries, want 0", len(entries2))
