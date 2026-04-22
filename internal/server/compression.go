@@ -78,16 +78,32 @@ func Compression(next http.Handler) http.Handler {
 	})
 }
 
-// acceptsGzip checks whether the request Accept-Encoding header includes gzip.
+// acceptsGzip checks whether the request Accept-Encoding header includes gzip
+// with a non-zero quality value. Per RFC 9110, "gzip;q=0" explicitly disables gzip.
 func acceptsGzip(r *http.Request) bool {
 	for encoding := range strings.SplitSeq(r.Header.Get("Accept-Encoding"), ",") {
-		// Trim whitespace and ignore q-values for simplicity
 		enc := strings.TrimSpace(encoding)
+		params := ""
 		if idx := strings.Index(enc, ";"); idx >= 0 {
+			params = enc[idx+1:]
 			enc = strings.TrimSpace(enc[:idx])
 		}
 		if strings.EqualFold(enc, "gzip") {
-			return true
+			return !isQualityZero(params)
+		}
+	}
+	return false
+}
+
+// isQualityZero returns true if the parameters contain a q-value of zero.
+// Handles multiple semicolon-separated parameters (e.g., "level=5;q=0").
+// Per RFC 9110 §12.4.2, quality values have up to 3 decimal places.
+func isQualityZero(params string) bool {
+	for param := range strings.SplitSeq(params, ";") {
+		p := strings.TrimSpace(param)
+		if len(p) >= 3 && (p[0] == 'q' || p[0] == 'Q') && p[1] == '=' {
+			v := p[2:]
+			return v == "0" || v == "0." || v == "0.0" || v == "0.00" || v == "0.000"
 		}
 	}
 	return false
