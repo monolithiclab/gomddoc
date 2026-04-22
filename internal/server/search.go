@@ -9,12 +9,30 @@ import (
 
 // SearchHandler serves the full-text search JSON API.
 type SearchHandler struct {
-	index *search.Index
+	indexes     map[string]*search.Index // lang → index ("" for single-language mode)
+	defaultLang string
+	knownLangs  map[string]bool
 }
 
-// NewSearchHandler creates a new SearchHandler backed by the given search index.
+// NewSearchHandler creates a new SearchHandler backed by a single search index.
 func NewSearchHandler(index *search.Index) *SearchHandler {
-	return &SearchHandler{index: index}
+	return &SearchHandler{
+		indexes: map[string]*search.Index{"": index},
+	}
+}
+
+// NewMultiLangSearchHandler creates a SearchHandler with per-language indexes.
+// The defaultLang key must exist in the indexes map.
+func NewMultiLangSearchHandler(indexes map[string]*search.Index, defaultLang string) *SearchHandler {
+	known := make(map[string]bool, len(indexes))
+	for lang := range indexes {
+		known[lang] = true
+	}
+	return &SearchHandler{
+		indexes:     indexes,
+		defaultLang: defaultLang,
+		knownLangs:  known,
+	}
 }
 
 const (
@@ -23,7 +41,7 @@ const (
 	maxQueryLength     = 500
 )
 
-// SearchEndpoint handles GET /api/search?q=<query>&limit=<n>.
+// SearchEndpoint handles GET /api/search?q=<query>&limit=<n>&lang=<code>.
 // Returns a JSON array of search results ranked by relevance.
 func (h *SearchHandler) SearchEndpoint(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
@@ -42,6 +60,23 @@ func (h *SearchHandler) SearchEndpoint(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	results := h.index.Search(q, limit)
+	index := h.resolveIndex(r)
+	if index == nil {
+		writeJSON(w, http.StatusOK, []search.SearchResult{})
+		return
+	}
+
+	results := index.Search(q, limit)
 	writeJSON(w, http.StatusOK, results)
+}
+
+// resolveIndex selects the search index for the request.
+// In single-language mode (knownLangs is nil), uses the "" key.
+// In multi-language mode, resolves via ResolveAPILanguage.
+func (h *SearchHandler) resolveIndex(r *http.Request) *search.Index {
+	if h.knownLangs == nil {
+		return h.indexes[""]
+	}
+	lang := ResolveAPILanguage(r, h.knownLangs, h.defaultLang)
+	return h.indexes[lang]
 }
