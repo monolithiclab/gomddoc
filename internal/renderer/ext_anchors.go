@@ -10,9 +10,9 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/config"
 )
 
-// HeadingAnchorExtension is a goldmark extension that appends anchor links
-// to headings that have an id attribute. The anchor uses "#" and is revealed
-// on hover via CSS.
+// HeadingAnchorExtension is a goldmark extension that appends
+// <gmd-heading-anchor> web components to headings that have an id attribute.
+// The web component renders a "#" anchor link with Shadow DOM encapsulation.
 //
 // This replaces the regex-based addHeadingAnchors post-processor with a
 // proper AST-level renderer override.
@@ -26,7 +26,8 @@ func (e *HeadingAnchorExtension) Extend(m goldmark.Markdown) {
 }
 
 // headingAnchorRenderer overrides goldmark's default heading rendering
-// to append anchor links when heading_anchors feature is enabled.
+// to append <gmd-heading-anchor> web components when heading_anchors
+// feature is enabled.
 type headingAnchorRenderer struct{}
 
 // RegisterFuncs registers the heading renderer override.
@@ -35,8 +36,8 @@ func (r *headingAnchorRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegis
 }
 
 // renderHeading replicates goldmark's default heading rendering and appends
-// an anchor link when the heading has an ID and the heading_anchors feature
-// is enabled.
+// a <gmd-heading-anchor> web component when the heading has an ID and the
+// heading_anchors feature is enabled.
 func (r *headingAnchorRenderer) renderHeading(
 	w util.BufWriter, source []byte, node ast.Node, entering bool,
 ) (ast.WalkStatus, error) {
@@ -50,7 +51,7 @@ func (r *headingAnchorRenderer) renderHeading(
 		}
 		_ = w.WriteByte('>')
 	} else {
-		// Append anchor link if heading has an ID and feature is enabled.
+		// Append web component if heading has an ID and feature is enabled.
 		features := getDocFeatures(node)
 		if config.FeatureEnabled("heading_anchors", features) {
 			if idAttr, ok := node.AttributeString("id"); ok {
@@ -62,9 +63,9 @@ func (r *headingAnchorRenderer) renderHeading(
 					id = v
 				}
 				if id != "" {
-					_, _ = w.WriteString(` <a href="#`)
+					_, _ = w.WriteString(` <gmd-heading-anchor href="#`)
 					_, _ = w.WriteString(id)
-					_, _ = w.WriteString(`" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a>`)
+					_, _ = w.WriteString(`"></gmd-heading-anchor>`)
 				}
 			}
 		}

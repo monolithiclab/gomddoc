@@ -23,7 +23,7 @@ func TestHeadingAnchors(t *testing.T) {
 			wantContains: []string{
 				`<h1 id="title">`,
 				`Title`,
-				`<a href="#title" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a>`,
+				`<gmd-heading-anchor href="#title"></gmd-heading-anchor>`,
 				`</h1>`,
 			},
 		},
@@ -33,7 +33,7 @@ func TestHeadingAnchors(t *testing.T) {
 			wantContains: []string{
 				`<h2 id="section">`,
 				`Section`,
-				`<a href="#section" class="heading-anchor"`,
+				`<gmd-heading-anchor href="#section"`,
 			},
 		},
 		{
@@ -41,7 +41,7 @@ func TestHeadingAnchors(t *testing.T) {
 			input: "### Sub",
 			wantContains: []string{
 				`<h3 id="sub">`,
-				`<a href="#sub"`,
+				`<gmd-heading-anchor href="#sub"`,
 			},
 		},
 		{
@@ -51,15 +51,15 @@ func TestHeadingAnchors(t *testing.T) {
 				`<h2 id="code-example">`,
 				`Code `,
 				`<code>example</code>`,
-				`<a href="#code-example" class="heading-anchor"`,
+				`<gmd-heading-anchor href="#code-example"`,
 			},
 		},
 		{
 			name:  "multiple headings in same content",
 			input: "# First\n\nSome text.\n\n## Second",
 			wantContains: []string{
-				`<a href="#first"`,
-				`<a href="#second"`,
+				`<gmd-heading-anchor href="#first"`,
+				`<gmd-heading-anchor href="#second"`,
 			},
 		},
 		{
@@ -67,13 +67,13 @@ func TestHeadingAnchors(t *testing.T) {
 			input:        "Just a paragraph.",
 			wantContains: []string{"<p>Just a paragraph.</p>"},
 			wantNotContain: []string{
-				"heading-anchor",
+				"gmd-heading-anchor",
 			},
 		},
 		{
 			name:           "empty content",
 			input:          "",
-			wantNotContain: []string{"heading-anchor"},
+			wantNotContain: []string{"gmd-heading-anchor"},
 		},
 	}
 
@@ -117,7 +117,7 @@ func TestHeadingAnchors_Disabled(t *testing.T) {
 			t.Fatalf("Render() error = %v", err)
 		}
 		output := string(result.Content)
-		if strings.Contains(output, "heading-anchor") {
+		if strings.Contains(output, "gmd-heading-anchor") {
 			t.Errorf("heading anchors should not appear when globally disabled\nGot: %s", output)
 		}
 		if !strings.Contains(output, `<h2 id="section">`) {
@@ -134,7 +134,7 @@ func TestHeadingAnchors_Disabled(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if strings.Contains(string(result.Content), "heading-anchor") {
+		if strings.Contains(string(result.Content), "gmd-heading-anchor") {
 			t.Error("heading anchors should not appear when page disables them")
 		}
 	})
@@ -148,7 +148,7 @@ func TestHeadingAnchors_Disabled(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Render() error = %v", err)
 		}
-		if !strings.Contains(string(result.Content), "heading-anchor") {
+		if !strings.Contains(string(result.Content), "gmd-heading-anchor") {
 			t.Error("heading anchors should appear when page enables them")
 		}
 	})

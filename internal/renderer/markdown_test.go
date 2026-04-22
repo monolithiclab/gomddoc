@@ -37,7 +37,7 @@ func TestMarkdownRenderer_Render(t *testing.T) {
 		{
 			name:         "heading with auto ID",
 			input:        "# Hello",
-			wantContains: []string{"<h1", "id=\"hello\"", "heading-anchor", `href="#hello"`, "</h1>"},
+			wantContains: []string{"<h1", `id="hello"`, "gmd-heading-anchor", `href="#hello"`, "</h1>"},
 			wantMimeType: "text/html; charset=utf-8",
 		},
 		{

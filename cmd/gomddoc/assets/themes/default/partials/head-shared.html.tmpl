@@ -50,6 +50,9 @@
         {{- if .Feature "admonitions" }}
         <script>{{ inlineJSAsset "gmd-admonition.mjs" }}</script>
         {{- end }}
+        {{- if .Feature "heading_anchors" }}
+        <script>{{ inlineJSAsset "gmd-heading-anchor.mjs" }}</script>
+        {{- end }}
         {{- if .Feature "color_chips" }}
         <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
         {{- end }}
