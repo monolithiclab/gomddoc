@@ -106,7 +106,7 @@ type GitProvider struct {
 //   - ErrInvalidGitURL: URL is malformed or uses unsupported scheme
 func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, cfg GitProviderConfig) (*GitProvider, error) {
 	if defaultIndex == "" {
-		return nil, fmt.Errorf("defaultIndex must not be empty")
+		return nil, ErrEmptyDefaultIndex
 	}
 
 	parsed, err := parseGitURL(gitURL)

@@ -34,7 +34,7 @@ func NewFilesystemProvider(dir, defaultIndex string, dirIndex bool) (*Filesystem
 // This is useful for testing with in-memory filesystems or using custom fs implementations.
 func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool) (*FilesystemProvider, error) {
 	if defaultIndex == "" {
-		return nil, fmt.Errorf("defaultIndex must not be empty")
+		return nil, ErrEmptyDefaultIndex
 	}
 
 	// Type assertion to fs.StatFS (needed for Stat() method)

@@ -46,6 +46,10 @@ var (
 	// ErrProviderClosed is returned when an operation is attempted on a
 	// provider that has already been closed.
 	ErrProviderClosed = errors.New("provider closed")
+
+	// ErrEmptyDefaultIndex is returned when a provider is constructed
+	// with an empty default index filename.
+	ErrEmptyDefaultIndex = errors.New("defaultIndex must not be empty")
 )
 
 // PathError provides structured error information for provider operations.
