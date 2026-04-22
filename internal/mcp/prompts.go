@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -114,6 +115,10 @@ func (s *MCPServer) handleSummarizePage(ctx context.Context, req *mcp.GetPromptR
 	pagePath := req.Params.Arguments["path"]
 	if pagePath == "" {
 		return nil, fmt.Errorf("path argument is required")
+	}
+
+	if provider.IsRestrictedPath(pagePath, s.deps.ExcludePatterns) {
+		return nil, fmt.Errorf("page not found: %s", pagePath)
 	}
 
 	content, _, err := s.deps.Provider.ReadFile(ctx, pagePath)

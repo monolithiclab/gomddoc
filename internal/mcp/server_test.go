@@ -566,6 +566,29 @@ func TestTools_HiddenPathBlocking(t *testing.T) {
 	})
 }
 
+// TestPrompts_SummarizePage_HiddenPathBlocking verifies that summarize_page rejects hidden paths.
+func TestPrompts_SummarizePage_HiddenPathBlocking(t *testing.T) {
+	t.Parallel()
+	f := setupTest(t)
+	defer f.close(t)
+
+	hiddenPaths := []string{
+		".env",
+		".git/config",
+		".gomddoc/config.yml",
+	}
+
+	for _, p := range hiddenPaths {
+		_, err := f.session.GetPrompt(context.Background(), &mcp.GetPromptParams{
+			Name:      "summarize_page",
+			Arguments: map[string]string{"path": p},
+		})
+		if err == nil {
+			t.Errorf("summarize_page(%q) should reject hidden path", p)
+		}
+	}
+}
+
 // TestResources_HiddenPathBlocking verifies that MCP page resources reject hidden paths.
 func TestResources_HiddenPathBlocking(t *testing.T) {
 	t.Parallel()
