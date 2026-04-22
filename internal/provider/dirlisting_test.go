@@ -106,7 +106,22 @@ func TestGenerateMarkdownListing(t *testing.T) {
 			},
 			wantContains: []string{
 				"[dir-with-dashes/](dir-with-dashes/)",
-				"[file with spaces.txt](file with spaces.txt)",
+				"[file with spaces.txt](file%20with%20spaces.txt)",
+			},
+		},
+		{
+			name: "markdown injection in filenames escaped",
+			path: "inject",
+			entries: []fs.DirEntry{
+				mockDirEntry{name: "](javascript:alert(1))", isDir: false},
+				mockDirEntry{name: "normal[file].md", isDir: false},
+			},
+			wantContains: []string{
+				`\]\(javascript:alert\(1\)\)`, // brackets and parens escaped
+				`normal\[file\].md`,           // brackets escaped in display
+			},
+			wantNotContain: []string{
+				"](javascript:", // raw injection must not appear
 			},
 		},
 		{

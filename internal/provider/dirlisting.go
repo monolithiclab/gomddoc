@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"io/fs"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -43,11 +44,11 @@ func GenerateMarkdownListing(path string, entries []fs.DirEntry) []byte {
 	// Build markdown listing
 	var builder strings.Builder
 
-	// Add heading
+	// Add heading (path is internal, but escape for safety)
 	if path == "" || path == "." || path == "/" {
 		builder.WriteString("# Index\n\n")
 	} else {
-		builder.WriteString(fmt.Sprintf("# Index of %s\n\n", path))
+		builder.WriteString(fmt.Sprintf("# Index of %s\n\n", escapeMarkdown(path)))
 	}
 
 	// Add entries
@@ -56,15 +57,28 @@ func GenerateMarkdownListing(path string, entries []fs.DirEntry) []byte {
 	} else {
 		for _, entry := range visible {
 			name := entry.Name()
+			safeName := escapeMarkdown(name)
+			safeURL := url.PathEscape(name)
 			if entry.IsDir() {
 				// Directory: add trailing slash and link to directory path
-				builder.WriteString(fmt.Sprintf("- [%s/](%s/)\n", name, name))
+				builder.WriteString(fmt.Sprintf("- [%s/](%s/)\n", safeName, safeURL))
 			} else {
 				// File: link to file
-				builder.WriteString(fmt.Sprintf("- [%s](%s)\n", name, name))
+				builder.WriteString(fmt.Sprintf("- [%s](%s)\n", safeName, safeURL))
 			}
 		}
 	}
 
 	return []byte(builder.String())
+}
+
+// escapeMarkdown escapes markdown special characters in text to prevent injection.
+func escapeMarkdown(s string) string {
+	r := strings.NewReplacer(
+		"[", `\[`,
+		"]", `\]`,
+		"(", `\(`,
+		")", `\)`,
+	)
+	return r.Replace(s)
 }
