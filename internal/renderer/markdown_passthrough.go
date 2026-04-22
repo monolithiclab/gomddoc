@@ -54,8 +54,12 @@ func stripFrontmatter(content []byte) []byte {
 		return content
 	}
 
-	// Skip past the closing delimiter and any following newline
+	// Skip past the closing delimiter and the single newline that follows it
 	body := after
-	body = bytes.TrimLeft(body, "\r\n")
+	if len(body) > 0 && body[0] == '\n' {
+		body = body[1:]
+	} else if len(body) > 1 && body[0] == '\r' && body[1] == '\n' {
+		body = body[2:]
+	}
 	return body
 }

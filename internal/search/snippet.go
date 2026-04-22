@@ -4,6 +4,7 @@ import (
 	"html"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const defaultSnippetLen = 160
@@ -29,20 +30,32 @@ func generateSnippet(content string, queryTokens []string, maxLen int) string {
 	start := bestPos
 	end := min(bestPos+maxLen, len(content))
 
-	// Adjust to word boundaries
+	// Adjust to word boundaries (rune-aware)
 	if start > 0 {
 		// Move start forward to next word boundary
-		for start < end && !unicode.IsSpace(rune(content[start])) {
-			start++
+		for start < end {
+			r, size := utf8.DecodeRuneInString(content[start:])
+			if unicode.IsSpace(r) {
+				break
+			}
+			start += size
 		}
-		for start < end && unicode.IsSpace(rune(content[start])) {
-			start++
+		for start < end {
+			r, size := utf8.DecodeRuneInString(content[start:])
+			if !unicode.IsSpace(r) {
+				break
+			}
+			start += size
 		}
 	}
 	if end < len(content) {
 		// Move end backward to word boundary
-		for end > start && !unicode.IsSpace(rune(content[end-1])) {
-			end--
+		for end > start {
+			r, size := utf8.DecodeLastRuneInString(content[:end])
+			if unicode.IsSpace(r) {
+				break
+			}
+			end -= size
 		}
 	}
 
@@ -82,6 +95,13 @@ func findBestWindow(lowerContent string, queryTokens []string, windowSize int) i
 	step := max(len(lowerContent)/50, 1)
 
 	for pos := 0; pos <= len(lowerContent)-windowSize; pos += step {
+		// Align to rune boundary to avoid splitting multi-byte characters
+		for pos > 0 && !utf8.RuneStart(lowerContent[pos]) {
+			pos++
+		}
+		if pos > len(lowerContent)-windowSize {
+			break
+		}
 		window := lowerContent[pos : pos+windowSize]
 		score := 0
 		for _, token := range queryTokens {
@@ -148,7 +168,9 @@ func isWordBoundary(text string, pos int) bool {
 	if pos <= 0 || pos >= len(text) {
 		return true
 	}
-	return !unicode.IsLetter(rune(text[pos-1])) || !unicode.IsLetter(rune(text[pos]))
+	prevR, _ := utf8.DecodeLastRuneInString(text[:pos])
+	nextR, _ := utf8.DecodeRuneInString(text[pos:])
+	return !unicode.IsLetter(prevR) || !unicode.IsLetter(nextR)
 }
 
 // sortSpans sorts spans by start position using insertion sort (small slices).
@@ -183,17 +205,26 @@ func mergeSpans(spans []span) []span {
 	return merged
 }
 
-// truncateAtWord truncates text to maxLen characters at a word boundary.
+// truncateAtWord truncates text to maxLen bytes at a word boundary.
 func truncateAtWord(text string, maxLen int) string {
 	if len(text) <= maxLen {
 		return html.EscapeString(text)
 	}
 	end := maxLen
-	for end > 0 && !unicode.IsSpace(rune(text[end-1])) {
+	// Back up to avoid splitting a multi-byte rune at the boundary
+	for end > 0 && !utf8.RuneStart(text[end]) {
 		end--
 	}
+	runeAligned := end
+	for end > 0 {
+		r, size := utf8.DecodeLastRuneInString(text[:end])
+		if unicode.IsSpace(r) {
+			break
+		}
+		end -= size
+	}
 	if end == 0 {
-		end = maxLen
+		end = runeAligned
 	}
 	return html.EscapeString(strings.TrimSpace(text[:end])) + "..."
 }

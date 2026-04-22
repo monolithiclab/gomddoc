@@ -432,27 +432,3 @@ func TestExtractFirstHeading(t *testing.T) {
 		})
 	}
 }
-
-func TestDeriveTitle(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		path string
-		want string
-	}{
-		{"README.md", "README"},
-		{"getting-started.md", "Getting started"},
-		{"api_reference.md", "Api reference"},
-		{"docs/guide.md", "Guide"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			t.Parallel()
-			got := deriveTitle(tt.path)
-			if got != tt.want {
-				t.Errorf("deriveTitle(%q) = %q, want %q", tt.path, got, tt.want)
-			}
-		})
-	}
-}

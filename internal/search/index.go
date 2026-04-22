@@ -15,6 +15,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // SearchResult represents a single search hit.
@@ -133,7 +134,7 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 				doc.title = extractFirstHeading(content)
 			}
 			if doc.title == "" {
-				doc.title = deriveTitle(p)
+				doc.title = text.DeriveTitle(p)
 			}
 
 			results[i] = parseResult{doc: doc, ok: true}
@@ -306,20 +307,13 @@ func extractFirstHeading(content []byte) string {
 	for _, line := range strings.SplitN(string(content), "\n", 50) {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "#") {
-			return strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			// Strip only the leading '#' prefix and the space after it.
+			i := 0
+			for i < len(trimmed) && trimmed[i] == '#' {
+				i++
+			}
+			return strings.TrimSpace(trimmed[i:])
 		}
 	}
 	return ""
-}
-
-// deriveTitle generates a title from a file path by cleaning up the filename.
-func deriveTitle(path string) string {
-	base := filepath.Base(path)
-	name := strings.TrimSuffix(base, filepath.Ext(base))
-	name = strings.ReplaceAll(name, "-", " ")
-	name = strings.ReplaceAll(name, "_", " ")
-	if len(name) > 0 {
-		return strings.ToUpper(name[:1]) + name[1:]
-	}
-	return name
 }
