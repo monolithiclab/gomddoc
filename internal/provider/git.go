@@ -388,7 +388,7 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 	}
 
 	// Try as directory
-	if err == object.ErrFileNotFound {
+	if errors.Is(err, object.ErrFileNotFound) {
 		_, treeErr := g.tree.Tree(cleanPath)
 		if treeErr == nil {
 			return g.handleDirectoryLocked(cleanPath, requestPath)
