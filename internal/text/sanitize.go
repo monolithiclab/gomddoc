@@ -52,10 +52,13 @@ func Sanitize(s string) string {
 			case '\x00':
 				b.WriteString(`\x00`)
 			default:
-				if r <= 0xFF {
+				switch {
+				case r <= 0xFF:
 					fmt.Fprintf(&b, `\x%02x`, r)
-				} else {
+				case r <= 0xFFFF:
 					fmt.Fprintf(&b, `\u%04x`, r)
+				default:
+					fmt.Fprintf(&b, `\U%08x`, r)
 				}
 			}
 		} else {

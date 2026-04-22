@@ -19,7 +19,9 @@ func TestSanitize(t *testing.T) {
 		{name: "crlf escaped", input: "line1\r\nline2", want: `line1\r\nline2`},
 		{name: "null byte escaped", input: "before\x00after", want: `before\x00after`},
 		{name: "other control char", input: "hello\x07world", want: `hello\x07world`},
+		{name: "C1 control char", input: "test\u0085end", want: `test\x85end`},
 		{name: "unicode preserved", input: "/docs/café.md", want: "/docs/café.md"},
+		{name: "emoji preserved", input: "hello 😀 world", want: "hello 😀 world"},
 		{name: "multiple control chars", input: "\x01\x02\x03", want: `\x01\x02\x03`},
 		{name: "mixed content", input: "/path\nfake-log-entry\x00end", want: `/path\nfake-log-entry\x00end`},
 		{
