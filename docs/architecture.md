@@ -66,6 +66,7 @@ Both providers share a common `normalizePath()` function for converting request 
 - Secure by default (DirIndex=false)
 - Hidden file filtering in directory listings
 - Directory requests try default index, then optionally generate listings
+- Safe resource lifecycle: `RootFS()` returns `gitTreeFS` backed by shared `gitFSState` — `Close()` invalidates all outstanding FS references via mutex-protected nil, preventing use-after-close and breaking the reference chain for GC
 
 ### 2. Renderer Layer
 

@@ -1008,6 +1008,7 @@ func TestGitProvider_RootFS_Mocked(t *testing.T) {
 		repo:         repo,
 		tree:         tree,
 		commitTime:   commitTime,
+		fsState:      gitFSState{tree: tree, modTime: commitTime},
 	}
 
 	rootFS, err := p.RootFS(t.Context())

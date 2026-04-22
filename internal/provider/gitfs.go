@@ -6,16 +6,27 @@ import (
 	"io/fs"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// gitTreeFS adapts a go-git object.Tree to io/fs.FS.
-// This enables serving theme overrides from Git repositories.
-type gitTreeFS struct {
+// gitFSState holds shared state between GitProvider and all gitTreeFS instances.
+// When the provider is closed, the tree reference is nilled under the lock,
+// which prevents use-after-close and breaks the reference chain so the git
+// object graph (tree → storer) can be garbage collected.
+type gitFSState struct {
+	mu      sync.RWMutex
 	tree    *object.Tree
 	modTime time.Time
+}
+
+// gitTreeFS adapts a go-git object.Tree to io/fs.FS.
+// It shares state with the GitProvider via gitFSState so that
+// Close() invalidates all outstanding FS references.
+type gitTreeFS struct {
+	state *gitFSState
 }
 
 var _ fs.FS = (*gitTreeFS)(nil)
@@ -25,20 +36,30 @@ func (g *gitTreeFS) Open(name string) (fs.File, error) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
 
+	g.state.mu.RLock()
+	defer g.state.mu.RUnlock()
+
+	if g.state.tree == nil {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrClosed}
+	}
+
+	tree := g.state.tree
+	modTime := g.state.modTime
+
 	if name == "." {
-		return newGitDirFile(g.tree, ".", g.modTime), nil
+		return newGitDirFile(tree, ".", modTime), nil
 	}
 
 	// Try as file
-	file, err := g.tree.File(name)
+	file, err := tree.File(name)
 	if err == nil {
-		return newGitBlobFile(file, g.modTime)
+		return newGitBlobFile(file, modTime)
 	}
 
 	// Try as directory
-	subtree, err := g.tree.Tree(name)
+	subtree, err := tree.Tree(name)
 	if err == nil {
-		return newGitDirFile(subtree, path.Base(name), g.modTime), nil
+		return newGitDirFile(subtree, path.Base(name), modTime), nil
 	}
 
 	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}

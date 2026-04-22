@@ -95,6 +95,11 @@ type GitProvider struct {
 	tree       *object.Tree
 	commitTime time.Time
 	commitHash plumbing.Hash
+
+	// Shared state for gitTreeFS instances returned by RootFS().
+	// When Close() nils fsState.tree, all outstanding FS references
+	// become invalid, breaking the reference chain to the git object graph.
+	fsState gitFSState
 }
 
 // NewGitProvider creates a Git provider from a git:// URL.
@@ -153,7 +158,7 @@ func (g *GitProvider) RootFS(ctx context.Context) (fs.FS, error) {
 	}
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return &gitTreeFS{tree: g.tree, modTime: g.commitTime}, nil
+	return &gitTreeFS{state: &g.fsState}, nil
 }
 
 // Close releases resources held by the provider.
@@ -166,6 +171,12 @@ func (g *GitProvider) Close() error {
 	g.repo = nil
 	g.tree = nil
 	g.storage = nil
+
+	// Invalidate all outstanding gitTreeFS references so they
+	// return fs.ErrClosed and break the reference chain to the storer.
+	g.fsState.mu.Lock()
+	g.fsState.tree = nil
+	g.fsState.mu.Unlock()
 
 	return nil
 }
@@ -310,6 +321,13 @@ func (g *GitProvider) cacheTreeLocked() error {
 	}
 
 	g.tree = tree
+
+	// Update shared FS state so gitTreeFS instances see the new tree.
+	g.fsState.mu.Lock()
+	g.fsState.tree = tree
+	g.fsState.modTime = g.commitTime
+	g.fsState.mu.Unlock()
+
 	return nil
 }
 
