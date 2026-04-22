@@ -221,6 +221,12 @@
                 
                 <article class="page-content">
                     {{ .Page.Content }}
+                    {{- $editLink := editURL .Page.Path }}
+                    {{- if $editLink }}
+                    <footer>
+                        <small><a href="{{ $editLink }}" target="_blank" rel="noopener noreferrer">Edit this page</a></small>
+                    </footer>
+                    {{- end }}
                 </article>
             </div>
         </main>

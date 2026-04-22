@@ -65,6 +65,7 @@ These settings control how your documentation is presented and served. They are 
 ```yaml
 default_index: "README.md"
 dir_index: false
+edit_url: "https://github.com/org/repo/edit/main"
 
 meta:
   title: "My Project Docs"
@@ -108,6 +109,17 @@ The primary domain name for your site (e.g., `docs.example.com`). Used for inter
 *   **YAML:** `meta.domain`
 *   **Env Var:** `GOMDDOC_SITE_META_DOMAIN`
 *   **Default:** Empty.
+
+### Edit URL
+
+**Edit URL**
+A base URL for "Edit this page" links that appear at the bottom of each page. When set, each rendered page will include a link pointing to the source file on your repository hosting platform (e.g., GitHub, GitLab). The page's file path is appended to this base URL.
+*   **YAML:** `edit_url`
+*   **Env Var:** `GOMDDOC_SITE_EDIT_URL`
+*   **Default:** Empty (no edit link shown)
+*   **Example:** `https://github.com/org/repo/edit/main`
+
+When configured, a page at `/docs/guide.md` will produce an edit link pointing to `https://github.com/org/repo/edit/main/docs/guide.md`.
 
 ### Theme (`SITE.THEME`)
 

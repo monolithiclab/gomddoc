@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path"
+	"strings"
 	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -179,7 +180,22 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 	return template.FuncMap{
 		"breadcrumbs": h.generateBreadcrumbs,
 		"toc":         h.generateTOC,
+		"editURL":     h.generateEditURL,
 	}
+}
+
+// generateEditURL generates the full edit URL for a page by combining
+// the configured EditURL base with the page path. Returns an empty string
+// if EditURL is not configured, which templates use to conditionally hide the link.
+func (h *HTMLRenderer) generateEditURL(pagePath string) string {
+	if h.siteConfig.EditURL == "" {
+		return ""
+	}
+	base := strings.TrimRight(h.siteConfig.EditURL, "/")
+	if !strings.HasPrefix(pagePath, "/") {
+		pagePath = "/" + pagePath
+	}
+	return base + pagePath
 }
 
 // generateBreadcrumbs generates breadcrumbs for the given path

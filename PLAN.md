@@ -725,6 +725,10 @@ processors:
 4. Enterprise integrations
 5. Advanced developer tooling
 
+# Completed Features
+
+- [x] Edit on GitHub links (WU-13): Configurable `edit_url` in site config, `editURL` template function, "Edit this page" footer links
+
 # Deferred Features
 
 - Content versioning/revision history
