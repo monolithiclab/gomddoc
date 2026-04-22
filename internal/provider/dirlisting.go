@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"net/url"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -32,17 +32,16 @@ func GenerateMarkdownListing(dirPath string, entries []fs.DirEntry, excludePatte
 	}
 
 	// Sort: directories first, then alphabetically within each group
-	sort.Slice(visible, func(i, j int) bool {
-		iIsDir := visible[i].IsDir()
-		jIsDir := visible[j].IsDir()
-
-		// If one is a directory and the other isn't, directory comes first
-		if iIsDir != jIsDir {
-			return iIsDir
+	slices.SortFunc(visible, func(a, b fs.DirEntry) int {
+		aIsDir := a.IsDir()
+		bIsDir := b.IsDir()
+		if aIsDir != bIsDir {
+			if aIsDir {
+				return -1
+			}
+			return 1
 		}
-
-		// Both are same type (both dirs or both files), sort alphabetically
-		return visible[i].Name() < visible[j].Name()
+		return strings.Compare(a.Name(), b.Name())
 	})
 
 	// Build markdown listing

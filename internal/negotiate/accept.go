@@ -1,7 +1,8 @@
 package negotiate
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -58,7 +59,7 @@ func (mt MediaType) String() string {
 //   - Quality factors parsed from q parameter (defaults to 1.0)
 //   - Entries with q=0 are excluded (per HTTP spec, q=0 means "not acceptable")
 //   - Invalid entries are silently skipped
-//   - Uses sort.SliceStable to preserve client preference order for equal q-values
+//   - Uses slices.SortStableFunc to preserve client preference order for equal q-values
 //
 // Examples:
 //   - "text/html, application/json" -> [{text/html, q=1.0}, {application/json, q=1.0}]
@@ -79,8 +80,8 @@ func ParseAccept(acceptHeader string) []MediaType {
 	}
 
 	// Stable sort preserves client preference order for equal q-values
-	sort.SliceStable(types, func(i, j int) bool {
-		return types[i].Q > types[j].Q
+	slices.SortStableFunc(types, func(a, b MediaType) int {
+		return cmp.Compare(b.Q, a.Q)
 	})
 
 	return types
