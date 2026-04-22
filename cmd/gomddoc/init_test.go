@@ -28,7 +28,7 @@ func TestInitCmd_Run(t *testing.T) {
 	if !strings.Contains(content, "default_index") {
 		t.Error("config missing default_index")
 	}
-	if !strings.Contains(content, `name: "default"`) {
+	if !strings.Contains(content, "name: default") {
 		t.Error("config missing theme name")
 	}
 }
@@ -64,7 +64,7 @@ func TestInitCmd_CustomTheme(t *testing.T) {
 		t.Fatalf("read config: %v", err)
 	}
 
-	if !strings.Contains(string(data), `name: "midnight"`) {
+	if !strings.Contains(string(data), "name: midnight") {
 		t.Error("config does not contain custom theme")
 	}
 }
@@ -100,11 +100,15 @@ func TestInitCmd_ConfigRoundTrips(t *testing.T) {
 }
 
 func TestGenerateConfigYAML(t *testing.T) {
-	content := generateConfigYAML("My Project", "material")
-	if !strings.Contains(content, `title: "My Project"`) {
+	content, err := generateConfigYAML("My Project", "material")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(content)
+	if !strings.Contains(s, "title: My Project") {
 		t.Error("missing title")
 	}
-	if !strings.Contains(content, `name: "material"`) {
+	if !strings.Contains(s, "name: material") {
 		t.Error("missing theme")
 	}
 }
@@ -145,17 +149,21 @@ func TestInitCmd_ReadOnlyDir(t *testing.T) {
 }
 
 func TestGenerateConfigYAML_AllFields(t *testing.T) {
-	content := generateConfigYAML("Test Project", "nord")
-	if !strings.Contains(content, config.DefaultIndex) {
+	content, err := generateConfigYAML("Test Project", "nord")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(content)
+	if !strings.Contains(s, config.DefaultIndex) {
 		t.Error("missing default_index value")
 	}
-	if !strings.Contains(content, "dir_index: false") {
+	if !strings.Contains(s, "dir_index: false") {
 		t.Error("missing dir_index setting")
 	}
-	if !strings.Contains(content, "color_chips: true") {
+	if !strings.Contains(s, "color_chips: true") {
 		t.Error("missing color_chips setting")
 	}
-	if !strings.Contains(content, config.DefaultHighlightTheme) {
+	if !strings.Contains(s, config.DefaultHighlightTheme) {
 		t.Error("missing highlight theme")
 	}
 }

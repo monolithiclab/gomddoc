@@ -9,6 +9,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/text"
+	"gopkg.in/yaml.v3"
 )
 
 // InitCmd holds all flags for the init subcommand.
@@ -38,9 +39,12 @@ func (i *InitCmd) Run() error {
 	}
 	title := text.TitleCase(filepath.Base(absDir))
 
-	content := generateConfigYAML(title, i.Theme)
+	content, marshalErr := generateConfigYAML(title, i.Theme)
+	if marshalErr != nil {
+		return fmt.Errorf("generate config: %w", marshalErr)
+	}
 
-	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil { // #nosec G306
+	if err := os.WriteFile(configPath, content, 0644); err != nil { // #nosec G306
 		return fmt.Errorf("write %s: %w", configPath, err)
 	}
 
@@ -51,23 +55,44 @@ func (i *InitCmd) Run() error {
 	return nil
 }
 
+// initConfig is the YAML structure for the generated config file.
+// Separate from config.SiteConfig to control field order and include only init-relevant fields.
+type initConfig struct {
+	DefaultIndex string          `yaml:"default_index"`
+	DirIndex     bool            `yaml:"dir_index"`
+	ColorChips   bool            `yaml:"color_chips"`
+	Meta         initMetaConfig  `yaml:"meta"`
+	Theme        initThemeConfig `yaml:"theme"`
+	Highlighting initHLConfig    `yaml:"highlighting"`
+}
+
+type initMetaConfig struct {
+	Title       string `yaml:"title"`
+	Description string `yaml:"description"`
+}
+
+type initThemeConfig struct {
+	Name string `yaml:"name"`
+}
+
+type initHLConfig struct {
+	Theme string `yaml:"theme"`
+}
+
+const configHeader = "# gomddoc site configuration\n# See: https://github.com/monolithiclab/gomddoc\n\n"
+
 // generateConfigYAML produces the default config.yml content.
-func generateConfigYAML(title, theme string) string {
-	return fmt.Sprintf(`# gomddoc site configuration
-# See: https://github.com/monolithiclab/gomddoc
-
-default_index: "%s"
-dir_index: false
-color_chips: true
-
-meta:
-  title: "%s"
-  description: ""
-
-theme:
-  name: "%s"
-
-highlighting:
-  theme: "%s"
-`, config.DefaultIndex, title, theme, config.DefaultHighlightTheme)
+func generateConfigYAML(title, theme string) ([]byte, error) {
+	cfg := initConfig{
+		DefaultIndex: config.DefaultIndex,
+		ColorChips:   true,
+		Meta:         initMetaConfig{Title: title},
+		Theme:        initThemeConfig{Name: theme},
+		Highlighting: initHLConfig{Theme: config.DefaultHighlightTheme},
+	}
+	body, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(configHeader), body...), nil
 }
