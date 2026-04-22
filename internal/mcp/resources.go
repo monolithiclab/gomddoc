@@ -8,6 +8,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 func (s *MCPServer) registerResources() {
@@ -87,7 +88,7 @@ func (s *MCPServer) handlePageResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(uri)
 	}
 
-	body := stripFrontmatter(content)
+	body := text.StripFrontmatter(content)
 	return &mcp.ReadResourceResult{
 		Contents: []*mcp.ResourceContents{{
 			URI:      uri,

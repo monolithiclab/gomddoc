@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 func TestStripFrontmatter(t *testing.T) {
@@ -42,9 +43,9 @@ func TestStripFrontmatter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := string(stripFrontmatter([]byte(tt.input)))
+			got := string(text.StripFrontmatter([]byte(tt.input)))
 			if got != tt.want {
-				t.Errorf("stripFrontmatter() = %q, want %q", got, tt.want)
+				t.Errorf("text.StripFrontmatter() = %q, want %q", got, tt.want)
 			}
 		})
 	}

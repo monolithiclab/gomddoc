@@ -3,6 +3,8 @@ package mcp
 import (
 	"errors"
 	"testing"
+
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 func TestSlugifyHeading(t *testing.T) {
@@ -219,9 +221,9 @@ func TestStripFrontmatter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := string(stripFrontmatter([]byte(tt.content)))
+			got := string(text.StripFrontmatter([]byte(tt.content)))
 			if got != tt.want {
-				t.Errorf("stripFrontmatter() = %q, want %q", got, tt.want)
+				t.Errorf("text.StripFrontmatter() = %q, want %q", got, tt.want)
 			}
 		})
 	}

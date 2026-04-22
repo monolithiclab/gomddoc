@@ -9,6 +9,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 var readOnlyAnnotations = &mcp.ToolAnnotations{
@@ -144,7 +145,7 @@ func (s *MCPServer) handleReadPage(ctx context.Context, _ *mcp.CallToolRequest, 
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
-	body := stripFrontmatter(content)
+	body := text.StripFrontmatter(content)
 
 	// Prepend metadata if available from the index.
 	header := s.buildPageHeader(input.Path)

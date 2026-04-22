@@ -1,56 +1,10 @@
 package search
 
 import (
-	"bytes"
 	"regexp"
 	"strings"
 	"unicode"
 )
-
-// stripFrontmatter removes YAML frontmatter delimited by --- from markdown content,
-// returning only the body. If no frontmatter is found, the original content is returned.
-func stripFrontmatter(content []byte) []byte {
-	trimmed := bytes.TrimLeftFunc(content, func(r rune) bool { return r == ' ' || r == '\t' })
-
-	delimiter := []byte("---")
-	if !bytes.HasPrefix(trimmed, delimiter) {
-		return content
-	}
-
-	afterOpen := bytes.Index(trimmed, delimiter) + len(delimiter)
-	if afterOpen >= len(trimmed) {
-		return content
-	}
-	if trimmed[afterOpen] != '\n' && trimmed[afterOpen] != '\r' {
-		return content
-	}
-	afterOpen++
-
-	rest := trimmed[afterOpen:]
-	for i := 0; i < len(rest); {
-		lineEnd := bytes.IndexByte(rest[i:], '\n')
-		var line []byte
-		if lineEnd < 0 {
-			line = rest[i:]
-		} else {
-			line = rest[i : i+lineEnd]
-		}
-		line = bytes.TrimRight(line, "\r")
-		if bytes.Equal(bytes.TrimSpace(line), delimiter) {
-			bodyStart := i + len(line)
-			if lineEnd >= 0 {
-				bodyStart = i + lineEnd + 1
-			}
-			return rest[bodyStart:]
-		}
-		if lineEnd < 0 {
-			break
-		}
-		i += lineEnd + 1
-	}
-
-	return content
-}
 
 // Compiled regex patterns for markdown stripping.
 var (

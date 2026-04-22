@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 func (s *MCPServer) registerPrompts() {
@@ -119,7 +121,7 @@ func (s *MCPServer) handleSummarizePage(ctx context.Context, req *mcp.GetPromptR
 		return nil, fmt.Errorf("page not found: %s", pagePath)
 	}
 
-	body := stripFrontmatter(content)
+	body := text.StripFrontmatter(content)
 
 	return &mcp.GetPromptResult{
 		Description: fmt.Sprintf("Summarize %s", pagePath),

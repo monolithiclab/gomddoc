@@ -108,7 +108,7 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 				return nil
 			}
 
-			body := stripFrontmatter(content)
+			body := text.StripFrontmatter(content)
 			bodyStr := stripMarkdown(string(body))
 
 			freqs, total := tokenizeToFreqs(bodyStr)

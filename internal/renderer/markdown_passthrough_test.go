@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 func TestMarkdownPassthroughRenderer_MimeTypes(t *testing.T) {
@@ -121,9 +122,9 @@ func TestStripFrontmatter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := string(stripFrontmatter([]byte(tt.input)))
+			got := string(text.StripFrontmatter([]byte(tt.input)))
 			if got != tt.want {
-				t.Errorf("stripFrontmatter() = %q, want %q", got, tt.want)
+				t.Errorf("text.StripFrontmatter() = %q, want %q", got, tt.want)
 			}
 		})
 	}

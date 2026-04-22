@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"unicode"
+
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // ErrSectionNotFound is returned when the requested heading ID does not exist.
@@ -14,7 +16,7 @@ var ErrSectionNotFound = errors.New("section not found")
 // Returns the heading line and all content until the next heading at the
 // same or higher level (or EOF). Frontmatter is stripped before scanning.
 func ExtractSection(content []byte, headingID string) ([]byte, error) {
-	body := stripFrontmatter(content)
+	body := text.StripFrontmatter(content)
 	lines := bytes.Split(body, []byte("\n"))
 
 	var startIdx int
@@ -117,15 +119,3 @@ func slugifyHeading(text string) string {
 	return strings.TrimRight(s, "-")
 }
 
-// stripFrontmatter removes YAML frontmatter delimited by --- from markdown.
-func stripFrontmatter(content []byte) []byte {
-	if !bytes.HasPrefix(content, []byte("---")) {
-		return content
-	}
-	rest := content[3:]
-	_, after, ok := bytes.Cut(rest, []byte("\n---"))
-	if !ok {
-		return content
-	}
-	return bytes.TrimLeft(after, "\r\n")
-}

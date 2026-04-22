@@ -1,10 +1,10 @@
 package renderer
 
 import (
-	"bytes"
 	"context"
 
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // MarkdownPassthroughRenderer returns raw markdown content with frontmatter
@@ -33,33 +33,10 @@ func (m *MarkdownPassthroughRenderer) Render(ctx context.Context, content []byte
 		return nil, err
 	}
 
-	body := stripFrontmatter(content)
+	body := text.StripFrontmatter(content)
 
 	return &RenderResult{
 		Content:  body,
 		MimeType: "text/markdown; charset=utf-8",
 	}, nil
-}
-
-// stripFrontmatter removes YAML frontmatter delimited by --- from markdown content.
-func stripFrontmatter(content []byte) []byte {
-	if !bytes.HasPrefix(content, []byte("---")) {
-		return content
-	}
-
-	// Find end of frontmatter (second "---")
-	rest := content[3:]
-	_, after, ok := bytes.Cut(rest, []byte("\n---"))
-	if !ok {
-		return content
-	}
-
-	// Skip past the closing delimiter and the single newline that follows it
-	body := after
-	if len(body) > 0 && body[0] == '\n' {
-		body = body[1:]
-	} else if len(body) > 1 && body[0] == '\r' && body[1] == '\n' {
-		body = body[2:]
-	}
-	return body
 }
