@@ -99,7 +99,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	if finalNormalized == "text/html" {
 		h.serveHTML(w, r, renderResult.Content, renderResult.Metadata, renderResult.TOC)
 	} else {
-		h.serveRaw(w, renderResult.Content, finalMimeType)
+		h.serveRaw(w, r, renderResult.Content, finalMimeType)
 	}
 }
 
@@ -131,9 +131,17 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		return
 	}
 
+	etag := generateETag(rendered)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=300")
+
+	if checkETag(r, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Length", strconv.Itoa(len(rendered)))
-	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.WriteHeader(http.StatusOK)
 	_, writeErr := w.Write(rendered)
 	if writeErr != nil {
@@ -162,10 +170,18 @@ func deriveTitle(reqPath string) string {
 }
 
 // serveRaw serves content directly without template wrapping (passthrough).
-func (h *Handler) serveRaw(w http.ResponseWriter, content []byte, mimeType string) {
+func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byte, mimeType string) {
+	etag := generateETag(content)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=300")
+
+	if checkETag(r, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(content)))
-	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.WriteHeader(http.StatusOK)
 	_, writeErr := w.Write(content) // #nosec G705 -- static file content served with correct Content-Type and nosniff header
 	if writeErr != nil {
