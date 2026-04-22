@@ -18,8 +18,17 @@ type TemplateCache interface {
 	Clear()
 }
 
-// CachedTemplateStore caches templates for production use
-// Thread-safe implementation using sync.Map
+// CachedTemplateStore caches parsed templates for production use.
+//
+// Thread-safe: All methods are safe for concurrent access via sync.Map.
+//
+// IMPORTANT: This cache is unbounded with no eviction policy.
+// For typical usage (1-2 themes, <10 templates), memory usage is stable.
+//
+// For deployments with many themes or dynamic content, consider:
+//   - LRU eviction policy
+//   - Maximum cache size
+//   - TTL-based expiration
 type CachedTemplateStore struct {
 	cache sync.Map
 }
