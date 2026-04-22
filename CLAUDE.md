@@ -46,7 +46,7 @@ docs/
   repeating past mistakes. Add an entry when making a non-obvious architectural decision.
 - **guide/** — feature documentation aimed primarily at agents (via MCP) so they can use gomddoc
   correctly, but useful for humans too. Update when adding user-facing features.
-- **specs/** — complete feature specifications written *before* implementation for non-trivial
+- **specs/** — complete feature specifications written _before_ implementation for non-trivial
   features. Written by agents, validated by the developer. Implementation follows the spec.
 
 **Feature workflow:**
@@ -89,10 +89,13 @@ material/
 ### Conventions
 
 - **No backward compatibility concerns**: gomddoc is unpublished. No legacy shims.
+- **Trusted content model**: Theme templates and markdown content are author-controlled. No
+  untrusted user input reaches rendered output. XSS/injection hardening (CSP, HTML sanitizer,
+  CSS sanitization) is not needed — treat these as false positives in reviews.
 - **Minimal dependencies** across all repos
 - **Prevent duplicated code** — extract shared helpers
 - **Manual testing**: Use Chrome DevTools MCP, target `material/testsite/`
-- **Options struct pattern** for constructors (not functional options)
+- **Options struct pattern** or **functional options**, depending on the case
 - **`path` not `filepath`** for `fs.FS` operations (forward slashes per `io/fs` spec)
 - **`filepath`** only for OS filesystem operations (writing files to disk)
 
@@ -104,6 +107,41 @@ material/
 - Sentinel errors with `errors.Is()` for classification
 - Errors wrapped: `fmt.Errorf("context: %w", err)`
 - Path joining: `path.Join("assets", "themes", cfg.Theme)` (each segment separate)
+- **`for i := range N`** over `for i := 0; i < N; i++` (Go 1.22+ range-over-int)
+- **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains
+- **`yaml.Marshal`** for YAML output — never construct YAML with `fmt.Sprintf`/`fmt.Fprintf`
+  (special characters like colons, brackets produce malformed output)
+- **Consistent behavior across code paths** — error/fallback paths must behave identically to happy
+  paths (e.g., if the fast path lowercases, the error path must too)
+- **Counters over string-length comparisons** — detect "nothing written" with a counter, not by
+  comparing buffer length against a magic string constant (breaks silently if format changes)
+
+### `io/fs` Spec Compliance
+
+- **`ReadDir(n <= 0)`** returns all remaining entries with **`nil` error**, not `io.EOF`.
+  Only `ReadDir(n > 0)` returns `io.EOF` when exhausted.
+- **`fs.ValidPath`** — no leading `/`, no trailing `/`, no `..` segments, no empty segments
+- **`path`** package for all `fs.FS` path operations (not `filepath`)
+
+### HTTP Conventions
+
+- **`w.Header().Add()` not `Set()`** for multi-value headers (`Vary`, etc.) — `Set` overwrites
+  values from other middleware
+- **Weak ETag comparison**: strip `W/` prefix before comparing opaque-tags (RFC 9110 §8.8.3.2)
+- **`http.MaxBytesReader`** on any endpoint accepting request bodies — prevents memory exhaustion
+- **Cap input lengths** (query params, form values) before processing — truncate, don't reject
+- **`Vary` header required** when response depends on a request header (e.g., `Accept` for content
+  negotiation, `Accept-Encoding` for compression)
+
+### Testing Conventions
+
+- **No `t.Parallel()` when tests share global mutable state** (e.g., Prometheus counters, package-
+  level vars) — use before/after delta patterns with sequential execution instead
+- **`t.Parallel()` is incompatible with `t.Setenv`** (panics) and `testing.AllocsPerRun`\*\* (panics)
+- **Context cancellation tests**: use already-cancelled `context.WithCancel`, not nanosecond
+  timeouts + `time.Sleep` (deterministic, no flakiness, no unnecessary delays)
+- **One canonical test helper per pattern** — don't duplicate helpers across test files; place the
+  shared helper in a `testhelpers_test.go` file
 
 ### After implementing changes
 
