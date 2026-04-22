@@ -26,6 +26,26 @@
         .admonition-important { border-color: #7c4dff; background: rgba(124,77,255,0.1); }
         .admonition-warning { border-color: #ff9100; background: rgba(255,145,0,0.1); }
         .admonition-caution { border-color: #ff5252; background: rgba(255,82,82,0.1); }
+        /* Heading anchor links */
+        .heading-anchor {
+            text-decoration: none;
+            color: var(--pico-muted-color);
+            opacity: 0;
+            margin-left: 0.5rem;
+            transition: opacity 0.2s;
+            font-weight: normal;
+        }
+        h1:hover .heading-anchor,
+        h2:hover .heading-anchor,
+        h3:hover .heading-anchor,
+        h4:hover .heading-anchor,
+        h5:hover .heading-anchor,
+        h6:hover .heading-anchor {
+            opacity: 1;
+        }
+        .heading-anchor:hover {
+            color: var(--pico-primary);
+        }
         .page-layout {
             display: flex;
             gap: 2rem;

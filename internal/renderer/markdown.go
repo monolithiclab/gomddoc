@@ -94,8 +94,9 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte) (*RenderR
 		return nil, err
 	}
 
-	// Post-process: transform GitHub-style admonition blockquotes
-	rendered := TransformAdmonitions(buf.Bytes())
+	// Post-process: add anchor links to headings, then transform admonitions
+	rendered := addHeadingAnchors(buf.Bytes())
+	rendered = TransformAdmonitions(rendered)
 
 	// Convert TOC
 	var tocNode *TOCNode
