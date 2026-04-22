@@ -121,9 +121,24 @@ Selects the visual theme to apply. gomddoc looks for a folder with this name in 
 
 ## Priority Order
 
-When a setting is defined in multiple places, gomddoc follows this strict priority order:
+When a setting is defined in multiple places, gomddoc follows this strict priority order (highest wins):
 
-1.  **CLI Flags:** Always take precedence.
-2.  **Environment Variables:** Override configuration files.
-3.  **Config File:** Values defined in `.gomddoc/config.yml`.
-4.  **Defaults:** Hardcoded fallback values.
+1. **CLI Flags:** Always take precedence (`-d`, `-p`, `-dev`, `--git-key-file`).
+2. **Environment Variables (post-file):** Re-applied after config file to ensure Env > File.
+3. **Config File:** Values defined in `.gomddoc/config.yml`.
+4. **Environment Variables (pre-flag):** Applied before flags for initial overrides.
+5. **Defaults:** Hardcoded fallback values from `config.New()`.
+
+The full loading sequence in `config.Load()` is:
+Defaults → Env → Flags → Dynamic Defaults → Config File → Env (re-apply) → Validate.
+
+### Environment Variable Naming
+
+Environment variables follow the struct nesting with underscores:
+
+- `GOMDDOC_SERVER_PORT` — Maps to `Config.Server.Port`
+- `GOMDDOC_SITE_DEFAULT_INDEX` — Maps to `Config.Site.DefaultIndex`
+- `GOMDDOC_SITE_META_TITLE` — Maps to `Config.Site.Meta.Title`
+
+The `SiteConfig.ApplyEnvOverrides()` method uses the prefix `GOMDDOC_SITE_` (not `GOMDDOC_`) when called
+standalone.

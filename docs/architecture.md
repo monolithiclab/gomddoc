@@ -8,7 +8,9 @@ author: "nicolasm"
 
 ## Overview
 
-Gomddoc is a production-ready HTTP server built with a clean, interface-driven architecture for serving documentation with automatic content rendering. The system is designed for extensibility, testability, and HTTP compliance.
+Gomddoc is a production-ready HTTP server built with a clean, interface-driven architecture for serving documentation
+with automatic content rendering. The system supports both local filesystem and remote Git repositories as content
+sources. It is designed for extensibility, testability, and HTTP compliance.
 
 ## Architecture Diagram
 
@@ -18,13 +20,14 @@ Gomddoc is a production-ready HTTP server built with a clean, interface-driven a
 └───────────────────────────┬─────────────────────────────────┘
                             │
                             ▼
-                  ┌─────────────────┐
-                  │   Middleware    │
-                  │   - Security    │
-                  │   - Hidden Path │
-                  └────────┬────────┘
-                           │
-                           ▼
+                  ┌─────────────────────┐
+                  │     Middleware       │
+                  │  1. Security Headers │
+                  │  2. Method Filter    │
+                  │  3. Hidden Path Block│
+                  └──────────┬──────────┘
+                             │
+                             ▼
                   ┌─────────────────┐
                   │     Handler     │
                   │  ServeContent() │
@@ -56,7 +59,7 @@ Gomddoc is a production-ready HTTP server built with a clean, interface-driven a
 
 ### 1. Provider Layer
 
-**Responsibility:** File I/O and MIME type detection
+**Responsibility:** File I/O, MIME type detection, directory handling
 
 ```go
 type Provider interface {
@@ -67,17 +70,18 @@ type Provider interface {
 }
 ```
 
-**Implementation:** `FilesystemProvider`
-- Uses `os.DirFS()` for path traversal protection
-- Detects MIME types via `mime.TypeByExtension()`
-- Handles directory requests with README.md fallback
-- Generates directory listings when enabled
+**Implementations:**
+
+- **FilesystemProvider** — Local filesystem via `os.DirFS()` with path traversal protection
+- **GitProvider** — Remote Git repositories via go-git with in-memory clone
+
+Both providers share a common `normalizePath()` function for converting request paths to fs-compatible paths.
 
 **Key Features:**
-- stdlib `fs.FS` compatible (no context parameter)
-- Type assertion to `fs.StatFS` for `Stat()` method
+- stdlib `fs.FS` compatible paths (forward slashes, no leading `/`)
 - Secure by default (DirIndex=false)
 - Hidden file filtering in directory listings
+- Directory requests try default index, then optionally generate listings
 
 ### 2. Renderer Layer
 
@@ -86,24 +90,23 @@ type Provider interface {
 ```go
 type ContentRenderer interface {
     SupportedMimeTypes() []string
-    Render(ctx context.Context, content []byte) ([]byte, string, error)
+    Render(ctx context.Context, content []byte) (*RenderResult, error)
+}
+
+type RenderResult struct {
+    Content  []byte
+    MimeType string
+    Metadata map[string]any
+    TOC      *TOCNode
 }
 ```
 
 **Built-in Renderers:**
 
-**MarkdownRenderer**
-- Input: `text/markdown`
-- Output: `text/html; charset=utf-8`
-- Uses goldmark with GFM + AutoHeadingIDs + Meta extensions
-- Context-aware (checks cancellation before/after parsing)
-- Thread-safe (stateless, creates fresh parser per render)
-
-**PassthroughRenderer**
-- Input: `*/*` (wildcard)
-- Output: `""` (empty = passthrough signal)
-- Returns content unchanged
-- Catch-all for unregistered MIME types
+| Renderer              | Input             | Output                       | Template Wrapped |
+| --------------------- | ----------------- | ---------------------------- | ---------------- |
+| **MarkdownRenderer**  | `text/markdown`   | `text/html; charset=utf-8`   | Yes              |
+| **PassthroughRenderer** | `*/*` (wildcard)  | `""` (passthrough signal)   | No               |
 
 ### 3. Registry
 
@@ -112,16 +115,13 @@ type ContentRenderer interface {
 ```go
 type RendererRegistry interface {
     Register(renderer ContentRenderer)
-    Get(mimeType string) (ContentRenderer, error)
+    Get(mimeType string) (ContentRenderer, error)  // Returns ErrNoRenderer if not found
 }
 ```
 
-**Features:**
-- Self-declaring renderers (no hardcoded mappings)
-- Wildcard matching: exact → `type/*` → `*/*`
-- Collision detection with `slog.Warn`
-- Thread-safe with `sync.RWMutex`
-- MIME normalization before lookup
+**Lookup order:** exact match → `type/*` → `*/*`
+
+Thread-safe with `sync.RWMutex`. Collision detection with `slog.Warn`.
 
 ### 4. Handler Layer
 
@@ -129,36 +129,37 @@ type RendererRegistry interface {
 
 **Flow:**
 1. Read file + get MIME type (Provider)
-2. Parse Accept header
-3. Get renderer from registry (normalized MIME type)
-4. Render content
-5. Content negotiation on OUTPUT MIME type
-6. Serve (wrapped in template if HTML, raw otherwise)
-
-**Key Methods:**
-- `ServeContent(w, r)`: Main request handler
-- `serveHTML(w, r, content)`: Template wrapping for HTML
-- `serveRaw(w, content, mimeType)`: Direct serving for other types
-- `handleError(w, r, err, path)`: Error classification and responses
+2. Get renderer from registry (normalized MIME type)
+3. Render content (produces output MIME type + metadata + TOC)
+4. Content negotiation on OUTPUT MIME type vs Accept header
+5. Serve (wrapped in template if HTML, raw otherwise)
 
 ### 5. Template Layer
 
-**Responsibility:** HTML template rendering with caching
+**Responsibility:** HTML template rendering with caching and breadcrumbs
 
 ```go
 type Renderer interface {
     Render(ctx context.Context, name string, data any) ([]byte, error)
-    ClearCache()
-    ValidateDefaultTheme() error
 }
 ```
 
 **Features:**
-- Embedded themes via `embed.FS`
-- Production mode: `CachedTemplateStore` (LRU cache)
-- Dev mode: `NoCacheStore` (always fresh)
+- Embedded themes via `embed.FS` with overlay filesystem for customization
+- Production mode: `CachedTemplateStore` (sync.Map cache)
+- Dev mode: `PassthroughTemplateStore` (always re-parse)
 - Breadcrumb generation from URL paths
-- Functional options pattern for configuration
+- TOC generation from heading structure
+- Buffer pool with 64KB cap to prevent memory bloat
+- File handle validation at startup
+
+### 6. Middleware Chain
+
+**Order (outermost to innermost):**
+
+1. **SecurityHeaders** — Sets X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS
+2. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
+3. **BlockHiddenPaths** — Returns 404 for dot-prefixed path segments (except `.well-known`)
 
 ## Data Flow
 
@@ -167,7 +168,7 @@ type Renderer interface {
 ```
 1. GET /docs/guide.md
    ↓
-2. Middleware (security headers, hidden path blocking)
+2. Middleware (security headers → method filter → hidden path check)
    ↓
 3. Handler.ServeContent()
    ↓
@@ -175,463 +176,202 @@ type Renderer interface {
    → content: "# Guide\n\nText..."
    → mimeType: "text/markdown; charset=utf-8"
    ↓
-5. ParseAccept("text/html, */*")
-   → acceptedTypes: [{text/html, q=1.0}, {*/*, q=1.0}]
-   ↓
-6. Registry.Get("text/markdown")  // normalized
+5. Registry.Get("text/markdown")  // normalized
    → MarkdownRenderer
    ↓
-7. MarkdownRenderer.Render(ctx, content)
-   → output: "<h1 id=\"guide\">Guide</h1>\n<p>Text...</p>"
-   → outputMimeType: "text/html; charset=utf-8"
+6. MarkdownRenderer.Render(ctx, content)
+   → RenderResult{Content: "<h1>Guide</h1>...", MimeType: "text/html; charset=utf-8", Metadata: {...}, TOC: {...}}
    ↓
-8. Content negotiation on "text/html"
-   → Accepted ✅ (matches Accept: text/html)
+7. Content negotiation: ParseAccept("text/html, */*") vs "text/html"
+   → Accepted ✅
    ↓
-9. Handler.serveHTML(w, r, output)
-   → Template.Render("layout.html.tmpl", {Site, Page})
-   → Response: Templated HTML with breadcrumbs, title, etc.
+8. Handler.serveHTML(w, r, result)
+   → Template.Render("layout.html.tmpl", {Site, Page{Content, Meta, TOC, Path}})
+   → Response: Templated HTML with breadcrumbs, title, TOC
 ```
 
-### Image File Request
+### Non-HTML File Request
 
 ```
 1. GET /images/logo.png
    ↓
-2. Middleware (security headers)
+2. Middleware chain
    ↓
-3. Handler.ServeContent()
+3. Provider.ReadFile("/images/logo.png")
+   → content: [binary data], mimeType: "image/png"
    ↓
-4. Provider.ReadFile("/images/logo.png")
-   → content: [binary PNG data]
-   → mimeType: "image/png"
+4. Registry.Get("image/png") → PassthroughRenderer (via */* wildcard)
    ↓
-5. ParseAccept("*/*")
-   → acceptedTypes: [{*/*, q=1.0}]
+5. PassthroughRenderer.Render() → same content, mimeType: "" (passthrough)
    ↓
-6. Registry.Get("image/png")  // normalized
-   → PassthroughRenderer (via */* wildcard)
-   ↓
-7. PassthroughRenderer.Render(ctx, content)
-   → output: [same binary data]
-   → outputMimeType: ""  (empty = passthrough)
-   ↓
-8. finalMimeType = mimeType  // preserve original
-   ↓
-9. Content negotiation on "image/png"
-   → Accepted ✅ (matches Accept: */*)
-   ↓
-10. Handler.serveRaw(w, output, "image/png")
-    → Response: PNG with proper Content-Type, Cache-Control
+6. Handler.serveRaw(w, content, "image/png")
+   → Response: PNG with Content-Type, Content-Length, Cache-Control
 ```
 
-### Directory Request (DirIndex=true)
+## Error Handling
 
-```
-1. GET /docs/
-   ↓
-2. Middleware
-   ↓
-3. Handler.ServeContent()
-   ↓
-4. Provider.ReadFile("/docs")
-   ↓
-5. Provider.handleDirectory("/docs", "/docs")
-   ↓
-6. Try: fs.ReadFile("docs/README.md")
-   → Not found
-   ↓
-7. Check: dirIndex == true ✅
-   ↓
-8. fs.ReadDir("docs/")
-   → entries: [guide.md, api.md, images/]
-   ↓
-9. GenerateMarkdownListing("/docs", entries)
-   → content: "# Index of /docs\n\n- [images/](images/)\n- [api.md](api.md)\n- [guide.md](guide.md)"
-   → mimeType: "text/markdown; charset=utf-8"
-   ↓
-10. [Continue as markdown file...]
+### Error Classification
+
+All provider and renderer errors are mapped to HTTP status codes via `classifyError()`:
+
+| Error                          | HTTP Status | Code |
+| ------------------------------ | ----------- | ---- |
+| `provider.ErrDirListingDisabled` | Forbidden | 403  |
+| `os.ErrNotExist`, `provider.ErrNotFound` | Not Found | 404 |
+| `fs.ErrPermission`            | Forbidden   | 403  |
+| `context.Canceled`            | Client Closed | 499 |
+| `context.DeadlineExceeded`    | Gateway Timeout | 504 |
+| `provider.ErrInvalidGitURL`   | Bad Request | 400  |
+| `provider.ErrGitAuthFailed`   | Unauthorized | 401 |
+| `provider.ErrGitConnectFailed` | Bad Gateway | 502 |
+| `provider.ErrGitRefNotFound`  | Not Found   | 404  |
+| `provider.ErrGitLFSNotSupported` | Not Implemented | 501 |
+| `provider.ErrFileTooLarge`    | Request Entity Too Large | 413 |
+| `renderer.ErrNoRenderer`      | Unsupported Media Type | 415 |
+| _(default)_                   | Internal Server Error | 500 |
+
+All errors use `errors.Is()` for classification, supporting wrapped errors via `fmt.Errorf("%w", err)`.
+
+### Custom Error Type
+
+```go
+type PathError struct {
+    Op   string  // "read", "stat", "clone", etc.
+    Path string
+    Err  error   // Underlying sentinel error
+}
 ```
 
 ## MIME Type Handling
 
 ### Normalization
 
-```go
-func NormalizeMimeType(mimeType string) string {
-    mediaType, _, err := mime.ParseMediaType(mimeType)
-    if err != nil {
-        return mimeType  // malformed - return as-is
-    }
-    return mediaType
-}
-```
+`NormalizeMimeType()` strips charset/parameters for routing, but the full MIME type is preserved for HTTP headers.
 
-**Examples:**
-- `"text/html; charset=utf-8"` → `"text/html"`
-- `"application/json"` → `"application/json"`
-- `"invalid"` → `"invalid"` (passthrough)
-
-**Usage:**
-- Before registry lookup
-- Before `text/html` comparison
-- After rendering for final MIME type decision
-
-**Preservation:**
-- Full MIME type (with charset) used in HTTP `Content-Type` header
-- Normalization only for routing decisions
+- `"text/html; charset=utf-8"` → `"text/html"` (for routing)
+- Full type preserved in `Content-Type` header
 
 ### Registry Wildcard Matching
 
-**Lookup Order:**
 1. Exact match: `"text/markdown"`
 2. Type wildcard: `"text/*"`
 3. Catch-all: `"*/*"`
 
-**Example:**
-```
-Request MIME: "application/pdf"
-
-1. Check registry["application/pdf"]  → not found
-2. Check registry["application/*"]     → not found
-3. Check registry["*/*"]               → PassthroughRenderer ✅
-```
-
-## HTTP Content Negotiation
-
-### Accept Header Parsing
-
-```go
-type MediaType struct {
-    Type    string   // "text"
-    Subtype string   // "html"
-    Q       float64  // Quality factor (0.0-1.0)
-    Full    string   // "text/html"
-}
-```
-
-**Features:**
-- Parses q-values: `Accept: text/html;q=0.9, application/json;q=1.0`
-- Stable sort preserves client preference for equal q-values
-- Defaults to `*/*` if header missing
-- Validates with `mime.ParseMediaType()`
-
-### Negotiation Flow
-
-**IMPORTANT:** Negotiation happens on OUTPUT MIME type, not input.
-
-```go
-// ❌ WRONG: Negotiate on input type
-content, mimeType, _ := provider.ReadFile(path)
-if !acceptable(mimeType) {
-    return 406
-}
-output, _, _ := renderer.Render(ctx, content)
-
-// ✅ CORRECT: Negotiate on output type
-content, mimeType, _ := provider.ReadFile(path)
-renderer, _ := registry.Get(mimeType)
-output, outputMimeType, _ := renderer.Render(ctx, content)
-if !acceptable(outputMimeType) {  // Check AFTER rendering
-    return 406
-}
-```
-
-**Why?** Markdown files produce HTML. Client accepts HTML, not markdown.
-
-## Error Handling
-
-### Sentinel Errors
-
-```go
-// internal/provider/errors.go
-var (
-    ErrDirListingDisabled = errors.New("directory listing disabled")
-    ErrNotFound           = errors.New("not found")
-)
-```
-
-### Error Classification
-
-```go
-func classifyError(err error) int {
-    switch {
-    case errors.Is(err, provider.ErrDirListingDisabled):
-        return http.StatusForbidden  // 403
-    case errors.Is(err, os.ErrNotExist):
-        return http.StatusNotFound  // 404
-    case errors.Is(err, fs.ErrPermission):
-        return http.StatusForbidden  // 403
-    case errors.Is(err, context.Canceled):
-        return 499  // Client closed request
-    case errors.Is(err, context.DeadlineExceeded):
-        return http.StatusGatewayTimeout  // 504
-    default:
-        return http.StatusInternalServerError  // 500
-    }
-}
-```
-
-### Error Wrapping
-
-All errors wrapped with `fmt.Errorf("%w", err)` for proper classification:
-
-```go
-// ✅ CORRECT
-if err != nil {
-    return fmt.Errorf("read file %s: %w", path, err)
-}
-
-// ❌ WRONG (breaks error classification)
-if err != nil {
-    return fmt.Errorf("read file %s: %v", path, err)
-}
-```
-
 ## Security
 
-### Path Traversal Protection
-
-```go
-fsys := os.DirFS(dir)  // Jails file access to dir
-content, err := fs.ReadFile(fsys, cleanPath)
-```
-
-**Protection:**
-- `os.DirFS()` prevents access outside root directory
-- `..` and absolute paths automatically blocked
-- Works across all OS (Windows, Linux, macOS)
-
-### Hidden File Blocking
-
-```go
-func BlockHiddenPaths(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        parts := strings.Split(r.URL.Path, "/")
-        for _, part := range parts {
-            if strings.HasPrefix(part, ".") && part != "." && !strings.HasPrefix(r.URL.Path, "/.well-known/") {
-                http.Error(w, "403 Forbidden", http.StatusForbidden)
-                return
-            }
-        }
-        next.ServeHTTP(w, r)
-    })
-}
-```
-
-**Blocks:**
-- `.git/`, `.env`, `.config/`, `.gomddoc/`
-- Any file starting with `.` at any path depth
-
-**Allows:**
-- `/.well-known/` (IETF RFC 8615 compliance)
-
-### Security Headers
-
-```go
-w.Header().Set("X-Content-Type-Options", "nosniff")
-w.Header().Set("X-Frame-Options", "DENY")
-```
-
-### Secure Defaults
-
-- `DirIndex: false` - No directory listing by default
-- `ShutdownTimeout: 1s` - Prevents hung connections
-- `ReadHeaderTimeout: 5s` - Prevents slow-loris attacks
+- **Path traversal**: `os.DirFS()` jails file access
+- **Hidden files**: Middleware blocks dot-prefixed paths (except `.well-known`)
+- **Method filtering**: Only GET and HEAD allowed (405 for others)
+- **Security headers**: nosniff, DENY framing, referrer policy, permissions policy, HSTS
+- **Git SSH**: Host key verification via known_hosts (fail closed, no TOFU)
+- **Clone timeout**: Enforced via `context.WithTimeout` (default 60s)
+- **File size limits**: Git provider enforces 50MB max (configurable)
+- **Log injection**: `text.SafeString` sanitizes user input in log messages
 
 ## Configuration
 
-### Loading Priority
+### Loading Priority (highest wins)
 
-```
-1. Defaults (config.New())
-2. Config file (.gomddoc/config.yml)
-3. Environment variables
-4. CLI flags (highest priority)
-```
+1. CLI flags (`-d`, `-p`, `-dev`, `--git-key-file`)
+2. Environment variables (`GOMDDOC_SERVER_*`, `GOMDDOC_SITE_*`)
+3. Config file (`.gomddoc/config.yml`)
+4. Defaults
 
 ### Config Structure
 
 ```go
 type Config struct {
-    Dir             string
-    Port            string
-    ShutdownTimeout time.Duration
-    DevMode         bool
-    Server          *ServerConfig
-    Site            *SiteConfig
+    Server ServerConfig `env:"SERVER"`
+    Site   SiteConfig   `env:"SITE"`
 }
 
 type ServerConfig struct {
-    DefaultIndex string  // "README.md"
-    DirIndex     bool    // false (secure by default)
+    Port      string     `env:"PORT"`        // ":8080"
+    DevMode   bool       `env:"DEV_MODE"`    // false
+    Dir       string     `env:"DIR"`         // "."
+    GitSSHKey string     `env:"GIT_SSH_KEY"` // ""
+    HTTP      HTTPConfig `env:"HTTP"`        // Timeout tuning
 }
 
 type SiteConfig struct {
-    Meta struct {
-        Title       string
-        Description string
-        Author      string
-        Keywords    string
-    }
-    BaseURL string
+    DefaultIndex string      `env:"DEFAULT_INDEX" yaml:"default_index"` // "README.md"
+    DirIndex     bool        `env:"DIR_INDEX"     yaml:"dir_index"`     // false
+    Meta         MetaConfig  `env:"META"          yaml:"meta"`
+    Theme        ThemeConfig `env:"THEME"         yaml:"theme"`
 }
 ```
 
-## Testing Strategy
+Environment variables are applied via reflection-based walking of the struct tree with `env` tags.
 
-### Unit Tests
+## Testing
 
-- Package-level isolation
-- Mock dependencies via interfaces
-- Table-driven tests for edge cases
-- Context cancellation testing
+### Coverage (as of 2026-03-09)
 
-### Integration Tests
+| Package                    | Coverage |
+| -------------------------- | -------- |
+| internal/common            | 100.0%   |
+| internal/renderer          | 96.8%    |
+| internal/text              | 95.2%    |
+| internal/template          | 93.3%    |
+| internal/server            | 92.8%    |
+| internal/template/breadcrumb | 92.0% |
+| internal/config            | 82.4%    |
+| internal/assets            | 80.8%    |
+| internal/provider          | 67.5%    |
+| **Overall**                | **78.1%** |
 
-- End-to-end request flow
-- Temporary directories for file fixtures
-- Real Provider + Registry + Handler
-- All content types covered
+### Test Strategy
 
-### Coverage Targets
-
-- Overall: 78.9%
-- Server: 87.0%
-- Renderer: 97.8%
-- Provider: 89.5%
-
-## Performance Considerations
-
-### Template Caching
-
-**Production Mode:**
-```go
-cache := &CachedTemplateStore{}  // LRU cache
-renderer.Configure(WithCache(cache))
-```
-
-**Dev Mode:**
-```go
-// No cache - always fresh templates
-renderer.Configure(WithCache(&NoCacheStore{}))
-```
-
-### Stateless Renderers
-
-All renderers are stateless for thread safety:
-- No shared mutable state
-- Can be called concurrently
-- Fresh parser instance per render (library constraint)
-
-### Efficient MIME Detection
-
-```go
-// Fast path: extension-based
-mimeType := mime.TypeByExtension(filepath.Ext(path))
-if mimeType == "" {
-    mimeType = "application/octet-stream"  // Safe default
-}
-```
+- **Unit tests**: Package-level isolation with interfaces for mocking
+- **Table-driven tests**: All components use `[]struct{...}` test tables
+- **Parallel tests**: `t.Parallel()` where possible
+- **Integration tests**: End-to-end request flow with real Provider + Registry + Handler
+- **Context cancellation**: Tested in renderers and template layer
 
 ## Extensibility
 
 ### Adding Custom Renderers
 
+See [Custom Renderers Guide](custom-renderers.md) for complete examples. In brief:
+
 ```go
-// 1. Implement ContentRenderer interface
-type AsciiDocRenderer struct{}
-
-func (a *AsciiDocRenderer) SupportedMimeTypes() []string {
-    return []string{"text/asciidoc"}
+type MyRenderer struct{}
+func (r *MyRenderer) SupportedMimeTypes() []string { return []string{"text/x-custom"} }
+func (r *MyRenderer) Render(ctx context.Context, content []byte) (*renderer.RenderResult, error) {
+    // transform content...
+    return &renderer.RenderResult{Content: output, MimeType: "text/html; charset=utf-8"}, nil
 }
 
-func (a *AsciiDocRenderer) Render(ctx context.Context, content []byte) ([]byte, string, error) {
-    if err := ctx.Err(); err != nil {
-        return nil, "", err
-    }
-
-    html := convertAsciiDocToHTML(content)
-    return html, "text/html; charset=utf-8", nil
-}
-
-// 2. Register in main.go
-registry.Register(&AsciiDocRenderer{})
+// Register in main.go:
+registry.Register(&MyRenderer{})
 ```
 
 ### Adding Custom Providers
 
-```go
-// Implement Provider interface
-type S3Provider struct {
-    client *s3.Client
-    bucket string
-}
-
-func (s *S3Provider) ReadFile(path string) ([]byte, string, error) {
-    obj, err := s.client.GetObject(ctx, &s3.GetObjectInput{
-        Bucket: &s.bucket,
-        Key:    &path,
-    })
-    // ...
-}
-```
-
-## Future Enhancements
-
-### Phase 3: Advanced Features
-
-- [ ] Multiple provider support (S3, database, GitHub)
-- [ ] Plugin architecture with dynamic loading
-- [ ] REST/GraphQL API for headless CMS
-- [ ] i18n support in templates
-- [ ] Full-text search
-- [ ] Syntax highlighting for code blocks
-- [ ] Live reload in dev mode
-
-### Architectural Readiness
-
-The current architecture supports all Phase 3 features without breaking changes:
-- Provider abstraction ready for multiple backends
-- Renderer registry supports dynamic registration
-- Handler independent of provider/renderer implementation
-- Template system ready for theme switching
+Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git URLs vs filesystem paths.
 
 ## Design Decisions
 
-### Why MIME-Type Based Routing?
-
-- **Universal**: Works for all content types
-- **Stdlib**: Go's `mime` package is robust and tested
-- **HTTP Compliant**: Natural fit with Accept header negotiation
-- **Self-Documenting**: Renderer declares what it handles
-
-### Why Separate Provider and Renderer?
-
-- **Separation of Concerns**: I/O vs transformation
-- **Testability**: Mock filesystem without touching renderer
-- **Extensibility**: Replace either independently
-- **Stdlib Compatibility**: Provider uses `fs.FS` interface
-
-### Why PassthroughRenderer Uses `*/*`?
-
-- **Simplicity**: Single wildcard instead of explicit type list
-- **Maintainability**: No updates needed when new file types added
-- **Fail-Safe**: Guarantees all content types are handled
-
-### Why No Context in Provider.ReadFile()?
-
-- **stdlib Compatibility**: `fs.FS` interface has no context
-- **Simplicity**: File reads are fast, timeout at HTTP level
-- **Flexibility**: Works with any `fs.FS` implementation
+| Decision | Rationale |
+| -------- | --------- |
+| MIME-type routing | Universal, stdlib-backed, natural fit with HTTP Accept negotiation |
+| Separate Provider/Renderer | I/O vs transformation separation; mock either independently |
+| PassthroughRenderer `*/*` | No maintenance when new file types added; guarantees all types handled |
+| No context in Provider | stdlib `fs.FS` compatibility; timeout at HTTP level |
+| `RenderResult` struct | Extensible return (content + metadata + TOC) without interface churn |
+| `path` not `filepath` for fs.FS | `io/fs` spec requires forward slashes; `filepath` breaks on Windows |
+| Clone timeout via context | Standard Go pattern; `git.CloneContext()` respects cancellation |
+| SSH fail-closed | Security: no TOFU fallback; require known_hosts for host key verification |
 
 ## Glossary
 
-- **Provider**: Component responsible for reading files and detecting MIME types
-- **Renderer**: Component that transforms content from one MIME type to another
+- **Provider**: Reads files and detects MIME types (filesystem or Git)
+- **Renderer**: Transforms content from one MIME type to another
 - **Registry**: MIME type → renderer mapping with wildcard support
 - **Handler**: HTTP request orchestrator
 - **MIME Normalization**: Stripping charset parameters for routing decisions
 - **Content Negotiation**: Matching server output to client Accept header
 - **Passthrough**: Serving content unchanged with original MIME type
 - **Template Wrapping**: Adding HTML layout around rendered content
+- **TOC**: Table of Contents extracted from heading structure
+- **Overlay FS**: Layered filesystem where user assets override embedded defaults

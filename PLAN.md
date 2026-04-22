@@ -1,734 +1,445 @@
 # PLAN
 
-Transform gomddoc from a single-file Markdown server into a comprehensive static site generator and content management platform.
+Evolve gomddoc into the best git-native documentation viewer and static site generator. No databases, no CMS workflows — Git is the source of truth.
 
 # Architecture Overview
 
 ## Core Principles
 
+- **Git-native**: Stateless, read-only viewer — Git is the database
 - **Interface-driven design**: All major components implement well-defined interfaces
-- **Plugin architecture**: Extensible through a robust plugin system
-- **Performance-first**: Built for speed with intelligent caching and optimization
+- **Performance-first**: Built for speed with intelligent caching and disk-based storage
 - **Security by design**: Path traversal protection, content sanitization, secure defaults
 - **Developer experience**: Hot reload, comprehensive CLI, debugging tools
+- **Zero-config useful, fully-config powerful**: Works out of the box, deeply configurable when needed
 
-## System Architecture
+## Current Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Content       │    │   Processing    │    │   Output        │
-│   Providers     │───▶│   Pipeline      │───▶│   Generators    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-│                      │                      │
-├─ Filesystem          ├─ Markdown            ├─ Static HTML
-├─ Database            ├─ AsciiDoc            ├─ API JSON
-├─ GitHub              ├─ ReStructuredText    ├─ Progressive PWA
-└─ Custom              └─ Custom              └─ Embedded Binary
+HTTP Request
+    │
+    ▼
+Middleware (Security Headers → Method Filter → Hidden Path Block)
+    │
+    ▼
+Handler (ServeContent)
+    │
+    ├── Provider (Filesystem | Git) → ReadFile + MIME detection
+    ├── Registry (MIME → Renderer lookup with wildcards)
+    ├── Renderer (Markdown → HTML | Passthrough)
+    └── Template (Layout + Breadcrumbs + TOC)
+    │
+    ▼
+HTTP Response
 ```
+
+## What's Already Built
+
+- Filesystem and Git providers (SSH auth, known_hosts, fail-closed)
+- Markdown rendering (goldmark, GFM, frontmatter, TOC generation)
+- MIME-type based renderer registry with wildcard matching
+- Content negotiation (Accept header, q-values)
+- Template system with overlay FS, caching, breadcrumbs
+- Configuration (CLI flags, env vars, YAML config, reflection-based)
+- Security (path traversal, hidden files, method filtering, headers, clone timeout, file size limits)
+- Directory listing with secure defaults
+- Comprehensive test suite (~78% coverage)
+
+---
 
 # Feature Specifications
 
-## 1. Content Infrastructure
+## 1. Performance & Scaling
 
-### 1.1 Document Providers
+### 1.1 Disk-Based Git Storage
 
-**Interface Definition:**
+*Current Git provider is in-memory only, limiting repo size.*
 
-```go
-type DocumentProvider interface {
-    List(ctx context.Context, filters ListFilters) ([]Document, error)
-    Get(ctx context.Context, path string) (*Document, error)
-    Watch(ctx context.Context) (<-chan DocumentEvent, error)
-    Metadata(ctx context.Context, path string) (*Metadata, error)
-}
-```
+- Implement `filesystem.Storage` backend for go-git to support large monorepos
+- Configurable storage location with automatic cleanup
+- Lazy blob loading — only fetch file content on request
+- Benchmark memory usage vs in-memory for repos of varying size
 
-**Filesystem Provider** (Primary)
+### 1.2 HTTP Caching
 
-- Recursive directory scanning with configurable depth limits
-- Real-time file watching via `fsnotify` with debouncing
-- Symbolic link support with cycle detection
-- `.gomddocignore` support (gitignore syntax)
-- Concurrent processing with worker pools
-- Content indexing and modification tracking
+- `ETag` headers derived from Git commit hashes (content-addressable)
+- `If-Modified-Since` / `If-None-Match` support → 304 responses
+- `Cache-Control` with configurable TTLs per content type
+- Stale-while-revalidate for background git fetch
 
-**Database Provider** (PostgreSQL/SQLite)
+### 1.3 Response Compression
 
-- Schema: `documents(id, path, content, metadata_json, created_at, updated_at, published_at)`
-- Full-text search via PostgreSQL `tsvector` or SQLite FTS5
-- ACID transactions and connection pooling
-- Migration system for schema updates
+- Gzip/Brotli compression for text responses (HTML, CSS, JS, Markdown)
+- Pre-compressed asset serving when available
+- Minimum size threshold to avoid compressing tiny responses
 
-**GitHub Provider**
+### 1.4 Partial Clones
 
-- GitHub API v4 (GraphQL) integration
-- Webhook support for real-time updates
-- Private repository support with secure authentication
-- Rate limiting with exponential backoff
-- Local caching with Git LFS support
+- `git clone --filter=blob:none` for sparse checkout of large repos
+- Tree-only initial clone, fetch blobs on demand
+- Depends on upstream go-git support — track and adopt when available
 
-**Multi-Provider Aggregation**
+## 2. Search and Discovery
 
-- Priority-based content resolution
-- Content deduplication via SHA-256 hashing
-- Unified search across all providers
-- Provider health monitoring and failover
-
-### 1.2 Document Processing
-
-**Interface Definition:**
-
-```go
-type DocumentProcessor interface {
-    CanProcess(filename string) bool
-    Process(ctx context.Context, content []byte, metadata *Metadata) (*ProcessedDocument, error)
-    Extensions() []string
-    ContentType() string
-}
-```
-
-**Markdown Processor** (Primary)
-
-- Extended CommonMark with GitHub Flavored Markdown
-- Custom extensions: tables, task lists, footnotes, strikethrough
-- Math rendering via KaTeX integration
-- Mermaid diagram support
-- Syntax highlighting via Chroma (200+ languages)
-- Custom shortcodes: `{{< youtube "id" >}}`, `{{< tweet "id" >}}`
-- Auto-generated table of contents
-- Reading time estimation
-
-**AsciiDoc Processor**
-
-- Full AsciiDoc specification compliance
-- Cross-references and conditional content
-- Bibliography and citation management
-- PlantUML and Graphviz diagram integration
-
-**ReStructuredText Processor**
-
-- Python docutils integration
-- Sphinx-compatible directives
-- API documentation extraction
-- Cross-document linking
-
-**Jupyter Notebook Processor**
-
-- `.ipynb` parsing and rendering
-- Code execution results display
-- Math and plot rendering
-- Export to static HTML
-
-**Plugin Architecture**
-
-- Dynamic processor loading via Go plugins
-- Processor priority chains and fallbacks
-- Sandboxed execution environment
-- Hot-reloading in development mode
-
-### 1.3 Asset Management
-
-**Theme System Architecture:**
-
-```
-themes/
-├── {theme-name}/
-│   ├── templates/
-│   │   ├── layout.html.tmpl
-│   │   ├── post.html.tmpl
-│   │   ├── list.html.tmpl
-│   │   └── 404.html.tmpl
-│   ├── static/
-│   │   ├── css/
-│   │   ├── js/
-│   │   └── images/
-│   └── theme.yaml
-```
-
-**Asset Override System**
-
-- Priority order: `.gomddoc/assets/` → embedded `assets/`
-- Hot-swappable themes in development mode
-- Asset fingerprinting for cache busting
-- Conditional loading based on page type
-
-**Static File Serving**
-
-- MIME type detection with appropriate headers
-- Gzip/Brotli compression for text assets
-- ETags and Last-Modified headers
-- Range request support
-- Security headers: CSP, CORS configuration
-
-## 2. Content Management
-
-### 2.1 Document Metadata
-
-**Frontmatter Support**
-
-- YAML frontmatter (primary): `---` delimited
-- TOML frontmatter: `+++` delimited
-- JSON frontmatter: `{}` delimited
-- Validation schemas for consistency
-- Custom field definitions per document type
-
-**Core Metadata Schema**
-
-```yaml
-# Essential fields
-title: string
-description: string
-author: string | []string
-created_at: timestamp
-updated_at: timestamp
-published_at: timestamp
-status: draft | published | archived | private
-slug: string
-canonical_url: string
-
-# Taxonomic fields
-tags: []string
-categories: []string
-series: string
-series_order: int
-difficulty: beginner | intermediate | advanced
-language: string
-translations: []string
-
-# SEO fields
-meta_description: string
-keywords: []string
-robots: string
-og_title: string
-og_description: string
-og_image: string
-twitter_card: summary | summary_large_image
-schema_type: string
-```
-
-**Metadata Processing**
-
-- Automatic extraction from content
-- Validation with custom rules
-- Default value assignment
-- Inheritance from parent directories
-- Conflict resolution strategies
-
-### 2.2 URL Management
-
-**Interface Definition:**
-
-```go
-type URLRouter interface {
-    AddRoute(pattern string, handler RouteHandler) error
-    Match(path string) (*RouteMatch, error)
-    Generate(document *Document) (string, error)
-    ListRoutes() []Route
-}
-```
-
-**URL Rewriting Engine**
-
-- Automatic `.md` extension removal
-- Configurable patterns via regex
-- Path normalization and case handling
-- Unicode URL support
-- Conflict detection and resolution
-
-**Pretty URL Patterns**
-
-- Hierarchical: `/category/subcategory/post`
-- Date-based: `/2024/01/15/post-title`
-- Author-based: `/authors/john-doe/post-title`
-- Custom patterns: `/blog/{year}/{month}/{slug}`
-
-**URL Aliases and Redirects**
-
-- Multiple aliases via metadata: `aliases: ["/old-path"]`
-- Automatic redirect generation (301/302)
-- Redirect chain prevention
-- Bulk migration tools
-
-### 2.3 Content Lifecycle
-
-**Interface Definition:**
-
-```go
-type ContentWorkflow interface {
-    CreateWorkflow(config WorkflowConfig) (*Workflow, error)
-    AssignTask(workflowID, userID string, task Task) error
-    CompleteTask(taskID string, result TaskResult) error
-    GetWorkflowStatus(workflowID string) (*WorkflowStatus, error)
-}
-```
-
-**Draft and Preview System**
-
-- Multi-stage lifecycle: Draft → Review → Published → Archived
-- Preview URLs with authentication: `/preview/{token}/{path}`
-- Branch-based drafts for collaboration
-- Visual diff comparison
-- Mobile/desktop preview modes
-
-**Content Scheduling**
-
-- Time-based publication with `published_at` metadata
-- Recurring content schedules
-- Timezone-aware scheduling
-- Preview scheduled content
-
-**Editorial Workflow**
-
-- Assignment system with roles and permissions
-- Comment system with threaded discussions
-- Approval workflows with multi-stage review
-- Notification system for state changes
-
-## 3. Site Generation
-
-### 3.1 Build System
-
-**Interface Definition:**
-
-```go
-type SiteGenerator interface {
-    Build(ctx context.Context, config BuildConfig) (*BuildResult, error)
-    Watch(ctx context.Context, config BuildConfig) (<-chan BuildEvent, error)
-    Serve(ctx context.Context, config ServeConfig) error
-    Clean(config BuildConfig) error
-}
-```
-
-**Static Site Generation**
-
-- Complete site pre-rendering to HTML/CSS/JS
-- Incremental builds: process only changed files
-- Asset optimization: minification, compression, bundling
-- Multi-target output: filesystem, S3, CDN
-- Build artifacts with integrity checksums
-
-**Dynamic Serving Mode**
-
-- Real-time document processing on HTTP requests
-- Smart caching with TTL and invalidation
-- Hot reload of templates and configurations
-- Development-friendly error pages
-- Performance monitoring
-
-**Hybrid Mode**
-
-- Static generation for stable content
-- Dynamic rendering for user-specific content
-- Edge-side includes (ESI) support
-- Progressive enhancement strategies
-
-### 3.2 Template System
-
-**Interface Definition:**
-
-```go
-type TemplateRenderer interface {
-    Render(ctx context.Context, template string, data interface{}) ([]byte, error)
-    Dependencies(template string) ([]string, error)
-    Validate(template string) error
-    Hot
-}
-```
-
-**Component Architecture**
-
-- Reusable components with props: `{{< card title="Title" >}}`
-- Slot-based content projection
-- Component composition and nesting
-- Auto-completion in development mode
-
-**Theme Inheritance**
-
-- Multi-level inheritance: Base → Framework → Site → Custom
-- Partial template overrides
-- Conflict resolution strategies
-- Theme development tools
-
-**Advanced Template Functions**
-
-```go
-// Built-in functions
-{{ markdown .Content }}
-{{ highlight .Code "go" }}
-{{ asset "style.css" }}
-{{ image .Image 800 600 }}
-{{ date .PublishedAt "2006-01-02" }}
-{{ truncate .Description 150 }}
-{{ taxonomy "tags" }}
-{{ related . 5 }}
-```
-
-**Multi-Language Support (i18n)**
-
-- Translation key management: `{{ i18n "welcome.message" }}`
-- Pluralization rules per language
-- RTL language support
-- Date/number formatting per locale
-
-## 4. Search and Discovery
-
-### 4.1 Full-Text Search
+### 2.1 Full-Text Search
 
 **Interface Definition:**
 
 ```go
 type SearchEngine interface {
     Index(ctx context.Context, documents []Document) error
-    Search(ctx context.Context, query SearchQuery) (*SearchResult, error)
-    Suggest(ctx context.Context, partial string) ([]string, error)
-    UpdateIndex(ctx context.Context, document Document) error
+    Search(ctx context.Context, query string, opts SearchOpts) (*SearchResult, error)
+    Suggest(ctx context.Context, prefix string) ([]string, error)
 }
 ```
 
-**Bleve Search Integration**
+**Two-track strategy:**
 
-- Go-native full-text search engine
-- Multi-language analyzers
-- Faceted search with filters
-- Boolean search operators
-- Search result ranking
-- Auto-complete functionality
+- **Server-side**: Bleve integration for dynamic serving mode
+- **Client-side**: Pagefind or Lunr.js index generation for static builds
 
-**Search Features**
+**Features:**
+- Incremental indexing on git fetch
+- Frontmatter-aware filtering (`tag:golang status:published`)
+- Fuzzy matching and typo tolerance
+- Search result highlighting with context snippets
 
-- Advanced query syntax: `tag:golang AND status:published`
-- Search suggestions and auto-complete
-- Faceted search by metadata fields
-- Search analytics and optimization
+### 2.2 Auto-Generated Navigation
 
-### 4.2 Content Relationships
+- Sidebar navigation tree from directory structure
+- Configurable via `_nav.yaml` or `_sidebar.md` override files
+- Collapsible sections with expand/collapse state persistence
+- Active page highlighting and scroll-into-view
+- Ordering via frontmatter `weight` field or filename prefix (`01-intro.md`)
 
-**Related Content System**
+### 2.3 Frontmatter Indexing
 
-- Bi-directional link tracking
-- Tag-based clustering
-- Content similarity algorithms
-- Series management with navigation
-- Automated recommendations
+- Parse and index all frontmatter fields at startup / git fetch
+- Tag and category listing pages (auto-generated taxonomy)
+- Filter and sort content by any metadata field
+- Expose metadata via internal template functions
 
-**Content Graph**
+## 3. Renderer Enhancements
 
-- Dependency tracking for cross-references
-- Backlink generation
-- Link validation and repair
-- Graph visualization tools
+### 3.1 Rich Markdown Extensions
 
-## 5. Performance and SEO
+- **Mermaid diagrams**: Server-side rendering via mermaid-go or client-side JS
+- **Math**: KaTeX rendering for `$inline$` and `$$block$$` expressions
+- **Syntax highlighting themes**: Multiple Chroma themes, configurable per-site
+- **Admonitions**: `> [!NOTE]`, `> [!WARNING]`, `> [!TIP]` callout blocks (GitHub-style)
+- **Content tabs**: Tabbed content blocks for multi-language examples
+- **Task lists**: Interactive checkboxes (read-only display)
 
-### 5.1 Performance Optimization
+### 3.2 AsciiDoc Renderer
 
-**Interface Definition:**
+- `.adoc` file support via asciidoctor or native Go parser
+- Cross-references and include directives
+- Table of contents extraction matching Markdown renderer interface
 
-```go
-type PerformanceOptimizer interface {
-    OptimizeAssets(ctx context.Context, assets []Asset) ([]OptimizedAsset, error)
-    GenerateCriticalCSS(ctx context.Context, url string) (string, error)
-    AnalyzePerformance(ctx context.Context, url string) (*PerformanceReport, error)
-}
-```
+### 3.3 OpenAPI Renderer
 
-**Core Web Vitals**
+- Render `openapi.yaml` / `openapi.json` / `swagger.yaml` as interactive API docs
+- Swagger UI or Redoc-style presentation
+- Try-it-out panels for API exploration
+- Schema visualization with expandable models
 
-- Largest Contentful Paint (LCP) optimization
-- First Input Delay (FID) reduction
-- Cumulative Layout Shift (CLS) prevention
-- Performance budgets with enforcement
-- Real User Monitoring (RUM) integration
+### 3.4 Jupyter Notebook Renderer
 
-**Asset Optimization**
+- Parse `.ipynb` and render cells (code + output + markdown)
+- Syntax-highlighted code cells
+- Inline image and plot rendering
+- Math rendering in markdown cells
 
-- Critical CSS extraction and inlining
-- Resource bundling and code splitting
-- Image optimization with WebP/AVIF
-- Font optimization with preloading
-- Service worker for caching
+## 4. Static Site Generation
 
-### 5.2 SEO Features
-
-**Structured Data**
-
-- Automatic JSON-LD generation
-- Schema.org markup for different content types
-- Rich snippets optimization
-- Social media meta tags
-
-**Site Features**
-
-- XML sitemap generation with priorities
-- RSS/Atom feeds with customization
-- Robots.txt management
-- Canonical URL enforcement
-- International SEO with hreflang
-
-## 6. Developer Experience
-
-### 6.1 Development Tools
-
-**Hot Reload System**
-
-- File system watching with debouncing
-- Incremental compilation
-- Browser auto-refresh via WebSocket
-- CSS hot-swapping
-- Error overlay in development
-
-**CLI Tool Suite**
+### 4.1 Build Command
 
 ```bash
-gomddoc new [type] [name]           # Create content
-gomddoc build [--watch] [--dev]     # Build site
-gomddoc serve [--port] [--host]     # Development server
-gomddoc deploy [target]             # Deploy to platforms
-gomddoc import [source] [format]    # Import content
-gomddoc optimize                    # Performance analysis
-gomddoc validate                    # Content validation
+gomddoc build [--output dist/] [--base-url https://example.com]
 ```
 
-**Development Server**
+- Crawl content tree and render all pages to static HTML/CSS/JS
+- Incremental builds — only re-render changed files (based on git diff)
+- Parallel rendering with configurable worker count
+- Build manifest with integrity checksums
+- Exit code reflects build success/failure for CI integration
 
-- Multi-port setup: content + admin interface
-- HTTPS with self-signed certificates
-- Proxy support for API backends
-- Development middleware and debugging
-- Mock data generation
+### 4.2 Asset Pipeline
 
-### 6.2 Testing and Quality
+- CSS/JS minification during build
+- Asset fingerprinting for cache busting (`style.a1b2c3.css`)
+- Critical CSS extraction and inlining for above-the-fold content
+- Image optimization (WebP conversion, responsive srcset generation)
+- Unused CSS elimination via PurgeCSS-style analysis
 
-**Content Validation**
+### 4.3 Output Targets
 
-- Link checking and validation
-- Image optimization analysis
-- Accessibility testing
-- SEO analysis with recommendations
-- Performance testing integration
+- Filesystem output (default) — compatible with any static host
+- S3/GCS direct upload with proper Content-Type and Cache-Control
+- Netlify/Vercel/GitHub Pages compatibility (redirects, headers files)
+- Configurable base path for subdirectory hosting (`/docs/`)
 
-**Build Quality**
+### 4.4 SEO and Feeds
 
-- Automated testing in CI/CD
-- Performance regression detection
-- Cross-browser testing integration
-- Visual regression testing
-- A/B testing framework
+- XML sitemap generation with `lastmod` from git timestamps
+- RSS/Atom feed generation from content with `published_at` frontmatter
+- `robots.txt` generation with configurable rules
+- Canonical URL enforcement
+- Open Graph and Twitter Card meta tags from frontmatter
+- JSON-LD structured data (Article, TechArticle, HowTo schemas)
 
-## 7. API and Integration
+## 5. Versioned Documentation
 
-### 7.1 Content API
+### 5.1 Multi-Version Serving
 
-**Interface Definition:**
+- Serve documentation from multiple Git branches or tags simultaneously
+- URL structure: `/v2.1/getting-started` or `/latest/getting-started`
+- Version switcher dropdown in the UI
+- "Latest" alias that tracks a configurable branch/tag pattern
+- Per-version search index
 
-```go
-type ContentAPI interface {
-    GetDocument(ctx context.Context, id string) (*Document, error)
-    ListDocuments(ctx context.Context, filters DocumentFilters) (*DocumentList, error)
-    CreateDocument(ctx context.Context, doc *Document) (*Document, error)
-    UpdateDocument(ctx context.Context, id string, doc *Document) (*Document, error)
-    DeleteDocument(ctx context.Context, id string) error
-    SearchDocuments(ctx context.Context, query SearchQuery) (*SearchResult, error)
-}
-```
-
-**REST API Endpoints**
-
-```
-GET    /api/v1/documents              # List with pagination
-GET    /api/v1/documents/{id}         # Single document
-POST   /api/v1/documents              # Create document
-PUT    /api/v1/documents/{id}         # Update document
-DELETE /api/v1/documents/{id}         # Delete document
-GET    /api/v1/search                 # Full-text search
-GET    /api/v1/taxonomy/{type}        # Metadata taxonomy
-GET    /api/v1/analytics              # Performance metrics
-```
-
-**GraphQL API**
-
-- Complete schema with Query/Mutation types
-- Real-time subscriptions for content updates
-- Efficient nested field selection
-- Advanced filtering and pagination
-
-### 7.2 Integration Platform
-
-**Webhook System**
-
-- Event-driven notifications: `document.created`, `document.updated`
-- HMAC signature verification
-- Retry mechanisms with exponential backoff
-- Webhook testing and debugging tools
-
-**Third-Party Integrations**
-
-- Analytics: Google Analytics 4, Adobe Analytics
-- Search: Algolia, Elasticsearch cloud
-- CDN: Cloudflare, AWS CloudFront
-- Storage: AWS S3, Google Cloud Storage
-- Email: SendGrid, Mailchimp
-- Comments: Disqus, GitHub Discussions
-
-**Authentication Providers**
-
-- OAuth 2.0: GitHub, Google, Microsoft
-- SAML SSO for enterprise
-- API key management with scoping
-- JWT token validation
-- Role-based access control (RBAC)
-
-## 8. Monitoring and Analytics
-
-### 8.1 Observability
-
-**Interface Definition:**
-
-```go
-type MetricsCollector interface {
-    TrackPageView(ctx context.Context, event PageViewEvent) error
-    GetPopularContent(timeRange TimeRange, limit int) ([]ContentMetric, error)
-    GetContentPerformance(documentID string) (*PerformanceMetric, error)
-    GenerateReport(config ReportConfig) (*AnalyticsReport, error)
-}
-```
-
-**Prometheus Metrics**
-
-- Standard HTTP metrics: duration, status codes, request size
-- Application metrics: processing time, cache ratios
-- Content metrics: page views, unique visitors
-- System metrics: memory, goroutines, GC duration
-
-**Health Monitoring**
-
-- Liveness probe: `/health/live`
-- Readiness probe: `/health/ready`
-- Startup probe: `/health/startup`
-- Deep health checks for dependencies
-- Graceful degradation indicators
-
-**Distributed Tracing**
-
-- OpenTelemetry integration
-- Span creation for processing pipeline
-- Trace correlation across services
-- Performance bottleneck identification
-
-### 8.2 Content Analytics
-
-**Performance Monitoring**
-
-- Core Web Vitals tracking
-- Resource loading performance
-- Build performance analytics
-- Cache efficiency monitoring
-- Real User Monitoring (RUM)
-
-**Privacy-Compliant Analytics**
-
-- GDPR/CCPA compliant data collection
-- Anonymized IP storage
-- Cookie-free analytics options
-- User consent management
-- Data export and purging capabilities
-
-## 9. Configuration Management
-
-### 9.1 Site Configuration
-
-**Primary Configuration** (`.gomddoc/config.yaml`)
+### 5.2 Version Configuration
 
 ```yaml
-site:
-  title: "Site Title"
-  description: "Site Description"
-  base_url: "https://example.com"
-  theme: "default"
-  language: "en"
-
-build:
-  mode: "static" | "dynamic" | "hybrid"
-  output_dir: "./dist"
-  minify_html: true
-  minify_css: true
-  concatenate_js: true
-  optimize_images: true
-
-cache:
-  templates_ttl: "5m"
-  static_assets_ttl: "1h"
-  content_ttl: "10m"
-
-providers:
-  - type: "filesystem"
-    path: "./content"
-  - type: "github"
-    repo: "user/repo"
-    token: "${GITHUB_TOKEN}"
-
-processors:
-  markdown:
-    extensions: ["tables", "footnotes", "strikethrough"]
-    syntax_highlighting: true
-    math_rendering: true
+versions:
+  - label: "v3.0 (latest)"
+    ref: "main"
+    alias: "latest"
+  - label: "v2.x"
+    ref: "v2"
+  - label: "v1.x (legacy)"
+    ref: "v1"
+    banner: "This version is no longer maintained."
 ```
 
-### 9.2 Environment Management
+### 5.3 Cross-Version Features
 
-**Environment Variables**
+- Diff view between versions of the same document
+- "This page was updated in v3.0" banners with links
+- Version-aware search (search within current version or all)
 
-- Development, staging, production configurations
-- Secret management with encryption
-- Feature flags for gradual rollouts
-- Configuration validation and schema enforcement
+## 6. Multi-Repository Aggregation
 
-## Implementation Priorities
+### 6.1 Unified Documentation Site
 
-### Phase 1: Core Foundation
+- Serve content from multiple Git repositories as a single site
+- Mount points: repo A at `/api/`, repo B at `/guides/`
+- Independent refresh cycles per repository
+- Unified navigation and search across all repos
 
-1. Document provider interface and filesystem implementation
-2. Basic Markdown processing with frontmatter
-3. Simple template system with theme support
-4. Static site generation with incremental builds
-5. Development server with hot reload
+### 6.2 Configuration
 
-### Phase 2: Content Management
+```yaml
+sources:
+  - url: "git@github.com:org/api-docs.git"
+    mount: "/api"
+    ref: "main"
+  - url: "git@github.com:org/user-guides.git"
+    mount: "/guides"
+    ref: "main"
+  - path: "./local-docs"
+    mount: "/internal"
+```
 
-1. Advanced metadata processing and validation
-2. URL routing and rewriting system
-3. Multi-format document processors (AsciiDoc, RST)
-4. Asset management and optimization
-5. Content lifecycle and workflow system
+## 7. Theming and UI
 
-### Phase 3: Search and Discovery
+### 7.1 Theme System
 
-1. Full-text search with Bleve integration
-2. Content relationship tracking
-3. Advanced URL patterns and redirects
-4. SEO optimization features
-5. Performance monitoring basics
+- Theme inheritance: Base → Custom (override specific partials without copying everything)
+- Multiple built-in themes: documentation, blog, knowledge base
+- Theme configuration via `theme.yaml` (colors, fonts, layout options)
+- Dark/light mode toggle with system preference detection and persistence
+- Print-friendly CSS media queries
 
-### Phase 4: API and Integration
+### 7.2 UI Enhancements
 
-1. REST and GraphQL APIs
-2. Authentication and authorization
-3. Webhook system
-4. Third-party service integrations
-5. Plugin architecture
+- "Copy to clipboard" buttons on code blocks
+- Anchor links on headings (hover-to-reveal)
+- Keyboard navigation (previous/next page, search hotkey)
+- Reading progress indicator
+- "Edit this page on GitHub/GitLab" links (auto-generated from Git remote)
+- "Last updated" timestamps from Git log
+- Mobile-responsive layout with hamburger menu navigation
 
-### Phase 5: Advanced Features
+### 7.3 Code Block Features
 
-1. Multi-language support (i18n)
-2. Advanced analytics and monitoring
-3. Progressive Web App features
-4. Enterprise integrations
-5. Advanced developer tooling
+- Line numbers (optional)
+- Line highlighting (`go {hl_lines=[3,5-7]}`)
+- Diff syntax highlighting (added/removed lines)
+- Filename/title display above code blocks
+- Collapsible long code blocks
 
-# Deferred Features
+## 8. Git-Workflow Integration
 
-- Content versioning/revision history
-- VS Code extension
-- Git hooks integration
-- Advanced image optimization
-- Dark/light mode theming
+### 8.1 Branch Switching
+
+- UI dropdown to switch between Git branches/tags
+- Preview feature branches before merge
+- Branch protection — only serve specified branches publicly
+
+### 8.2 Webhook Receiver
+
+- `POST /api/webhook` endpoint to trigger `git fetch` on push events
+- HMAC signature verification (GitHub, GitLab, Bitbucket formats)
+- Debounced fetch to avoid thundering herd on rapid pushes
+- Cache invalidation after fetch
+
+### 8.3 Git Metadata Integration
+
+- `git log` integration for "last edited by" and "last edited at" per file
+- Contributors list per page from git history
+- Changelog generation from git commits affecting documentation
+
+## 9. Observability
+
+### 9.1 Prometheus Metrics
+
+- Request latency histograms by path pattern and status code
+- Cache hit/miss ratios (template cache, git object cache)
+- Git fetch duration and frequency
+- Active connections and request queue depth
+- Content rendering duration by renderer type
+
+### 9.2 Health Endpoints
+
+- `GET /health/live` — process is alive
+- `GET /health/ready` — git clone complete, ready to serve
+- Structured health response with dependency status (git remote reachable, disk space)
+
+### 9.3 Structured Logging
+
+- JSON-formatted logs for production (already using `slog`)
+- Request ID propagation through context
+- Slow request logging with configurable threshold
+
+## 10. Enterprise and Deployment
+
+### 10.1 Authentication Middleware
+
+- OIDC/OAuth2 middleware for "internal docs" use cases
+- Bearer token validation for API access
+- IP allowlist for restricted access
+- Pluggable auth via middleware interface
+
+### 10.2 Container-First Deployment
+
+- Multi-stage Dockerfile with minimal final image (distroless/scratch)
+- Helm chart for Kubernetes deployment
+- Health probes, resource limits, HPA configuration
+- Sidecar pattern for git-sync (alternative to built-in git provider)
+
+## 11. CLI Enhancements
+
+### 11.1 New Commands
+
+```bash
+gomddoc init                        # Scaffold new documentation project
+gomddoc build [--watch]             # Static site generation
+gomddoc serve [--port] [--host]     # Development server (existing)
+gomddoc validate                    # Check for broken links, missing metadata
+gomddoc search-index                # Pre-build search index
+gomddoc export --format pdf         # Export to PDF (ICEBOX)
+```
+
+### 11.2 Link Validation
+
+- Crawl all internal links and verify targets exist
+- Optional external link checking with configurable timeout
+- Report broken links with source location
+- CI-friendly exit codes (non-zero on broken links)
+
+### 11.3 Shell Completions
+
+- Bash, Zsh, Fish, PowerShell completion scripts
+- `gomddoc completion bash > /etc/bash_completion.d/gomddoc`
+
+## 12. Plugin Architecture
+
+### 13.1 Renderer Plugins
+
+- WASM-based renderer plugins for sandboxed execution
+- Plugin discovery from configured directories
+- Hot-reload plugins in development mode
+- Plugin manifest with version, author, supported MIME types
+
+### 13.2 Middleware Plugins
+
+- Custom middleware injection points (pre-handler, post-render)
+- Authentication, rate limiting, analytics as plugins
+- Configuration via site config YAML
+
+---
+
+# Implementation Priorities
+
+## Phase 4: Performance & Scaling
+1. Disk-based Git storage (large repo support)
+2. HTTP caching with ETag/If-None-Match
+3. Response compression (gzip/brotli)
+
+## Phase 5: Search & Navigation
+1. Full-text search (Bleve for server, Pagefind for static)
+2. Auto-generated sidebar navigation
+3. Frontmatter indexing and taxonomy pages
+
+## Phase 6: Renderer Enhancement
+1. Admonitions and content tabs
+2. Mermaid diagram rendering
+3. KaTeX math rendering
+4. OpenAPI interactive docs
+
+## Phase 7: Static Site Generation
+1. `gomddoc build` command
+2. Asset pipeline (minification, fingerprinting)
+3. Sitemap, RSS/Atom, robots.txt
+4. Output target compatibility (S3, Netlify, GitHub Pages)
+
+## Phase 8: Versioned Documentation
+1. Multi-branch/tag serving
+2. Version switcher UI
+3. Cross-version diffing
+
+## Phase 9: Theming & UI Polish
+1. Dark/light mode
+2. Theme inheritance and multiple built-in themes
+3. Code block enhancements (copy, line numbers, highlights)
+4. "Edit on GitHub" links, git timestamps
+
+## Phase 10: Git Workflow & Multi-Repo
+1. Webhook receiver for cache invalidation
+2. Branch switching UI
+3. Multi-repository aggregation
+4. Git metadata (contributors, last edited)
+
+## Phase 11: Enterprise & Deployment
+1. OIDC/OAuth authentication middleware
+2. Container-optimized deployment (Dockerfile, Helm)
+3. Prometheus metrics and health endpoints
+
+## Phase 12: Advanced Features
+1. Link validation CLI
+2. Plugin architecture (WASM renderers)
+3. Shell completions
+
+---
+
+# Icebox (DO NOT IMPLEMENT)
+
+The following features are parked. They may be revisited in the future but are explicitly excluded from current and near-term development.
+
+- **Content Includes** — `{{< include "path/to/file.md" >}}` directive with line ranges, recursive resolution, and cycle detection. Adds significant complexity to the rendering pipeline.
+- **PDF Export** — Generate PDF from pages or entire doc tree via headless Chrome or Go PDF libraries. Heavy dependency, niche use case.
+- **S3 Content Provider** — Read content from S3/GCS/MinIO buckets. Contradicts the git-native focus; use the static build output + S3 hosting instead.
+
+---
+
+# Deferred / Out of Scope
+
+- Database providers (PostgreSQL, SQLite) — Git is the database
+- Editorial workflows, draft management, content scheduling — use Git branches
+- GraphQL API, REST CRUD API — this is a viewer, not a CMS
+- User management, RBAC, multi-tenant — beyond scope of a documentation tool
+- Comment systems, email integrations — use external services
+- VS Code extension — low ROI vs improving the core tool
+- i18n / multi-language — complex, low demand for technical docs
+- A/B testing, visual regression testing — enterprise SaaS concerns

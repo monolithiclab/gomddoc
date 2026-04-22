@@ -45,7 +45,7 @@ Serve a specific directory on a different port:
 
 ### 3. Serving from Git
 
-Serve directly from a public repository without cloning it manually:
+Serve directly from a public repository without cloning it manually (lazy clone on first request):
 
 ```bash
 ./build/gomddoc -d "git+https://github.com/monolithiclab/gomddoc.git"

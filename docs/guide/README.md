@@ -6,7 +6,9 @@ author: "nicolasm"
 
 # Gomddoc User Guide
 
-**gomddoc** is a high-performance, production-ready HTTP server designed to serve Markdown documentation as rendered HTML. It bridges the gap between static files and dynamic serving, supporting content from local directories or remote Git repositories with zero build steps.
+**gomddoc** is a high-performance, production-ready HTTP server designed to serve Markdown documentation as rendered
+HTML. It bridges the gap between static files and dynamic serving, supporting content from local directories or
+remote Git repositories with zero build steps.
 
 ## Table of Contents
 
@@ -19,9 +21,12 @@ author: "nicolasm"
 
 ## Core Features
 
-*   **Universal Serving:** Renders Markdown to HTML on-the-fly; serves images, PDFs, JSON, and scripts natively.
-*   **Git Native:** Connects directly to public or private Git repositories (GitHub, GitLab, etc.) without manual cloning.
-*   **Hot Reload:** Built-in development mode that detects changes instantly.
-*   **Secure by Default:** Path traversal protection, hidden file blocking, and security headers.
-*   **Zero-Config:** Works out of the box with sensible defaults (like using `README.md` as index).
-*   **Extensible:** Supports custom templates and configurable metadata via YAML.
+- **Universal Serving:** Renders Markdown to HTML on-the-fly; serves images, PDFs, JSON, and scripts natively.
+- **Git Native:** Connects directly to public or private Git repositories (GitHub, GitLab, etc.) without manual
+  cloning. Shallow clones with timeout enforcement.
+- **Secure by Default:** Path traversal protection, hidden file blocking, HTTP method filtering (GET/HEAD only),
+  SSH host key verification (no TOFU), and comprehensive security headers.
+- **Zero-Config:** Works out of the box with sensible defaults (like using `README.md` as index).
+- **Extensible:** Custom renderers, configurable themes, YAML front matter support, and auto-generated TOC.
+- **Production Ready:** Graceful shutdown, configurable timeouts, buffer pooling, structured logging with log
+  injection prevention.

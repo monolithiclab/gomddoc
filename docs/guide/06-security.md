@@ -6,31 +6,97 @@ author: "nicolasm"
 
 # Security
 
-gomddoc is designed to be secure enough to be exposed to the internet, although running it behind a reverse proxy (like Nginx or Cloudflare) is recommended for TLS and DDoS protection.
+gomddoc is designed to be secure enough to be exposed to the internet, although running it behind a reverse proxy
+(like Nginx or Cloudflare) is recommended for TLS and DDoS protection.
 
 ## 1. Path Traversal Protection
-We use Go's `os.DirFS` (and internal equivalents for Git) to create a "jail" around the content directory. It is impossible for a user to request `../../etc/passwd`. The file system provider strictly limits access to the root directory specified by `-d`.
+
+We use Go's `os.DirFS` (and the Git object tree for Git sources) to create a "jail" around the content directory.
+It is impossible for a user to request `../../etc/passwd`. The file system provider strictly limits access to the
+root directory specified by `-d`.
+
+All request paths are normalized using forward slashes (`path.Clean`, not `filepath.Clean`) to comply with the
+`io/fs` specification and prevent OS-specific separator issues on Windows.
 
 ## 2. Hidden File Blocking
+
 gomddoc automatically blocks HTTP access to "hidden" files and directories (those starting with a dot `.`).
 
-*   **Blocked:** `.env`, `.git/`, `.gomddoc/`, `.ssh/`, `.config/`
-*   **Allowed:** `/.well-known/` (Standard for SSL verification and security.txt)
+- **Blocked:** `.env`, `.git/`, `.gomddoc/`, `.ssh/`, `.config/`, `.DS_Store`
+- **Allowed:** `/.well-known/` (Standard for SSL verification, security.txt — IETF RFC 8615)
 
 This prevents accidental exposure of configuration files, secrets, or git history.
 
-## 3. Git Isolation
+## 3. HTTP Method Filtering
+
+The server only responds to **GET** and **HEAD** requests. All other methods (POST, PUT, DELETE, PATCH, etc.)
+receive a **405 Method Not Allowed** response with a proper `Allow: GET, HEAD` header.
+
+This is enforced via the `MethodFilter` middleware in the request chain, before any content is processed.
+
+## 4. Git Provider Isolation
+
 When serving from a Git repository:
-*   The repository is cloned into **memory**. It is never written to disk, preventing residue data.
-*   SSH keys used for authentication are handled in memory by the Go process and are not accessible via the HTTP interface or file system operations.
 
-## 4. HTTP Headers
+- The repository is cloned into **memory**. It is never written to disk, preventing residual data.
+- SSH keys used for authentication are handled in memory by the Go process and are not accessible via the HTTP
+  interface or file system operations.
+- **File size limits**: Files larger than 50MB (configurable via `WithMaxFileSize`) are rejected to prevent memory
+  exhaustion.
+- **Git LFS**: LFS pointer files are detected and rejected with a 501 Not Implemented status.
+- **Clone timeout**: A 60-second timeout (configurable via `WithCloneTimeout`) is enforced using
+  `git.CloneContext()` to prevent indefinite blocking against unresponsive hosts.
+
+## 5. SSH Host Key Verification
+
+When connecting to Git repositories over SSH:
+
+- Host key verification uses the user's `~/.ssh/known_hosts` file (resolved via `os.UserHomeDir()`).
+- **There is no TOFU (Trust On First Use) fallback.** If `known_hosts` is missing or the host is not listed,
+  the connection fails with an error.
+- This "fail closed" design prevents man-in-the-middle attacks where an attacker impersonates a Git server.
+
+To add a host to known_hosts before using gomddoc:
+```bash
+ssh-keyscan github.com >> ~/.ssh/known_hosts
+```
+
+## 6. HTTP Security Headers
+
 The server adds standard security headers to every response:
-*   `X-Content-Type-Options: nosniff`
-*   `X-Frame-Options: DENY`
 
-## 5. Timeouts
+| Header                       | Value                                      | Purpose                        |
+| ---------------------------- | ------------------------------------------ | ------------------------------ |
+| `X-Content-Type-Options`     | `nosniff`                                  | Prevents MIME type sniffing    |
+| `X-Frame-Options`            | `DENY`                                     | Prevents clickjacking          |
+| `Referrer-Policy`            | `strict-origin-when-cross-origin`          | Controls referrer information  |
+| `Permissions-Policy`         | `geolocation=(), microphone=(), camera=()` | Restricts browser features     |
+| `Strict-Transport-Security`  | `max-age=31536000; includeSubDomains`      | HSTS (only for HTTPS requests) |
+
+## 7. Timeouts
+
 To protect against Slowloris attacks and resource exhaustion, the server has default timeouts:
-*   **Read Header:** 5 seconds
-*   **Write:** 30 seconds
-*   **Idle:** 120 seconds
+
+| Setting              | Default | Max Allowed | Purpose                       |
+| -------------------- | ------- | ----------- | ----------------------------- |
+| **Read Header**      | 5s      | 60s         | Prevents slow header attacks  |
+| **Write**            | 30s     | 5m          | Prevents hung responses       |
+| **Idle**             | 120s    | 10m         | Reclaims keep-alive connections |
+| **Shutdown**         | 1s      | 60s         | Graceful shutdown window      |
+| **Max Header Size**  | 1 MB    | 10 MB       | Limits request header memory  |
+
+All timeouts are validated at startup. Invalid values are reset to defaults with a warning.
+
+## 8. Log Injection Prevention
+
+User-controlled input (URL paths, environment variables) is sanitized before logging via the `text.SafeString`
+type, which implements `slog.LogValuer`. Control characters (newlines, carriage returns, null bytes) are replaced
+with their escape sequences to prevent log forging attacks.
+
+## 9. Template Security
+
+Only `SiteConfig` (metadata, theme) is exposed to templates — never the full `Config` with operational settings
+like ports, timeouts, or SSH keys. This prevents accidental leakage of server configuration through template
+rendering.
+
+XSS protection is built into TOC generation: all heading text and IDs are escaped via `template.HTMLEscapeString`.

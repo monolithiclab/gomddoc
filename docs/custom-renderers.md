@@ -8,6 +8,11 @@ author: "nicolasm"
 
 This guide shows how to create custom renderers for gomddoc to support additional content types and transformations.
 
+> **Note:** The `Render` method returns `(*RenderResult, error)` — a struct containing `Content`, `MimeType`,
+> optional `Metadata` (front matter), and optional `TOC` (table of contents). Some examples below show the older
+> `([]byte, string, error)` return signature for brevity; adapt them to return `*RenderResult` as shown in the
+> interface definition and best practices section.
+
 ## Table of Contents
 
 - [Basic Renderer](#basic-renderer)
@@ -27,10 +32,16 @@ type ContentRenderer interface {
     // Use normalized MIME types (no charset parameters)
     SupportedMimeTypes() []string
 
-    // Render processes content
-    // Returns: (output content, output MIME type, error)
-    // Empty output MIME type means "use input MIME type" (passthrough)
-    Render(ctx context.Context, content []byte) ([]byte, string, error)
+    // Render processes content and returns a RenderResult
+    // Empty MimeType in result means "use input MIME type" (passthrough)
+    Render(ctx context.Context, content []byte) (*RenderResult, error)
+}
+
+type RenderResult struct {
+    Content  []byte           // Rendered output
+    MimeType string           // Output MIME type (empty = passthrough)
+    Metadata map[string]any   // Optional metadata (e.g., front matter)
+    TOC      *TOCNode         // Optional table of contents
 }
 ```
 
@@ -57,17 +68,19 @@ func (u *UppercaseRenderer) SupportedMimeTypes() []string {
     return []string{"text/plain"}
 }
 
-func (u *UppercaseRenderer) Render(ctx context.Context, content []byte) ([]byte, string, error) {
+func (u *UppercaseRenderer) Render(ctx context.Context, content []byte) (*renderer.RenderResult, error) {
     // Always check context first
     if err := ctx.Err(); err != nil {
-        return nil, "", err
+        return nil, err
     }
 
     // Transform content
     upper := bytes.ToUpper(content)
 
-    // Return: content, output MIME type, error
-    return upper, "text/plain; charset=utf-8", nil
+    return &renderer.RenderResult{
+        Content:  upper,
+        MimeType: "text/plain; charset=utf-8",
+    }, nil
 }
 
 // Register in main.go:
@@ -669,32 +682,35 @@ func main() {
 ### 1. Always Check Context
 
 ```go
-func (r *MyRenderer) Render(ctx context.Context, content []byte) ([]byte, string, error) {
+func (r *MyRenderer) Render(ctx context.Context, content []byte) (*renderer.RenderResult, error) {
     // Check at start
     if err := ctx.Err(); err != nil {
-        return nil, "", err
+        return nil, err
     }
 
     // Check before expensive operations
     parsed := parseContent(content)
 
     if err := ctx.Err(); err != nil {
-        return nil, "", err
+        return nil, err
     }
 
     rendered := renderParsed(parsed)
-    return rendered, "text/html; charset=utf-8", nil
+    return &renderer.RenderResult{
+        Content:  rendered,
+        MimeType: "text/html; charset=utf-8",
+    }, nil
 }
 ```
 
 ### 2. Return Full MIME Types
 
 ```go
-// ✅ GOOD: Include charset
-return html, "text/html; charset=utf-8", nil
+// ✅ GOOD: Include charset in RenderResult.MimeType
+return &renderer.RenderResult{Content: html, MimeType: "text/html; charset=utf-8"}, nil
 
 // ❌ BAD: Missing charset (browser might misinterpret)
-return html, "text/html", nil
+return &renderer.RenderResult{Content: html, MimeType: "text/html"}, nil
 ```
 
 ### 3. Proper Error Wrapping
@@ -702,12 +718,12 @@ return html, "text/html", nil
 ```go
 // ✅ GOOD: Wrap with %w for error classification
 if err != nil {
-    return nil, "", fmt.Errorf("parse JSON: %w", err)
+    return nil, fmt.Errorf("parse JSON: %w", err)
 }
 
 // ❌ BAD: Loses error context with %v
 if err != nil {
-    return nil, "", fmt.Errorf("parse JSON: %v", err)
+    return nil, fmt.Errorf("parse JSON: %v", err)
 }
 ```
 

@@ -35,18 +35,38 @@ To customize your site, create a `.gomddoc` folder in your content root:
 
 ### Template Variables
 
-The template engine (Go `html/template`) receives a context object with:
+The template engine (Go `html/template`) receives a `TemplateContext` with:
 
-*   **`.Site`**: Global site configuration.
-    *   `.Site.Meta.Title`: Site title.
-    *   `.Site.Meta.Description`: Site description.
-    *   `.Site.Meta.Domain`: Site domain.
-    *   `.Site.Theme.Name`: Current theme name.
+- **`.Site`**: Global site configuration (`*config.SiteConfig`).
+    - `.Site.Meta.Title`: Site title.
+    - `.Site.Meta.Description`: Site description.
+    - `.Site.Meta.Domain`: Site domain.
+    - `.Site.Theme.Name`: Current theme name.
+    - `.Site.DefaultIndex`: Default index file name.
+    - `.Site.DirIndex`: Whether directory listing is enabled.
 
-*   **`.Page`**: Current page data.
-    *   `.Page.Content`: The rendered HTML content (safe HTML).
-    *   `.Page.Breadcrumbs`: Map of paths to labels for navigation.
-    *   `.Page.Meta`: Map of Front Matter metadata (e.g., `{{ .Page.Meta.title }}`, `{{ .Page.Meta.tags }}`).
+- **`.Page`**: Current page data (`PageContext`).
+    - `.Page.Content`: The rendered HTML content (type `template.HTML`, safe for embedding).
+    - `.Page.Path`: Current request URL path.
+    - `.Page.Meta`: Map of YAML Front Matter metadata (e.g., `{{ index .Page.Meta "title" }}`).
+    - `.Page.TOC`: Table of Contents tree (use the `toc` template function to render).
+
+### Template Functions
+
+Two custom functions are available in templates:
+
+- **`breadcrumbs`**: Generates breadcrumb navigation from a path.
+  ```html
+  {{ range breadcrumbs .Page.Path }}
+      <a href="{{ .Path }}">{{ .Label }}</a> /
+  {{ end }}
+  ```
+
+- **`toc`**: Renders a Table of Contents as nested `<ul>` HTML. Accepts optional min/max heading levels.
+  ```html
+  {{ toc .Page.TOC }}           {{/* Default: h1-h2 */}}
+  {{ toc .Page.TOC 2 3 }}       {{/* Only h2-h3 */}}
+  ```
 
 ### Example Layout
 
@@ -59,10 +79,14 @@ The template engine (Go `html/template`) receives a context object with:
 </head>
 <body>
     <nav>
-        {{ range $path, $label := .Page.Breadcrumbs }}
-            <a href="{{ $path }}">{{ $label }}</a> /
+        {{ range breadcrumbs .Page.Path }}
+            <a href="{{ .Path }}">{{ .Label }}</a> /
         {{ end }}
     </nav>
+
+    <aside>
+        {{ toc .Page.TOC 2 3 }}
+    </aside>
 
     <main>
         {{ .Page.Content }}
