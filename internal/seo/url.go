@@ -46,9 +46,10 @@ func normalizeDomain(domain string) string {
 }
 
 // normalizePagePath cleans a page path by stripping the default index filename.
+// Only strips when preceded by "/" to avoid false positives (e.g., "/notaREADME.md").
 func normalizePagePath(pagePath, defaultIndex string) string {
-	if defaultIndex != "" && strings.HasSuffix(pagePath, defaultIndex) {
-		pagePath = strings.TrimSuffix(pagePath, defaultIndex)
+	if defaultIndex != "" {
+		pagePath = strings.TrimSuffix(pagePath, "/"+defaultIndex)
 	}
 	if pagePath == "" || pagePath == "." {
 		pagePath = "/"

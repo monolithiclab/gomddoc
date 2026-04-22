@@ -43,7 +43,7 @@ func TestPageURL(t *testing.T) {
 			domain:       "https://docs.example.com",
 			pagePath:     "/docs/README.md",
 			defaultIndex: "README.md",
-			want:         "https://docs.example.com/docs/",
+			want:         "https://docs.example.com/docs",
 		},
 		{
 			name:         "root README.md becomes /",
@@ -71,7 +71,7 @@ func TestPageURL(t *testing.T) {
 			domain:       "https://docs.example.com",
 			pagePath:     "/docs/index.md",
 			defaultIndex: "index.md",
-			want:         "https://docs.example.com/docs/",
+			want:         "https://docs.example.com/docs",
 		},
 		{
 			name:         "empty default index no stripping",
@@ -86,6 +86,13 @@ func TestPageURL(t *testing.T) {
 			pagePath:     "/guide.md",
 			defaultIndex: "README.md",
 			want:         "https://example.com/docs/guide.md",
+		},
+		{
+			name:         "partial name not stripped",
+			domain:       "https://docs.example.com",
+			pagePath:     "/notaREADME.md",
+			defaultIndex: "README.md",
+			want:         "https://docs.example.com/notaREADME.md",
 		},
 	}
 
@@ -128,9 +135,10 @@ func TestNormalizePagePath(t *testing.T) {
 		defaultIndex string
 		want         string
 	}{
-		{"strips README.md", "/docs/README.md", "README.md", "/docs/"},
+		{"strips README.md", "/docs/README.md", "README.md", "/docs"},
 		{"root README.md", "/README.md", "README.md", "/"},
 		{"no match", "/docs/guide.md", "README.md", "/docs/guide.md"},
+		{"partial name not stripped", "/notaREADME.md", "README.md", "/notaREADME.md"},
 		{"empty path", "", "README.md", "/"},
 		{"dot path", ".", "README.md", "/"},
 		{"empty default index", "/README.md", "", "/README.md"},
