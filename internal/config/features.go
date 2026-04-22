@@ -53,7 +53,17 @@ func ExtractPageFeatures(pageMeta map[string]any) map[string]bool {
 // MergeFeatures creates a merged features map from a base map and zero or more
 // override maps. Later maps take precedence. Does not mutate any input.
 // Returns a non-nil map even if base is nil.
+//
+// When no overrides contain entries (the common per-request case), base is
+// returned directly without cloning. Callers must not mutate the returned map.
 func MergeFeatures(base map[string]bool, overrides ...map[string]bool) map[string]bool {
+	if !slices.ContainsFunc(overrides, func(m map[string]bool) bool { return len(m) > 0 }) {
+		if base == nil {
+			return make(map[string]bool)
+		}
+		return base
+	}
+
 	result := maps.Clone(base)
 	if result == nil {
 		result = make(map[string]bool)

@@ -151,8 +151,7 @@ func (h *HTMLRenderer) Configure(opts ...RendererOption) {
 // No conditional logic needed - PassthroughTemplateStore always returns nil (cache miss)
 // The context is checked before expensive operations for cancellation support
 func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any) ([]byte, error) {
-	theme := h.siteConfig.Theme.Name
-	cacheKey := fmt.Sprintf("assets/themes/%s/layouts/%s", theme, templateName)
+	cacheKey := "assets/themes/" + h.siteConfig.Theme.Name + "/layouts/" + templateName
 
 	// Check context before starting
 	select {
