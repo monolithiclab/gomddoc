@@ -399,6 +399,57 @@ _Allow themes to ship sane defaults for features and variables, reducing site-le
       config in the embedded FS; installed themes load from `.gomddoc/assets/themes/<name>/`.
       Medium complexity.
 
+## Internationalization and Localization
+
+_Multi-language documentation sites with translated UI chrome._
+
+### UI String Localization
+
+- [ ] **Locale file format**: Each theme ships a `locales/` directory with YAML files per language
+      (e.g., `locales/en.yml`, `locales/fr.yml`). Keys map to UI strings: navigation labels
+      ("Table of Contents", "Search", "On this page"), admonition titles ("Note", "Warning",
+      "Caution"), search placeholder text, pagination ("Next", "Previous"), and footer text.
+      Bundled themes include English by default. Sites can override or add languages via
+      `.gomddoc/locales/`. Low-medium complexity.
+- [ ] **`language` config integration**: Extend the existing `language` field in `SiteConfig`
+      (currently only sets `<html lang>`). When set to a non-English locale (e.g., `fr`), load
+      the matching locale file and use its strings in templates. Templates access strings via a
+      `{{ .T "key" }}` function. Missing keys fall back to English. Low complexity.
+- [ ] **Per-page language override**: Frontmatter `lang: fr` overrides the site-level language
+      for a specific page, loading that page's UI chrome in the specified language. Already
+      supported for `<html lang>` — extend to locale string selection. Low complexity.
+
+### Multi-Language Content
+
+- [ ] **Content tree per language**: Convention-based content organization with language subtrees
+      (e.g., `docs/en/`, `docs/fr/`) or language suffixes (e.g., `guide.en.md`, `guide.fr.md`).
+      Configure via `languages` map in site config:
+
+      ```yaml
+      languages:
+        en:
+          name: English
+          content_dir: docs/en  # or use suffix mode
+          default: true
+        fr:
+          name: Français
+          content_dir: docs/fr
+      ```
+
+      The default language is served at `/` (no prefix). Other languages are served at `/{lang}/`
+      (e.g., `/fr/guide`). Each language gets its own navigation tree, search index, metadata
+      index, and sitemap. Medium-high complexity.
+- [ ] **Language switcher**: Theme component showing available languages for the current page.
+      Links to the equivalent page in other languages when it exists, or to the language root
+      when it doesn't. All 8 bundled themes include the switcher. Low-medium complexity.
+- [ ] **`hreflang` tags**: `<link rel="alternate" hreflang="fr" href="/fr/guide">` on every
+      page that has translations. Includes `x-default` pointing to the default language. Critical
+      for multilingual SEO — tells search engines which version to show per locale. Low complexity
+      once content tree mapping exists.
+- [ ] **Per-language sitemap**: Each language gets its own sitemap (`/sitemap-en.xml`,
+      `/sitemap-fr.xml`) plus a sitemap index (`/sitemap.xml`) that references them.
+      `hreflang` entries in sitemaps as an alternative to HTML tags. Low complexity.
+
 ## Phase 13: Theme Marketplace
 
 _Enable community theme sharing via a GitHub-based registry._
@@ -466,7 +517,6 @@ These features were considered but deprioritized to keep gomddoc focused:
 - REST/GraphQL APIs — gomddoc is a viewer, not a headless CMS
 - Editorial workflows (drafts, reviews, scheduling) — use Git branches
 - Content versioning/revision history — use Git history
-- i18n/multi-language — out of scope for now
 - VS Code extension
 - Plugin architecture / dynamic renderer loading
 - AsciiDoc renderer (`.adoc` support) — niche demand, adds CGO or subprocess dependency
