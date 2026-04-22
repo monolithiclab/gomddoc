@@ -162,7 +162,11 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
-			// For other errors, continue trying other filesystems
+			// For other errors, log and continue trying other filesystems
+			slog.Debug("Error reading directory in filesystem",
+				slog.String("dir", name),
+				slog.Int("fs_index", i),
+				slog.Any("error", err))
 			continue
 		}
 
