@@ -15,6 +15,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	"github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
 //go:embed assets
@@ -25,6 +26,19 @@ const (
 	ExitError       = 1
 	ExitConfigError = 2
 )
+
+// infoProviderAdapter adapts provider.Provider to breadcrumb.InfoProvider
+type infoProviderAdapter struct {
+	p provider.Provider
+}
+
+func (pa *infoProviderAdapter) IsDir(path string) bool {
+	info, err := pa.p.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
 
 func startCmd() int {
 	// Load configuration (Defaults -> Env -> Flags -> File -> Env -> Validate)
@@ -62,10 +76,13 @@ func startCmd() int {
 	registry.Register(renderer.NewMarkdownRenderer())
 	registry.Register(renderer.NewPassthroughRenderer())
 
+	// Create breadcrumb generator
+	breadcrumbGen := breadcrumb.NewGenerator(&infoProviderAdapter{p: prov})
+
 	// Create template cache based on dev mode (factory pattern)
 
 	// Create template renderer with injected dependencies (using functional options for cache)
-	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assets)
+	templateRenderer := template.NewHTMLRenderer(&cfg.Site, assets, template.WithBreadcrumbGenerator(breadcrumbGen))
 	if !cfg.Server.DevMode {
 		templateRenderer.Configure(template.WithCache(&template.CachedTemplateStore{}))
 	}

@@ -31,9 +31,9 @@ type TemplateContext struct {
 }
 
 type PageContext struct {
-	Content     template.HTML
-	Breadcrumbs []breadcrumb.Breadcrumb // Ordered slice of breadcrumbs
-	Meta        map[string]interface{}  // Extracted metadata (e.g., front matter)
+	Content template.HTML
+	Path    string                 // Current request path
+	Meta    map[string]interface{} // Extracted metadata (e.g., front matter)
 }
 
 // bufferPool is a sync.Pool for reusing bytes.Buffer objects
@@ -53,9 +53,10 @@ var bufferPool = sync.Pool{
 //
 // IMPORTANT: Do not mutate siteConfig after construction if using concurrently.
 type HTMLRenderer struct {
-	assetsFS   fs.FS
-	siteConfig *config.SiteConfig // For theme name (NOT full Config - security)
-	cache      TemplateCache      // Injected dependency (strategy pattern)
+	assetsFS      fs.FS
+	siteConfig    *config.SiteConfig   // For theme name (NOT full Config - security)
+	cache         TemplateCache        // Injected dependency (strategy pattern)
+	breadcrumbGen breadcrumb.Generator // Optional breadcrumb generator
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
@@ -66,6 +67,13 @@ type RendererOption func(*HTMLRenderer)
 func WithCache(cache TemplateCache) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.cache = cache
+	}
+}
+
+// WithBreadcrumbGenerator sets the breadcrumb generator for the renderer
+func WithBreadcrumbGenerator(gen breadcrumb.Generator) RendererOption {
+	return func(r *HTMLRenderer) {
+		r.breadcrumbGen = gen
 	}
 }
 
@@ -150,16 +158,31 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 
 // parseTemplate parses a template with automatic fallback to default theme
 func (h *HTMLRenderer) parseTemplate(templateName, templatePath string) (*template.Template, error) {
-	tmpl, err := template.New(templateName).ParseFS(h.assetsFS, templatePath)
+	tmpl, err := template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, templatePath)
 	if err != nil && h.siteConfig.Theme.Name != config.DefaultThemeName {
 		// Fallback to default theme
 		slog.Warn("Theme template not found, falling back to default",
 			slog.String("theme", h.siteConfig.Theme.Name),
 			slog.String("template", templateName))
 		templatePath = path.Join("assets/themes/", config.DefaultThemeName, templateName)
-		tmpl, err = template.New(templateName).ParseFS(h.assetsFS, templatePath)
+		tmpl, err = template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, templatePath)
 	}
 	return tmpl, err
+}
+
+// funcMap returns the map of functions available in templates
+func (h *HTMLRenderer) funcMap() template.FuncMap {
+	return template.FuncMap{
+		"breadcrumbs": h.generateBreadcrumbs,
+	}
+}
+
+// generateBreadcrumbs generates breadcrumbs for the given path
+func (h *HTMLRenderer) generateBreadcrumbs(path string) []breadcrumb.Breadcrumb {
+	if h.breadcrumbGen == nil {
+		return nil
+	}
+	return h.breadcrumbGen.Generate(path)
 }
 
 // ClearCache clears the template cache (used in dev mode hot reload)

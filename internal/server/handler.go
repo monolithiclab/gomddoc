@@ -15,7 +15,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
-	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
 // Handler holds dependencies for HTTP request handling
@@ -24,7 +23,6 @@ type Handler struct {
 	registry         renderer.RendererRegistry
 	templateRenderer tmpl.Renderer
 	siteConfig       *config.SiteConfig
-	breadcrumbGen    breadcrumb.Generator
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
@@ -39,21 +37,7 @@ func NewHandler(
 		registry:         registry,
 		templateRenderer: templateRenderer,
 		siteConfig:       siteConfig,
-		breadcrumbGen:    breadcrumb.NewGenerator(&providerAdapter{provider}),
 	}
-}
-
-// providerAdapter adapts provider.Provider to breadcrumb.InfoProvider
-type providerAdapter struct {
-	p provider.Provider
-}
-
-func (pa *providerAdapter) IsDir(path string) bool {
-	info, err := pa.p.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
 }
 
 // ServeContent handles HTTP requests with content negotiation and rendering.
@@ -136,9 +120,9 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	context := &tmpl.TemplateContext{
 		Site: h.siteConfig,
 		Page: tmpl.PageContext{
-			Content:     template.HTML(htmlContent), // #nosec G203
-			Breadcrumbs: h.breadcrumbGen.Generate(r.URL.Path),
-			Meta:        metadata,
+			Content: template.HTML(htmlContent), // #nosec G203
+			Path:    r.URL.Path,
+			Meta:    metadata,
 		},
 	}
 

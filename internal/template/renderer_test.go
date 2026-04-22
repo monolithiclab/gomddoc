@@ -45,10 +45,7 @@ func TestTemplateContext(t *testing.T) {
 		Site: &siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<p>Test content</p>"),
-			Breadcrumbs: []breadcrumb.Breadcrumb{
-				{Path: "/", Label: "Home"},
-				{Path: "/test", Label: "Test"},
-			},
+			Path:    "/test",
 		},
 	}
 
@@ -64,16 +61,8 @@ func TestTemplateContext(t *testing.T) {
 		t.Errorf("Expected content '<p>Test content</p>', got %q", string(ctx.Page.Content))
 	}
 
-	if len(ctx.Page.Breadcrumbs) != 2 {
-		t.Errorf("Expected 2 breadcrumbs, got %d", len(ctx.Page.Breadcrumbs))
-	}
-
-	if ctx.Page.Breadcrumbs[0].Path != "/" || ctx.Page.Breadcrumbs[0].Label != "Home" {
-		t.Errorf("Expected first breadcrumb to be {'/','Home'}, got {%q,%q}", ctx.Page.Breadcrumbs[0].Path, ctx.Page.Breadcrumbs[0].Label)
-	}
-
-	if ctx.Page.Breadcrumbs[1].Path != "/test" || ctx.Page.Breadcrumbs[1].Label != "Test" {
-		t.Errorf("Expected second breadcrumb to be {'/test','Test'}, got {%q,%q}", ctx.Page.Breadcrumbs[1].Path, ctx.Page.Breadcrumbs[1].Label)
+	if ctx.Page.Path != "/test" {
+		t.Errorf("Expected path '/test', got %q", ctx.Page.Path)
 	}
 }
 
@@ -100,9 +89,7 @@ func TestHTMLRendererRender(t *testing.T) {
 		Site: &siteConfig,
 		Page: PageContext{
 			Content: template.HTML("<h1>Hello World</h1>"),
-			Breadcrumbs: []breadcrumb.Breadcrumb{
-				{Path: "/", Label: "Home"},
-			},
+			Path:    "/",
 		},
 	}
 
@@ -127,6 +114,73 @@ func TestHTMLRendererRender(t *testing.T) {
 	}
 }
 
+// MockInfoProvider for testing breadcrumbs
+type MockInfoProvider struct{}
+
+func (m *MockInfoProvider) IsDir(path string) bool {
+	return path == "/" // Only root is dir
+}
+
+func TestBreadcrumbsFunction(t *testing.T) {
+	// Template that uses the breadcrumbs function
+	templateContent := `
+{{- $crumbs := breadcrumbs .Page.Path -}}
+Count: {{ len $crumbs }}
+{{- range $crumbs -}}
+Path: {{ .Path }}, Label: {{ .Label }}|
+{{- end -}}
+`
+	testFS := fstest.MapFS{
+		"assets/themes/default/breadcrumbs.html.tmpl": {
+			Data: []byte(templateContent),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+
+	// Create generator with mock provider
+	gen := breadcrumb.NewGenerator(&MockInfoProvider{})
+
+	renderer := NewHTMLRenderer(&siteConfig, testFS, WithBreadcrumbGenerator(gen))
+
+	ctx := &TemplateContext{
+		Site: &siteConfig,
+		Page: PageContext{
+			Path: "/foo/bar",
+		},
+	}
+
+	result, err := renderer.Render(context.Background(), "breadcrumbs.html.tmpl", ctx)
+	if err != nil {
+		t.Fatalf("Render failed: %v", err)
+	}
+
+	resultStr := string(result)
+
+	// Expected: Home (/) -> Foo (/foo/) -> Bar (/foo/bar)
+	// MockInfoProvider says only / is dir, so /foo/ is NOT dir -> no trailing slash?
+	// Wait, Generator logic: intermediate segments are assumed dirs if I recall correctly, OR it checks.
+	// Let's check generator.go again.
+	// "All intermediate segments are directories - add trailing slash"
+	// "For the last segment... check IsDir"
+
+	// So:
+	// 1. Home: Path: /, Label: Home
+	// 2. Foo: Path: /foo/, Label: Foo (Intermediate)
+	// 3. Bar: Path: /foo/bar, Label: Bar (Last, IsDir("/foo/bar") -> false -> no trailing slash)
+
+	expected := "Count: 3"
+	if !strings.Contains(resultStr, expected) {
+		t.Errorf("Expected %q, got %q", expected, resultStr)
+	}
+
+	expectedCrumbs := "Path: /, Label: Home|Path: /foo/, Label: Foo|Path: /foo/bar, Label: Bar|"
+	// Normalize whitespace for comparison if needed, but template is compact
+	if !strings.Contains(strings.ReplaceAll(resultStr, "\n", ""), expectedCrumbs) {
+		t.Errorf("Expected breadcrumbs %q, got %q", expectedCrumbs, resultStr)
+	}
+}
+
 func TestTemplateCache(t *testing.T) {
 	// Create test filesystem
 	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
@@ -144,9 +198,7 @@ func TestTemplateCache(t *testing.T) {
 	ctx := &TemplateContext{
 		Site: &siteConfig,
 		Page: PageContext{
-			Breadcrumbs: []breadcrumb.Breadcrumb{
-				{Path: "/", Label: "Home"},
-			},
+			Path: "/",
 		},
 	}
 
@@ -187,7 +239,7 @@ func TestRenderWithContextCancellation(t *testing.T) {
 
 	templateCtx := &TemplateContext{
 		Site: &siteConfig,
-		Page: PageContext{Breadcrumbs: []breadcrumb.Breadcrumb{{Path: "/", Label: "Home"}}},
+		Page: PageContext{Path: "/"},
 	}
 
 	// Test with cancelled context

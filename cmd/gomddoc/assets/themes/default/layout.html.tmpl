@@ -31,10 +31,11 @@
                     <li><a href="/">Home</a></li>
                 </ul>
             </nav>
-            {{- if gt (len .Page.Breadcrumbs) 1 }}
+            {{- $crumbs := breadcrumbs .Page.Path }}
+            {{- if gt (len $crumbs) 1 }}
             <nav aria-label="breadcrumb">
                 <ul>
-                    {{- range .Page.Breadcrumbs }}
+                    {{- range $crumbs }}
                     <li><a href="{{ .Path }}">{{ .Label }}</a></li>
                     {{- end }}
                 </ul>
