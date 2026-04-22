@@ -731,4 +731,4 @@ processors:
 - VS Code extension
 - Git hooks integration
 - Advanced image optimization
-- Dark/light mode theming
+- ~~Dark/light mode theming~~ (DONE - toggle button in nav with localStorage persistence)
