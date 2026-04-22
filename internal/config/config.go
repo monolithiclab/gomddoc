@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/text"
 
 	"gopkg.in/yaml.v3"
@@ -364,6 +363,14 @@ func (sc *SiteConfig) Validate() error {
 	return nil
 }
 
+// IsGitURL checks if a string is a Git URL.
+// Returns true for URLs starting with git://, git+ssh://, or git+https://.
+func IsGitURL(s string) bool {
+	return strings.HasPrefix(s, "git://") ||
+		strings.HasPrefix(s, "git+ssh://") ||
+		strings.HasPrefix(s, "git+https://")
+}
+
 func (c *Config) validateServer() error {
 	// Validate Port
 	_, portStr, err := net.SplitHostPort(c.Server.Port)
@@ -376,7 +383,7 @@ func (c *Config) validateServer() error {
 	}
 
 	// Validate Dir (skip if Git URL)
-	if !provider.IsGitURL(c.Server.Dir) {
+	if !IsGitURL(c.Server.Dir) {
 		info, err := os.Stat(c.Server.Dir)
 		if err != nil {
 			return fmt.Errorf("directory validation failed: %w", err)

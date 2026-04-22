@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"io/fs"
-	"strings"
 )
 
 // Provider defines the interface for content providers
@@ -24,12 +23,4 @@ type Provider interface {
 	RootFS(ctx context.Context) (fs.FS, error)
 	// Close releases resources held by the provider
 	io.Closer
-}
-
-// IsGitURL checks if a string is a Git URL.
-// Returns true for URLs starting with git://, git+ssh://, or git+https://.
-func IsGitURL(s string) bool {
-	return strings.HasPrefix(s, "git://") ||
-		strings.HasPrefix(s, "git+ssh://") ||
-		strings.HasPrefix(s, "git+https://")
 }
