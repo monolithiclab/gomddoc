@@ -1,11 +1,16 @@
 package renderer
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 )
+
+// ErrNoRenderer is returned when no renderer is found for a given MIME type.
+// Callers can use errors.Is(err, ErrNoRenderer) to check for this condition.
+var ErrNoRenderer = errors.New("no renderer found")
 
 // DefaultRegistry implements RendererRegistry with support for wildcard MIME type matching.
 //
@@ -82,5 +87,5 @@ func (r *DefaultRegistry) Get(mimeType string) (ContentRenderer, error) {
 		return renderer, nil
 	}
 
-	return nil, fmt.Errorf("no renderer for MIME type: %s", normalized)
+	return nil, fmt.Errorf("%w: %s", ErrNoRenderer, normalized)
 }

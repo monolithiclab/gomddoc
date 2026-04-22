@@ -79,9 +79,9 @@ func (f *FilesystemProvider) ReadFile(requestPath string) ([]byte, string, error
 	info, err := fs.Stat(f.root, cleanPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, "", fmt.Errorf("%w: %s", ErrNotFound, requestPath)
+			return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
 		}
-		return nil, "", fmt.Errorf("stat %s: %w", requestPath, err)
+		return nil, "", &PathError{Op: "stat", Path: requestPath, Err: err}
 	}
 
 	if info.IsDir() {
@@ -91,7 +91,7 @@ func (f *FilesystemProvider) ReadFile(requestPath string) ([]byte, string, error
 	// Read regular file
 	content, err := fs.ReadFile(f.root, cleanPath)
 	if err != nil {
-		return nil, "", fmt.Errorf("read file %s: %w", requestPath, err)
+		return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
 	}
 
 	// Detect MIME type (returns full type with charset if registered)
@@ -122,13 +122,13 @@ func (f *FilesystemProvider) handleDirectory(cleanPath, requestPath string) ([]b
 
 	// Directory listing disabled (secure by default)
 	if !f.dirIndex {
-		return nil, "", fmt.Errorf("%w: %s", ErrDirListingDisabled, requestPath)
+		return nil, "", &PathError{Op: "list", Path: requestPath, Err: ErrDirListingDisabled}
 	}
 
 	// Generate directory listing
 	entries, err := fs.ReadDir(f.root, cleanPath)
 	if err != nil {
-		return nil, "", fmt.Errorf("read directory %s: %w", requestPath, err)
+		return nil, "", &PathError{Op: "list", Path: requestPath, Err: err}
 	}
 
 	content := GenerateMarkdownListing(requestPath, entries)
@@ -149,9 +149,9 @@ func (f *FilesystemProvider) Stat(requestPath string) (fs.FileInfo, error) {
 	info, err := fs.Stat(f.root, cleanPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: %s", ErrNotFound, requestPath)
+			return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrNotFound}
 		}
-		return nil, fmt.Errorf("stat %s: %w", requestPath, err)
+		return nil, &PathError{Op: "stat", Path: requestPath, Err: err}
 	}
 
 	return info, nil

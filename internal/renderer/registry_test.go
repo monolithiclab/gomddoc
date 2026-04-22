@@ -2,7 +2,7 @@ package renderer
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"sync"
 	"testing"
 )
@@ -184,8 +184,8 @@ func TestDefaultRegistry_Get_Wildcards(t *testing.T) {
 				if err == nil {
 					t.Error("Get() error = nil, want error")
 				}
-				if !strings.Contains(err.Error(), "no renderer for MIME type") {
-					t.Errorf("Get() error = %v, want 'no renderer for MIME type'", err)
+				if !errors.Is(err, ErrNoRenderer) {
+					t.Errorf("Get() error = %v, want ErrNoRenderer", err)
 				}
 			}
 		})
@@ -234,7 +234,7 @@ func TestDefaultRegistry_EmptyRegistry(t *testing.T) {
 	if err == nil {
 		t.Error("Get() on empty registry should return error")
 	}
-	if !strings.Contains(err.Error(), "no renderer for MIME type") {
-		t.Errorf("Get() error = %v, want 'no renderer for MIME type'", err)
+	if !errors.Is(err, ErrNoRenderer) {
+		t.Errorf("Get() error = %v, want ErrNoRenderer", err)
 	}
 }

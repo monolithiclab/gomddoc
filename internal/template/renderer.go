@@ -75,7 +75,9 @@ func GenerateBreadcrumbs(p provider.Provider, filepath string) []Breadcrumb {
 	})
 
 	if len(filepath) > maxPathLength {
-		slog.Warn("url path too long, skipping breadcrumbs")
+		slog.Warn("Path exceeds maximum length for breadcrumb generation",
+			slog.Int("length", len(filepath)),
+			slog.Int("max", maxPathLength))
 		return breadcrumbs
 	}
 

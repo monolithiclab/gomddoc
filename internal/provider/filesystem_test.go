@@ -492,4 +492,30 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 			t.Errorf("Stat() error should wrap ErrNotFound, got: %v", err)
 		}
 	})
+
+	t.Run("PathError contains operation and path info", func(t *testing.T) {
+		_, _, err := provider.ReadFile("nonexistent.md")
+		if err == nil {
+			t.Fatal("ReadFile() error = nil, want error")
+		}
+
+		var pathErr *PathError
+		if !errors.As(err, &pathErr) {
+			t.Fatalf("error should be *PathError, got %T", err)
+		}
+
+		if pathErr.Op != "read" {
+			t.Errorf("PathError.Op = %q, want %q", pathErr.Op, "read")
+		}
+
+		if pathErr.Path != "nonexistent.md" {
+			t.Errorf("PathError.Path = %q, want %q", pathErr.Path, "nonexistent.md")
+		}
+
+		// Verify Error() method returns formatted string
+		errStr := pathErr.Error()
+		if !strings.Contains(errStr, "read") || !strings.Contains(errStr, "nonexistent.md") {
+			t.Errorf("PathError.Error() = %q, should contain op and path", errStr)
+		}
+	})
 }
