@@ -33,12 +33,15 @@ func NewHTTPServer(cfg *config.Config, provider provider.Provider, processor pro
 	// Pass only SiteConfig to handler (not full Config for security)
 	handler := NewHandler(cfg.Site, provider, processor, renderer)
 
-	// Apply security headers middleware
-	secureHandler := SecurityHeaders(http.HandlerFunc(handler.ServeMarkdown))
+	// Apply middleware chain
+	var h http.Handler = http.HandlerFunc(handler.ServeMarkdown)
+	h = BlockHiddenPaths(h) // NEW: Block all hidden files/directories (., .git, .env, etc.)
+	// Exception: .well-known/ is allowed (IETF RFC 8615)
+	h = SecurityHeaders(h) // Must be last so headers are set first
 
 	server := &http.Server{
 		Addr:              cfg.Port,
-		Handler:           secureHandler,
+		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

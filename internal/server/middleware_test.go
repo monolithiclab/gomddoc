@@ -50,3 +50,66 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Errorf("Expected body 'test response', got: %q", w.Body.String())
 	}
 }
+
+func TestBlockHiddenPaths_HiddenFiles(t *testing.T) {
+	handler := BlockHiddenPaths(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedStatus int
+		description    string
+	}{
+		{".gomddoc/config.yml", "/.gomddoc/config.yml", http.StatusNotFound, "Block .gomddoc directory"},
+		{".git/config", "/.git/config", http.StatusNotFound, "Block .git directory"},
+		{".env", "/.env", http.StatusNotFound, "Block .env file"},
+		{".htaccess", "/.htaccess", http.StatusNotFound, "Block .htaccess file"},
+		{".DS_Store", "/.DS_Store", http.StatusNotFound, "Block .DS_Store file"},
+		{"nested .hidden", "/docs/.hidden/file.txt", http.StatusNotFound, "Block nested hidden directory"},
+		{".well-known/acme-challenge", "/.well-known/acme-challenge/token", http.StatusOK, "Allow .well-known (RFC 8615)"},
+		{"normal file", "/docs/file.txt", http.StatusOK, "Allow normal files"},
+		{"file with dot in name", "/file.name.txt", http.StatusOK, "Allow files with dots not at start"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.path, nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("%s: Status = %d, want %d", tt.description, w.Code, tt.expectedStatus)
+			}
+		})
+	}
+}
+
+func TestBlockHiddenPaths_ResponseFormat(t *testing.T) {
+	handler := BlockHiddenPaths(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+
+	req := httptest.NewRequest("GET", "/.gomddoc/config.yml", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+
+	body := w.Body.String()
+	if body != "File not found" {
+		t.Errorf("Body = %q, want %q", body, "File not found")
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "text/plain; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want %q", contentType, "text/plain; charset=utf-8")
+	}
+}
