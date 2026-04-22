@@ -25,8 +25,7 @@ func generateSnippet(content string, queryTokens []string, maxLen int) string {
 		return truncateAtWord(content, maxLen)
 	}
 
-	lower := strings.ToLower(content)
-	bestPos := findBestWindow(lower, queryTokens, maxLen)
+	bestPos := findBestWindow(content, queryTokens, maxLen)
 
 	// Extract the window
 	start := bestPos
@@ -83,10 +82,11 @@ func generateSnippet(content string, queryTokens []string, maxLen int) string {
 	return snippet
 }
 
-// findBestWindow finds the starting position of the window with the highest
-// density of query term occurrences.
-func findBestWindow(lowerContent string, queryTokens []string, windowSize int) int {
-	if len(lowerContent) <= windowSize {
+// findBestWindow finds the starting byte position of the window with the
+// highest density of query term occurrences. Each candidate window is
+// lowercased individually to keep byte positions aligned with the original.
+func findBestWindow(content string, queryTokens []string, windowSize int) int {
+	if len(content) <= windowSize {
 		return 0
 	}
 
@@ -94,17 +94,22 @@ func findBestWindow(lowerContent string, queryTokens []string, windowSize int) i
 	bestScore := -1
 
 	// Sample positions at regular intervals for efficiency
-	step := max(len(lowerContent)/50, 1)
+	step := max(len(content)/50, 1)
 
-	for pos := 0; pos <= len(lowerContent)-windowSize; pos += step {
-		// Align to rune boundary to avoid splitting multi-byte characters
-		for pos > 0 && !utf8.RuneStart(lowerContent[pos]) {
+	for pos := 0; pos <= len(content)-windowSize; pos += step {
+		// Align to rune boundary
+		for pos > 0 && !utf8.RuneStart(content[pos]) {
 			pos++
 		}
-		if pos > len(lowerContent)-windowSize {
+		if pos > len(content)-windowSize {
 			break
 		}
-		window := lowerContent[pos : pos+windowSize]
+		// Align end to rune boundary
+		end := pos + windowSize
+		for end < len(content) && !utf8.RuneStart(content[end]) {
+			end++
+		}
+		window := strings.ToLower(content[pos:end])
 		score := 0
 		for _, token := range queryTokens {
 			score += strings.Count(window, token)
@@ -119,27 +124,13 @@ func findBestWindow(lowerContent string, queryTokens []string, windowSize int) i
 }
 
 // highlightTerms wraps occurrences of query tokens in <mark> tags.
-// The surrounding text is HTML-escaped.
+// The surrounding text is HTML-escaped. Matching is case-insensitive,
+// with a fallback path for Unicode case folding that changes byte length.
 func highlightTerms(text string, queryTokens []string) string {
-	// Build a set of token positions to highlight
-	lower := strings.ToLower(text)
 	var spans []span
 
 	for _, token := range queryTokens {
-		offset := 0
-		for {
-			idx := strings.Index(lower[offset:], token)
-			if idx < 0 {
-				break
-			}
-			absStart := offset + idx
-			absEnd := absStart + len(token)
-			// Only match at word boundaries
-			if isWordBoundary(lower, absStart) && isWordBoundary(lower, absEnd) {
-				spans = append(spans, span{absStart, absEnd})
-			}
-			offset = absEnd
-		}
+		spans = findTokenSpans(text, token, spans)
 	}
 
 	if len(spans) == 0 {
@@ -163,6 +154,91 @@ func highlightTerms(text string, queryTokens []string) string {
 	b.WriteString(html.EscapeString(text[prev:]))
 
 	return b.String()
+}
+
+// findTokenSpans finds all case-insensitive occurrences of token in text at
+// word boundaries, appending to spans. Positions refer to bytes in text
+// (not a lowered copy), avoiding byte-length mismatches from case folding.
+func findTokenSpans(text, token string, spans []span) []span {
+	lower := strings.ToLower(text)
+
+	// If lowering changed byte length, fall back to rune-mapped search.
+	if len(lower) != len(text) {
+		return findTokenSpansRunewise(text, lower, token, spans)
+	}
+
+	offset := 0
+	for {
+		idx := strings.Index(lower[offset:], token)
+		if idx < 0 {
+			break
+		}
+		absStart := offset + idx
+		absEnd := absStart + len(token)
+		if isWordBoundary(lower, absStart) && isWordBoundary(lower, absEnd) {
+			spans = append(spans, span{absStart, absEnd})
+		}
+		offset = absEnd
+	}
+	return spans
+}
+
+// findTokenSpansRunewise is the slow path for texts where ToLower changes byte
+// length. It maps byte positions from the lowered text back to the original
+// using rune-to-byte offset tables.
+func findTokenSpansRunewise(text, lower, token string, spans []span) []span {
+	// Build rune-to-byte offset table for original text.
+	runeOffsets := make([]int, 0, utf8.RuneCountInString(text)+1)
+	for i := 0; i < len(text); {
+		runeOffsets = append(runeOffsets, i)
+		_, size := utf8.DecodeRuneInString(text[i:])
+		i += size
+	}
+	runeOffsets = append(runeOffsets, len(text))
+
+	// Build rune-to-byte offset table for lowered text.
+	lowerRuneOffsets := make([]int, 0, len(runeOffsets))
+	for i := 0; i < len(lower); {
+		lowerRuneOffsets = append(lowerRuneOffsets, i)
+		_, size := utf8.DecodeRuneInString(lower[i:])
+		i += size
+	}
+	lowerRuneOffsets = append(lowerRuneOffsets, len(lower))
+
+	// Find token in lowered text, map positions back to original via rune index.
+	offset := 0
+	for {
+		idx := strings.Index(lower[offset:], token)
+		if idx < 0 {
+			break
+		}
+		lowerStart := offset + idx
+		lowerEnd := lowerStart + len(token)
+
+		// Convert lower byte positions to rune indices.
+		startRune := byteToRuneIndex(lowerRuneOffsets, lowerStart)
+		endRune := byteToRuneIndex(lowerRuneOffsets, lowerEnd)
+
+		if startRune >= 0 && endRune >= 0 && endRune <= len(runeOffsets)-1 {
+			absStart := runeOffsets[startRune]
+			absEnd := runeOffsets[endRune]
+			if isWordBoundary(text, absStart) && isWordBoundary(text, absEnd) {
+				spans = append(spans, span{absStart, absEnd})
+			}
+		}
+		offset = lowerEnd
+	}
+	return spans
+}
+
+// byteToRuneIndex finds the rune index for a byte offset using binary search
+// on a pre-built, sorted offset table.
+func byteToRuneIndex(offsets []int, bytePos int) int {
+	i, found := slices.BinarySearch(offsets, bytePos)
+	if found {
+		return i
+	}
+	return -1
 }
 
 // isWordBoundary reports whether position pos in text is at a word boundary.

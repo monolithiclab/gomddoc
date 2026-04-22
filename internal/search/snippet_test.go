@@ -103,8 +103,7 @@ func TestFindBestWindow(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			lower := strings.ToLower(tt.content)
-			pos := findBestWindow(lower, tt.tokens, tt.windowSize)
+			pos := findBestWindow(tt.content, tt.tokens, tt.windowSize)
 
 			if tt.name == "content shorter than window" {
 				if pos != tt.wantPos {
@@ -113,9 +112,9 @@ func TestFindBestWindow(t *testing.T) {
 				return
 			}
 
-			// Verify the window contains the token
-			end := min(pos+tt.windowSize, len(lower))
-			window := lower[pos:end]
+			// Verify the window contains the token (case-insensitive)
+			end := min(pos+tt.windowSize, len(tt.content))
+			window := strings.ToLower(tt.content[pos:end])
 			found := false
 			for _, token := range tt.tokens {
 				if strings.Contains(window, token) {
@@ -210,6 +209,14 @@ func TestHighlightTerms(t *testing.T) {
 			text:   "http2 test",
 			tokens: []string{"http"},
 			want:   "http2 test",
+		},
+		{
+			// Turkish İ (U+0130, 2 bytes) lowercases to i (1 byte), changing
+			// byte length. Spans must still map correctly to the original text.
+			name:   "unicode case folding length change",
+			text:   "İstanbul guide",
+			tokens: []string{"istanbul"},
+			want:   "<mark>İstanbul</mark> guide",
 		},
 	}
 
