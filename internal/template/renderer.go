@@ -242,7 +242,6 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"breadcrumbs":  h.generateBreadcrumbs,
 		"toc":          h.generateTOC,
 		"editURL":      h.generateEditURL,
-		"navigation":   h.generateNavigation,
 		"themeVarsCSS": h.generateThemeVarsCSS,
 		"canonicalURL": func(pagePath string) string {
 			return seo.PageURL(h.siteConfig.Meta.Domain, pagePath, h.siteConfig.DefaultIndex)
@@ -275,52 +274,6 @@ func (h *HTMLRenderer) generateEditURL(pagePath string) string {
 		pagePath = "/" + pagePath
 	}
 	return base + pagePath
-}
-
-// generateNavigation renders the navigation tree from enrichment data as HTML.
-// Returns empty HTML if no navigation data is available.
-func (h *HTMLRenderer) generateNavigation(navTree *enricher.NavTree) template.HTML {
-	if navTree == nil || len(navTree.Items) == 0 {
-		return ""
-	}
-	var buf bytes.Buffer
-	renderNavItems(&buf, navTree.Items)
-	return template.HTML(buf.String()) // #nosec G203
-}
-
-// renderNavItems renders enricher.NavItem slices as HTML with nested <ul>/<li> elements.
-// Directories use <details>/<summary> for collapsible sections.
-// Files use <a> links with class="active" when Active is true.
-func renderNavItems(buf *bytes.Buffer, items []enricher.NavItem) {
-	buf.WriteString("<ul>")
-	for _, item := range items {
-		buf.WriteString("<li>")
-		if item.IsDir {
-			buf.WriteString("<details")
-			if item.Open {
-				buf.WriteString(" open")
-			}
-			buf.WriteString("><summary>")
-			buf.WriteString(template.HTMLEscapeString(item.Title))
-			buf.WriteString("</summary>")
-			if len(item.Children) > 0 {
-				renderNavItems(buf, item.Children)
-			}
-			buf.WriteString("</details>")
-		} else {
-			buf.WriteString(`<a href="`)
-			buf.WriteString(template.HTMLEscapeString(item.Path))
-			buf.WriteString(`"`)
-			if item.Active {
-				buf.WriteString(` class="active"`)
-			}
-			buf.WriteString(">")
-			buf.WriteString(template.HTMLEscapeString(item.Title))
-			buf.WriteString("</a>")
-		}
-		buf.WriteString("</li>")
-	}
-	buf.WriteString("</ul>")
 }
 
 // generateBreadcrumbs generates breadcrumbs for the given path

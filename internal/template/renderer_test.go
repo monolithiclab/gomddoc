@@ -723,13 +723,15 @@ func TestEditURLInTemplate(t *testing.T) {
 	})
 }
 
-func TestNavigationFunction(t *testing.T) {
+func TestNavigationPartial(t *testing.T) {
 	t.Parallel()
 
-	templateContent := `{{ navigation .Page.Navigation }}`
+	navItemTmpl := `{{ define "nav-item" }}<li>{{- if .IsDir }}<details{{ if .Open }} open{{ end }}><summary>{{ .Title }}</summary>{{- if .Children }}<ul>{{ range .Children }}{{ template "nav-item" . }}{{ end }}</ul>{{- end }}</details>{{- else }}<a href="{{ .Path }}"{{ if .Active }} class="active"{{ end }}>{{ .Title }}</a>{{- end }}</li>{{ end }}`
+	layoutTmpl := navItemTmpl + `{{ if and .Page.Navigation .Page.Navigation.Items }}<ul>{{ range .Page.Navigation.Items }}{{ template "nav-item" . }}{{ end }}</ul>{{ end }}`
+
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/nav.html.tmpl": {
-			Data: []byte(templateContent),
+			Data: []byte(layoutTmpl),
 		},
 	}
 
@@ -758,7 +760,6 @@ func TestNavigationFunction(t *testing.T) {
 
 	resultStr := string(result)
 
-	// Should contain navigation links
 	if !strings.Contains(resultStr, "Getting Started") {
 		t.Error("Expected navigation to contain 'Getting Started'")
 	}
@@ -768,15 +769,18 @@ func TestNavigationFunction(t *testing.T) {
 	if !strings.Contains(resultStr, "Installation") {
 		t.Error("Expected navigation to contain 'Installation'")
 	}
+	if !strings.Contains(resultStr, "<details open>") {
+		t.Error("Expected open details element for active directory")
+	}
 }
 
-func TestNavigationFunction_NilNavTree(t *testing.T) {
+func TestNavigationPartial_NilNavTree(t *testing.T) {
 	t.Parallel()
 
-	templateContent := `[{{ navigation .Page.Navigation }}]`
+	layoutTmpl := `[{{ if and .Page.Navigation .Page.Navigation.Items }}nav{{ end }}]`
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/nav_nil.html.tmpl": {
-			Data: []byte(templateContent),
+			Data: []byte(layoutTmpl),
 		},
 	}
 

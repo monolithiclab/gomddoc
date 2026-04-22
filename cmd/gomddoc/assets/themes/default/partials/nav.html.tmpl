@@ -1,9 +1,23 @@
+{{ define "nav-item" -}}
+<li>
+  {{- if .IsDir -}}
+  <details{{ if .Open }} open{{ end }}>
+    <summary>{{ .Title }}</summary>
+    {{- if .Children }}
+    <ul>{{ range .Children }}{{ template "nav-item" . }}{{ end }}</ul>
+    {{- end }}
+  </details>
+  {{- else -}}
+  <a href="{{ .Path }}"{{ if .Active }} class="active"{{ end }}>{{ .Title }}</a>
+  {{- end }}
+</li>
+{{- end }}
+
 {{ define "nav" }}
-{{- $nav := navigation .Page.Navigation }}
-{{- if $nav }}
+{{- if and .Page.Navigation .Page.Navigation.Items }}
       <aside id="nav-sidebar" aria-label="Navigation">
         <nav>
-          {{ $nav }}
+          <ul>{{ range .Page.Navigation.Items }}{{ template "nav-item" . }}{{ end }}</ul>
         </nav>
       </aside>
       <div id="nav-overlay"></div>

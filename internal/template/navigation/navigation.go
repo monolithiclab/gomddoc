@@ -2,7 +2,6 @@ package navigation
 
 import (
 	"bufio"
-	"bytes"
 	"io/fs"
 	"path"
 	"slices"
@@ -210,73 +209,6 @@ func FindFirstPage(root *NavNode) string {
 		}
 	}
 	return ""
-}
-
-// RenderNavTree renders a NavNode tree as HTML with nested <ul>/<li> elements.
-// Directories use <details>/<summary> for collapsible sections.
-// Files use <a> links with class="active" when IsActive is true.
-func RenderNavTree(root *NavNode) string {
-	if root == nil || len(root.Children) == 0 {
-		return ""
-	}
-
-	var buf bytes.Buffer
-	renderChildren(&buf, root.Children)
-	return buf.String()
-}
-
-func renderChildren(buf *bytes.Buffer, children []*NavNode) {
-	buf.WriteString("<ul>")
-	for _, child := range children {
-		buf.WriteString("<li>")
-		if child.IsDir {
-			buf.WriteString("<details")
-			if child.IsOpen {
-				buf.WriteString(" open")
-			}
-			buf.WriteString("><summary>")
-			buf.WriteString(htmlEscape(child.Label))
-			buf.WriteString("</summary>")
-			if len(child.Children) > 0 {
-				renderChildren(buf, child.Children)
-			}
-			buf.WriteString("</details>")
-		} else {
-			buf.WriteString(`<a href="`)
-			buf.WriteString(htmlEscape(child.Path))
-			buf.WriteString(`"`)
-			if child.IsActive {
-				buf.WriteString(` class="active"`)
-			}
-			buf.WriteString(">")
-			buf.WriteString(htmlEscape(child.Label))
-			buf.WriteString("</a>")
-		}
-		buf.WriteString("</li>")
-	}
-	buf.WriteString("</ul>")
-}
-
-// htmlEscape escapes HTML special characters in a string.
-func htmlEscape(s string) string {
-	var buf bytes.Buffer
-	for _, r := range s {
-		switch r {
-		case '&':
-			buf.WriteString("&amp;")
-		case '<':
-			buf.WriteString("&lt;")
-		case '>':
-			buf.WriteString("&gt;")
-		case '"':
-			buf.WriteString("&quot;")
-		case '\'':
-			buf.WriteString("&#39;")
-		default:
-			buf.WriteRune(r)
-		}
-	}
-	return buf.String()
 }
 
 // cleanPath normalizes a URL path for comparison by removing trailing slashes

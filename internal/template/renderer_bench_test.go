@@ -103,17 +103,19 @@ func benchFS() fstest.MapFS {
   {{ .Page.Content }}
 </main>
 {{ template "footer" . }}
-{{ navigation .Page.Navigation }}
+{{ template "nav" . }}
 </body>
 </html>`
 
 	headerPartial := `{{ define "header" }}<header><nav>{{ .Site.Meta.Title }}</nav></header>{{ end }}`
 	footerPartial := `{{ define "footer" }}<footer>&copy; {{ .Site.Meta.Title }}</footer>{{ end }}`
+	navPartial := `{{ define "nav-item" }}<li>{{- if .IsDir }}<details{{ if .Open }} open{{ end }}><summary>{{ .Title }}</summary>{{- if .Children }}<ul>{{ range .Children }}{{ template "nav-item" . }}{{ end }}</ul>{{- end }}</details>{{- else }}<a href="{{ .Path }}"{{ if .Active }} class="active"{{ end }}>{{ .Title }}</a>{{- end }}</li>{{ end }}{{ define "nav" }}{{- if and .Page.Navigation .Page.Navigation.Items }}<aside><nav><ul>{{ range .Page.Navigation.Items }}{{ template "nav-item" . }}{{ end }}</ul></nav></aside>{{- end }}{{ end }}`
 
 	return fstest.MapFS{
 		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layout)},
 		"assets/themes/default/partials/header.html.tmpl": {Data: []byte(headerPartial)},
 		"assets/themes/default/partials/footer.html.tmpl": {Data: []byte(footerPartial)},
+		"assets/themes/default/partials/nav.html.tmpl":    {Data: []byte(navPartial)},
 	}
 }
 
