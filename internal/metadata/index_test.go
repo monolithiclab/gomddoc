@@ -45,18 +45,6 @@ func TestExtractFrontmatter(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:    "frontmatter with BOM",
-			content: "\xef\xbb\xbf---\ntitle: BOM\n---\nbody",
-			wantKey: "title",
-			wantVal: "BOM",
-		},
-		{
-			name:    "BOM-adjacent bytes not corrupted",
-			content: "\xef\xbb\xbf---\ntitle: safe\n---\n\xef\xefbody",
-			wantKey: "title",
-			wantVal: "safe",
-		},
-		{
 			name:    "invalid YAML",
 			content: markdown.MalformedFrontmatter,
 			wantErr: true,

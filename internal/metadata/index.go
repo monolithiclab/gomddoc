@@ -228,8 +228,6 @@ var fmDelimiter = []byte("---")
 // Frontmatter must be delimited by --- at the start of the file.
 // Returns nil, nil if no frontmatter is found.
 func extractFrontmatter(content []byte) (map[string]any, error) {
-	content = bytes.TrimPrefix(content, []byte("\xef\xbb\xbf")) // strip BOM
-
 	if !bytes.HasPrefix(bytes.TrimLeftFunc(content, isSpace), fmDelimiter) {
 		return nil, nil
 	}
