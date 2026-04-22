@@ -116,13 +116,6 @@ func TestHTMLRendererRender(t *testing.T) {
 	}
 }
 
-// MockInfoProvider for testing breadcrumbs
-type MockInfoProvider struct{}
-
-func (m *MockInfoProvider) IsDir(path string) bool {
-	return path == "/" // Only root is dir
-}
-
 func TestBreadcrumbsFunction(t *testing.T) {
 	// Template that uses the breadcrumbs function
 	templateContent := `
@@ -140,8 +133,9 @@ Path: {{ .Path }}, Label: {{ .Label }}|
 
 	siteConfig := config.NewSiteConfig(".")
 
-	// Create generator with mock provider
-	gen := breadcrumb.NewGenerator(&MockInfoProvider{})
+	gen := breadcrumb.NewGenerator(func(path string) bool {
+		return path == "/" // Only root is dir
+	})
 
 	renderer := NewHTMLRenderer(&siteConfig, testFS, WithBreadcrumbGenerator(gen))
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"log/slog"
@@ -11,8 +10,6 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/provider"
-	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
 
 //go:embed assets
@@ -27,22 +24,6 @@ type CLI struct {
 	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
 	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
 }
-
-// infoProviderAdapter adapts provider.Provider to breadcrumb.InfoProvider
-type infoProviderAdapter struct {
-	p provider.Provider
-}
-
-func (pa *infoProviderAdapter) IsDir(path string) bool {
-	info, err := pa.p.Stat(context.Background(), path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
-
-// Ensure infoProviderAdapter implements breadcrumb.InfoProvider at compile time.
-var _ breadcrumb.InfoProvider = (*infoProviderAdapter)(nil)
 
 // helpPrinter wraps Kong's default help to append environment variables for subcommands.
 func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {

@@ -66,7 +66,10 @@ func (b *BuildCmd) Run() error {
 	}))
 	registry.Register(renderer.NewPassthroughRenderer())
 
-	breadcrumbGen := breadcrumb.NewGenerator(&infoProviderAdapter{p: prov})
+	breadcrumbGen := breadcrumb.NewGenerator(func(path string) bool {
+		info, err := prov.Stat(context.Background(), path)
+		return err == nil && info.IsDir()
+	})
 
 	contentRoot, err := prov.RootFS(context.Background())
 	if err != nil {

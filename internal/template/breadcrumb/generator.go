@@ -14,21 +14,18 @@ const (
 	RootDir   = "."
 )
 
-// InfoProvider defines the interface for file information needed by the generator
-type InfoProvider interface {
-	// IsDir checks if the given path is a directory
-	IsDir(path string) bool
-}
+// IsDirFunc checks whether a path is a directory.
+type IsDirFunc func(path string) bool
 
 // DefaultGenerator implements Generator
 type DefaultGenerator struct {
-	provider InfoProvider
+	isDir IsDirFunc
 }
 
 // NewGenerator creates a new breadcrumb generator
-func NewGenerator(provider InfoProvider) *DefaultGenerator {
+func NewGenerator(isDir IsDirFunc) *DefaultGenerator {
 	return &DefaultGenerator{
-		provider: provider,
+		isDir: isDir,
 	}
 }
 
@@ -64,7 +61,7 @@ func (g *DefaultGenerator) Generate(filepath string) []Breadcrumb {
 	}
 
 	// Check if target is a directory
-	targetIsDir := g.provider.IsDir("/" + filepath)
+	targetIsDir := g.isDir("/" + filepath)
 
 	// Split the full path into segments
 	segments := strings.Split(filepath, "/")

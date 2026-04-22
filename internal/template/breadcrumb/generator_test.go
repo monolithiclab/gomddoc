@@ -5,25 +5,17 @@ import (
 	"testing"
 )
 
-type mockProvider struct {
-	dirs map[string]bool
-}
-
-func (m *mockProvider) IsDir(path string) bool {
-	return m.dirs[path]
-}
-
 func TestGenerate(t *testing.T) {
-	provider := &mockProvider{
-		dirs: map[string]bool{
-			"/":         true,
-			"/docs":     true,
-			"/docs/api": true,
-			"/images":   true,
-		},
+	dirs := map[string]bool{
+		"/":         true,
+		"/docs":     true,
+		"/docs/api": true,
+		"/images":   true,
 	}
 
-	generator := NewGenerator(provider)
+	generator := NewGenerator(func(path string) bool {
+		return dirs[path]
+	})
 
 	tests := []struct {
 		name     string
