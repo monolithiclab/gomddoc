@@ -1201,3 +1201,116 @@ func TestSiteConfig_ApplyEnvOverrides_Features(t *testing.T) {
 		t.Error("dark_mode should still default to true")
 	}
 }
+
+func TestNewSiteConfig_StripExtensionsDefault(t *testing.T) {
+	t.Parallel()
+
+	sc := NewSiteConfig(".")
+
+	want := []string{".md"}
+	if len(sc.StripExtensions) != len(want) {
+		t.Fatalf("StripExtensions length = %d, want %d", len(sc.StripExtensions), len(want))
+	}
+	if sc.StripExtensions[0] != want[0] {
+		t.Errorf("StripExtensions[0] = %q, want %q", sc.StripExtensions[0], want[0])
+	}
+}
+
+func TestSiteConfig_LoadFromFile_StripExtensions(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
+	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
+		t.Fatalf("Failed to create .gomddoc dir: %v", err)
+	}
+
+	configYAML := `strip_extensions:
+  - ".md"
+  - ".html"
+`
+	configPath := filepath.Join(gomddocDir, "config.yml")
+	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	sc := NewSiteConfig(tmpDir)
+	if err := sc.LoadFromFile(tmpDir); err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+
+	want := []string{".md", ".html"}
+	if len(sc.StripExtensions) != len(want) {
+		t.Fatalf("StripExtensions length = %d, want %d", len(sc.StripExtensions), len(want))
+	}
+	for i, ext := range want {
+		if sc.StripExtensions[i] != ext {
+			t.Errorf("StripExtensions[%d] = %q, want %q", i, sc.StripExtensions[i], ext)
+		}
+	}
+}
+
+func TestSiteConfig_Validate_StripExtensions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		stripExtensions []string
+		wantErr         bool
+		errContains     string
+	}{
+		{
+			name:            "valid extensions with dots",
+			stripExtensions: []string{".md", ".html", ".txt"},
+			wantErr:         false,
+		},
+		{
+			name:            "empty list is valid",
+			stripExtensions: []string{},
+			wantErr:         false,
+		},
+		{
+			name:            "nil is valid",
+			stripExtensions: nil,
+			wantErr:         false,
+		},
+		{
+			name:            "missing dot in extension",
+			stripExtensions: []string{"md"},
+			wantErr:         true,
+			errContains:     "must start with a dot",
+		},
+		{
+			name:            "empty string in list",
+			stripExtensions: []string{".md", ""},
+			wantErr:         true,
+			errContains:     "must start with a dot",
+		},
+		{
+			name:            "mixed valid and invalid",
+			stripExtensions: []string{".md", "html"},
+			wantErr:         true,
+			errContains:     "must start with a dot",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sc := NewSiteConfig(".")
+			sc.StripExtensions = tt.stripExtensions
+
+			err := sc.Validate()
+			if tt.wantErr && err == nil {
+				t.Error("Validate() error = nil, want error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Validate() error = %v, want nil", err)
+			}
+			if tt.wantErr && err != nil && !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("Validate() error = %q, want error containing %q", err.Error(), tt.errContains)
+			}
+		})
+	}
+}

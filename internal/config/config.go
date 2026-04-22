@@ -71,15 +71,16 @@ type HTTPConfig struct {
 
 // SiteConfig holds site-specific settings (loadable from file)
 type SiteConfig struct {
-	DefaultIndex string          `env:"DEFAULT_INDEX" yaml:"default_index"`
-	DirIndex     bool            `env:"DIR_INDEX" yaml:"dir_index"`
-	EditURL      string          `env:"EDIT_URL" yaml:"edit_url"`
-	Language     string          `env:"LANGUAGE" yaml:"language"`
-	Meta         MetaConfig      `env:"META" yaml:"meta"`
-	Theme        ThemeConfig     `env:"THEME" yaml:"theme"`
-	Highlighting HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
-	Search       SearchConfig    `env:"SEARCH" yaml:"search"`
-	Exclude      []string        `yaml:"exclude"`
+	DefaultIndex    string          `env:"DEFAULT_INDEX" yaml:"default_index"`
+	DirIndex        bool            `env:"DIR_INDEX" yaml:"dir_index"`
+	EditURL         string          `env:"EDIT_URL" yaml:"edit_url"`
+	Language        string          `env:"LANGUAGE" yaml:"language"`
+	Meta            MetaConfig      `env:"META" yaml:"meta"`
+	Theme           ThemeConfig     `env:"THEME" yaml:"theme"`
+	Highlighting    HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
+	Search          SearchConfig    `env:"SEARCH" yaml:"search"`
+	Exclude         []string        `yaml:"exclude"`
+	StripExtensions []string        `yaml:"strip_extensions"`
 }
 
 // SearchConfig holds search settings
@@ -198,6 +199,7 @@ func NewSiteConfig(dir string) SiteConfig {
 		Search: SearchConfig{
 			Index: true,
 		},
+		StripExtensions: []string{".md"},
 	}
 }
 
@@ -290,6 +292,12 @@ func (sc *SiteConfig) Validate() error {
 
 	if err := ValidateFeatureKeys(sc.Theme.Features); err != nil {
 		return err
+	}
+
+	for _, ext := range sc.StripExtensions {
+		if ext == "" || ext[0] != '.' {
+			return fmt.Errorf("strip_extensions: %q must start with a dot", ext)
+		}
 	}
 
 	return nil
