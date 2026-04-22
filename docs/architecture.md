@@ -194,6 +194,8 @@ type Renderer interface {
 | `navigation` | `navigation(navTree) → HTML` | Sidebar from enrichment `NavTree` |
 | `editURL` | `editURL(pagePath) → string` | Combines `edit_url` config with page path |
 | `inlineAsset` | `inlineAsset(name) → JS` | Loads asset from theme dir → shared dir fallback |
+| `themeVarsCSS` | `themeVarsCSS() → CSS` | Generates `<style>` with `--theme-*` CSS custom properties from config |
+| `assetURL` | `assetURL(name) → string` | Resolves static file to `/_assets/{name}` URL (validates existence) |
 
 All functions are nil-safe — they return empty values when their backing generator is not configured.
 
@@ -292,6 +294,21 @@ File processing is parallelized with an `errgroup` worker pool bounded by `runti
 **Theme Resolution Order:** Site `.gomddoc/assets/themes/<name>/` → Embedded `cmd/gomddoc/assets/themes/<name>/`
 → Fallback to `default` theme.
 
+**Partial Override Resolution:** Three-layer resolution: default theme partials → active theme partials →
+site-level partials (`.gomddoc/partials/`). Uses Go's `template.ParseFS` where last `{{ define }}` wins.
+Site partials override specific theme partials without copying the whole theme.
+
+**Theme Variables:** CSS custom properties injected from `theme.vars` config map. Each key-value becomes
+`--theme-{key}: {value}` in a `:root` block. Dark mode uses naming convention (`dark-bg`, `dark-text`).
+Theme CSS references variables with fallbacks: `var(--theme-bg, #ffffff)`. Cached via `sync.Once`.
+
+**Page Type Templates:** Frontmatter `layout` field selects alternative layouts from `<theme>/layouts/`.
+`ResolveLayout()` appends `.html.tmpl` and checks `HasTemplate()`, falling back to `default.html.tmpl`.
+
+**Static Asset Serving:** `/_assets/` route serves files from a 3-layer overlay FS built by `BuildStaticFS()`:
+site `.gomddoc/static/` > theme `static/` > `assets/shared/static/`. FNV-64a ETags, immutable cache headers,
+dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output directory.
+
 ### 12. Color Chip Web Component
 
 **Responsibility:** Render inline hex color codes as interactive color swatches
@@ -335,7 +352,8 @@ sequenceDiagram
     Reg-->>H: MarkdownRenderer + "text/html"
     H->>R: Render(ctx, content, enrichment)
     R-->>H: RenderResult{HTML}
-    H->>T: Render("default.html.tmpl", {Site, Page})
+    H->>H: ResolveLayout(enrichment.Metadata)
+    H->>T: Render("{layout}.html.tmpl", {Site, Page})
     T-->>H: Templated HTML
     H-->>C: 200 OK (HTML + ETag + Cache-Control)
 ```
@@ -454,7 +472,7 @@ type SiteConfig struct {
     EditURL      string           `env:"EDIT_URL"      yaml:"edit_url"`      // ""
     ColorChips   bool             `env:"COLOR_CHIPS"   yaml:"color_chips"`   // true
     Meta         MetaConfig       `env:"META"          yaml:"meta"`
-    Theme        ThemeConfig      `env:"THEME"         yaml:"theme"`
+    Theme        ThemeConfig      `env:"THEME"         yaml:"theme"`          // name + vars
     Highlighting HighlightConfig  `env:"HIGHLIGHTING"  yaml:"highlighting"`
 }
 ```
@@ -523,6 +541,10 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Client-side KaTeX/Mermaid | Zero server deps; CDN delivery; theme-aware dark/light rendering |
 | TOC scroll highlighting | `IntersectionObserver`-free approach using `getBoundingClientRect` for broad compatibility |
 | Touch `@media (hover: none)` | Mobile/tablet users can't hover — show interactive elements by default |
+| 3-layer partial resolution | Site partials override theme partials override default — max customization without forking |
+| Config-only theme vars | No README parsing; `--theme-*` CSS custom properties from config only — simple, predictable |
+| Layout fallback to default | Missing layouts gracefully degrade to `default.html.tmpl` — no broken pages |
+| Static overlay FS for assets | Reuses existing `OverlayFS`; same site > theme > shared precedence as templates |
 
 ## Glossary
 
@@ -542,5 +564,8 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Static Site Generation**: `gomddoc build` output for deployment to static hosts
 - **Color Chip**: `<color-chip>` web component that renders hex color codes as interactive swatches
 - **Post-Processing Pipeline**: Sequential HTML transformations after goldmark rendering (anchors → admonitions → color chips)
-- **Theme**: A `default.html.tmpl` file with CSS/JS that defines the visual presentation of rendered content
+- **Theme**: A package with layouts, partials, and optional static assets that defines visual presentation
+- **Theme Variables**: CSS custom properties (`--theme-*`) injected from site config for color/typography customization
+- **Page Type**: Layout variant selected via frontmatter `layout` field (e.g., `page`, `api`, `changelog`)
 - **`inlineAsset`**: Template function that loads JS/CSS from theme directory with shared directory fallback
+- **`assetURL`**: Template function that resolves static files to `/_assets/` URLs

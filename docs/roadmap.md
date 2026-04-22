@@ -17,12 +17,12 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 - **Performance-first**: Built for speed with intelligent caching
 - **Security by design**: Path traversal protection, content sanitization, secure defaults
 
-## Current State (Phase 8 In Progress)
+## Current State (Phase 8 Complete)
 
 The foundation is production-ready with comprehensive test coverage across internal packages:
 
-- **CLI**: Kong-based subcommand architecture (`gomddoc serve`, `gomddoc build`), version injection via ldflags,
-  exhaustive `--help` with env var discovery.
+- **CLI**: Kong-based subcommand architecture (`gomddoc serve`, `gomddoc build`, `gomddoc preview`), version
+  injection via ldflags, exhaustive `--help` with env var discovery.
 - **Configuration**: Reflection-based env var walking, CLI flags, YAML config files with proper validation
   and correct prefix nesting (`GOMDDOC_SITE_*`). Priority: flags > env > file > defaults.
 - **Providers**: Filesystem (os.DirFS with path traversal protection) and Git (go-git, memory or disk-based
@@ -31,9 +31,12 @@ The foundation is production-ready with comprehensive test coverage across inter
   YAML frontmatter), passthrough for all other MIME types via `*/*` wildcard. Post-processing pipeline:
   goldmark → heading anchors → admonitions → color chips.
 - **Theming**: 8 bundled themes (default, academic, gitbook, material, midnight, minimal, nord, ocean) with
-  light/dark mode, TOC scroll highlighting, touch device accessibility, copy-to-clipboard code blocks,
-  KaTeX math rendering, and Mermaid diagram support. Color chips rendered via a `<color-chip>` web component
-  with Shadow DOM encapsulation.
+  composable partials, site-level partial overrides, theme variables (`--theme-*` CSS custom properties),
+  page type templates (frontmatter `layout` field), light/dark mode, TOC scroll highlighting, touch device
+  accessibility, copy-to-clipboard code blocks, KaTeX math rendering, and Mermaid diagram support. Color chips
+  rendered via a `<color-chip>` web component with Shadow DOM encapsulation.
+- **Static assets**: `/_assets/` route serving theme and shared static files with overlay resolution
+  (site > theme > shared), ETag caching, and build-mode copy.
 - **HTTP**: Two-dimensional content negotiation (input type + Accept header), gzip compression,
   security headers, ETag, request ID tracking, graceful shutdown.
 - **Monitoring**: Prometheus metrics (`/metrics`), health probes (`/health/live`, `/health/ready`).
@@ -43,7 +46,8 @@ The foundation is production-ready with comprehensive test coverage across inter
 - **Metadata**: Frontmatter indexing across all pages with JSON API (`/api/tags`, `/api/tags/{tag}`).
 - **Static site generation**: `gomddoc build` command for deploying to S3, Netlify, GitHub Pages.
 - **Edit links**: Configurable `edit_url` in site config with "Edit this page" footer links.
-- **Template functions**: `navigation`, `toc`, `breadcrumbs`, `editURL`, `inlineAsset` available in themes.
+- **Template functions**: `navigation`, `toc`, `breadcrumbs`, `editURL`, `inlineAsset`, `themeVarsCSS`,
+  `assetURL` available in themes.
 - **Documentation**: User guides (`docs/guide/`), architecture reference (`docs/architecture.md`).
 
 See `docs/architecture.md` for detailed architecture and `docs/guide/` for user documentation.
@@ -199,8 +203,8 @@ that supports partials, multiple page types, and static assets.
 - [x] **Migration**: Moved `default.html.tmpl` into `layouts/`, screenshots into `screenshots/`.
 - [x] **Embedded themes update**: Reworked default theme (`cmd/gomddoc/assets/themes/default/`) and
       all 7 material themes to the new structure. Template renderer updated to parse layouts + partials.
-- [ ] **Page type templates**: Support `page.html.tmpl` and other layout variants (future).
-- [ ] **Static asset directory**: Theme-specific `static/` directory for non-inline assets (future).
+- [x] **Page type templates**: Frontmatter `layout` field selects alternative layouts (see 8d).
+- [x] **Static asset directory**: Theme-specific `static/` served via `/_assets/` (see 8e).
 
 ### 8b: Template Partials
 
@@ -209,8 +213,9 @@ Break the monolithic `default.html.tmpl` into composable partials that themes ca
 - [x] **Partial system**: Split all theme layouts into `head.html.tmpl`, `header.html.tmpl`, `nav.html.tmpl`,
       `toc.html.tmpl`, `scripts.html.tmpl`. Main layout assembles partials via `{{ template "head" . }}` etc.
       Each partial is self-contained and calls its own template functions.
-- [ ] **Partial override resolution**: Theme provides base partials; site `.gomddoc/partials/` overrides
+- [x] **Partial override resolution**: Theme provides base partials; site `.gomddoc/partials/` overrides
       specific ones without copying the whole theme. Resolution order: site partials > theme partials > default.
+      Implemented via `parseGlob` helper that parses matching files into the template — last `{{ define }}` wins.
 - [x] **UI polish**: Copy-to-clipboard for code blocks.
 - [x] **Dark mode**: Native light/dark toggle with `prefers-color-scheme` fallback.
 - [x] **8 bundled themes**: default, academic, gitbook, material, midnight, minimal, nord, ocean.
@@ -220,52 +225,44 @@ Break the monolithic `default.html.tmpl` into composable partials that themes ca
 - [x] **Color chip web component**: `<color-chip>` custom element with Shadow DOM, click-to-copy, accessible.
 - [x] **`inlineAsset` template function**: Load shared assets (JS/CSS) from theme or shared directory.
 
-### 8c: Theme Variables
+### 8c: Theme Variables (Done)
 
-Expose theme colors and typography as named variables defined in the theme `README.md` frontmatter and
-overridable from the site config.
+Inject CSS custom properties from site configuration, enabling color and typography customization
+without forking themes.
 
-- [ ] **Variable extraction**: Parse theme `README.md` frontmatter `colors` map (light/dark background,
-      text, primary, etc.) into CSS custom properties injected at render time.
-- [ ] **Config overrides**: Allow `theme_vars` in `.gomddoc/config.yml` to override any theme variable
-      without forking the theme. Example: `theme_vars: { primary: "#e63946" }`.
-- [ ] **Extended palette**: Themes may define additional variables (accent, border, code-bg, etc.) beyond
-      the required `background`, `text`, `primary`. All are overridable.
+- [x] **Config-driven variables**: `theme.vars` map in `.gomddoc/config.yml` defines CSS custom properties.
+      Each key-value pair becomes `--theme-{key}: {value}` in a `:root` CSS block. Dark mode variables use
+      naming convention: `dark-bg`, `dark-text`, etc.
+- [x] **`themeVarsCSS` template function**: Generates a `<style>` block with CSS custom properties from
+      config. Cached via `sync.Once` for thread safety. Called in theme `head.html.tmpl` partials.
+- [x] **Theme CSS integration**: Default theme's `head.html.tmpl` uses `var(--theme-bg, #ffffff)` with
+      hardcoded fallbacks, so themes work without any vars configured.
 
-### 8d: Page Types
+### 8d: Page Types (Done)
 
 Support multiple layout variants selectable from content frontmatter.
 
-- [ ] **Page type templates**: Themes provide a generic `default.html.tmpl` (default) plus optional
-      type-specific layouts: `page.html.tmpl`, `api.html.tmpl`, `changelog.html.tmpl`, etc.
-- [ ] **Frontmatter `layout` field**: Content files select their layout via `layout: api` in frontmatter.
-      Falls back to `default.html.tmpl` if the specified type doesn't exist in the theme.
-- [ ] **Layout inheritance**: Type-specific layouts can extend the base layout, overriding only the
-      content block while inheriting header, footer, and scripts.
+- [x] **Page type templates**: Themes provide `default.html.tmpl` plus optional type-specific layouts
+      (e.g., `page.html.tmpl`, `api.html.tmpl`). Layouts live in `<theme>/layouts/`.
+- [x] **Frontmatter `layout` field**: Content files select their layout via `layout: page` in frontmatter.
+      `ResolveLayout()` checks enrichment metadata, appends `.html.tmpl`, and falls back to
+      `default.html.tmpl` if the specified layout doesn't exist via `HasTemplate()`.
+- [x] **Build mode support**: `gomddoc build` uses the same `ResolveLayout()` logic for layout selection.
 
-### 8e: Static Asset Serving
+### 8e: Static Asset Serving (Done)
 
 Serve theme-specific and shared static files (JS, CSS, images, fonts) via a dedicated `/_assets/` route,
 using the overlay filesystem to allow themes to override shared resources.
 
-- [ ] **Shared static directory**: Introduce `assets/shared/static/` in the embedded FS for cross-theme
-      resources (web components, shared JS libraries, common icons). Served at `/_assets/shared/`.
-- [ ] **Theme static directory**: Each theme's `static/` folder is served at `/_assets/theme/`. Contains
-      theme-specific CSS, JS, images, and fonts that are too large or inappropriate to inline.
-- [ ] **Overlay resolution for statics**: Build the static file FS as an overlay stack:
-      site `.gomddoc/static/` > theme `static/` > `shared/static/`. This lets themes override shared
-      resources (e.g. a custom web component variant) and sites override theme resources without forking.
-      Reuses the existing `OverlayFS` implementation.
-- [ ] **`/_assets/` HTTP handler**: Register a handler that serves files from the static overlay FS
-      with proper MIME types, ETags, and cache headers. Block directory listings and dotfiles.
-- [ ] **Template `assetURL` function**: Provide `{{ assetURL "color-chip.js" }}` in templates that
-      resolves to `/_assets/theme/color-chip.js` (or `/_assets/shared/...` for shared assets). Replaces
-      the current `{{ asset }}` inline approach with external `<script src>` / `<link href>` references.
-- [ ] **Migrate inline JS**: Move the current `{{ asset "color-chip.js" }}` inline pattern to
-      `<script type="module" src="{{ assetURL "color-chip.js" }}"></script>` once static serving is live.
-      Keep `{{ asset }}` available as a fallback for small snippets where inlining is preferred.
-- [ ] **Build mode**: `gomddoc build` copies the resolved static overlay into the output `_assets/`
-      directory. Shared and theme statics are merged with the same override precedence.
+- [x] **Overlay resolution for statics**: `BuildStaticFS()` in `internal/assets/` creates a 3-layer overlay:
+      site `.gomddoc/static/` > theme `static/` > `assets/shared/static/`. Reuses `OverlayFS`.
+- [x] **`/_assets/` HTTP handler**: `assets_handler.go` serves files from the static overlay FS with proper
+      MIME types, FNV-64a ETags, `Cache-Control: public, max-age=31536000, immutable`, directory listing
+      and dotfile blocking. Registered before the catch-all `/` route.
+- [x] **Template `assetURL` function**: `{{ assetURL "color-chip.js" }}` resolves to `/_assets/color-chip.js`.
+      Verifies file exists in the static overlay FS.
+- [x] **Build mode**: `gomddoc build` copies the resolved static overlay into the output `_assets/`
+      directory via `copyStaticAssets()`. Same overlay precedence as serve mode.
 
 ## Phase 9: SEO and Discoverability
 
@@ -496,8 +493,7 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus (Phase 8):** Theme folder restructuring (partials, page types, static assets) and theme variables.
-**Pre-launch (Phase 9a):** Canonical URLs, robots.txt, Open Graph — table-stakes SEO before public release.
+**Immediate focus (Phase 9a):** Canonical URLs, robots.txt, Open Graph — table-stakes SEO before public release.
 **Next up (Phase 4 & 5):** Profiling/benchmarks for data-driven optimization, full-text search for content discovery.
 **Then (Phase 9b):** Post-launch SEO (JSON-LD, Git timestamps, social images).
 **High-value (Phase 10a):** MCP interface — low complexity (thin adapter over existing layers), high differentiation.
