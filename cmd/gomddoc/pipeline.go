@@ -58,6 +58,26 @@ type LanguagePipeline struct {
 	Languages []string             // all non-default language codes
 }
 
+// warnTagsContentCollision logs a warning when the user has authored content
+// at paths that collide with the auto-generated tag pages (/tags/, /tags/{tag}).
+func warnTagsContentCollision(contentRoot fs.FS, lang string) {
+	for _, candidate := range []string{"tags.md", "tags"} {
+		info, err := fs.Stat(contentRoot, candidate)
+		if err != nil {
+			continue
+		}
+		kind := "file"
+		if info.IsDir() {
+			kind = "directory"
+		}
+		slog.Warn("Content path collides with auto-generated tag pages",
+			slog.String("path", candidate),
+			slog.String("kind", kind),
+			slog.String("lang", lang),
+			slog.String("hint", "rename to avoid being shadowed by /tags routes"))
+	}
+}
+
 // setupLanguagePipelines builds the default pipeline and per-language pipelines
 // for each BCP 47 directory found in the content root. It also loads the locale
 // bundle from embedded assets and merges site-level overrides from .gomddoc/locales/.
@@ -74,6 +94,9 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 		return nil, fmt.Errorf("content root: %w", err)
 	}
 	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
+
+	// Warn if user content shadows auto-generated /tags routes.
+	warnTagsContentCollision(contentRoot, cfg.Site.Language)
 
 	bundle, err := locale.LoadBundle(cfg.Site.Language, assetsFS, "locales")
 	if err != nil {
@@ -115,6 +138,9 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 			slog.Warn("Failed to build pipeline for language", slog.String("lang", lang), slog.Any("error", err))
 			continue
 		}
+
+		// Warn if user content in this language directory shadows auto-generated /tags routes.
+		warnTagsContentCollision(subFS, lang)
 
 		lp.ByLang[lang] = langPipeline
 		slog.Info("Built language pipeline", slog.String("lang", lang))

@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -375,5 +378,137 @@ func TestPrevNextBuilderAdapter(t *testing.T) {
 	prev, next = builder("/missing.md")
 	if prev != nil || next != nil {
 		t.Errorf("prev=%+v next=%+v, want both nil for missing path", prev, next)
+	}
+}
+
+func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_File(t *testing.T) {
+	// This test does NOT use t.Parallel() because it captures global slog output.
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	writeTestFile(t, srcDir, "tags.md", "# Tags Info")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatalf("config error: %v", err)
+	}
+
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatalf("provider error: %v", err)
+	}
+	defer prov.Close()
+
+	// Capture slog output.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	prev := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(prev)
+
+	// Call setupLanguagePipelines, which should trigger the warning.
+	_, err = setupLanguagePipelines(cfg, prov, PipelineOptions{
+		EnableCache:      true,
+		EnableNavigation: true,
+		EnableMetadata:   true,
+		EnableSearch:     false,
+	})
+	if err != nil {
+		t.Fatalf("setupLanguagePipelines error: %v", err)
+	}
+
+	// Check that the warning contains "tags.md".
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "tags.md") {
+		t.Errorf("expected warning containing 'tags.md', got: %s", logOutput)
+	}
+}
+
+func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_Directory(t *testing.T) {
+	// This test does NOT use t.Parallel() because it captures global slog output.
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	writeTestFile(t, filepath.Join(srcDir, "tags"), "index.md", "# Tag Index")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatalf("config error: %v", err)
+	}
+
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatalf("provider error: %v", err)
+	}
+	defer prov.Close()
+
+	// Capture slog output.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	prev := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(prev)
+
+	// Call setupLanguagePipelines, which should trigger the warning.
+	_, err = setupLanguagePipelines(cfg, prov, PipelineOptions{
+		EnableCache:      true,
+		EnableNavigation: true,
+		EnableMetadata:   true,
+		EnableSearch:     false,
+	})
+	if err != nil {
+		t.Fatalf("setupLanguagePipelines error: %v", err)
+	}
+
+	// Check that the warning contains "tags" directory.
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "tags") {
+		t.Errorf("expected warning containing 'tags', got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "directory") {
+		t.Errorf("expected warning mentioning 'directory', got: %s", logOutput)
+	}
+}
+
+func TestSetupLanguagePipelines_NoWarningWhenNoCollision(t *testing.T) {
+	// This test does NOT use t.Parallel() because it captures global slog output.
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	writeTestFile(t, srcDir, "guide.md", "# Guide")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatalf("config error: %v", err)
+	}
+
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatalf("provider error: %v", err)
+	}
+	defer prov.Close()
+
+	// Capture slog output.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	prev := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(prev)
+
+	// Call setupLanguagePipelines, which should NOT trigger the collision warning.
+	_, err = setupLanguagePipelines(cfg, prov, PipelineOptions{
+		EnableCache:      true,
+		EnableNavigation: true,
+		EnableMetadata:   true,
+		EnableSearch:     false,
+	})
+	if err != nil {
+		t.Fatalf("setupLanguagePipelines error: %v", err)
+	}
+
+	// Check that the warning does NOT contain "tags.md" collision message.
+	logOutput := buf.String()
+	if strings.Contains(logOutput, "collides with auto-generated tag pages") {
+		t.Errorf("unexpected collision warning when there should be none, got: %s", logOutput)
 	}
 }
