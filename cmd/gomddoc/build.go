@@ -8,10 +8,12 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -183,6 +185,11 @@ func (b *BuildCmd) Run() error {
 		return fmt.Errorf("generate extension redirects: %w", err)
 	}
 
+	// Generate tag pages (tags/index.html and tags/{tag}/index.html)
+	if err := b.emitTagPages(context.Background(), pipeline, "", bc.tFunc); err != nil {
+		return fmt.Errorf("emit tag pages: %w", err)
+	}
+
 	// Generate 404.html for static host compatibility (Netlify, GitHub Pages, Cloudflare Pages)
 	errorContent, err := b.renderErrorPage(http.StatusNotFound, bc)
 	if err != nil {
@@ -240,6 +247,11 @@ func (b *BuildCmd) Run() error {
 				slog.Warn("Failed to generate feed for language", slog.String("lang", lang), slog.Any("error", fErr))
 			} else if wErr := b.writeOutputFile(path.Join(lang, "feed.xml"), langFeedData); wErr != nil {
 				slog.Warn("Failed to write feed for language", slog.String("lang", lang), slog.Any("error", wErr))
+			}
+
+			// Generate per-language tag pages
+			if tErr := b.emitTagPages(context.Background(), langPipe, lang, bundle.TFunc(lang)); tErr != nil {
+				slog.Warn("Failed to emit tag pages for language", slog.String("lang", lang), slog.Any("error", tErr))
 			}
 		}
 	}
@@ -738,4 +750,47 @@ func (b *BuildCmd) renderErrorPage(statusCode int, bc *buildContext) ([]byte, er
 	ctx.WithI18n(bc.lang, bc.tFunc, nil)
 
 	return bc.templateRenderer.Render(context.Background(), "error.html.tmpl", ctx)
+}
+
+// emitTagPages writes /tags/index.html plus one /tags/{escaped}/index.html per
+// unique tag for the given pipeline. Empty lang produces unprefixed paths;
+// non-empty lang prefixes with /{lang}.
+func (b *BuildCmd) emitTagPages(ctx context.Context, p *Pipeline, lang string, tFunc func(string) string) error {
+	if p.MetaIndex == nil {
+		return nil
+	}
+	prefix := ""
+	if lang != "" {
+		prefix = lang + "/"
+	}
+
+	tags := p.MetaIndex.AllTags()
+
+	entries := make([]tmpl.TagCount, 0, len(tags))
+	for _, tag := range tags {
+		entries = append(entries, tmpl.TagCount{Tag: tag, Count: len(p.MetaIndex.ByTag(tag))})
+	}
+	body, err := p.TemplateRenderer.RenderTagsIndex(ctx, lang, tFunc, entries)
+	if err != nil {
+		return fmt.Errorf("render tags index: %w", err)
+	}
+	if err := b.writeOutputFile(prefix+"tags/index.html", body); err != nil {
+		return err
+	}
+
+	for _, tag := range tags {
+		pages := p.MetaIndex.ByTag(tag)
+		slices.SortFunc(pages, func(a, b metadata.PageInfo) int {
+			return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+		})
+		body, err := p.TemplateRenderer.RenderTagPage(ctx, lang, tFunc, tag, pages)
+		if err != nil {
+			return fmt.Errorf("render tag %q: %w", tag, err)
+		}
+		out := prefix + "tags/" + url.PathEscape(tag) + "/index.html"
+		if err := b.writeOutputFile(out, body); err != nil {
+			return err
+		}
+	}
+	return nil
 }

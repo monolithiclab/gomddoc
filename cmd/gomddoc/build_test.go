@@ -956,3 +956,33 @@ func TestPrettyOutputPath(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCmd_EmitsTagPages(t *testing.T) {
+	t.Parallel()
+
+	contentDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(contentDir, "a.md"),
+		[]byte("---\ntitle: A\ntags: [go, machine learning]\n---\n# A"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(contentDir, "b.md"),
+		[]byte("---\ntitle: B\ntags: [go]\n---\n# B"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	outDir := t.TempDir()
+	b := &BuildCmd{Dir: contentDir, Output: outDir}
+	if err := b.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	for _, want := range []string{
+		"tags/index.html",
+		"tags/go/index.html",
+		"tags/machine%20learning/index.html",
+	} {
+		if _, err := os.Stat(filepath.Join(outDir, want)); err != nil {
+			t.Errorf("expected output %s: %v", want, err)
+		}
+	}
+}
