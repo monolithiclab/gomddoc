@@ -13,6 +13,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
@@ -2072,6 +2073,79 @@ func TestRender_TagChips(t *testing.T) {
 func tagChipsPartialBytes(t *testing.T) []byte {
 	t.Helper()
 	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tag-chips.html.tmpl")
+	if err != nil {
+		t.Fatalf("partial not yet created: %v", err)
+	}
+	return data
+}
+
+func TestRenderTagPage(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body><main>{{ .Page.Content }}</main></body></html>`,
+		)},
+		"assets/themes/default/partials/tags-list.html.tmpl": {Data: tagsListPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test Site"
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	pages := []metadata.PageInfo{
+		{Path: "/guide.md", Title: "Guide", Description: "Setup walkthrough"},
+		{Path: "/api.md", Title: "API"},
+	}
+	tFunc := func(k string) string {
+		return map[string]string{
+			"tags_tagged_as": "Pages tagged %s",
+			"tags_empty":     "No pages tagged %s",
+		}[k]
+	}
+
+	out, err := r.RenderTagPage(context.Background(), "" /* default lang */, tFunc, "go", pages)
+	if err != nil {
+		t.Fatalf("RenderTagPage: %v", err)
+	}
+
+	s := string(out)
+	for _, want := range []string{
+		`href="/guide.md"`, ">Guide<",
+		`href="/api.md"`, ">API<",
+		"Setup walkthrough",
+		"Pages tagged go",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("output missing %q\noutput: %s", want, s)
+		}
+	}
+}
+
+func TestRenderTagPage_Empty(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body>{{ .Page.Content }}</body></html>`,
+		)},
+		"assets/themes/default/partials/tags-list.html.tmpl": {Data: tagsListPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tFunc := func(k string) string { return map[string]string{"tags_empty": "No pages tagged %s"}[k] }
+	out, err := r.RenderTagPage(context.Background(), "", tFunc, "missing", nil)
+	if err != nil {
+		t.Fatalf("RenderTagPage empty: %v", err)
+	}
+	if !strings.Contains(string(out), "No pages tagged missing") {
+		t.Errorf("expected empty-state string, got %s", out)
+	}
+}
+
+func tagsListPartialBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl")
 	if err != nil {
 		t.Fatalf("partial not yet created: %v", err)
 	}

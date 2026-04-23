@@ -18,6 +18,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/seo"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
@@ -299,6 +300,64 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 
 	// Copy bytes since buffer will be reused
 	return slices.Clone(buf.Bytes()), nil
+}
+
+// RenderTagPage renders the body of a /tags/{tag} page through the standard
+// theme layout. lang is the active BCP-47 code ("" for default language).
+// tFunc is the translator scoped to lang. Pages should already be sorted
+// by the caller.
+func (h *HTMLRenderer) RenderTagPage(ctx context.Context, lang string, tFunc func(string) string, tag string, pages []metadata.PageInfo) ([]byte, error) {
+	if tFunc == nil {
+		tFunc = func(k string) string { return k }
+	}
+	body, err := h.executePartial("tags-list", tagPageData{
+		Tag:   tag,
+		Pages: pages,
+		Lang:  lang,
+		T:     tFunc,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("render tags-list: %w", err)
+	}
+
+	page := PageContext{
+		Path:    tagURL(h.siteConfig.Language, lang, tag),
+		Content: template.HTML(body), // #nosec G203 -- partial output is trusted
+		Meta:    map[string]any{"title": tag},
+	}
+	tc := &TemplateContext{Site: h.siteConfig, Page: page}
+	tc.WithI18n(lang, tFunc, nil)
+	return h.Render(ctx, "default.html.tmpl", tc)
+}
+
+// tagPageData is the data passed to the tags-list partial.
+type tagPageData struct {
+	Tag   string
+	Pages []metadata.PageInfo
+	Lang  string
+	T     func(string) string
+}
+
+// executePartial runs a single named partial against data and returns the
+// rendered bytes. Used for server-side composition of synthetic pages
+// (tag listings, tag index) where the body is pre-built then passed
+// through the standard layout via Page.Content.
+func (h *HTMLRenderer) executePartial(name string, data any) ([]byte, error) {
+	partialPath := path.Join("assets", "themes", h.siteConfig.Theme.Name, "partials", name+".html.tmpl")
+	tmpl, err := template.New(name+".html.tmpl").Funcs(h.funcMap()).ParseFS(h.assetsFS, partialPath)
+	if err != nil {
+		// Fall back to default theme partial.
+		fallback := path.Join("assets", "themes", config.DefaultThemeName, "partials", name+".html.tmpl")
+		tmpl, err = template.New(name+".html.tmpl").Funcs(h.funcMap()).ParseFS(h.assetsFS, fallback)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // parseTemplate parses a layout template with its partials, with automatic fallback to default theme.
