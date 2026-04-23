@@ -402,8 +402,10 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"inlineJSAsset":   h.inlineJSAsset,
 		"inlineCSSAsset":  h.inlineCSSAsset,
 		"inlineHTMLAsset": h.inlineHTMLAsset,
-		"tagURL":          tagURL,
-		"pageTags":        pageTags,
+		"tagURL": func(lang, tag string) string {
+			return tagURL(h.siteConfig.Language, lang, tag)
+		},
+		"pageTags": pageTags,
 	}
 }
 
@@ -568,8 +570,8 @@ func (h *HTMLRenderer) contentURL(filePath string) string {
 // tagURL builds the URL for a tag's listing page, scoped to the active
 // language. The default language uses /tags/{tag}; other languages use
 // /{lang}/tags/{tag}. Tag values are percent-encoded for URL safety.
-func tagURL(lang, tag string) string {
-	if lang == "" {
+func tagURL(defaultLang, lang, tag string) string {
+	if lang == "" || lang == defaultLang {
 		return "/tags/" + url.PathEscape(tag)
 	}
 	return "/" + lang + "/tags/" + url.PathEscape(tag)

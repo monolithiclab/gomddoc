@@ -3,6 +3,7 @@ package template
 import (
 	"context"
 	"html/template"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -1947,6 +1948,7 @@ func TestTagURL(t *testing.T) {
 	}{
 		{"default lang", "", "go", "/tags/go"},
 		{"default lang space", "", "machine learning", "/tags/machine%20learning"},
+		{"default lang explicit", "en-US", "go", "/tags/go"},
 		{"non-default lang", "fr", "go", "/fr/tags/go"},
 		{"non-default lang space", "de", "machine learning", "/de/tags/machine%20learning"},
 		{"unicode tag", "", "café", "/tags/caf%C3%A9"},
@@ -1989,4 +1991,89 @@ func TestPageTags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRender_TagChips(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		tags        []any
+		featureOff  bool
+		wantContain []string
+		wantNot     []string
+	}{
+		{
+			name:        "renders chips for tags",
+			tags:        []any{"go", "docs"},
+			wantContain: []string{`href="/tags/go"`, `href="/tags/docs"`, `>go<`, `>docs<`, `class="tag-chips"`},
+		},
+		{
+			name:       "no chips when feature off",
+			tags:       []any{"go"},
+			featureOff: true,
+			wantNot:    []string{"tag-chips"},
+		},
+		{
+			name:    "no chips when no tags",
+			tags:    nil,
+			wantNot: []string{"tag-chips"},
+		},
+		{
+			name:        "non-default language scopes URL",
+			tags:        []any{"go"},
+			wantContain: []string{`href="/fr/tags/go"`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			testFS := fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+					`<!doctype html><html><body>{{ template "tag-chips" . }}</body></html>`,
+				)},
+				"assets/themes/default/partials/tag-chips.html.tmpl": {Data: tagChipsPartialBytes(t)},
+			}
+			siteConfig := config.NewSiteConfig(".")
+			r := NewHTMLRenderer(&siteConfig, testFS)
+
+			page := PageContext{Path: "/x.md", Meta: map[string]any{"tags": tt.tags}}
+			if tt.featureOff {
+				page.Features = map[string]bool{"tag_chips": false}
+			}
+			tc := &TemplateContext{Site: &siteConfig, Page: page}
+			if tt.name == "non-default language scopes URL" {
+				tc.WithI18n("fr", nil, nil)
+			}
+
+			out, err := r.Render(context.Background(), "default.html.tmpl", tc)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			s := string(out)
+			for _, want := range tt.wantContain {
+				if !strings.Contains(s, want) {
+					t.Errorf("output missing %q\noutput: %s", want, s)
+				}
+			}
+			for _, banned := range tt.wantNot {
+				if strings.Contains(s, banned) {
+					t.Errorf("output should not contain %q\noutput: %s", banned, s)
+				}
+			}
+		})
+	}
+}
+
+// tagChipsPartialBytes loads the real partial from the embedded theme.
+// Failing if it doesn't exist forces Step 3 of this task to create it.
+func tagChipsPartialBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tag-chips.html.tmpl")
+	if err != nil {
+		t.Fatalf("partial not yet created: %v", err)
+	}
+	return data
 }
