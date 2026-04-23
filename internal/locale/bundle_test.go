@@ -163,3 +163,36 @@ func TestBundle_LanguageName(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "fr-FR")
 	}
 }
+
+func TestLoadBundle_TagKeys(t *testing.T) {
+	t.Parallel()
+
+	localeFS := fstest.MapFS{
+		"locales/en-US.yml": &fstest.MapFile{
+			Data: []byte("tags_title: Tags\ntags_index_title: \"All tags\"\ntags_tagged_as: \"Pages tagged %s\"\ntags_empty: \"No pages tagged %s\"\n"),
+		},
+	}
+
+	b, err := LoadBundle("en-US", localeFS, "locales")
+	if err != nil {
+		t.Fatalf("LoadBundle: %v", err)
+	}
+
+	// Verify the four new tag-related keys are present and have non-empty values.
+	keys := []struct {
+		key      string
+		expected string
+	}{
+		{"tags_title", "Tags"},
+		{"tags_index_title", "All tags"},
+		{"tags_tagged_as", "Pages tagged %s"},
+		{"tags_empty", "No pages tagged %s"},
+	}
+
+	for _, tt := range keys {
+		got := b.T("en-US", tt.key)
+		if got != tt.expected {
+			t.Errorf("T(%q, %q) = %q, want %q", "en-US", tt.key, got, tt.expected)
+		}
+	}
+}
