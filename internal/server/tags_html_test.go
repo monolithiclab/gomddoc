@@ -105,3 +105,67 @@ func TestTagPageHandler_DecodesPathValue(t *testing.T) {
 		t.Errorf("expected ML Page, got %s", w.Body.String())
 	}
 }
+
+func TestTagsIndexHandler(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"a.md": {Data: []byte("---\ntitle: A\ntags: [go, docs]\n---\n# A")},
+		"b.md": {Data: []byte("---\ntitle: B\ntags: [docs]\n---\n# B")},
+		"c.md": {Data: []byte("---\ntitle: C\ntags: [tutorial]\n---\n# C")},
+	}
+	idx, err := metadata.BuildIndex(t.Context(), files, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+	themeFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl":       {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+		"assets/themes/default/partials/tags-index.html.tmpl":   {Data: []byte("{{ define \"tags-index\" }}<ul>{{ range .Tags }}<li>{{ .Tag }}({{ .Count }})</li>{{ end }}</ul>{{ end }}")},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := template.NewHTMLRenderer(&siteConfig, themeFS)
+	tFunc := func(k string) string { return k }
+	h := NewTagsIndexHandler(idx, r, tFunc, "")
+
+	req := httptest.NewRequest("GET", "/tags/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"docs(2)", "go(1)", "tutorial(1)"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in %s", want, body)
+		}
+	}
+	if i, j, k := strings.Index(body, "docs"), strings.Index(body, "go"), strings.Index(body, "tutorial"); !(i < j && j < k) {
+		t.Errorf("not alphabetical: docs=%d go=%d tutorial=%d", i, j, k)
+	}
+}
+
+func TestTagsIndexHandler_Empty(t *testing.T) {
+	t.Parallel()
+
+	idx, err := metadata.BuildIndex(t.Context(), fstest.MapFS{}, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+	themeFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl":       {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+		"assets/themes/default/partials/tags-index.html.tmpl":   {Data: []byte("{{ define \"tags-index\" }}<p>tags index ({{ len .Tags }} tags)</p>{{ end }}")},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := template.NewHTMLRenderer(&siteConfig, themeFS)
+	tFunc := func(k string) string { return k }
+	h := NewTagsIndexHandler(idx, r, tFunc, "")
+
+	req := httptest.NewRequest("GET", "/tags/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("empty index should still 200, got %d", w.Code)
+	}
+}

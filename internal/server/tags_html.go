@@ -49,3 +49,31 @@ func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	serveWithETag(w, r, body, "text/html; charset=utf-8", "public, max-age=300")
 }
+
+// TagsIndexHandler serves the HTML page for /tags/ (or /{lang}/tags/).
+type TagsIndexHandler struct {
+	index    *metadata.Index
+	renderer *template.HTMLRenderer
+	tFunc    func(string) string
+	lang     string
+}
+
+// NewTagsIndexHandler binds an index, renderer, and translator to a language scope.
+func NewTagsIndexHandler(index *metadata.Index, renderer *template.HTMLRenderer, tFunc func(string) string, lang string) *TagsIndexHandler {
+	return &TagsIndexHandler{index: index, renderer: renderer, tFunc: tFunc, lang: lang}
+}
+
+func (h *TagsIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	tags := h.index.AllTags() // already alphabetical
+	entries := make([]template.TagCount, 0, len(tags))
+	for _, tag := range tags {
+		entries = append(entries, template.TagCount{Tag: tag, Count: len(h.index.ByTag(tag))})
+	}
+	body, err := h.renderer.RenderTagsIndex(r.Context(), h.lang, h.tFunc, entries)
+	if err != nil {
+		slog.Error("render tags index", slog.Any("error", err))
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	serveWithETag(w, r, body, "text/html; charset=utf-8", "public, max-age=300")
+}
