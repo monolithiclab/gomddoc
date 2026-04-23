@@ -36,6 +36,14 @@ type Renderer interface {
 
 	// HasTemplate checks if a layout template exists for the current theme
 	HasTemplate(name string) bool
+
+	// Synthetic tag pages — server-rendered listings derived from the metadata index.
+	// RenderTagPage renders a synthetic /tags/{tag} page with pages sorted by the caller.
+	RenderTagPage(ctx context.Context, lang string, tFunc func(string) string, tag string, pages []metadata.PageInfo) ([]byte, error)
+
+	// RenderTagsIndex renders a synthetic /tags/ page with all tags and their counts.
+	// Tags should already be sorted alphabetically by the caller.
+	RenderTagsIndex(ctx context.Context, lang string, tFunc func(string) string, tags []TagCount) ([]byte, error)
 }
 
 // LanguageInfo holds display information for a language.

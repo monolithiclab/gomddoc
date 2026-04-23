@@ -148,6 +148,13 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		auth.Handle("GET /feed.xml", feedHandler)
 	}
 
+	// Tag routes for default language
+	if opts.MetaIndex != nil && opts.LocaleBundle != nil {
+		defaultTagTFunc := opts.LocaleBundle.TFunc(opts.DefaultLang)
+		auth.Handle("GET /tags/{tag}", NewTagPageHandler(opts.MetaIndex, opts.TemplateRenderer, defaultTagTFunc, ""))
+		auth.Handle("GET /tags/", NewTagsIndexHandler(opts.MetaIndex, opts.TemplateRenderer, defaultTagTFunc, ""))
+	}
+
 	// Per-language sitemap and feed routes
 	for lang, lp := range opts.LangPipelines {
 		prefix := "/" + lang
@@ -157,6 +164,13 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 
 			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, opts.Resolver, prefix)
 			auth.Handle("GET "+prefix+"/feed.xml", langFeedHandler)
+		}
+
+		// Tag routes per language
+		if lp.MetaIndex != nil && opts.LocaleBundle != nil {
+			langTagTFunc := opts.LocaleBundle.TFunc(lang)
+			auth.Handle("GET "+prefix+"/tags/{tag}", NewTagPageHandler(lp.MetaIndex, opts.TemplateRenderer, langTagTFunc, lang))
+			auth.Handle("GET "+prefix+"/tags/", NewTagsIndexHandler(lp.MetaIndex, opts.TemplateRenderer, langTagTFunc, lang))
 		}
 	}
 

@@ -25,8 +25,8 @@ func newTagPageHandler(t *testing.T) (*TagPageHandler, *metadata.Index) {
 	}
 
 	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":      {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-list.html.tmpl":   {Data: []byte("{{ define \"tags-list\" }}<h1>Pages tagged {{ .Tag }}</h1><ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
+		"assets/themes/default/layouts/default.html.tmpl":    {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+		"assets/themes/default/partials/tags-list.html.tmpl": {Data: []byte("{{ define \"tags-list\" }}<h1>Pages tagged {{ .Tag }}</h1><ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
 	}
 	siteConfig := config.NewSiteConfig(".")
 	r := template.NewHTMLRenderer(&siteConfig, themeFS)
@@ -85,8 +85,8 @@ func TestTagPageHandler_DecodesPathValue(t *testing.T) {
 		t.Fatalf("BuildIndex: %v", err)
 	}
 	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":      {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-list.html.tmpl":   {Data: []byte("{{ define \"tags-list\" }}<ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
+		"assets/themes/default/layouts/default.html.tmpl":    {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+		"assets/themes/default/partials/tags-list.html.tmpl": {Data: []byte("{{ define \"tags-list\" }}<ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
 	}
 	siteConfig := config.NewSiteConfig(".")
 	r := template.NewHTMLRenderer(&siteConfig, themeFS)
@@ -119,8 +119,8 @@ func TestTagsIndexHandler(t *testing.T) {
 		t.Fatalf("BuildIndex: %v", err)
 	}
 	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":       {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-index.html.tmpl":   {Data: []byte("{{ define \"tags-index\" }}<ul>{{ range .Tags }}<li>{{ .Tag }}({{ .Count }})</li>{{ end }}</ul>{{ end }}")},
+		"assets/themes/default/layouts/default.html.tmpl":     {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+		"assets/themes/default/partials/tags-index.html.tmpl": {Data: []byte("{{ define \"tags-index\" }}<ul>{{ range .Tags }}<li>{{ .Tag }}({{ .Count }})</li>{{ end }}</ul>{{ end }}")},
 	}
 	siteConfig := config.NewSiteConfig(".")
 	r := template.NewHTMLRenderer(&siteConfig, themeFS)
@@ -153,8 +153,8 @@ func TestTagsIndexHandler_Empty(t *testing.T) {
 		t.Fatalf("BuildIndex: %v", err)
 	}
 	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":       {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-index.html.tmpl":   {Data: []byte("{{ define \"tags-index\" }}<p>tags index ({{ len .Tags }} tags)</p>{{ end }}")},
+		"assets/themes/default/layouts/default.html.tmpl":     {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+		"assets/themes/default/partials/tags-index.html.tmpl": {Data: []byte("{{ define \"tags-index\" }}<p>tags index ({{ len .Tags }} tags)</p>{{ end }}")},
 	}
 	siteConfig := config.NewSiteConfig(".")
 	r := template.NewHTMLRenderer(&siteConfig, themeFS)

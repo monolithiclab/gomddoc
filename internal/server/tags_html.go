@@ -14,13 +14,13 @@ import (
 // TagPageHandler serves the HTML page for /tags/{tag} (or /{lang}/tags/{tag}).
 type TagPageHandler struct {
 	index    *metadata.Index
-	renderer *template.HTMLRenderer
+	renderer template.Renderer
 	tFunc    func(string) string
 	lang     string // "" for default language
 }
 
 // NewTagPageHandler binds an index, renderer, and translator to a language scope.
-func NewTagPageHandler(index *metadata.Index, renderer *template.HTMLRenderer, tFunc func(string) string, lang string) *TagPageHandler {
+func NewTagPageHandler(index *metadata.Index, renderer template.Renderer, tFunc func(string) string, lang string) *TagPageHandler {
 	return &TagPageHandler{index: index, renderer: renderer, tFunc: tFunc, lang: lang}
 }
 
@@ -53,13 +53,13 @@ func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // TagsIndexHandler serves the HTML page for /tags/ (or /{lang}/tags/).
 type TagsIndexHandler struct {
 	index    *metadata.Index
-	renderer *template.HTMLRenderer
+	renderer template.Renderer
 	tFunc    func(string) string
 	lang     string
 }
 
 // NewTagsIndexHandler binds an index, renderer, and translator to a language scope.
-func NewTagsIndexHandler(index *metadata.Index, renderer *template.HTMLRenderer, tFunc func(string) string, lang string) *TagsIndexHandler {
+func NewTagsIndexHandler(index *metadata.Index, renderer template.Renderer, tFunc func(string) string, lang string) *TagsIndexHandler {
 	return &TagsIndexHandler{index: index, renderer: renderer, tFunc: tFunc, lang: lang}
 }
 
