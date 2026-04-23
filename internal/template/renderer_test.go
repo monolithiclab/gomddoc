@@ -2151,3 +2151,71 @@ func tagsListPartialBytes(t *testing.T) []byte {
 	}
 	return data
 }
+
+func TestRenderTagsIndex(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body>{{ .Page.Content }}</body></html>`,
+		)},
+		"assets/themes/default/partials/tags-index.html.tmpl": {Data: tagsIndexPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tags := []TagCount{
+		{Tag: "go", Count: 4},
+		{Tag: "kubernetes", Count: 1},
+		{Tag: "tutorial", Count: 7},
+	}
+
+	tFunc := func(k string) string { return map[string]string{"tags_index_title": "All tags"}[k] }
+	out, err := r.RenderTagsIndex(context.Background(), "", tFunc, tags)
+	if err != nil {
+		t.Fatalf("RenderTagsIndex: %v", err)
+	}
+
+	s := string(out)
+	for _, want := range []string{
+		"All tags",
+		`href="/tags/go"`, ">go<", "(4)",
+		`href="/tags/kubernetes"`, "(1)",
+		`href="/tags/tutorial"`, "(7)",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("output missing %q\noutput: %s", want, s)
+		}
+	}
+}
+
+func TestRenderTagsIndex_Empty(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body>{{ .Page.Content }}</body></html>`,
+		)},
+		"assets/themes/default/partials/tags-index.html.tmpl": {Data: tagsIndexPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tFunc := func(k string) string { return map[string]string{"tags_index_title": "All tags"}[k] }
+	out, err := r.RenderTagsIndex(context.Background(), "", tFunc, nil)
+	if err != nil {
+		t.Fatalf("RenderTagsIndex empty: %v", err)
+	}
+	if !strings.Contains(string(out), "All tags") {
+		t.Errorf("expected header in empty state, got %s", out)
+	}
+}
+
+func tagsIndexPartialBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tags-index.html.tmpl")
+	if err != nil {
+		t.Fatalf("partial not yet created: %v", err)
+	}
+	return data
+}

@@ -338,6 +338,46 @@ type tagPageData struct {
 	T     func(string) string
 }
 
+// TagCount is one entry in the tag index.
+type TagCount struct {
+	Tag   string
+	Count int
+}
+
+// RenderTagsIndex renders the body of /tags/ (the index of all tags) through
+// the standard theme layout. tags should already be sorted alphabetically.
+func (h *HTMLRenderer) RenderTagsIndex(ctx context.Context, lang string, tFunc func(string) string, tags []TagCount) ([]byte, error) {
+	if tFunc == nil {
+		tFunc = func(k string) string { return k }
+	}
+	body, err := h.executePartial("tags-index", tagsIndexData{
+		Tags: tags,
+		Lang: lang,
+		T:    tFunc,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("render tags-index: %w", err)
+	}
+
+	pagePath := "/tags/"
+	if lang != "" {
+		pagePath = "/" + lang + "/tags/"
+	}
+	page := PageContext{
+		Path:    pagePath,
+		Content: template.HTML(body), // #nosec G203 -- partial output is trusted
+	}
+	tc := &TemplateContext{Site: h.siteConfig, Page: page}
+	tc.WithI18n(lang, tFunc, nil)
+	return h.Render(ctx, "default.html.tmpl", tc)
+}
+
+type tagsIndexData struct {
+	Tags []TagCount
+	Lang string
+	T    func(string) string
+}
+
 // executePartial runs a single named partial against data and returns the
 // rendered bytes. Used for server-side composition of synthetic pages
 // (tag listings, tag index) where the body is pre-built then passed
