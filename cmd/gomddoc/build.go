@@ -765,11 +765,14 @@ func (b *BuildCmd) emitTagPages(ctx context.Context, p *Pipeline, lang string, t
 	}
 
 	tags := p.MetaIndex.AllTags()
-
+	pagesPerTag := make(map[string][]metadata.PageInfo, len(tags))
 	entries := make([]tmpl.TagCount, 0, len(tags))
 	for _, tag := range tags {
-		entries = append(entries, tmpl.TagCount{Tag: tag, Count: len(p.MetaIndex.ByTag(tag))})
+		pages := p.MetaIndex.ByTag(tag)
+		pagesPerTag[tag] = pages
+		entries = append(entries, tmpl.TagCount{Tag: tag, Count: len(pages)})
 	}
+
 	body, err := p.TemplateRenderer.RenderTagsIndex(ctx, lang, tFunc, entries)
 	if err != nil {
 		return fmt.Errorf("render tags index: %w", err)
@@ -779,10 +782,8 @@ func (b *BuildCmd) emitTagPages(ctx context.Context, p *Pipeline, lang string, t
 	}
 
 	for _, tag := range tags {
-		pages := p.MetaIndex.ByTag(tag)
-		slices.SortFunc(pages, func(a, b metadata.PageInfo) int {
-			return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
-		})
+		pages := pagesPerTag[tag]
+		slices.SortFunc(pages, metadata.CompareTitles)
 		body, err := p.TemplateRenderer.RenderTagPage(ctx, lang, tFunc, tag, pages)
 		if err != nil {
 			return fmt.Errorf("render tag %q: %w", tag, err)

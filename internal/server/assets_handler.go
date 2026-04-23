@@ -50,5 +50,5 @@ func (h *AssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serveWithETag(w, r, content, negotiate.DetectMIME(filePath), "public, max-age=31536000, immutable")
+	serveWithETag(w, r, content, negotiate.DetectMIME(filePath), cacheImmutable)
 }

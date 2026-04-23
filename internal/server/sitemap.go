@@ -66,7 +66,7 @@ func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Content-Type", mimeXML)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }

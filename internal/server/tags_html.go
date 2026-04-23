@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/template"
@@ -37,9 +36,7 @@ func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slices.SortFunc(pages, func(a, b metadata.PageInfo) int {
-		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
-	})
+	slices.SortFunc(pages, metadata.CompareTitles)
 
 	body, err := h.renderer.RenderTagPage(r.Context(), h.lang, h.tFunc, tag, pages)
 	if err != nil {
@@ -47,7 +44,7 @@ func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	serveWithETag(w, r, body, "text/html; charset=utf-8", "public, max-age=300")
+	serveWithETag(w, r, body, mimeHTML, cacheDynamic)
 }
 
 // TagsIndexHandler serves the HTML page for /tags/ (or /{lang}/tags/).
@@ -75,5 +72,5 @@ func (h *TagsIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	serveWithETag(w, r, body, "text/html; charset=utf-8", "public, max-age=300")
+	serveWithETag(w, r, body, mimeHTML, cacheDynamic)
 }

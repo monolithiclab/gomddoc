@@ -234,6 +234,11 @@ func (idx *Index) ByTag(tag string) []PageInfo {
 	return result
 }
 
+// CompareTitles is a case-insensitive comparator for use with slices.SortFunc.
+func CompareTitles(a, b PageInfo) int {
+	return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+}
+
 // frontmatter delimiter
 var fmDelimiter = []byte("---")
 
