@@ -213,22 +213,49 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 // redirectFinderAdapter wraps a navigation.Generator into a server.RedirectFinder,
 // finding the first page under a directory for redirect when no index exists.
 func redirectFinderAdapter(navGen *navigation.Generator) server.RedirectFinder {
-	return func(dirPath string) string {
-		tree := navGen.Generate(dirPath)
-		return navigation.FindFirstPage(tree)
+	return func(string) string {
+		return navigation.FindFirstPage(navGen.Tree())
 	}
 }
 
-// navBuilderAdapter wraps a navigation.Generator into an enricher.NavBuilder,
-// converting NavNode trees to enricher.NavItem slices.
+// navBuilderAdapter wraps a navigation.Generator into an enricher.NavBuilder.
 func navBuilderAdapter(navGen *navigation.Generator) enricher.NavBuilder {
 	return func(currentPath string) []enricher.NavItem {
-		root := navGen.Generate(currentPath)
-		if root == nil {
+		tree := navGen.Tree()
+		if tree == nil {
 			return nil
 		}
-		return convertNavNodes(root.Children)
+		return buildNavItems(tree.Children, navigation.NormalizeRequestPath(currentPath))
 	}
+}
+
+// buildNavItems converts NavNodes into NavItems, marking the leaf matching
+// currentPath as Active and ancestor directories as Open. currentPath must be
+// pre-normalized via navigation.NormalizeRequestPath.
+func buildNavItems(nodes []*navigation.NavNode, currentPath string) []enricher.NavItem {
+	items := make([]enricher.NavItem, len(nodes))
+	for i, node := range nodes {
+		children := buildNavItems(node.Children, currentPath)
+		active := !node.IsDir && node.CompareClean(currentPath)
+		open := active
+		if !open {
+			for _, c := range children {
+				if c.Active || c.Open {
+					open = true
+					break
+				}
+			}
+		}
+		items[i] = enricher.NavItem{
+			Title:    node.Label,
+			Path:     node.Path,
+			IsDir:    node.IsDir,
+			Active:   active,
+			Open:     open,
+			Children: children,
+		}
+	}
+	return items
 }
 
 // buildGitConfig constructs a GitProviderConfig from CLI flags.
@@ -406,57 +433,16 @@ func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer, admin
 	return g.Wait()
 }
 
-// prevNextBuilderAdapter wraps a navigation.Generator into an enricher.PrevNextBuilder,
-// computing previous/next page links from the navigation tree.
+// prevNextBuilderAdapter wraps a navigation.Generator into an enricher.PrevNextBuilder.
 func prevNextBuilderAdapter(navGen *navigation.Generator) enricher.PrevNextBuilder {
 	return func(currentPath string) (prev, next *enricher.PageLink) {
-		root := navGen.Generate(currentPath)
-		if root == nil {
-			return nil, nil
+		prevEntry, nextEntry := navGen.PrevNext(currentPath)
+		if prevEntry != nil {
+			prev = &enricher.PageLink{Path: prevEntry.Path, Title: prevEntry.Label}
 		}
-		prevPath, nextPath := navigation.FindPrevNext(root, currentPath)
-		if prevPath != "" {
-			prev = &enricher.PageLink{
-				Path:  prevPath,
-				Title: findNodeLabel(root, prevPath),
-			}
-		}
-		if nextPath != "" {
-			next = &enricher.PageLink{
-				Path:  nextPath,
-				Title: findNodeLabel(root, nextPath),
-			}
+		if nextEntry != nil {
+			next = &enricher.PageLink{Path: nextEntry.Path, Title: nextEntry.Label}
 		}
 		return prev, next
 	}
-}
-
-// findNodeLabel searches the navigation tree for a node matching path
-// and returns its label. Returns "" if not found.
-func findNodeLabel(node *navigation.NavNode, path string) string {
-	if !node.IsDir && node.Path == path {
-		return node.Label
-	}
-	for _, child := range node.Children {
-		if label := findNodeLabel(child, path); label != "" {
-			return label
-		}
-	}
-	return ""
-}
-
-// convertNavNodes converts navigation.NavNode children to enricher.NavItem slices.
-func convertNavNodes(nodes []*navigation.NavNode) []enricher.NavItem {
-	items := make([]enricher.NavItem, len(nodes))
-	for i, node := range nodes {
-		items[i] = enricher.NavItem{
-			Title:    node.Label,
-			Path:     node.Path,
-			IsDir:    node.IsDir,
-			Active:   node.IsActive,
-			Open:     node.IsOpen,
-			Children: convertNavNodes(node.Children),
-		}
-	}
-	return items
 }

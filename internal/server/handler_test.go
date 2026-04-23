@@ -14,12 +14,11 @@ import (
 )
 
 // redirectFinderFromFS creates a RedirectFinder using a navigation.Generator,
-// mirroring the adapter pattern used in cmd/gomddoc/serve.go.
+// mirroring the adapter pattern used in cmd/gomddoc/pipeline.go.
 func redirectFinderFromFS(files fstest.MapFS, defaultIndex string) RedirectFinder {
 	navGen := navigation.NewGenerator(files, defaultIndex, nil, nil)
-	return func(dirPath string) string {
-		tree := navGen.Generate(dirPath)
-		return navigation.FindFirstPage(tree)
+	return func(string) string {
+		return navigation.FindFirstPage(navGen.Tree())
 	}
 }
 

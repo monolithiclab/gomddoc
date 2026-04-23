@@ -13,27 +13,48 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
-// NavNode represents a node in the navigation tree.
+// NavNode represents a node in the navigation tree. The cached tree returned
+// by Generator.Tree is immutable — callers must not mutate any node.
 type NavNode struct {
 	Label    string     // Display label for this node
 	Path     string     // URL path for this node
 	IsDir    bool       // Whether this node represents a directory
-	IsActive bool       // Whether this node is the current page
-	IsOpen   bool       // Whether this node or a descendant is active
 	Children []*NavNode // Child nodes
+
+	// cleanPath is the normalized form of Path used for active-path comparison
+	// (no leading/trailing slash, lexically cleaned). Pre-computed at cache build
+	// time so per-request walks don't reallocate.
+	cleanPath string
 }
 
-// Generator builds navigation trees from an fs.FS.
-// The base tree (without active/open markings) is built once on first call
-// and cached. Each Generate() call clones the cached tree and applies
-// active-path marking to the clone.
+// CompareClean reports whether the node's path matches a pre-cleaned request
+// path. Generator-built nodes use the pre-computed clean path; manually-built
+// nodes (in tests) fall back to normalizing on the fly.
+func (n *NavNode) CompareClean(cleanRequestPath string) bool {
+	cp := n.cleanPath
+	if cp == "" && n.Path != "" {
+		cp = NormalizeRequestPath(n.Path)
+	}
+	return cp == cleanRequestPath
+}
+
+// PageEntry is a leaf page in the navigation tree.
+type PageEntry struct {
+	Path  string // URL path (e.g. "/guide/setup")
+	Label string // Display label
+}
+
+// Generator builds and caches a navigation tree from an fs.FS.
 type Generator struct {
 	rootFS          fs.FS
 	defaultIndex    string
 	excludePatterns []string
 	resolver        *resolve.PathResolver
-	cachedTree      *NavNode
-	cacheOnce       sync.Once
+
+	cacheOnce   sync.Once
+	cachedTree  *NavNode
+	cachedPages []PageEntry
+	cachedIndex map[string]int // cleanPath → index in cachedPages
 }
 
 // NewGenerator creates a new navigation generator.
@@ -46,46 +67,59 @@ func NewGenerator(rootFS fs.FS, defaultIndex string, excludePatterns []string, r
 	}
 }
 
-// Generate builds a navigation tree with the given path marked as active.
-// The base tree is built once (on first call) by walking rootFS, then cached.
-// Subsequent calls clone the cached tree and apply active-path marking.
-func (g *Generator) Generate(currentPath string) *NavNode {
-	g.cacheOnce.Do(func() {
-		root := &NavNode{
-			Label: "Root",
-			Path:  "/",
-			IsDir: true,
-		}
-		g.buildTree(root, ".")
-		if len(root.Children) > 0 {
-			g.cachedTree = root
-		}
-	})
-
-	if g.cachedTree == nil {
-		return nil
-	}
-
-	tree := cloneTree(g.cachedTree)
-	g.markActive(tree, cleanPath(currentPath))
-	return tree
+// Tree returns the cached navigation tree, building it on first call.
+// Returns nil when no renderable pages exist.
+func (g *Generator) Tree() *NavNode {
+	g.ensureCache()
+	return g.cachedTree
 }
 
-// cloneTree creates a deep copy of a NavNode tree.
-// IsActive and IsOpen are reset to false in the clone.
-func cloneTree(node *NavNode) *NavNode {
-	clone := &NavNode{
-		Label: node.Label,
-		Path:  node.Path,
-		IsDir: node.IsDir,
+// PrevNext returns the previous and next leaf pages relative to currentPath
+// in depth-first navigation order. Either may be nil at the boundaries or
+// when currentPath is not a leaf in the tree. Lookup is O(1).
+func (g *Generator) PrevNext(currentPath string) (prev, next *PageEntry) {
+	g.ensureCache()
+	if g.cachedIndex == nil {
+		return nil, nil
 	}
-	if len(node.Children) > 0 {
-		clone.Children = make([]*NavNode, len(node.Children))
-		for i, child := range node.Children {
-			clone.Children[i] = cloneTree(child)
+	idx, ok := g.cachedIndex[NormalizeRequestPath(currentPath)]
+	if !ok {
+		return nil, nil
+	}
+	if idx > 0 {
+		prev = &g.cachedPages[idx-1]
+	}
+	if idx+1 < len(g.cachedPages) {
+		next = &g.cachedPages[idx+1]
+	}
+	return prev, next
+}
+
+func (g *Generator) ensureCache() {
+	g.cacheOnce.Do(func() {
+		root := &NavNode{Label: "Root", Path: "/", IsDir: true}
+		g.buildTree(root, ".")
+		if len(root.Children) == 0 {
+			return
+		}
+		g.cachedTree = root
+		g.cachedPages = root.appendLeaves(nil)
+		g.cachedIndex = make(map[string]int, len(g.cachedPages))
+		for i, p := range g.cachedPages {
+			g.cachedIndex[NormalizeRequestPath(p.Path)] = i
+		}
+	})
+}
+
+func (n *NavNode) appendLeaves(out []PageEntry) []PageEntry {
+	for _, child := range n.Children {
+		if child.IsDir {
+			out = child.appendLeaves(out)
+		} else {
+			out = append(out, PageEntry{Path: child.Path, Label: child.Label})
 		}
 	}
-	return clone
+	return out
 }
 
 // buildTree recursively walks the filesystem and populates the tree.
@@ -120,9 +154,10 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 		if entry.IsDir() {
 			urlPath := "/" + entryPath + "/"
 			node := &NavNode{
-				Label: text.TitleCase(name),
-				Path:  urlPath,
-				IsDir: true,
+				Label:     text.TitleCase(name),
+				Path:      urlPath,
+				IsDir:     true,
+				cleanPath: NormalizeRequestPath(urlPath),
 			}
 			g.buildTree(node, entryPath)
 			// Only include directories with renderable children
@@ -145,33 +180,14 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 				base = strings.ReplaceAll(base, "_", " ")
 				label = text.TitleCase(base)
 			}
-			node := &NavNode{
-				Label: label,
-				Path:  urlPath,
-				IsDir: false,
-			}
-			parent.Children = append(parent.Children, node)
+			parent.Children = append(parent.Children, &NavNode{
+				Label:     label,
+				Path:      urlPath,
+				IsDir:     false,
+				cleanPath: NormalizeRequestPath(urlPath),
+			})
 		}
 	}
-}
-
-// markActive marks the active node and opens all ancestor directories.
-// Returns true if this node or any descendant is active.
-func (g *Generator) markActive(node *NavNode, currentPath string) bool {
-	if !node.IsDir && cleanPath(node.Path) == currentPath {
-		node.IsActive = true
-		node.IsOpen = true
-		return true
-	}
-
-	for _, child := range node.Children {
-		if g.markActive(child, currentPath) {
-			node.IsOpen = true
-			return true
-		}
-	}
-
-	return false
 }
 
 // extractTitle reads the first # heading from a markdown file, skipping
@@ -232,9 +248,10 @@ func FindFirstPage(root *NavNode) string {
 	return ""
 }
 
-// cleanPath normalizes a URL path for comparison by removing trailing slashes
-// and leading slashes, then cleaning it.
-func cleanPath(p string) string {
+// NormalizeRequestPath canonicalizes an HTTP request path for comparison
+// against navigation node paths (use NavNode.CompareClean to perform the
+// match). Strips leading/trailing slashes and lexically cleans the path.
+func NormalizeRequestPath(p string) string {
 	p = path.Clean(p)
 	p = strings.TrimPrefix(p, "/")
 	p = strings.TrimSuffix(p, "/")

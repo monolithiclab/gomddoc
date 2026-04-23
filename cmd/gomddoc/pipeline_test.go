@@ -195,71 +195,82 @@ func TestSetupPipeline(t *testing.T) {
 	}
 }
 
-func TestConvertNavNodes(t *testing.T) {
+func TestBuildNavItems_ActiveAndOpen(t *testing.T) {
 	t.Parallel()
 
 	nodes := []*navigation.NavNode{
+		{Label: "Guide", Path: "/docs/guide.md"},
 		{
-			Label:    "Guide",
-			Path:     "/docs/guide.md",
-			IsDir:    false,
-			IsActive: true,
-			IsOpen:   false,
-			Children: []*navigation.NavNode{},
-		},
-		{
-			Label:    "API",
-			Path:     "/docs/api",
-			IsDir:    true,
-			IsActive: false,
-			IsOpen:   true,
+			Label: "API",
+			Path:  "/docs/api/",
+			IsDir: true,
 			Children: []*navigation.NavNode{
-				{
-					Label: "Types",
-					Path:  "/docs/api/types.md",
-				},
+				{Label: "Types", Path: "/docs/api/types.md"},
+				{Label: "Errors", Path: "/docs/api/errors.md"},
 			},
 		},
 	}
 
-	items := convertNavNodes(nodes)
+	items := buildNavItems(nodes, navigation.NormalizeRequestPath("/docs/api/types.md"))
 	if len(items) != 2 {
-		t.Fatalf("convertNavNodes() returned %d items, want 2", len(items))
+		t.Fatalf("buildNavItems returned %d items, want 2", len(items))
 	}
 
-	if items[0].Title != "Guide" {
-		t.Errorf("items[0].Title = %q, want %q", items[0].Title, "Guide")
-	}
-	if items[0].Path != "/docs/guide.md" {
-		t.Errorf("items[0].Path = %q, want %q", items[0].Path, "/docs/guide.md")
-	}
-	if !items[0].Active {
-		t.Error("items[0].Active should be true")
+	guide := items[0]
+	if guide.Active || guide.Open {
+		t.Errorf("Guide should be inactive/closed, got active=%v open=%v", guide.Active, guide.Open)
 	}
 
-	if items[1].Title != "API" {
-		t.Errorf("items[1].Title = %q, want %q", items[1].Title, "API")
+	api := items[1]
+	if !api.IsDir {
+		t.Error("API should be a dir")
 	}
-	if !items[1].IsDir {
-		t.Error("items[1].IsDir should be true")
+	if api.Active {
+		t.Error("API dir should not be Active (only leaves can be)")
 	}
-	if !items[1].Open {
-		t.Error("items[1].Open should be true")
+	if !api.Open {
+		t.Error("API dir should be Open because a descendant is active")
 	}
-	if len(items[1].Children) != 1 {
-		t.Fatalf("items[1].Children = %d, want 1", len(items[1].Children))
+	if len(api.Children) != 2 {
+		t.Fatalf("API children = %d, want 2", len(api.Children))
 	}
-	if items[1].Children[0].Title != "Types" {
-		t.Errorf("items[1].Children[0].Title = %q, want %q", items[1].Children[0].Title, "Types")
+	if !api.Children[0].Active {
+		t.Error("Types should be Active")
+	}
+	if api.Children[1].Active || api.Children[1].Open {
+		t.Errorf("Errors should be inactive/closed, got active=%v open=%v", api.Children[1].Active, api.Children[1].Open)
 	}
 }
 
-func TestConvertNavNodes_Empty(t *testing.T) {
+func TestBuildNavItems_NoMatch(t *testing.T) {
 	t.Parallel()
 
-	items := convertNavNodes(nil)
+	nodes := []*navigation.NavNode{
+		{Label: "Guide", Path: "/guide.md"},
+		{Label: "API", Path: "/api/", IsDir: true, Children: []*navigation.NavNode{
+			{Label: "Types", Path: "/api/types.md"},
+		}},
+	}
+
+	items := buildNavItems(nodes, navigation.NormalizeRequestPath("/missing.md"))
+	for _, it := range items {
+		if it.Active || it.Open {
+			t.Errorf("no node should be active/open when current path is absent, got %+v", it)
+		}
+		for _, child := range it.Children {
+			if child.Active || child.Open {
+				t.Errorf("no descendant should be active/open, got %+v", child)
+			}
+		}
+	}
+}
+
+func TestBuildNavItems_Empty(t *testing.T) {
+	t.Parallel()
+
+	items := buildNavItems(nil, "")
 	if len(items) != 0 {
-		t.Errorf("convertNavNodes(nil) returned %d items, want 0", len(items))
+		t.Errorf("buildNavItems(nil) returned %d items, want 0", len(items))
 	}
 }
 
@@ -313,4 +324,56 @@ func TestRedirectFinderAdapter(t *testing.T) {
 
 	// The adapter always returns a result based on navigation tree
 	// since the generator builds from content root regardless of path
+}
+
+func TestPrevNextBuilderAdapter(t *testing.T) {
+	t.Parallel()
+
+	// Alphabetical leaf order: faq.md, intro.md, zeta.md
+	contentRoot := fstest.MapFS{
+		"intro.md": &fstest.MapFile{Data: []byte("# Intro")},
+		"faq.md":   &fstest.MapFile{Data: []byte("# FAQ")},
+		"zeta.md":  &fstest.MapFile{Data: []byte("# Zeta")},
+	}
+	navGen := navigation.NewGenerator(contentRoot, "README.md", nil, nil)
+	builder := prevNextBuilderAdapter(navGen)
+
+	// Middle page: both prev and next populated.
+	prev, next := builder("/intro.md")
+	if prev == nil || prev.Path != "/faq.md" {
+		t.Errorf("prev = %+v, want path=/faq.md", prev)
+	}
+	if next == nil || next.Path != "/zeta.md" {
+		t.Errorf("next = %+v, want path=/zeta.md", next)
+	}
+	if prev != nil && prev.Title == "" {
+		t.Error("prev.Title should be populated from PageEntry.Label")
+	}
+	if next != nil && next.Title == "" {
+		t.Error("next.Title should be populated from PageEntry.Label")
+	}
+
+	// First page: only next.
+	prev, next = builder("/faq.md")
+	if prev != nil {
+		t.Errorf("prev = %+v, want nil at first page", prev)
+	}
+	if next == nil {
+		t.Error("next should be set at first page")
+	}
+
+	// Last page: only prev.
+	prev, next = builder("/zeta.md")
+	if prev == nil {
+		t.Error("prev should be set at last page")
+	}
+	if next != nil {
+		t.Errorf("next = %+v, want nil at last page", next)
+	}
+
+	// Not in tree: both nil.
+	prev, next = builder("/missing.md")
+	if prev != nil || next != nil {
+		t.Errorf("prev=%+v next=%+v, want both nil for missing path", prev, next)
+	}
 }

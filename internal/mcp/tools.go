@@ -217,7 +217,7 @@ func (s *MCPServer) handleGetTOC(ctx context.Context, _ *mcp.CallToolRequest, in
 	}
 
 	navGen := navigation.NewGenerator(contentRoot, s.deps.DefaultIndex, s.deps.ExcludePatterns, s.deps.Resolver)
-	root := navGen.Generate(input.Path)
+	root := navGen.Tree()
 	if root == nil {
 		return textResult("No navigation tree available."), nil, nil
 	}

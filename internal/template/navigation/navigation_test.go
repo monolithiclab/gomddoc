@@ -13,7 +13,7 @@ func init() {
 	_ = mime.AddExtensionType(".md", "text/markdown")
 }
 
-func TestGenerate_BasicTree(t *testing.T) {
+func TestTree_BasicShape(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -25,7 +25,7 @@ func TestGenerate_BasicTree(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/guide.md")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root node")
@@ -48,40 +48,23 @@ func TestGenerate_BasicTree(t *testing.T) {
 	}
 }
 
-func TestGenerate_ActiveMarking(t *testing.T) {
+func TestTree_CachedAcrossCalls(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
-		"guide.md":        {Data: []byte("# Guide")},
-		"docs/install.md": {Data: []byte("# Install")},
+		"guide.md": {Data: []byte("# Guide")},
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/docs/install.md")
+	first := gen.Tree()
+	second := gen.Tree()
 
-	if root == nil {
-		t.Fatal("expected non-nil root node")
-	}
-
-	// Root should be open (descendant is active)
-	if !root.IsOpen {
-		t.Error("root should be open when descendant is active")
-	}
-
-	// Find docs dir
-	docsDir := root.Children[0]
-	if !docsDir.IsOpen {
-		t.Error("docs dir should be open when child is active")
-	}
-
-	// Find install.md
-	installNode := docsDir.Children[0]
-	if !installNode.IsActive {
-		t.Error("install.md should be marked active")
+	if first != second {
+		t.Errorf("Tree() should return the same cached pointer; got %p then %p", first, second)
 	}
 }
 
-func TestGenerate_HiddenFilesSkipped(t *testing.T) {
+func TestTree_HiddenFilesSkipped(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -91,7 +74,7 @@ func TestGenerate_HiddenFilesSkipped(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root node")
@@ -106,7 +89,7 @@ func TestGenerate_HiddenFilesSkipped(t *testing.T) {
 	}
 }
 
-func TestGenerate_DefaultIndexSkipped(t *testing.T) {
+func TestTree_DefaultIndexSkipped(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -117,13 +100,12 @@ func TestGenerate_DefaultIndexSkipped(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root node")
 	}
 
-	// Check that README.md files are excluded everywhere
 	for _, child := range root.Children {
 		if strings.Contains(child.Path, "README") {
 			t.Errorf("README.md should be excluded, found %q", child.Path)
@@ -136,7 +118,7 @@ func TestGenerate_DefaultIndexSkipped(t *testing.T) {
 	}
 }
 
-func TestGenerate_EmptyDirsExcluded(t *testing.T) {
+func TestTree_EmptyDirsExcluded(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -145,19 +127,18 @@ func TestGenerate_EmptyDirsExcluded(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root node")
 	}
 
-	// Should only have guide.md, not the empty dir
 	if len(root.Children) != 1 {
 		t.Fatalf("expected 1 child (empty dir excluded), got %d", len(root.Children))
 	}
 }
 
-func TestGenerate_NonMDFilesSkipped(t *testing.T) {
+func TestTree_NonMDFilesSkipped(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -170,7 +151,7 @@ func TestGenerate_NonMDFilesSkipped(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root node")
@@ -181,7 +162,7 @@ func TestGenerate_NonMDFilesSkipped(t *testing.T) {
 	}
 }
 
-func TestGenerate_TitleExtraction(t *testing.T) {
+func TestTree_TitleExtraction(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -220,7 +201,7 @@ func TestGenerate_TitleExtraction(t *testing.T) {
 			}
 
 			gen := NewGenerator(fs, "README.md", nil, nil)
-			root := gen.Generate("/")
+			root := gen.Tree()
 
 			if root == nil {
 				t.Fatal("expected non-nil root")
@@ -237,7 +218,7 @@ func TestGenerate_TitleExtraction(t *testing.T) {
 	}
 }
 
-func TestGenerate_SortOrder(t *testing.T) {
+func TestTree_SortOrder(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -248,7 +229,7 @@ func TestGenerate_SortOrder(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root")
@@ -278,20 +259,20 @@ func TestGenerate_SortOrder(t *testing.T) {
 	}
 }
 
-func TestGenerate_EmptyFS(t *testing.T) {
+func TestTree_EmptyFS(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root != nil {
 		t.Error("expected nil root for empty filesystem")
 	}
 }
 
-func TestGenerate_OnlyDefaultIndex(t *testing.T) {
+func TestTree_OnlyDefaultIndex(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -299,14 +280,14 @@ func TestGenerate_OnlyDefaultIndex(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root != nil {
 		t.Error("expected nil root when only default index exists")
 	}
 }
 
-func TestCleanPath(t *testing.T) {
+func TestNormalizeRequestPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -325,9 +306,9 @@ func TestCleanPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
-			got := cleanPath(tt.input)
+			got := NormalizeRequestPath(tt.input)
 			if got != tt.want {
-				t.Errorf("cleanPath(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("NormalizeRequestPath(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
@@ -336,13 +317,12 @@ func TestCleanPath(t *testing.T) {
 func TestExtractTitle_FrontMatter(t *testing.T) {
 	t.Parallel()
 
-	// Ensure front matter is properly skipped and the heading after it is found
 	fs := fstest.MapFS{
 		"page.md": {Data: []byte("---\ntitle: FM Title\nauthor: Test\n---\n\nSome intro text.\n\n# Real Heading\n\nContent.")},
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root")
@@ -353,7 +333,7 @@ func TestExtractTitle_FrontMatter(t *testing.T) {
 	}
 }
 
-func TestGenerate_DeepNesting(t *testing.T) {
+func TestTree_DeepNesting(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
@@ -361,7 +341,7 @@ func TestGenerate_DeepNesting(t *testing.T) {
 	}
 
 	gen := NewGenerator(fs, "README.md", nil, nil)
-	root := gen.Generate("/a/b/c/deep.md")
+	root := gen.Tree()
 
 	if root == nil {
 		t.Fatal("expected non-nil root")
@@ -369,23 +349,23 @@ func TestGenerate_DeepNesting(t *testing.T) {
 
 	// Navigate: root -> a -> b -> c -> deep.md
 	aNode := root.Children[0]
-	if aNode.Label != "A" || !aNode.IsDir || !aNode.IsOpen {
-		t.Errorf("expected open dir A, got label=%q isDir=%v isOpen=%v", aNode.Label, aNode.IsDir, aNode.IsOpen)
+	if aNode.Label != "A" || !aNode.IsDir {
+		t.Errorf("expected dir A, got label=%q isDir=%v", aNode.Label, aNode.IsDir)
 	}
 
 	bNode := aNode.Children[0]
-	if bNode.Label != "B" || !bNode.IsDir || !bNode.IsOpen {
-		t.Errorf("expected open dir B, got label=%q isDir=%v isOpen=%v", bNode.Label, bNode.IsDir, bNode.IsOpen)
+	if bNode.Label != "B" || !bNode.IsDir {
+		t.Errorf("expected dir B, got label=%q isDir=%v", bNode.Label, bNode.IsDir)
 	}
 
 	cNode := bNode.Children[0]
-	if cNode.Label != "C" || !cNode.IsDir || !cNode.IsOpen {
-		t.Errorf("expected open dir C, got label=%q isDir=%v isOpen=%v", cNode.Label, cNode.IsDir, cNode.IsOpen)
+	if cNode.Label != "C" || !cNode.IsDir {
+		t.Errorf("expected dir C, got label=%q isDir=%v", cNode.Label, cNode.IsDir)
 	}
 
 	deepNode := cNode.Children[0]
-	if deepNode.Label != "Deep Page" || !deepNode.IsActive {
-		t.Errorf("expected active 'Deep Page', got label=%q isActive=%v", deepNode.Label, deepNode.IsActive)
+	if deepNode.Label != "Deep Page" || deepNode.IsDir {
+		t.Errorf("expected leaf 'Deep Page', got label=%q isDir=%v", deepNode.Label, deepNode.IsDir)
 	}
 }
 
@@ -463,7 +443,7 @@ func TestFindFirstPage(t *testing.T) {
 	}
 }
 
-func TestGenerate_CleanPaths(t *testing.T) {
+func TestTree_CleanPaths(t *testing.T) {
 	t.Parallel()
 	fsys := fstest.MapFS{
 		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
@@ -474,9 +454,8 @@ func TestGenerate_CleanPaths(t *testing.T) {
 		return mime == "text/markdown"
 	})
 	gen := NewGenerator(fsys, "README.md", nil, resolver)
-	root := gen.Generate("guide.md")
+	root := gen.Tree()
 
-	// Check that nav nodes use clean paths
 	for _, child := range root.Children {
 		if child.Label == "Guide" {
 			if child.Path != "/guide" {
@@ -491,18 +470,138 @@ func TestGenerate_CleanPaths(t *testing.T) {
 	}
 }
 
-func TestGenerate_NilResolver(t *testing.T) {
+func TestTree_NilResolver(t *testing.T) {
 	t.Parallel()
 	fsys := fstest.MapFS{
 		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
 	}
 	gen := NewGenerator(fsys, "README.md", nil, nil)
-	root := gen.Generate("guide.md")
+	root := gen.Tree()
 	for _, child := range root.Children {
 		if child.Label == "Guide" {
 			if child.Path != "/guide.md" {
 				t.Errorf("Path = %q, want /guide.md (no resolver)", child.Path)
 			}
 		}
+	}
+}
+
+func TestPrevNext(t *testing.T) {
+	t.Parallel()
+
+	// Files/dirs are sorted alphabetically and interleaved at each level,
+	// so depth-first leaf order is: faq.md, guide/setup.md, guide/usage.md, intro.md.
+	fs := fstest.MapFS{
+		"intro.md":       {Data: []byte("# Intro")},
+		"guide/setup.md": {Data: []byte("# Setup")},
+		"guide/usage.md": {Data: []byte("# Usage")},
+		"faq.md":         {Data: []byte("# FAQ")},
+	}
+
+	gen := NewGenerator(fs, "README.md", nil, nil)
+
+	tests := []struct {
+		name      string
+		current   string
+		wantPrev  string
+		wantNext  string
+		wantNoPrv bool
+		wantNoNxt bool
+	}{
+		{
+			name:     "middle page",
+			current:  "/guide/setup.md",
+			wantPrev: "/faq.md",
+			wantNext: "/guide/usage.md",
+		},
+		{
+			name:      "first page",
+			current:   "/faq.md",
+			wantNoPrv: true,
+			wantNext:  "/guide/setup.md",
+		},
+		{
+			name:      "last page",
+			current:   "/intro.md",
+			wantPrev:  "/guide/usage.md",
+			wantNoNxt: true,
+		},
+		{
+			name:      "not in tree",
+			current:   "/missing.md",
+			wantNoPrv: true,
+			wantNoNxt: true,
+		},
+		{
+			name:     "with leading-slash variation",
+			current:  "guide/setup.md",
+			wantPrev: "/faq.md",
+			wantNext: "/guide/usage.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			prev, next := gen.PrevNext(tt.current)
+
+			if tt.wantNoPrv {
+				if prev != nil {
+					t.Errorf("prev = %+v, want nil", prev)
+				}
+			} else {
+				if prev == nil {
+					t.Fatalf("prev = nil, want %q", tt.wantPrev)
+				}
+				if prev.Path != tt.wantPrev {
+					t.Errorf("prev.Path = %q, want %q", prev.Path, tt.wantPrev)
+				}
+				if prev.Label == "" {
+					t.Errorf("prev.Label is empty")
+				}
+			}
+
+			if tt.wantNoNxt {
+				if next != nil {
+					t.Errorf("next = %+v, want nil", next)
+				}
+			} else {
+				if next == nil {
+					t.Fatalf("next = nil, want %q", tt.wantNext)
+				}
+				if next.Path != tt.wantNext {
+					t.Errorf("next.Path = %q, want %q", next.Path, tt.wantNext)
+				}
+				if next.Label == "" {
+					t.Errorf("next.Label is empty")
+				}
+			}
+		})
+	}
+}
+
+func TestPrevNext_SinglePage(t *testing.T) {
+	t.Parallel()
+
+	fs := fstest.MapFS{
+		"only.md": {Data: []byte("# Only")},
+	}
+
+	gen := NewGenerator(fs, "README.md", nil, nil)
+	prev, next := gen.PrevNext("/only.md")
+
+	if prev != nil || next != nil {
+		t.Errorf("PrevNext on single page: prev=%+v next=%+v, want both nil", prev, next)
+	}
+}
+
+func TestPrevNext_EmptyTree(t *testing.T) {
+	t.Parallel()
+
+	gen := NewGenerator(fstest.MapFS{}, "README.md", nil, nil)
+	prev, next := gen.PrevNext("/anything.md")
+
+	if prev != nil || next != nil {
+		t.Errorf("PrevNext on empty tree: prev=%+v next=%+v, want both nil", prev, next)
 	}
 }
