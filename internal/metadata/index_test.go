@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -362,5 +363,31 @@ func TestBuildIndex_ManyFiles(t *testing.T) {
 			t.Fatalf("duplicate page path: %s", page.Path)
 		}
 		seen[page.Path] = true
+	}
+}
+
+func TestBuildIndex_TagValidation(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"valid.md":    {Data: []byte("---\ntags:\n  - go\n  - machine learning\n  - core.runtime\n  - \"2026\"\n---\n# Valid")},
+		"with-bad.md": {Data: []byte("---\ntags:\n  - good\n  - bad/slash\n  - \"\"\n  - \"  \"\n---\n# Bad mix")},
+	}
+
+	idx, err := BuildIndex(context.Background(), files, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+
+	tags := idx.AllTags()
+	for _, want := range []string{"go", "machine learning", "core.runtime", "2026", "good"} {
+		if !slices.Contains(tags, want) {
+			t.Errorf("AllTags missing %q (got %v)", want, tags)
+		}
+	}
+	for _, banned := range []string{"bad/slash", "", "  "} {
+		if slices.Contains(tags, banned) {
+			t.Errorf("AllTags should not contain %q (got %v)", banned, tags)
+		}
 	}
 }

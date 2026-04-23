@@ -160,9 +160,22 @@ func pageFromFrontmatter(path string, fm map[string]any) PageInfo {
 	if v, ok := fm["tags"]; ok {
 		if tags, ok := v.([]any); ok {
 			for _, tag := range tags {
-				if s, ok := tag.(string); ok {
-					page.Tags = append(page.Tags, strings.ToLower(s))
+				s, ok := tag.(string)
+				if !ok {
+					continue
 				}
+				normalized := strings.ToLower(strings.TrimSpace(s))
+				if normalized == "" {
+					continue
+				}
+				if strings.ContainsAny(normalized, "/\\") {
+					slog.Warn("Skipping tag with invalid character",
+						slog.String("tag", s),
+						slog.String("path", path),
+						slog.String("reason", "tags may not contain '/' or '\\'"))
+					continue
+				}
+				page.Tags = append(page.Tags, normalized)
 			}
 		}
 	}
