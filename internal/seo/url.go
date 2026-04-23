@@ -4,7 +4,18 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync/atomic"
 )
+
+// parsedDomain caches a parsed domain alongside its raw input so PageURL
+// can skip url.Parse on a hit. Single-entry — multi-domain processes
+// degrade gracefully to per-call parse.
+type parsedDomain struct {
+	raw  string
+	base url.URL
+}
+
+var domainCache atomic.Pointer[parsedDomain]
 
 // PageURL constructs a full URL from domain and page path.
 // Returns "" if domain is empty.
@@ -15,25 +26,36 @@ func PageURL(domain, pagePath, defaultIndex string) string {
 		return ""
 	}
 
-	base := normalizeDomain(domain)
-
-	// Strip trailing default index file from path
-	clean := normalizePagePath(pagePath, defaultIndex)
-
-	u, err := url.Parse(base)
-	if err != nil {
+	base, ok := lookupBase(domain)
+	if !ok {
 		return ""
 	}
-	u.Path = path.Join(u.Path, clean)
+
+	clean := normalizePagePath(pagePath, defaultIndex)
+	base.Path = path.Join(base.Path, clean)
 
 	// Ensure directory paths end with /
 	if clean == "/" || strings.HasSuffix(clean, "/") {
-		if !strings.HasSuffix(u.Path, "/") {
-			u.Path += "/"
+		if !strings.HasSuffix(base.Path, "/") {
+			base.Path += "/"
 		}
 	}
 
-	return u.String()
+	return base.String()
+}
+
+// lookupBase returns a value copy of the parsed base URL for domain, so the
+// caller may safely mutate fields like Path without affecting the cache.
+func lookupBase(domain string) (url.URL, bool) {
+	if cached := domainCache.Load(); cached != nil && cached.raw == domain {
+		return cached.base, true
+	}
+	parsed, err := url.Parse(normalizeDomain(domain))
+	if err != nil {
+		return url.URL{}, false
+	}
+	domainCache.Store(&parsedDomain{raw: domain, base: *parsed})
+	return *parsed, true
 }
 
 // normalizeDomain ensures a domain has a scheme prefix.

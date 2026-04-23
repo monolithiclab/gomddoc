@@ -13,10 +13,18 @@ func (h *HTMLRenderer) readAsset(name string) ([]byte, error) {
 	if !fs.ValidPath(name) {
 		return nil, fmt.Errorf("invalid asset path %q", name)
 	}
+	if h.cacheAssets {
+		if cached, ok := h.assetCache.Load(name); ok {
+			return cached.([]byte), nil
+		}
+	}
 	themeDir := path.Join("assets", "themes", h.siteConfig.Theme.Name)
 	for _, dir := range []string{themeDir, "assets/shared"} {
 		data, err := fs.ReadFile(h.assetsFS, path.Join(dir, name))
 		if err == nil {
+			if h.cacheAssets {
+				h.assetCache.Store(name, data)
+			}
 			return data, nil
 		}
 	}

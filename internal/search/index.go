@@ -1,6 +1,7 @@
 package search
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	stdpath "path"
 	"runtime"
 	"slices"
-	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -332,16 +332,17 @@ func buildMetaLookup(metaIndex *metadata.Index) map[string]metadata.PageInfo {
 
 // extractFirstHeading extracts the text of the first ATX heading from raw markdown content.
 func extractFirstHeading(content []byte) string {
-	for _, line := range strings.SplitN(string(content), "\n", 50) {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#") {
-			// Strip only the leading '#' prefix and the space after it.
-			i := 0
-			for i < len(trimmed) && trimmed[i] == '#' {
-				i++
-			}
-			return strings.TrimSpace(trimmed[i:])
+	for line := range bytes.SplitSeq(content, []byte("\n")) {
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 || trimmed[0] != '#' {
+			continue
 		}
+		// Strip leading '#' run and the space after it.
+		i := 0
+		for i < len(trimmed) && trimmed[i] == '#' {
+			i++
+		}
+		return string(bytes.TrimSpace(trimmed[i:]))
 	}
 	return ""
 }

@@ -172,16 +172,20 @@ type HTMLRenderer struct {
 	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
 	hasSearchIndex bool                  // Whether a search index was successfully built
 	loggedMissing  sync.Map              // Tracks template names already warned about
+	assetCache     sync.Map              // asset name → []byte
+	cacheAssets    bool                  // Set by WithCache; off in dev mode
 }
 
 // RendererOption is a functional option for configuring HTMLRenderer
 type RendererOption func(*HTMLRenderer)
 
-// WithCache sets the template cache implementation for the renderer
-// If not provided, defaults to PassthroughTemplateStore (no caching)
+// WithCache enables template and inline-asset caching. Without this option
+// the renderer re-parses templates and re-reads assets on every render
+// (preview/dev mode behavior).
 func WithCache(cache TemplateCache) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.cache = cache
+		r.cacheAssets = true
 	}
 }
 
@@ -567,10 +571,11 @@ func (h *HTMLRenderer) HasTemplate(name string) bool {
 	return err == nil
 }
 
-// ClearCache clears the template cache (used in dev mode hot reload)
-// Delegates to cache implementation (no-op for PassthroughTemplateStore)
+// ClearCache clears the template and inline-asset caches (used in dev mode hot reload).
+// Delegates to cache implementation (no-op for PassthroughTemplateStore).
 func (h *HTMLRenderer) ClearCache() {
 	h.cache.Clear()
+	h.assetCache.Clear()
 	slog.Info("[DEV] Template cache cleared")
 }
 

@@ -37,33 +37,16 @@ func NewOverlayFS(filesystems ...fs.FS) *OverlayFS {
 func (o *OverlayFS) Open(name string) (fs.File, error) {
 	var lastErr error
 
-	for i, filesystem := range o.filesystems {
+	for _, filesystem := range o.filesystems {
 		f, err := filesystem.Open(name)
 		if err == nil {
-			// File found in this filesystem
-			slog.Debug("File found in overlay filesystem",
-				slog.String("file", name),
-				slog.Int("fs_index", i))
 			return f, nil
 		}
-
-		// Save error for potential debugging
 		lastErr = err
-
-		// Continue searching if file not found
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-
-		// For other errors (permission, etc), also continue
-		// but log a warning
-		slog.Debug("Error accessing file in filesystem",
-			slog.String("file", name),
-			slog.Int("fs_index", i),
-			slog.Any("error", err))
+		// Continue on any error (ErrNotExist or otherwise) — lower-priority
+		// filesystems may still be able to satisfy the request.
 	}
 
-	// File not found in any filesystem
 	if lastErr != nil {
 		return nil, lastErr
 	}
