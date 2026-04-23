@@ -3,6 +3,7 @@ package template
 import (
 	"context"
 	"html/template"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1931,5 +1932,61 @@ func TestWithActiveLang_Empty(t *testing.T) {
 	result := WithActiveLang(nil, "en-US")
 	if result != nil {
 		t.Errorf("WithActiveLang(nil) = %v, want nil", result)
+	}
+}
+
+func TestTagURL(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, fstest.MapFS{})
+	fn := r.funcMap()["tagURL"].(func(lang, tag string) string)
+
+	tests := []struct {
+		name, lang, tag, want string
+	}{
+		{"default lang", "", "go", "/tags/go"},
+		{"default lang space", "", "machine learning", "/tags/machine%20learning"},
+		{"non-default lang", "fr", "go", "/fr/tags/go"},
+		{"non-default lang space", "de", "machine learning", "/de/tags/machine%20learning"},
+		{"unicode tag", "", "café", "/tags/caf%C3%A9"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := fn(tt.lang, tt.tag); got != tt.want {
+				t.Errorf("tagURL(%q, %q) = %q, want %q", tt.lang, tt.tag, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPageTags(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, fstest.MapFS{})
+	fn := r.funcMap()["pageTags"].(func(meta map[string]any) []string)
+
+	tests := []struct {
+		name string
+		meta map[string]any
+		want []string
+	}{
+		{"nil", nil, nil},
+		{"missing key", map[string]any{"title": "x"}, nil},
+		{"yaml-style []any", map[string]any{"tags": []any{"go", "docs"}}, []string{"go", "docs"}},
+		{"already []string", map[string]any{"tags": []string{"go", "docs"}}, []string{"go", "docs"}},
+		{"non-string entries skipped", map[string]any{"tags": []any{"go", 42, "docs"}}, []string{"go", "docs"}},
+		{"non-list value", map[string]any{"tags": "go"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fn(tt.meta)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("pageTags(%v) = %v, want %v", tt.meta, got, tt.want)
+			}
+		})
 	}
 }

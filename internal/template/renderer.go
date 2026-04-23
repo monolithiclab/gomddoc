@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"net/url"
 	"path"
 	"slices"
 	"strings"
@@ -401,6 +402,8 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"inlineJSAsset":   h.inlineJSAsset,
 		"inlineCSSAsset":  h.inlineCSSAsset,
 		"inlineHTMLAsset": h.inlineHTMLAsset,
+		"tagURL":          tagURL,
+		"pageTags":        pageTags,
 	}
 }
 
@@ -560,6 +563,45 @@ func (h *HTMLRenderer) contentURL(filePath string) string {
 	}
 
 	return "/" + p
+}
+
+// tagURL builds the URL for a tag's listing page, scoped to the active
+// language. The default language uses /tags/{tag}; other languages use
+// /{lang}/tags/{tag}. Tag values are percent-encoded for URL safety.
+func tagURL(lang, tag string) string {
+	if lang == "" {
+		return "/tags/" + url.PathEscape(tag)
+	}
+	return "/" + lang + "/tags/" + url.PathEscape(tag)
+}
+
+// pageTags normalizes the YAML-decoded value of frontmatter "tags" into a
+// []string. Returns nil when the key is absent, the value is the wrong type,
+// or the list contains no strings.
+func pageTags(meta map[string]any) []string {
+	if meta == nil {
+		return nil
+	}
+	raw, ok := meta["tags"]
+	if !ok {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []string:
+		return slices.Clone(v)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	}
+	return nil
 }
 
 // HasTemplate checks if a layout template exists for the current theme.
