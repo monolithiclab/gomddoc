@@ -424,3 +424,17 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 | CORS headers | Not planned | Not needed for doc viewer |
 | Rate limiting | Not planned | Not needed for doc viewer |
 | WebSocket (live reload) | Deferred | Phase 8+ |
+
+## Tag URL Format & Pages
+
+**Chosen**: percent-encoded tag values in URLs (`/tags/machine%20learning`), centralized validator skipping invalid tags at index-build time
+
+**Alternatives considered**:
+- **Slugified URLs (kebab-case)**: shorter and prettier, but introduces a slug→tag reverse map and invents collisions where none exist in the source data. Rejected.
+- **Single global `/tags/` (no per-lang)**: simpler routing but mixes languages and breaks the per-lang navigation model. Rejected — per-lang routing matches the existing sitemap/feed pattern.
+
+**Why percent-encoding**: tag values already exist in frontmatter as plain strings; encoding rather than slugifying preserves them exactly. Pathological tag values containing `/` or whitespace-only entries are skipped at `metadata.Index` build time with a logged warning, so the encoding stays simple and the bad-data surface is closed at the source.
+
+**Why no related-pages or `tag:` search**: deferred to follow-up sub-specs to keep this PR focused on the user-visible discovery features (chips + landing pages).
+
+**Renderer interface extension**: `RenderTagPage` and `RenderTagsIndex` were added to the `template.Renderer` interface (not just the `*HTMLRenderer` concrete type) so the server can register handlers via the abstract dependency without type-asserting. There's only one renderer implementation today; the interface is a layering signal more than a polymorphism enabler.
