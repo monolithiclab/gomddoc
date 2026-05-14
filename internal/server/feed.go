@@ -57,7 +57,7 @@ func (h *FeedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
+	w.Header().Set("Content-Type", mimeAtom)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }

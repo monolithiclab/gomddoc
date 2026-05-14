@@ -1,0 +1,20 @@
+{{ define "tags-index" -}}
+{{- /* Renders the body of /tags/ given .Tags ([]TagCount) */ -}}
+<header class="tag-index-header">
+  <h1>{{ call .T "tags_index_title" }}</h1>
+</header>
+<ul class="tag-index">
+  {{- range $entry := .Tags }}
+  <li class="tag-index-row">
+    <a class="tag-index-link" href="{{ tagURL $.Lang $entry.Tag }}">{{ $entry.Tag }}</a>
+    <span class="tag-index-count">({{ $entry.Count }})</span>
+  </li>
+  {{- end }}
+</ul>
+<style>
+.tag-index { list-style: none; padding: 0; columns: 2; }
+.tag-index-row { padding: 0.25rem 0; break-inside: avoid; }
+.tag-index-count { color: var(--color-text-muted, #666); margin-left: 0.25rem; }
+@media (max-width: 600px) { .tag-index { columns: 1; } }
+</style>
+{{- end }}

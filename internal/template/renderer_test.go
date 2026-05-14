@@ -3,6 +3,8 @@ package template
 import (
 	"context"
 	"html/template"
+	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 )
@@ -1932,4 +1935,287 @@ func TestWithActiveLang_Empty(t *testing.T) {
 	if result != nil {
 		t.Errorf("WithActiveLang(nil) = %v, want nil", result)
 	}
+}
+
+func TestTagURL(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, fstest.MapFS{})
+	fn := r.funcMap()["tagURL"].(func(lang, tag string) string)
+
+	tests := []struct {
+		name, lang, tag, want string
+	}{
+		{"default lang", "", "go", "/tags/go"},
+		{"default lang space", "", "machine learning", "/tags/machine%20learning"},
+		{"default lang explicit", "en-US", "go", "/tags/go"},
+		{"non-default lang", "fr", "go", "/fr/tags/go"},
+		{"non-default lang space", "de", "machine learning", "/de/tags/machine%20learning"},
+		{"unicode tag", "", "café", "/tags/caf%C3%A9"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := fn(tt.lang, tt.tag); got != tt.want {
+				t.Errorf("tagURL(%q, %q) = %q, want %q", tt.lang, tt.tag, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPageTags(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, fstest.MapFS{})
+	fn := r.funcMap()["pageTags"].(func(meta map[string]any) []string)
+
+	tests := []struct {
+		name string
+		meta map[string]any
+		want []string
+	}{
+		{"nil", nil, nil},
+		{"missing key", map[string]any{"title": "x"}, nil},
+		{"yaml-style []any", map[string]any{"tags": []any{"go", "docs"}}, []string{"go", "docs"}},
+		{"already []string", map[string]any{"tags": []string{"go", "docs"}}, []string{"go", "docs"}},
+		{"non-string entries skipped", map[string]any{"tags": []any{"go", 42, "docs"}}, []string{"go", "docs"}},
+		{"non-list value", map[string]any{"tags": "go"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fn(tt.meta)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("pageTags(%v) = %v, want %v", tt.meta, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRender_TagChips(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		tags        []any
+		featureOff  bool
+		wantContain []string
+		wantNot     []string
+	}{
+		{
+			name:        "renders chips for tags",
+			tags:        []any{"go", "docs"},
+			wantContain: []string{`href="/tags/go"`, `href="/tags/docs"`, `>go<`, `>docs<`, `class="tag-chips"`},
+		},
+		{
+			name:       "no chips when feature off",
+			tags:       []any{"go"},
+			featureOff: true,
+			wantNot:    []string{"tag-chips"},
+		},
+		{
+			name:    "no chips when no tags",
+			tags:    nil,
+			wantNot: []string{"tag-chips"},
+		},
+		{
+			name:        "non-default language scopes URL",
+			tags:        []any{"go"},
+			wantContain: []string{`href="/fr/tags/go"`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			testFS := fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+					`<!doctype html><html><body>{{ template "tag-chips" . }}</body></html>`,
+				)},
+				"assets/themes/default/partials/tag-chips.html.tmpl": {Data: tagChipsPartialBytes(t)},
+			}
+			siteConfig := config.NewSiteConfig(".")
+			r := NewHTMLRenderer(&siteConfig, testFS)
+
+			page := PageContext{Path: "/x.md", Meta: map[string]any{"tags": tt.tags}}
+			if tt.featureOff {
+				page.Features = map[string]bool{"tag_chips": false}
+			}
+			tc := &TemplateContext{Site: &siteConfig, Page: page}
+			if tt.name == "non-default language scopes URL" {
+				tc.WithI18n("fr", nil, nil)
+			}
+
+			out, err := r.Render(context.Background(), "default.html.tmpl", tc)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			s := string(out)
+			for _, want := range tt.wantContain {
+				if !strings.Contains(s, want) {
+					t.Errorf("output missing %q\noutput: %s", want, s)
+				}
+			}
+			for _, banned := range tt.wantNot {
+				if strings.Contains(s, banned) {
+					t.Errorf("output should not contain %q\noutput: %s", banned, s)
+				}
+			}
+		})
+	}
+}
+
+// tagChipsPartialBytes loads the real partial from the embedded theme.
+// Failing if it doesn't exist forces Step 3 of this task to create it.
+func tagChipsPartialBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tag-chips.html.tmpl")
+	if err != nil {
+		t.Fatalf("partial not yet created: %v", err)
+	}
+	return data
+}
+
+func TestRenderTagPage(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body><main>{{ .Page.Content }}</main></body></html>`,
+		)},
+		"assets/themes/default/partials/tags-list.html.tmpl": {Data: tagsListPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test Site"
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	pages := []metadata.PageInfo{
+		{Path: "/guide.md", Title: "Guide", Description: "Setup walkthrough"},
+		{Path: "/api.md", Title: "API"},
+	}
+	tFunc := func(k string) string {
+		return map[string]string{
+			"tags_tagged_as": "Pages tagged %s",
+			"tags_empty":     "No pages tagged %s",
+		}[k]
+	}
+
+	out, err := r.RenderTagPage(context.Background(), "" /* default lang */, tFunc, "go", pages)
+	if err != nil {
+		t.Fatalf("RenderTagPage: %v", err)
+	}
+
+	s := string(out)
+	for _, want := range []string{
+		`href="/guide.md"`, ">Guide<",
+		`href="/api.md"`, ">API<",
+		"Setup walkthrough",
+		"Pages tagged go",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("output missing %q\noutput: %s", want, s)
+		}
+	}
+}
+
+func TestRenderTagPage_Empty(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body>{{ .Page.Content }}</body></html>`,
+		)},
+		"assets/themes/default/partials/tags-list.html.tmpl": {Data: tagsListPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tFunc := func(k string) string { return map[string]string{"tags_empty": "No pages tagged %s"}[k] }
+	out, err := r.RenderTagPage(context.Background(), "", tFunc, "missing", nil)
+	if err != nil {
+		t.Fatalf("RenderTagPage empty: %v", err)
+	}
+	if !strings.Contains(string(out), "No pages tagged missing") {
+		t.Errorf("expected empty-state string, got %s", out)
+	}
+}
+
+func tagsListPartialBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl")
+	if err != nil {
+		t.Fatalf("partial not yet created: %v", err)
+	}
+	return data
+}
+
+func TestRenderTagsIndex(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body>{{ .Page.Content }}</body></html>`,
+		)},
+		"assets/themes/default/partials/tags-index.html.tmpl": {Data: tagsIndexPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tags := []TagCount{
+		{Tag: "go", Count: 4},
+		{Tag: "kubernetes", Count: 1},
+		{Tag: "tutorial", Count: 7},
+	}
+
+	tFunc := func(k string) string { return map[string]string{"tags_index_title": "All tags"}[k] }
+	out, err := r.RenderTagsIndex(context.Background(), "", tFunc, tags)
+	if err != nil {
+		t.Fatalf("RenderTagsIndex: %v", err)
+	}
+
+	s := string(out)
+	for _, want := range []string{
+		"All tags",
+		`href="/tags/go"`, ">go<", "(4)",
+		`href="/tags/kubernetes"`, "(1)",
+		`href="/tags/tutorial"`, "(7)",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("output missing %q\noutput: %s", want, s)
+		}
+	}
+}
+
+func TestRenderTagsIndex_Empty(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body>{{ .Page.Content }}</body></html>`,
+		)},
+		"assets/themes/default/partials/tags-index.html.tmpl": {Data: tagsIndexPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS)
+
+	tFunc := func(k string) string { return map[string]string{"tags_index_title": "All tags"}[k] }
+	out, err := r.RenderTagsIndex(context.Background(), "", tFunc, nil)
+	if err != nil {
+		t.Fatalf("RenderTagsIndex empty: %v", err)
+	}
+	if !strings.Contains(string(out), "All tags") {
+		t.Errorf("expected header in empty state, got %s", out)
+	}
+}
+
+func tagsIndexPartialBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tags-index.html.tmpl")
+	if err != nil {
+		t.Fatalf("partial not yet created: %v", err)
+	}
+	return data
 }

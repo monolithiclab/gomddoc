@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -65,7 +66,7 @@ func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Content-Type", mimeXML)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }
@@ -102,8 +103,9 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 	}
 
 	pages := index.AllPages()
+	tags := index.AllTags()
 
-	urls := make([]sitemapURL, 0, len(pages))
+	urls := make([]sitemapURL, 0, len(pages)+1+len(tags))
 	for _, page := range pages {
 		if robots, ok := page.Meta["robots"].(string); ok && strings.Contains(robots, "noindex") {
 			continue
@@ -121,6 +123,20 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 				}
 			}
 			urls = append(urls, entry)
+		}
+	}
+
+	// Tag index page.
+	indexURL := seo.PageURL(domain, pathPrefix+"/tags/", "")
+	if indexURL != "" {
+		urls = append(urls, sitemapURL{Loc: indexURL})
+	}
+
+	// One URL per unique tag.
+	for _, tag := range tags {
+		tagURL := seo.PageURL(domain, pathPrefix+"/tags/"+url.PathEscape(tag), "")
+		if tagURL != "" {
+			urls = append(urls, sitemapURL{Loc: tagURL})
 		}
 	}
 

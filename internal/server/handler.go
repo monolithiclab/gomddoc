@@ -194,12 +194,12 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		return
 	}
 
-	serveWithETag(w, r, rendered, "text/html; charset=utf-8", "public, max-age=300")
+	serveWithETag(w, r, rendered, mimeHTML, cacheDynamic)
 }
 
 // serveRaw serves content directly without template wrapping (passthrough).
 func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byte, mimeType string) {
-	serveWithETag(w, r, content, mimeType, "public, max-age=300")
+	serveWithETag(w, r, content, mimeType, cacheDynamic)
 }
 
 // handleError handles errors and sends appropriate HTTP responses.
@@ -230,7 +230,7 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 		)
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", mimeHTML)
 	w.WriteHeader(statusCode)
 
 	page := h.renderErrorPage(r, statusCode, path)

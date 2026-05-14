@@ -188,3 +188,35 @@ func TestGenerateSitemap_WithResolver(t *testing.T) {
 		t.Error("should contain root URL from README.md")
 	}
 }
+
+func TestGenerateSitemap_IncludesTagPages(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"a.md": {Data: []byte("---\ntitle: A\ntags: [go, docs]\n---\n# A")},
+		"b.md": {Data: []byte("---\ntitle: B\ntags: [docs]\n---\n# B")},
+	}
+	idx := buildTestIndex(t, files)
+
+	prov := newMemoryProvider(files, "README.md", false)
+	hasRenderer := func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	}
+	resolver := resolve.Build(files, []string{".md"}, hasRenderer)
+
+	xml, err := GenerateSitemap(context.Background(), idx, "https://example.com", "README.md", prov, resolver, "")
+	if err != nil {
+		t.Fatalf("GenerateSitemap: %v", err)
+	}
+
+	body := string(xml)
+	for _, want := range []string{
+		"https://example.com/tags/",
+		"https://example.com/tags/go",
+		"https://example.com/tags/docs",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("sitemap missing %q\n%s", want, body)
+		}
+	}
+}

@@ -28,6 +28,7 @@
         {{- end }}
         <div class="content-with-toc">
           <article>
+            {{ template "tag-chips" . }}
             {{ .Page.Content }}
 
             {{ template "footer" . }}

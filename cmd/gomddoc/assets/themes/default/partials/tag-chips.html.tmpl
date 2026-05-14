@@ -1,0 +1,26 @@
+{{ define "tag-chips" }}
+{{- if .Feature "tag_chips" -}}
+{{- $tags := pageTags .Page.Meta -}}
+{{- if $tags -}}
+<ul class="tag-chips" aria-label="{{ .T "tags_title" }}">
+  {{- range $tag := $tags }}
+  <li><a class="tag-chip" href="{{ tagURL $.Lang $tag }}">{{ $tag }}</a></li>
+  {{- end }}
+</ul>
+<style>
+.tag-chips { list-style: none; padding: 0; margin: 0.5rem 0 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.tag-chip {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  background: var(--color-border, #e2e8f0);
+  color: var(--color-text, #222);
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+.tag-chip:hover { background: var(--color-primary, #06f); color: var(--color-bg, #fff); }
+</style>
+{{- end -}}
+{{- end -}}
+{{ end }}

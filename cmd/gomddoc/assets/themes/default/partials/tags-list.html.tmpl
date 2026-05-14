@@ -1,0 +1,26 @@
+{{ define "tags-list" }}
+{{- /* Renders the body of /tags/{tag} given .Tag (string) and .Pages ([]metadata.PageInfo) */ -}}
+<header class="tag-page-header">
+  <h1>{{ printf (call .T "tags_tagged_as") .Tag }}</h1>
+</header>
+{{- if .Pages }}
+<ul class="tag-page-results">
+  {{- range $page := .Pages }}
+  <li class="tag-result">
+    <a class="tag-result-title" href="{{ $page.Path }}">{{ $page.Title }}</a>
+    {{- if $page.Description }}
+    <p class="tag-result-description">{{ $page.Description }}</p>
+    {{- end }}
+  </li>
+  {{- end }}
+</ul>
+{{- else }}
+<p class="tag-page-empty">{{ printf (call .T "tags_empty") .Tag }}</p>
+{{- end }}
+<style>
+.tag-page-results { list-style: none; padding: 0; }
+.tag-result { padding: 0.75rem 0; border-bottom: 1px solid var(--color-border, #eee); }
+.tag-result-title { font-weight: 600; font-size: 1.1rem; }
+.tag-result-description { color: var(--color-text-muted, #666); margin: 0.25rem 0 0; }
+</style>
+{{ end }}

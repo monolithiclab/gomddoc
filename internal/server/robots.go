@@ -18,7 +18,7 @@ func NewRobotsHandler(domain string) *RobotsHandler {
 
 // ServeHTTP writes the robots.txt response.
 func (h *RobotsHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", mimePlain)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(h.cached)
 }

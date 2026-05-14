@@ -181,15 +181,15 @@ _Enhances competitiveness and closes remaining gaps._
 _Make tags a first-class navigation and discovery mechanism. Tags already exist in frontmatter and
 the metadata index — these items surface them in the UI and search engine._
 
-- [ ] **Clickable tag chips in page rendering**: Render frontmatter `tags` as clickable chips
+- [x] **Clickable tag chips in page rendering**: Render frontmatter `tags` as clickable chips
       (styled inline elements) on each page. Each chip links to a tag listing page. Position
       configurable via theme template (typically below the page title or in a sidebar metadata
       section). All 8 built-in themes must include the tag chips. Low-medium complexity.
-- [ ] **Tag listing page (`/tags/{tag}`)**: Server-rendered HTML page listing all pages tagged
+- [x] **Tag listing page (`/tags/{tag}`)**: Server-rendered HTML page listing all pages tagged
       with a given tag. Reuses the existing `MetaIndex.ByTag()` lookup. Each result shows title,
       description, and path as a clickable link. Shares the site's theme and navigation chrome.
       In `build` mode, generate a static HTML page per tag under `tags/`. Medium complexity.
-- [ ] **Tag index page (`/tags/`)**: Overview page listing all tags with document counts. Each
+- [x] **Tag index page (`/tags/`)**: Overview page listing all tags with document counts. Each
       tag links to its listing page. Serves as a discovery entry point. Generated statically in
       `build` mode. Low complexity.
 - [ ] **Search by tag (`tag:` prefix)**: Extend the search engine to support `tag:XXX` syntax.
