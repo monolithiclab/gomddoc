@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -172,17 +173,25 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		metadata["title"] = text.DeriveTitle(r.URL.Path)
 	}
 
+	// Sort related docs deterministically. The enricher returns them in
+	// tag-iteration order, which is non-deterministic from the user's
+	// perspective; sorting here keeps the rendered see-also section stable.
+	slices.SortFunc(enrichment.RelatedDocs, func(a, b enricher.RelatedDoc) int {
+		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+	})
+
 	context := &tmpl.TemplateContext{
 		Site: h.siteConfig,
 		Page: tmpl.PageContext{
-			Content:    template.HTML(htmlContent), // #nosec G203
-			Path:       r.URL.Path,
-			Meta:       metadata,
-			Features:   config.MergeFeatures(h.siteConfig.Theme.Features, enrichment.Features),
-			TOC:        enrichment.TOC,
-			Navigation: enrichment.Navigation,
-			PrevPage:   enrichment.PrevPage,
-			NextPage:   enrichment.NextPage,
+			Content:     template.HTML(htmlContent), // #nosec G203
+			Path:        r.URL.Path,
+			Meta:        metadata,
+			Features:    config.MergeFeatures(h.siteConfig.Theme.Features, enrichment.Features),
+			TOC:         enrichment.TOC,
+			Navigation:  enrichment.Navigation,
+			PrevPage:    enrichment.PrevPage,
+			NextPage:    enrichment.NextPage,
+			RelatedDocs: enrichment.RelatedDocs,
 		},
 	}
 	context.WithI18n(h.lang, h.tFunc, h.languages)
