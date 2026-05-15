@@ -196,3 +196,23 @@ func TestLoadBundle_TagKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadBundle_SeeAlsoKey(t *testing.T) {
+	t.Parallel()
+
+	localeFS := fstest.MapFS{
+		"locales/en-US.yml": &fstest.MapFile{
+			Data: []byte("language_name: English\nsee_also: \"See also\"\n"),
+		},
+	}
+
+	b, err := LoadBundle("en-US", localeFS, "locales")
+	if err != nil {
+		t.Fatalf("LoadBundle: %v", err)
+	}
+
+	got := b.T("en-US", "see_also")
+	if got == "" || got == "see_also" {
+		t.Errorf("bundle.T(\"see_also\") returned %q; expected a localized string", got)
+	}
+}
