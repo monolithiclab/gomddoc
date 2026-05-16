@@ -98,7 +98,11 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 	// Warn if user content shadows auto-generated /tags routes.
 	warnTagsContentCollision(contentRoot, cfg.Site.Language)
 
-	bundle, err := locale.LoadBundle(cfg.Site.Language, assetsFS, "locales")
+	// Embedded files keep their `assets/` prefix from the //go:embed directive,
+	// so the locale dir lives at `assets/locales` rather than `locales`. The
+	// site-level overrides below (MergeFrom contentRoot) use the .gomddoc/locales
+	// path directly because contentRoot has no prefix.
+	bundle, err := locale.LoadBundle(cfg.Site.Language, assetsFS, "assets/locales")
 	if err != nil {
 		return nil, fmt.Errorf("load locale bundle: %w", err)
 	}
