@@ -215,6 +215,37 @@ func TestMarkdownEnricher_Enrich_RelatedDocs(t *testing.T) {
 	}
 }
 
+// Regression: when URL extension stripping is in effect the handler passes
+// a stripped path (/guide) but the metadata index stores raw .md paths
+// (/guide.md). Self-exclusion must work across that mismatch.
+func TestMarkdownEnricher_Enrich_RelatedDocs_StripsExtensionForSelfExclusion(t *testing.T) {
+	t.Parallel()
+	fsys := fstest.MapFS{
+		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
+		"api.md":   {Data: []byte("---\ntitle: API\ntags:\n  - tutorial\n---\n# API")},
+	}
+
+	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex() error = %v", err)
+	}
+
+	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
+	content := []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")
+
+	// Caller passes the URL-stripped form, no .md suffix.
+	result, err := e.Enrich(context.Background(), content, "/guide")
+	if err != nil {
+		t.Fatalf("Enrich() error = %v", err)
+	}
+
+	for _, doc := range result.RelatedDocs {
+		if doc.Path == "/guide.md" {
+			t.Errorf("RelatedDocs should exclude the current page even when caller passes the stripped path; got %v", result.RelatedDocs)
+		}
+	}
+}
+
 func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutIndex(t *testing.T) {
 	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})

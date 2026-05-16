@@ -3,6 +3,7 @@ package enricher
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/yuin/goldmark"
 	meta "github.com/yuin/goldmark-meta"
@@ -137,8 +138,11 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 		return nil
 	}
 
-	// Collect unique related docs by path
-	seen := map[string]bool{currentPath: true}
+	// Collect unique related docs by path. Normalize the .md suffix so a
+	// request whose URL has been extension-stripped (/foo) still matches
+	// the metadata index's raw path (/foo.md) for self-exclusion and dedup.
+	currentKey := strings.TrimSuffix(currentPath, ".md")
+	seen := map[string]bool{currentKey: true}
 	var related []RelatedDoc
 
 	for _, tagRaw := range tags {
@@ -149,10 +153,11 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 
 		pages := m.metaIndex.ByTag(tag)
 		for _, page := range pages {
-			if seen[page.Path] {
+			key := strings.TrimSuffix(page.Path, ".md")
+			if seen[key] {
 				continue
 			}
-			seen[page.Path] = true
+			seen[key] = true
 			related = append(related, RelatedDoc{
 				Path:  page.Path,
 				Title: page.Title,
