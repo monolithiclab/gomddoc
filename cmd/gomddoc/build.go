@@ -441,17 +441,22 @@ func (b *BuildCmd) buildFile(
 		metadata["title"] = text.DeriveTitle("/" + filePath)
 	}
 
+	slices.SortFunc(enrichment.RelatedDocs, func(a, b enricher.RelatedDoc) int {
+		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+	})
+
 	templateCtx := &tmpl.TemplateContext{
 		Site: bc.siteConfig,
 		Page: tmpl.PageContext{
-			Content:    template.HTML(renderResult.Content), // #nosec G203
-			Path:       "/" + filePath,
-			Meta:       metadata,
-			Features:   config.MergeFeatures(bc.siteConfig.Theme.Features, enrichment.Features),
-			TOC:        enrichment.TOC,
-			Navigation: enrichment.Navigation,
-			PrevPage:   enrichment.PrevPage,
-			NextPage:   enrichment.NextPage,
+			Content:     template.HTML(renderResult.Content), // #nosec G203
+			Path:        "/" + filePath,
+			Meta:        metadata,
+			Features:    config.MergeFeatures(bc.siteConfig.Theme.Features, enrichment.Features),
+			TOC:         enrichment.TOC,
+			Navigation:  enrichment.Navigation,
+			PrevPage:    enrichment.PrevPage,
+			NextPage:    enrichment.NextPage,
+			RelatedDocs: enrichment.RelatedDocs,
 		},
 	}
 	templateCtx.WithI18n(bc.lang, bc.tFunc, bc.languageInfos)

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,8 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
@@ -568,5 +571,82 @@ func TestHandlerDirectoryRedirect_EmptyDir(t *testing.T) {
 	// Empty dir with no markdown files → still 403
 	if w.Code != 403 {
 		t.Errorf("status = %d, want 403", w.Code)
+	}
+}
+
+func TestServeHTML_IncludesSeeAlsoSection(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"a.md":     {Data: []byte("---\ntitle: A\ntags: [shared]\n---\n# A\n\nContent.")},
+		"b.md":     {Data: []byte("---\ntitle: B\ntags: [shared]\n---\n# B\n\nMore.")},
+		"unrel.md": {Data: []byte("---\ntitle: Unrelated\ntags: [other]\n---\n# Unrelated")},
+	}
+
+	// Create template renderer with see-also partial
+	templateFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			Data: []byte(`<!DOCTYPE html>
+<html>
+<head><title>{{.Site.Meta.Title}}</title></head>
+<body>{{.Page.Content}}{{ template "see-also" . }}</body>
+</html>`),
+		},
+		"assets/themes/default/partials/see-also.html.tmpl": {
+			Data: []byte(`{{ define "see-also" }}
+{{- if .Page.RelatedDocs -}}
+<section class="see-also">
+  <h2>See Also</h2>
+  <ul>
+  {{- range $doc := .Page.RelatedDocs }}
+    <li><a href="{{ $doc.Path }}">{{ $doc.Title }}</a></li>
+  {{- end }}
+  </ul>
+</section>
+{{- end -}}
+{{ end }}`),
+		},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test Site"
+	rend := tmpl.NewHTMLRenderer(&siteConfig, templateFS)
+
+	// Create enricher registry with metadata index for related docs
+	metaReg := setupTestEnricherRegistry()
+	metaIndex, err := metadata.BuildIndex(context.Background(), files, nil)
+	if err != nil {
+		t.Fatalf("failed to build metadata index: %v", err)
+	}
+	mdEnricher := enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{
+		MetaIndex: metaIndex,
+	})
+	metaReg.Register(mdEnricher)
+
+	prov := newMemoryProvider(files, "README.md", false)
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: metaReg,
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+	})
+
+	req := httptest.NewRequest("GET", "/a.md", nil)
+	w := httptest.NewRecorder()
+	handler.ServeContent(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "see-also") {
+		t.Errorf("response missing see-also section\n%s", body)
+	}
+	if !strings.Contains(body, ">B<") {
+		t.Errorf("see-also missing related page B\n%s", body)
+	}
+	if strings.Contains(body, ">Unrelated<") {
+		t.Errorf("see-also should not include unrelated page\n%s", body)
 	}
 }

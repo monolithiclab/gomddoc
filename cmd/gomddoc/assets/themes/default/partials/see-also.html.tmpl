@@ -1,0 +1,21 @@
+{{ define "see-also" }}
+{{- if .Feature "see_also" -}}
+{{- if .Page.RelatedDocs -}}
+<section class="see-also" aria-labelledby="see-also-heading">
+  <h2 id="see-also-heading">{{ .T "see_also" }}</h2>
+  <ul>
+  {{- range $doc := .Page.RelatedDocs }}
+    <li><a href="{{ $doc.Path }}">{{ $doc.Title }}</a></li>
+  {{- end }}
+  </ul>
+</section>
+<style>
+.see-also { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border, #eee); }
+.see-also h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
+.see-also ul { list-style: none; padding: 0; margin: 0; }
+.see-also li { padding: 0.25rem 0; }
+.see-also a { color: var(--color-primary, #06f); }
+</style>
+{{- end -}}
+{{- end -}}
+{{ end }}

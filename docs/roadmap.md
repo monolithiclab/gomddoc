@@ -197,7 +197,7 @@ the metadata index — these items surface them in the UI and search engine._
       the full-text index. Can be combined with free-text terms (e.g., `tag:deployment kubernetes`
       searches for "kubernetes" in pages tagged "deployment"). Update the search modal UI to
       display tag suggestions. Medium complexity.
-- [ ] **Related pages via tags**: Display a "Related pages" section at the bottom of each page,
+- [x] **Related pages via tags**: Display a "Related pages" section at the bottom of each page,
       populated from shared frontmatter tags. The enricher already computes `RelatedDocs` via
       `ByTag()` — expose via template and render in all themes. Medium complexity (enricher done,
       needs template integration). _Moved from Phase 9c._

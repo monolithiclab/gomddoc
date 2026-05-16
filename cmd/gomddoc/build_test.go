@@ -986,3 +986,36 @@ func TestBuildCmd_EmitsTagPages(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildCmd_EmitsSeeAlsoSection(t *testing.T) {
+	t.Parallel()
+
+	contentDir := t.TempDir()
+	files := map[string][]byte{
+		"a.md": []byte("---\ntitle: A\ntags: [shared]\n---\n# A\n\nContent."),
+		"b.md": []byte("---\ntitle: B\ntags: [shared]\n---\n# B\n\nMore."),
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(contentDir, name), data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	outDir := t.TempDir()
+	b := &BuildCmd{Dir: contentDir, Output: outDir}
+	if err := b.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out, err := os.ReadFile(filepath.Join(outDir, "a", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+	if !strings.Contains(body, "see-also") {
+		t.Errorf("a/index.html missing see-also section\n%s", body)
+	}
+	if !strings.Contains(body, ">B<") {
+		t.Errorf("see-also missing related page B\n%s", body)
+	}
+}

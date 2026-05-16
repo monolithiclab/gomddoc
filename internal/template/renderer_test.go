@@ -2219,3 +2219,85 @@ func tagsIndexPartialBytes(t *testing.T) []byte {
 	}
 	return data
 }
+
+func TestRender_SeeAlso(t *testing.T) {
+	t.Parallel()
+
+	related := []enricher.RelatedDoc{
+		{Path: "/api.md", Title: "API"},
+		{Path: "/guide.md", Title: "Guide"},
+	}
+
+	tests := []struct {
+		name        string
+		related     []enricher.RelatedDoc
+		featureOff  bool
+		wantContain []string
+		wantNot     []string
+	}{
+		{
+			name:        "renders section for non-empty related list",
+			related:     related,
+			wantContain: []string{`class="see-also"`, `>See also<`, `href="/api.md"`, `href="/guide.md"`, `>API<`, `>Guide<`},
+		},
+		{
+			name:       "no section when feature off",
+			related:    related,
+			featureOff: true,
+			wantNot:    []string{"see-also"},
+		},
+		{
+			name:    "no section when no related",
+			related: nil,
+			wantNot: []string{"see-also"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			testFS := fstest.MapFS{
+				"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+					`<!doctype html><html><body>{{ template "see-also" . }}</body></html>`,
+				)},
+				"assets/themes/default/partials/see-also.html.tmpl": {Data: seeAlsoPartialBytes(t)},
+			}
+			siteConfig := config.NewSiteConfig(".")
+			r := NewHTMLRenderer(&siteConfig, testFS)
+
+			page := PageContext{Path: "/x.md", RelatedDocs: tt.related}
+			if tt.featureOff {
+				page.Features = map[string]bool{"see_also": false}
+			}
+			tc := &TemplateContext{Site: &siteConfig, Page: page}
+			tFunc := func(k string) string { return map[string]string{"see_also": "See also"}[k] }
+			tc.WithI18n("", tFunc, nil)
+
+			out, err := r.Render(context.Background(), "default.html.tmpl", tc)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			s := string(out)
+			for _, want := range tt.wantContain {
+				if !strings.Contains(s, want) {
+					t.Errorf("output missing %q\noutput: %s", want, s)
+				}
+			}
+			for _, banned := range tt.wantNot {
+				if strings.Contains(s, banned) {
+					t.Errorf("output should not contain %q\noutput: %s", banned, s)
+				}
+			}
+		})
+	}
+}
+
+func seeAlsoPartialBytes(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/see-also.html.tmpl")
+	if err != nil {
+		t.Fatalf("partial not yet created: %v", err)
+	}
+	return data
+}
