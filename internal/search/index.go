@@ -11,7 +11,6 @@ import (
 	stdpath "path"
 	"runtime"
 	"slices"
-	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -64,7 +63,14 @@ type Index struct {
 	inverted      map[string][]posting
 	docTermCounts []int // body token count per doc, for TF normalization
 	docCount      int
-	byTag         map[string][]int // normalized tag -> ascending doc indices
+
+	// Tag filtering resolves against the metadata index — the single source of
+	// truth for tag → page membership, shared with the /tags listing — then maps
+	// page paths to doc indices via pathToDoc for the free-text intersection.
+	// pathToDoc covers only pages in the search corpus (bodyless pages, dropped
+	// during indexing, are absent).
+	metaIndex *metadata.Index
+	pathToDoc map[string]int
 }
 
 // BuildIndex walks the filesystem, reads all markdown files, tokenizes their content,
@@ -206,28 +212,13 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 
 	idx.docCount = len(idx.docs)
 
-	// Build the tag -> doc index map for tag: filter queries. Tags come from
-	// the metadata index (already lowercased/trimmed at parse time). Pages with
-	// an empty body are absent from idx.docs (skipped above) and from byTag,
-	// so they won't appear in tag: results even if tagged.
-	idx.byTag = make(map[string][]int)
-	if len(metaLookup) > 0 {
-		pathToDoc := make(map[string]int, len(idx.docs))
-		for i, d := range idx.docs {
-			pathToDoc[d.path] = i
-		}
-		for docPath, info := range metaLookup {
-			docIdx, ok := pathToDoc[docPath]
-			if !ok {
-				continue // bodyless or excluded page; not in the search corpus
-			}
-			for _, tag := range info.Tags {
-				idx.byTag[tag] = append(idx.byTag[tag], docIdx)
-			}
-		}
-		for tag := range idx.byTag {
-			slices.Sort(idx.byTag[tag])
-		}
+	// Retain the metadata index and a path → doc lookup for tag: filter queries.
+	// Tag membership itself is resolved at query time against metaIndex (see
+	// Search/taggedPages), keeping a single source of truth.
+	idx.metaIndex = metaIndex
+	idx.pathToDoc = make(map[string]int, len(idx.docs))
+	for i, d := range idx.docs {
+		idx.pathToDoc[d.path] = i
 	}
 
 	return idx, nil
@@ -238,23 +229,40 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 func (idx *Index) Search(query string, limit int) []SearchResult {
 	tagFilters, freeText := parseQuery(query)
 
-	// Tag filters pre-restrict the candidate set (AND across tags). An unknown
-	// tag yields no candidates, so the whole query returns nothing.
-	var tagCandidates []int
+	// Tag filters pre-restrict results to pages carrying every named tag (AND),
+	// resolved against the metadata index. An unknown tag yields no pages, so
+	// the whole query returns nothing.
+	var tagged []metadata.PageInfo
 	if len(tagFilters) > 0 {
-		tagCandidates = idx.tagCandidates(tagFilters)
-		if len(tagCandidates) == 0 {
+		tagged = idx.taggedPages(tagFilters)
+		if len(tagged) == 0 {
 			return []SearchResult{}
 		}
 	}
 
 	queryTokens := tokenize(freeText)
 	if len(queryTokens) == 0 {
-		// Tag-only query: alphabetical-by-title listing of the candidates.
+		// Tag-only query: alphabetical-by-title listing of the tagged pages.
 		if len(tagFilters) > 0 {
-			return idx.tagOnlyResults(tagCandidates, limit)
+			return idx.tagOnlyResults(tagged, limit)
 		}
 		return []SearchResult{}
+	}
+
+	// Mixed query: restrict the free-text scan to docs carrying the tags. Map
+	// the tagged pages to corpus doc indices; bodyless tagged pages are absent
+	// from the corpus and cannot match free text, so they drop out here.
+	var tagSet map[int]struct{}
+	if len(tagFilters) > 0 {
+		tagSet = make(map[int]struct{}, len(tagged))
+		for _, p := range tagged {
+			if docIdx, ok := idx.pathToDoc[p.Path]; ok {
+				tagSet[docIdx] = struct{}{}
+			}
+		}
+		if len(tagSet) == 0 {
+			return []SearchResult{}
+		}
 	}
 
 	// Per-token info: precomputed IDF and per-doc postings.
@@ -288,6 +296,13 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 		if i == 0 {
 			candidates = make([]int, 0, len(byDoc))
 			for d := range byDoc {
+				// Apply the tag restriction up front so later tokens intersect
+				// against the smaller tag-filtered set, not the whole corpus.
+				if tagSet != nil {
+					if _, ok := tagSet[d]; !ok {
+						continue
+					}
+				}
 				candidates = append(candidates, d)
 			}
 		} else {
@@ -301,24 +316,6 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 			candidates = filtered
 		}
 
-		if len(candidates) == 0 {
-			return []SearchResult{}
-		}
-	}
-
-	// Restrict free-text candidates to the tag-filtered set (mixed query).
-	if len(tagFilters) > 0 {
-		tagSet := make(map[int]struct{}, len(tagCandidates))
-		for _, d := range tagCandidates {
-			tagSet[d] = struct{}{}
-		}
-		filtered := candidates[:0]
-		for _, d := range candidates {
-			if _, ok := tagSet[d]; ok {
-				filtered = append(filtered, d)
-			}
-		}
-		candidates = filtered
 		if len(candidates) == 0 {
 			return []SearchResult{}
 		}
@@ -377,58 +374,70 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 	return results
 }
 
-// tagCandidates returns the ascending-sorted intersection of doc indices for
-// all given tag filters (AND semantics). Returns nil if any tag is unknown.
-func (idx *Index) tagCandidates(tags []string) []int {
-	if len(tags) == 0 {
+// taggedPages returns the metadata pages carrying every given tag (AND
+// semantics). Returns nil if no metadata index is available or any tag is
+// unknown. The metadata index already deduplicates tags per page, so each page
+// appears at most once. metadata.ByTag returns a fresh slice, so the result is
+// safe for the caller to mutate.
+func (idx *Index) taggedPages(tags []string) []metadata.PageInfo {
+	if idx.metaIndex == nil || len(tags) == 0 {
 		return nil
 	}
-	acc, ok := idx.byTag[tags[0]]
-	if !ok {
+	pages := idx.metaIndex.ByTag(tags[0])
+	if len(pages) == 0 {
 		return nil
 	}
-	if len(tags) == 1 {
-		return acc // read-only; callers never mutate the returned slice
-	}
-	acc = slices.Clone(acc)
 	for _, tag := range tags[1:] {
-		next, ok := idx.byTag[tag]
-		if !ok {
+		next := idx.metaIndex.ByTag(tag)
+		if len(next) == 0 {
 			return nil
 		}
-		acc = intersectSorted(acc, next)
-		if len(acc) == 0 {
+		paths := make(map[string]struct{}, len(next))
+		for _, p := range next {
+			paths[p.Path] = struct{}{}
+		}
+		pages = slices.DeleteFunc(pages, func(p metadata.PageInfo) bool {
+			_, ok := paths[p.Path]
+			return !ok
+		})
+		if len(pages) == 0 {
 			return nil
 		}
 	}
-	return acc
+	return pages
 }
 
 // tagOnlyResults builds results for a tag-only query: alphabetical by title
-// (case-insensitive), with path as a stable secondary key. Snippet is left
-// empty — the client falls back to the description for preview text.
-func (idx *Index) tagOnlyResults(candidates []int, limit int) []SearchResult {
-	sorted := slices.Clone(candidates)
-	slices.SortFunc(sorted, func(a, b int) int {
-		da, db := idx.docs[a], idx.docs[b]
-		if c := cmp.Compare(strings.ToLower(da.title), strings.ToLower(db.title)); c != 0 {
+// (case-insensitive, via metadata.CompareTitles), with path as a stable
+// secondary key. Snippet is left empty — the client falls back to the
+// description for preview text. Pages in the search corpus contribute their
+// indexed title/description (which carry the heading/filename title fallbacks);
+// bodyless tagged pages keep their frontmatter values.
+func (idx *Index) tagOnlyResults(pages []metadata.PageInfo, limit int) []SearchResult {
+	for i := range pages {
+		if docIdx, ok := idx.pathToDoc[pages[i].Path]; ok {
+			pages[i].Title = idx.docs[docIdx].title
+			pages[i].Description = idx.docs[docIdx].description
+		}
+	}
+	slices.SortFunc(pages, func(a, b metadata.PageInfo) int {
+		if c := metadata.CompareTitles(a, b); c != 0 {
 			return c
 		}
-		return cmp.Compare(da.path, db.path)
+		return cmp.Compare(a.Path, b.Path)
 	})
 
-	if limit > len(sorted) {
-		limit = len(sorted)
+	if limit > len(pages) {
+		limit = len(pages)
 	}
-	sorted = sorted[:limit]
+	pages = pages[:limit]
 
-	results := make([]SearchResult, len(sorted))
-	for i, docIdx := range sorted {
-		doc := idx.docs[docIdx]
+	results := make([]SearchResult, len(pages))
+	for i, p := range pages {
 		results[i] = SearchResult{
-			Path:        doc.path,
-			Title:       doc.title,
-			Description: doc.description,
+			Path:        p.Path,
+			Title:       p.Title,
+			Description: p.Description,
 		}
 	}
 	return results

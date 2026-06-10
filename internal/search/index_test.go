@@ -526,21 +526,33 @@ func TestSearch_EmptyTagTokenIgnored(t *testing.T) {
 	}
 }
 
-func TestSearch_BodylessPageExcluded(t *testing.T) {
+func TestSearch_TagOnlyIncludesBodylessPage(t *testing.T) {
 	t.Parallel()
 	// stub.md is tagged "shared" but has no body, so it is absent from the
-	// search corpus and must not appear in tag: results (v1 divergence from
-	// the /tags/{tag} listing page).
+	// search corpus. Tag-only queries resolve against the metadata index, so it
+	// still appears — consistent with the /tags/{tag} listing page. Its title
+	// comes from frontmatter (no indexed heading fallback available).
 	files := taggedSite()
 	files["stub.md"] = &fstest.MapFile{Data: []byte("---\ntitle: Stub\ntags:\n  - shared\n---\n")}
 	idx := buildTaggedIndex(t, files)
 
 	paths := resultPaths(idx.Search("tag:shared", 10))
-	if slices.Contains(paths, "/stub.md") {
-		t.Errorf("bodyless page should be excluded, got %v", paths)
+	slices.Sort(paths)
+	if want := []string{"/config.md", "/deploy.md", "/stub.md"}; !slices.Equal(paths, want) {
+		t.Errorf("tag:shared = %v, want %v (bodyless stub included)", paths, want)
 	}
-	if len(paths) != 2 {
-		t.Errorf("tag:shared returned %d results, want 2 (stub excluded)", len(paths))
+}
+
+func TestSearch_MixedQueryExcludesBodylessPage(t *testing.T) {
+	t.Parallel()
+	// A bodyless page has no indexed body, so it can never match the free-text
+	// portion of a mixed query even though it carries the tag.
+	files := taggedSite()
+	files["stub.md"] = &fstest.MapFile{Data: []byte("---\ntitle: Stub\ntags:\n  - shared\n---\n")}
+	idx := buildTaggedIndex(t, files)
+
+	if got := resultPaths(idx.Search("tag:shared kubernetes", 10)); !slices.Equal(got, []string{"/deploy.md"}) {
+		t.Errorf("tag:shared kubernetes = %v, want [/deploy.md]", got)
 	}
 }
 

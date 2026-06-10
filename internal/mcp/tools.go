@@ -128,7 +128,12 @@ func (s *MCPServer) handleSearchDocs(_ context.Context, _ *mcp.CallToolRequest, 
 		if r.Snippet != "" {
 			fmt.Fprintf(&b, "   > %s\n", r.Snippet)
 		}
-		fmt.Fprintf(&b, "   Score: %.1f\n\n", r.Score)
+		// Tag-only results are not scored; omit the line rather than print a
+		// misleading "Score: 0.0".
+		if r.Score != 0 {
+			fmt.Fprintf(&b, "   Score: %.1f\n", r.Score)
+		}
+		b.WriteString("\n")
 	}
 	return textResult(b.String()), nil, nil
 }

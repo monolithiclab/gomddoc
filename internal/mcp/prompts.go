@@ -161,8 +161,12 @@ func (s *MCPServer) gatherSearchContext(query string, limit int) string {
 	var b strings.Builder
 	for _, r := range results {
 		fmt.Fprintf(&b, "### %s (`%s`)\n", r.Title, r.Path)
+		// Tag-only results have no snippet; fall back to the description so the
+		// prompt still carries page content rather than bare headings.
 		if r.Snippet != "" {
 			fmt.Fprintf(&b, "%s\n\n", r.Snippet)
+		} else if r.Description != "" {
+			fmt.Fprintf(&b, "%s\n\n", r.Description)
 		}
 	}
 	return b.String()
