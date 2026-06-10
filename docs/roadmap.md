@@ -192,11 +192,12 @@ the metadata index — these items surface them in the UI and search engine._
 - [x] **Tag index page (`/tags/`)**: Overview page listing all tags with document counts. Each
       tag links to its listing page. Serves as a discovery entry point. Generated statically in
       `build` mode. Low complexity.
-- [ ] **Search by tag (`tag:` prefix)**: Extend the search engine to support `tag:XXX` syntax.
+- [x] **Search by tag (`tag:` prefix)**: Extend the search engine to support `tag:XXX` syntax.
       When a query term starts with `tag:`, match it against the metadata index tags instead of
       the full-text index. Can be combined with free-text terms (e.g., `tag:deployment kubernetes`
-      searches for "kubernetes" in pages tagged "deployment"). Update the search modal UI to
-      display tag suggestions. Medium complexity.
+      searches for "kubernetes" in pages tagged "deployment"). A static "Tip: tag:name filters by
+      tag" caption below the search input makes the syntax discoverable (autocomplete/suggestions
+      deferred). Medium complexity.
 - [x] **Related pages via tags**: Display a "Related pages" section at the bottom of each page,
       populated from shared frontmatter tags. The enricher already computes `RelatedDocs` via
       `ByTag()` — expose via template and render in all themes. Medium complexity (enricher done,

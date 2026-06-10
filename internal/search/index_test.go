@@ -2,6 +2,7 @@ package search
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -372,6 +373,193 @@ func TestSearch(t *testing.T) {
 			t.Errorf("expected /README.md first (title+description boost), got %s", results[0].Path)
 		}
 	})
+}
+
+func TestParseQuery(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		wantTags []string
+		wantText string
+	}{
+		{"no tag terms", "foo bar", nil, "foo bar"},
+		{"single tag", "tag:foo", []string{"foo"}, ""},
+		{"multiple tags", "tag:foo tag:bar", []string{"foo", "bar"}, ""},
+		{"mixed", "tag:foo bar baz", []string{"foo"}, "bar baz"},
+		{"empty tag token dropped", "tag: kubernetes", nil, "kubernetes"},
+		{"colon-prefixed not a tag", ":foo", nil, ":foo"},
+		{"uppercase lowercased", "tag:Foo", []string{"foo"}, ""},
+		{"whitespace only", "   ", nil, ""},
+		{"double colon", "tag::foo", []string{":foo"}, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotTags, gotText := parseQuery(tt.input)
+			if !slices.Equal(gotTags, tt.wantTags) {
+				t.Errorf("tags = %v, want %v", gotTags, tt.wantTags)
+			}
+			if gotText != tt.wantText {
+				t.Errorf("freeText = %q, want %q", gotText, tt.wantText)
+			}
+		})
+	}
+}
+
+// buildTaggedIndex builds a search index (with its backing metadata index)
+// from the given files. Shared setup for the tag: search tests.
+func buildTaggedIndex(t *testing.T, files fstest.MapFS) *Index {
+	t.Helper()
+	metaIndex, err := metadata.BuildIndex(context.Background(), files, nil)
+	if err != nil {
+		t.Fatalf("metadata.BuildIndex failed: %v", err)
+	}
+	idx, err := BuildIndex(context.Background(), files, metaIndex, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex failed: %v", err)
+	}
+	return idx
+}
+
+// taggedSite is the standard fixture: two pages tagged "shared", one tagged
+// "other"; only deploy.md mentions kubernetes.
+func taggedSite() fstest.MapFS {
+	return fstest.MapFS{
+		"deploy.md": &fstest.MapFile{Data: []byte("---\ntitle: Deploy\ntags:\n  - shared\n  - deployment\n---\n# Deploy\n\nDeploying with kubernetes clusters.")},
+		"config.md": &fstest.MapFile{Data: []byte("---\ntitle: Config\ntags:\n  - shared\n---\n# Config\n\nConfiguration settings and options.")},
+		"other.md":  &fstest.MapFile{Data: []byte("---\ntitle: Other\ntags:\n  - other\n---\n# Other\n\nSome entirely unrelated content here.")},
+	}
+}
+
+func resultPaths(results []SearchResult) []string {
+	paths := make([]string, len(results))
+	for i, r := range results {
+		paths[i] = r.Path
+	}
+	return paths
+}
+
+func TestSearch_TagFilter(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, taggedSite())
+
+	shared := resultPaths(idx.Search("tag:shared", 10))
+	slices.Sort(shared)
+	if want := []string{"/config.md", "/deploy.md"}; !slices.Equal(shared, want) {
+		t.Errorf("tag:shared = %v, want %v", shared, want)
+	}
+
+	other := resultPaths(idx.Search("tag:other", 10))
+	if want := []string{"/other.md"}; !slices.Equal(other, want) {
+		t.Errorf("tag:other = %v, want %v", other, want)
+	}
+}
+
+func TestSearch_UnknownTagReturnsEmpty(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, taggedSite())
+
+	if results := idx.Search("tag:doesnotexist", 10); len(results) != 0 {
+		t.Errorf("expected 0 results for unknown tag, got %d", len(results))
+	}
+}
+
+func TestSearch_TagOnlyAlphabetical(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, fstest.MapFS{
+		"z.md": &fstest.MapFile{Data: []byte("---\ntitle: Zebra\ntags:\n  - topic\n---\n# Zebra\n\nZebra body content.")},
+		"a.md": &fstest.MapFile{Data: []byte("---\ntitle: Alpha\ntags:\n  - topic\n---\n# Alpha\n\nAlpha body content.")},
+		"m.md": &fstest.MapFile{Data: []byte("---\ntitle: Mango\ntags:\n  - topic\n---\n# Mango\n\nMango body content.")},
+	})
+
+	titles := make([]string, 0, 3)
+	for _, r := range idx.Search("tag:topic", 10) {
+		titles = append(titles, r.Title)
+	}
+	if want := []string{"Alpha", "Mango", "Zebra"}; !slices.Equal(titles, want) {
+		t.Errorf("tag-only order = %v, want %v", titles, want)
+	}
+}
+
+func TestSearch_TagOnlyStableOrder(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, fstest.MapFS{
+		"b.md": &fstest.MapFile{Data: []byte("---\ntitle: Same\ntags:\n  - dup\n---\n# Same\n\nFirst body.")},
+		"a.md": &fstest.MapFile{Data: []byte("---\ntitle: Same\ntags:\n  - dup\n---\n# Same\n\nSecond body.")},
+	})
+
+	if got := resultPaths(idx.Search("tag:dup", 10)); !slices.Equal(got, []string{"/a.md", "/b.md"}) {
+		t.Errorf("equal-title order = %v, want path-sorted [/a.md /b.md]", got)
+	}
+}
+
+func TestSearch_TagPlusFreeText(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, taggedSite())
+
+	results := idx.Search("tag:shared kubernetes", 10)
+	if got := resultPaths(results); !slices.Equal(got, []string{"/deploy.md"}) {
+		t.Errorf("tag:shared kubernetes = %v, want [/deploy.md]", got)
+	}
+}
+
+func TestSearch_TagCaseInsensitive(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, taggedSite())
+
+	if got := len(idx.Search("tag:Shared", 10)); got != 2 {
+		t.Errorf("tag:Shared returned %d results, want 2", got)
+	}
+}
+
+func TestSearch_EmptyTagTokenIgnored(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, taggedSite())
+
+	// "tag:" is dropped; "kubernetes" is the only (free-text) term.
+	results := idx.Search("tag: kubernetes", 10)
+	if got := resultPaths(results); !slices.Equal(got, []string{"/deploy.md"}) {
+		t.Errorf("'tag: kubernetes' = %v, want [/deploy.md]", got)
+	}
+}
+
+func TestSearch_BodylessPageExcluded(t *testing.T) {
+	t.Parallel()
+	// stub.md is tagged "shared" but has no body, so it is absent from the
+	// search corpus and must not appear in tag: results (v1 divergence from
+	// the /tags/{tag} listing page).
+	files := taggedSite()
+	files["stub.md"] = &fstest.MapFile{Data: []byte("---\ntitle: Stub\ntags:\n  - shared\n---\n")}
+	idx := buildTaggedIndex(t, files)
+
+	paths := resultPaths(idx.Search("tag:shared", 10))
+	if slices.Contains(paths, "/stub.md") {
+		t.Errorf("bodyless page should be excluded, got %v", paths)
+	}
+	if len(paths) != 2 {
+		t.Errorf("tag:shared returned %d results, want 2 (stub excluded)", len(paths))
+	}
+}
+
+func TestSearch_TagOnlySnippetEmptyDescriptionSet(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, fstest.MapFS{
+		"p.md": &fstest.MapFile{Data: []byte("---\ntitle: Page\ndescription: A short description\ntags:\n  - topic\n---\n# Page\n\nBody text here.")},
+	})
+
+	results := idx.Search("tag:topic", 10)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Snippet != "" {
+		t.Errorf("tag-only snippet = %q, want empty", results[0].Snippet)
+	}
+	if results[0].Description != "A short description" {
+		t.Errorf("description = %q, want %q", results[0].Description, "A short description")
+	}
 }
 
 func TestExtractFirstHeading(t *testing.T) {

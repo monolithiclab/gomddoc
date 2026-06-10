@@ -18,6 +18,7 @@ aria_toggle_theme: "Toggle dark mode"
 aria_breadcrumb: Breadcrumb
 aria_copy_code: "Copy code to clipboard"
 search_shortcut: "Search (Ctrl+K)"
+search_tag_tip: "Tip: tag:name filters by tag"
 tags_title: Tags
 tags_index_title: All tags
 tags_tagged_as: "Pages tagged %s"

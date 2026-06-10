@@ -175,6 +175,9 @@ func pageFromFrontmatter(path string, fm map[string]any) PageInfo {
 						slog.String("reason", "tags may not contain '/' or '\\'"))
 					continue
 				}
+				if slices.Contains(page.Tags, normalized) {
+					continue // drop duplicates so byTag holds each page at most once per tag
+				}
 				page.Tags = append(page.Tags, normalized)
 			}
 		}

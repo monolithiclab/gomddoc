@@ -11,6 +11,7 @@ import (
 	stdpath "path"
 	"runtime"
 	"slices"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -63,6 +64,7 @@ type Index struct {
 	inverted      map[string][]posting
 	docTermCounts []int // body token count per doc, for TF normalization
 	docCount      int
+	byTag         map[string][]int // normalized tag -> ascending doc indices
 }
 
 // BuildIndex walks the filesystem, reads all markdown files, tokenizes their content,
@@ -204,14 +206,54 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 
 	idx.docCount = len(idx.docs)
 
+	// Build the tag -> doc index map for tag: filter queries. Tags come from
+	// the metadata index (already lowercased/trimmed at parse time). Pages with
+	// an empty body are absent from idx.docs (skipped above) and from byTag,
+	// so they won't appear in tag: results even if tagged.
+	idx.byTag = make(map[string][]int)
+	if len(metaLookup) > 0 {
+		pathToDoc := make(map[string]int, len(idx.docs))
+		for i, d := range idx.docs {
+			pathToDoc[d.path] = i
+		}
+		for docPath, info := range metaLookup {
+			docIdx, ok := pathToDoc[docPath]
+			if !ok {
+				continue // bodyless or excluded page; not in the search corpus
+			}
+			for _, tag := range info.Tags {
+				idx.byTag[tag] = append(idx.byTag[tag], docIdx)
+			}
+		}
+		for tag := range idx.byTag {
+			slices.Sort(idx.byTag[tag])
+		}
+	}
+
 	return idx, nil
 }
 
 // Search finds documents matching all query terms (AND semantics), ranked by TF-IDF
 // with field-specific boosts. Returns at most limit results.
 func (idx *Index) Search(query string, limit int) []SearchResult {
-	queryTokens := tokenize(query)
+	tagFilters, freeText := parseQuery(query)
+
+	// Tag filters pre-restrict the candidate set (AND across tags). An unknown
+	// tag yields no candidates, so the whole query returns nothing.
+	var tagCandidates []int
+	if len(tagFilters) > 0 {
+		tagCandidates = idx.tagCandidates(tagFilters)
+		if len(tagCandidates) == 0 {
+			return []SearchResult{}
+		}
+	}
+
+	queryTokens := tokenize(freeText)
 	if len(queryTokens) == 0 {
+		// Tag-only query: alphabetical-by-title listing of the candidates.
+		if len(tagFilters) > 0 {
+			return idx.tagOnlyResults(tagCandidates, limit)
+		}
 		return []SearchResult{}
 	}
 
@@ -259,6 +301,24 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 			candidates = filtered
 		}
 
+		if len(candidates) == 0 {
+			return []SearchResult{}
+		}
+	}
+
+	// Restrict free-text candidates to the tag-filtered set (mixed query).
+	if len(tagFilters) > 0 {
+		tagSet := make(map[int]struct{}, len(tagCandidates))
+		for _, d := range tagCandidates {
+			tagSet[d] = struct{}{}
+		}
+		filtered := candidates[:0]
+		for _, d := range candidates {
+			if _, ok := tagSet[d]; ok {
+				filtered = append(filtered, d)
+			}
+		}
+		candidates = filtered
 		if len(candidates) == 0 {
 			return []SearchResult{}
 		}
@@ -314,6 +374,63 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 		}
 	}
 
+	return results
+}
+
+// tagCandidates returns the ascending-sorted intersection of doc indices for
+// all given tag filters (AND semantics). Returns nil if any tag is unknown.
+func (idx *Index) tagCandidates(tags []string) []int {
+	if len(tags) == 0 {
+		return nil
+	}
+	acc, ok := idx.byTag[tags[0]]
+	if !ok {
+		return nil
+	}
+	if len(tags) == 1 {
+		return acc // read-only; callers never mutate the returned slice
+	}
+	acc = slices.Clone(acc)
+	for _, tag := range tags[1:] {
+		next, ok := idx.byTag[tag]
+		if !ok {
+			return nil
+		}
+		acc = intersectSorted(acc, next)
+		if len(acc) == 0 {
+			return nil
+		}
+	}
+	return acc
+}
+
+// tagOnlyResults builds results for a tag-only query: alphabetical by title
+// (case-insensitive), with path as a stable secondary key. Snippet is left
+// empty — the client falls back to the description for preview text.
+func (idx *Index) tagOnlyResults(candidates []int, limit int) []SearchResult {
+	sorted := slices.Clone(candidates)
+	slices.SortFunc(sorted, func(a, b int) int {
+		da, db := idx.docs[a], idx.docs[b]
+		if c := cmp.Compare(strings.ToLower(da.title), strings.ToLower(db.title)); c != 0 {
+			return c
+		}
+		return cmp.Compare(da.path, db.path)
+	})
+
+	if limit > len(sorted) {
+		limit = len(sorted)
+	}
+	sorted = sorted[:limit]
+
+	results := make([]SearchResult, len(sorted))
+	for i, docIdx := range sorted {
+		doc := idx.docs[docIdx]
+		results[i] = SearchResult{
+			Path:        doc.path,
+			Title:       doc.title,
+			Description: doc.description,
+		}
+	}
 	return results
 }
 

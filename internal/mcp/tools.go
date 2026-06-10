@@ -22,7 +22,7 @@ func (s *MCPServer) registerTools() {
 	mcp.AddTool(s.server, &mcp.Tool{
 		Name:        "search_docs",
 		Title:       "Search Documentation",
-		Description: "Full-text search across all documentation pages. Returns ranked results with snippets.",
+		Description: "Full-text search across all documentation pages. Returns ranked results with snippets. Supports tag: prefix syntax (e.g. \"tag:deployment kubernetes\") to filter by frontmatter tag.",
 		Annotations: readOnlyAnnotations,
 	}, s.handleSearchDocs)
 

@@ -391,3 +391,29 @@ func TestBuildIndex_TagValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildIndex_DuplicateTagsDeduped(t *testing.T) {
+	t.Parallel()
+
+	// "go" appears three times (once via differing case/whitespace that
+	// normalizes to the same value); the page must be indexed under it once.
+	files := fstest.MapFS{
+		"dup.md": {Data: []byte("---\ntitle: Dup\ntags:\n  - go\n  - Go\n  - \" go \"\n  - api\n---\n# Dup")},
+	}
+
+	idx, err := BuildIndex(context.Background(), files, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+
+	page := idx.ByPath("/dup.md")
+	if page == nil {
+		t.Fatal("page /dup.md not indexed")
+	}
+	if want := []string{"go", "api"}; !slices.Equal(page.Tags, want) {
+		t.Errorf("page.Tags = %v, want %v", page.Tags, want)
+	}
+	if pages := idx.ByTag("go"); len(pages) != 1 {
+		t.Errorf("ByTag(go) returned %d pages, want 1 (no duplicate)", len(pages))
+	}
+}

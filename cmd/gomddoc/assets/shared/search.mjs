@@ -104,6 +104,12 @@
       color: var(--color-text-muted, #94a3b8);
       margin-bottom: 4px;
     }
+    .search-tip {
+      padding: 6px 16px;
+      font-size: 12px;
+      color: var(--color-text-muted, #94a3b8);
+      border-bottom: 1px solid var(--color-border, #e2e8f0);
+    }
     .search-result-snippet {
       font-size: 13px;
       color: var(--color-text-secondary, #64748b);
@@ -168,6 +174,7 @@
     open: root.getAttribute('data-search-open') || 'Open',
     close: root.getAttribute('data-search-close') || 'Close',
     ariaLabel: root.getAttribute('data-search-aria') || 'Search documentation',
+    tagTip: root.getAttribute('data-search-tag-tip') || '',
   };
 
   // Create modal DOM
@@ -189,6 +196,7 @@
                autocomplete="off" aria-label="Search query">
         <kbd class="search-shortcut">Esc</kbd>
       </div>
+      ${i18n.tagTip ? '<div class="search-tip">' + escapeHTML(i18n.tagTip) + '</div>' : ''}
       <div id="search-results" role="listbox" aria-label="Search results"></div>
       <div class="search-footer">
         <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> ${i18n.navigate}</span>
@@ -260,7 +268,7 @@
         'role="option" data-index="' + i + '">' +
         '<div class="search-result-title">' + escapeHTML(r.title) + '</div>' +
         '<div class="search-result-path">' + escapeHTML(r.path) + '</div>' +
-        (r.snippet ? '<div class="search-result-snippet">' + r.snippet + '</div>' : '') +
+        (r.snippet ? '<div class="search-result-snippet">' + r.snippet + '</div>' : (r.description ? '<div class="search-result-snippet">' + escapeHTML(r.description) + '</div>' : '')) +
       '</a>'
     ).join('');
   }
