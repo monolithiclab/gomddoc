@@ -83,7 +83,7 @@ func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string) func(
 			// Strip leading "/" to get the fs-relative path.
 			realPath := strings.TrimPrefix(r.URL.Path, "/")
 			if cleanPath, found := resolver.CleanPath(realPath); found {
-				http.Redirect(w, r, "/"+cleanPath, http.StatusMovedPermanently)
+				http.Redirect(w, r, "/"+cleanPath, http.StatusMovedPermanently) // #nosec G710 -- cleanPath is from resolver's validated map, not user input
 				return
 			}
 
