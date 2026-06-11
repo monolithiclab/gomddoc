@@ -57,11 +57,26 @@ func ExtractSection(content []byte, headingID string) ([]byte, error) {
 // headingLevel parses an ATX heading line and returns its level and text.
 // For example, "## Installation" returns (2, "Installation", true).
 func headingLevel(line string) (int, string, bool) {
-	trimmed := strings.TrimLeft(line, " ")
-	// ATX headings allow up to 3 leading spaces.
-	if len(line)-len(trimmed) > 3 {
+	// ATX headings allow up to 3 spaces of indentation. A tab counts as 4
+	// (CommonMark), so any leading tab makes the line indented code, not a
+	// heading. Measure the leading indent treating tabs as 4 before trimming.
+	indent := 0
+	for _, c := range line {
+		switch c {
+		case ' ':
+			indent++
+		case '\t':
+			indent += 4
+		default:
+		}
+		if c != ' ' && c != '\t' {
+			break
+		}
+	}
+	if indent > 3 {
 		return 0, "", false
 	}
+	trimmed := strings.TrimLeft(line, " \t")
 
 	level := 0
 	for _, c := range trimmed {

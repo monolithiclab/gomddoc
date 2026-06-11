@@ -62,7 +62,10 @@ func TestHeadingLevel(t *testing.T) {
 		{"closing hashes", "## Heading ##", 2, "Heading", true},
 		{"bare heading", "##", 2, "", true},
 		{"leading spaces ok", "  ## Indented", 2, "Indented", true},
+		{"three spaces ok", "   ## Indented", 2, "Indented", true},
 		{"too much indent", "    ## Code block", 0, "", false},
+		{"leading tab is code block", "\t## Tabbed", 0, "", false},
+		{"space then tab is code block", " \t## Tabbed", 0, "", false},
 	}
 
 	for _, tt := range tests {
