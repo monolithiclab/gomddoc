@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"unicode/utf8"
 
 	"github.com/monolithiclab/gomddoc/internal/search"
 )
@@ -190,5 +191,31 @@ func TestSearchEndpoint_ResultStructure(t *testing.T) {
 	}
 	if r.Score <= 0 {
 		t.Error("result should have positive score")
+	}
+}
+
+func TestTruncateQuery(t *testing.T) {
+	t.Parallel()
+
+	// Short ASCII query is returned unchanged.
+	if got := truncateQuery("hello"); got != "hello" {
+		t.Errorf("truncateQuery(short) = %q, want %q", got, "hello")
+	}
+
+	// A query of 3-byte runes longer than the cap forces a mid-rune cut at
+	// the 500-byte boundary (500 is not a multiple of 3). The trailing partial
+	// rune must be trimmed, leaving valid UTF-8 within the cap.
+	long := strings.Repeat("あ", maxQueryLength) // 3 bytes each
+	got := truncateQuery(long)
+	if len(got) > maxQueryLength {
+		t.Errorf("truncateQuery len = %d, want <= %d", len(got), maxQueryLength)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("truncateQuery produced invalid UTF-8: %q", got)
+	}
+	// 500 bytes => 166 complete runes (498 bytes) + a 2-byte partial that is
+	// trimmed, so 166 runes remain.
+	if want := 166; utf8.RuneCountInString(got) != want {
+		t.Errorf("truncateQuery rune count = %d, want %d", utf8.RuneCountInString(got), want)
 	}
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/monolithiclab/gomddoc/internal/search"
 )
@@ -41,6 +42,23 @@ const (
 	maxQueryLength     = 500
 )
 
+// truncateQuery caps the query at maxQueryLength bytes. Cutting on a byte
+// boundary can split a multi-byte rune, so any trailing partial rune left by
+// the cut is trimmed to keep the query valid UTF-8.
+func truncateQuery(q string) string {
+	if len(q) <= maxQueryLength {
+		return q
+	}
+	q = q[:maxQueryLength]
+	for len(q) > 0 {
+		if r, size := utf8.DecodeLastRuneInString(q); r != utf8.RuneError || size > 1 {
+			break
+		}
+		q = q[:len(q)-1]
+	}
+	return q
+}
+
 // SearchEndpoint handles GET /api/search?q=<query>&limit=<n>&lang=<code>.
 // Returns a JSON array of search results ranked by relevance.
 func (h *SearchHandler) SearchEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -49,9 +67,7 @@ func (h *SearchHandler) SearchEndpoint(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, []search.SearchResult{})
 		return
 	}
-	if len(q) > maxQueryLength {
-		q = q[:maxQueryLength]
-	}
+	q = truncateQuery(q)
 
 	limit := defaultSearchLimit
 	if l := r.URL.Query().Get("limit"); l != "" {
