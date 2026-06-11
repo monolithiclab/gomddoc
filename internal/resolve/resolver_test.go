@@ -242,4 +242,19 @@ func TestResolver_AllMappings(t *testing.T) {
 	if m["b.md"] != "b" {
 		t.Errorf("AllMappings()[b.md] = %q, want b", m["b.md"])
 	}
+
+	// The returned map is a defensive copy: mutating it must not affect the
+	// resolver's internal state (REVIEW §9.8).
+	m["a.md"] = "mutated"
+	delete(m, "b.md")
+	m["injected"] = "x"
+	if clean, _ := r.CleanPath("a.md"); clean != "a" {
+		t.Errorf("after mutating returned map, CleanPath(a.md) = %q, want a", clean)
+	}
+	if clean, ok := r.CleanPath("b.md"); !ok || clean != "b" {
+		t.Errorf("after deleting from returned map, CleanPath(b.md) = %q (ok=%v), want b", clean, ok)
+	}
+	if m2 := r.AllMappings(); len(m2) != 2 {
+		t.Errorf("resolver mutated via returned map: AllMappings() now has %d entries, want 2", len(m2))
+	}
 }

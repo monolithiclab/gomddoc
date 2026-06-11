@@ -5,6 +5,7 @@ package resolve
 import (
 	"io/fs"
 	"log/slog"
+	"maps"
 	"path"
 	"strings"
 
@@ -133,8 +134,9 @@ func (r *PathResolver) IsEmpty() bool {
 	return len(r.toReal) == 0
 }
 
-// AllMappings returns the real-to-clean mapping. The caller must not modify
-// the returned map.
+// AllMappings returns a copy of the real-to-clean mapping. The copy is
+// defensive: callers may freely read or mutate it without affecting the
+// resolver's internal state.
 func (r *PathResolver) AllMappings() map[string]string {
-	return r.toClean
+	return maps.Clone(r.toClean)
 }
