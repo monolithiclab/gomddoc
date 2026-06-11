@@ -199,7 +199,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 
 	// Per-language content handlers (must be registered before the default catch-all)
 	for lang, lp := range opts.LangPipelines {
-		langTFunc := opts.LocaleBundle.TFunc(lang)
+		var langTFunc func(string) string
+		if opts.LocaleBundle != nil {
+			langTFunc = opts.LocaleBundle.TFunc(lang)
+		}
 		langInfos := template.WithActiveLang(allLanguageInfos, lang)
 
 		langHandler := NewHandler(HandlerConfig{

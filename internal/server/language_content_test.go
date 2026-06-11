@@ -14,6 +14,41 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
 
+// TestNewHTTPServer_NilLocaleBundleWithLangPipelines proves NewHTTPServer does
+// not panic when LangPipelines is non-empty but LocaleBundle is nil. Regression
+// test for REVIEW.md §9.4: the per-language loop dereferenced LocaleBundle
+// unconditionally while the default-language path guarded it.
+func TestNewHTTPServer_NilLocaleBundleWithLangPipelines(t *testing.T) {
+	t.Parallel()
+
+	frFiles := fstest.MapFS{"guide.md": {Data: []byte("# Guide")}}
+	cfg := &config.Config{
+		Server: config.ServerConfig{Port: ":8080", Dir: "."},
+		Site:   config.NewSiteConfig("."),
+	}
+
+	// Must not panic.
+	srv := NewHTTPServer(HTTPServerConfig{
+		Config:           cfg,
+		Provider:         newMemoryProvider(fstest.MapFS{}, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		DefaultLang:      "en-US",
+		AllLanguages:     []string{"fr"},
+		LocaleBundle:     nil,
+		LangPipelines: map[string]LangPipelineConfig{
+			"fr": {
+				Provider:         newMemoryProvider(frFiles, "README.md", false),
+				EnricherRegistry: setupTestEnricherRegistry(),
+			},
+		},
+	})
+	if srv == nil {
+		t.Fatal("NewHTTPServer returned nil")
+	}
+}
+
 // localeFSForLangTest returns a minimal locale FS covering en-US and fr so the
 // per-language content handler can build its TFunc.
 func localeFSForLangTest() fstest.MapFS {
