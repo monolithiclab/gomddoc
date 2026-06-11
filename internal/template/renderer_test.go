@@ -2293,6 +2293,52 @@ func TestRender_SeeAlso(t *testing.T) {
 	}
 }
 
+// TestRender_SeeAlso_ContentURL proves see-also links are resolved through the
+// resolver like every other link, so on a strip_extensions site they point to
+// the clean URL (/api) rather than the raw index path (/api.md). Regression
+// test for REVIEW.md §9.2.
+func TestRender_SeeAlso_ContentURL(t *testing.T) {
+	t.Parallel()
+
+	contentFS := fstest.MapFS{
+		"api.md":   {Data: []byte("# API")},
+		"guide.md": {Data: []byte("# Guide")},
+	}
+	resolver := resolve.Build(contentFS, []string{".md"}, func(string) bool { return true })
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(
+			`<!doctype html><html><body>{{ template "see-also" . }}</body></html>`,
+		)},
+		"assets/themes/default/partials/see-also.html.tmpl": {Data: seeAlsoPartialBytes(t)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, testFS, WithResolver(resolver))
+
+	page := PageContext{Path: "/x.md", RelatedDocs: []enricher.RelatedDoc{
+		{Path: "/api.md", Title: "API"},
+		{Path: "/guide.md", Title: "Guide"},
+	}}
+	tc := &TemplateContext{Site: &siteConfig, Page: page}
+	tc.WithI18n("", func(k string) string { return map[string]string{"see_also": "See also"}[k] }, nil)
+
+	out, err := r.Render(context.Background(), "default.html.tmpl", tc)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	s := string(out)
+	for _, want := range []string{`href="/api"`, `href="/guide"`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("output missing %q\noutput: %s", want, s)
+		}
+	}
+	for _, banned := range []string{`href="/api.md"`, `href="/guide.md"`} {
+		if strings.Contains(s, banned) {
+			t.Errorf("output should not contain raw path %q\noutput: %s", banned, s)
+		}
+	}
+}
+
 func seeAlsoPartialBytes(t *testing.T) []byte {
 	t.Helper()
 	data, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/see-also.html.tmpl")
