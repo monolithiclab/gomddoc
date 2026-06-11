@@ -30,8 +30,10 @@ of current capabilities, see `docs/architecture.md`.
 
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
 7 (partial — sitemap generation complete), 7b (preview), 8 (theming engine), 9a (pre-launch SEO),
-10a-10b (MCP server + HTTP). Six review batches resolved 45/46 identified issues (security,
-correctness, deduplication, hardening).
+9b-9d (most post-launch SEO), 10a-10b (MCP server + HTTP), tag components (chips, listing/index
+pages, `tag:` search, related/see-also section), i18n/l10n (UI strings + multi-language content).
+A minimal GitHub Actions CI pipeline (`make lint test` on push) is in place. Six review batches
+resolved 45/46 identified issues (security, correctness, deduplication, hardening).
 
 **Phase 5 note:** Server-side full-text search and client-side search UI are complete for `serve`
 and `preview` modes. Build-mode search (Pagefind) deferred.
@@ -45,8 +47,8 @@ go-git library limitations.
 - [ ] **Partial clones**: `git clone --filter=blob:none` when upstream library support matures.
 - [ ] **CI benchmark tracking**: Run benchmarks in CI with `go test -bench -benchmem`. Use
       `benchstat` to detect regressions against the baseline. Fail CI on >10% degradation.
-      Deferred until CI pipeline is established. Makefile targets (`bench-save`, `bench-compare`)
-      support local regression detection.
+      Now unblocked — a minimal CI pipeline exists (see Distribution & Packaging). Makefile targets
+      (`bench-save`, `bench-compare`) support local regression detection.
 - [x] **Allocation reduction**: Profiled and reduced allocations in the request hot path.
       ETag generation: inline FNV-64a + `strconv.AppendUint` (1 alloc, down from 2+).
       ETag checking: zero allocs. Content negotiation: hand-rolled Accept parser replacing
@@ -317,9 +319,10 @@ install gomddoc`) or aim for Homebrew core inclusion later. Low complexity once 
       (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) on tagged releases.
       Generate checksums and a changelog from conventional commits. GoReleaser can also drive the
       Homebrew formula and Docker image builds. Medium complexity.
-- [ ] **CI pipeline (GitHub Actions)**: Automated build, test, and lint on push/PR. Run `make ci`
-      with coverage threshold enforcement (87%+). Gate merges on passing CI. Prerequisite for
-      automated releases and benchmark tracking. Medium complexity.
+- [x] **CI pipeline (GitHub Actions)**: Minimal `.github/workflows/ci.yml` runs `make lint test`
+      (vet, gofmt, staticcheck, golangci-lint, gosec, gocritic, `go test -race -cover`) on every
+      push. _Remaining enhancements (deferred):_ coverage threshold enforcement (87%+), linter
+      install caching, concurrency cancellation of superseded runs, coverage artifact upload.
 - [ ] **Install script**: One-liner `curl | sh` install script that detects OS/arch, downloads the
       correct binary from GitHub Releases, and places it in `/usr/local/bin` (or `$HOME/.local/bin`).
       Common pattern for CLI tools. Low complexity.
@@ -460,6 +463,21 @@ _Enable community theme sharing via a GitHub-based registry._
 
 ## Bugs
 
+- [ ] **Per-language content pages 404 in `serve` mode** (HIGH — see REVIEW.md §9.1). The
+      per-language content handler is mounted under `/{lang}` without stripping the prefix, so
+      `ServeContent` passes `/{lang}/page.md` to a provider already rooted at the language subdir
+      and the lookup misses. Tag routes work (they use the metadata index, not the provider), which
+      masked the bug; there is no per-language content-serving test. `build` mode is unaffected
+      (it walks the language sub-FS directly), so static builds emit correct localized pages while
+      the live server 404s them. Fix: `http.StripPrefix` the `/{lang}` segment and build a
+      per-language resolver; add serve+build integration tests.
+- [ ] **See-also links emit raw `.md` paths** (MEDIUM — REVIEW.md §9.2). `see-also.html.tmpl` renders
+      `$doc.Path` unresolved, so on `strip_extensions` sites related-page links point to `/foo.md`
+      while every other link is `/foo`. Fix via the `contentURL` template func or normalize in the
+      enricher.
+- [ ] **Tag pages re-parse their partial template on every request** (MEDIUM perf — REVIEW.md §9.3).
+      `executePartial` bypasses the template cache used by the main content path; cache the parsed
+      partial.
 - [ ] When falling back to the default theme for layout (eg. error.html.tmpl), the template loads the
       partials from default rather than those from the overloaded theme.
 
@@ -484,8 +502,28 @@ _Enable community theme sharing via a GitHub-based registry._
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested functionality.
 
-**Immediate focus:** Phase 9c SEO polish, tag components, distribution/CI pipeline.
-**Deferred:** CI benchmark tracking (Phase 4, needs CI pipeline), build-mode search (Phase 5, Pagefind).
+**Immediate focus (next steps, in priority order):**
+
+1. **Distribution & Packaging** — the main blocker to public adoption. gomddoc is build-from-source
+   only today. Sequence: GoReleaser → GitHub Releases (cross-platform binaries + checksums) → then
+   `go install` verification, `curl | sh` install script, Homebrew tap, and the multi-arch Docker
+   image, all of which build on releases. CI already runs `make lint test`.
+2. **Self-Documentation via MCP** — bundle `docs/guide/` via `embed.FS` so `gomddoc mcp` (no content
+   dir) serves gomddoc's own guide, plus a `learn_gomddoc` onboarding prompt. Contained, high-leverage
+   differentiator that dogfoods the MCP interface.
+3. **Developer-experience polish** — autoreload in `preview` (SSE), next/previous page links at page
+   bottom (the `<link rel="next/prev">` head tags already exist), and build-mode asset minification.
+4. **Bug fix** — theme-fallback layout loads partials from the default theme instead of the active
+   overloaded theme (see Bugs).
+
+**Maintenance:** A fresh review pass landed 2026-06-11 (REVIEW.md §9). It surfaced a HIGH bug
+(per-language content 404s in serve mode), several MEDIUM consistency/perf items in the new
+tag/see-also code, test gaps in multi-language build mode and multi-tag search, and documentation
+drift. Address the §9.10 priority list — starting with the i18n serve bug — before the
+distribution push, since broken i18n undercuts a public launch.
+
+**Deferred:** CI benchmark tracking (now unblocked but low priority), build-mode search (Phase 5,
+Pagefind), partial clones (blocked by go-git).
 
 ## Deferred (Not Planned)
 
