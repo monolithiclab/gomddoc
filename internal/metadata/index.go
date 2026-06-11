@@ -237,6 +237,13 @@ func (idx *Index) ByTag(tag string) []PageInfo {
 	return result
 }
 
+// CountByTag returns the number of pages with the given tag, matched
+// case-insensitively. Unlike ByTag it allocates nothing, so it is preferred
+// when only the count is needed (e.g. the tags index page).
+func (idx *Index) CountByTag(tag string) int {
+	return len(idx.byTag[strings.ToLower(tag)])
+}
+
 // CompareTitles is a case-insensitive comparator for use with slices.SortFunc.
 func CompareTitles(a, b PageInfo) int {
 	return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))

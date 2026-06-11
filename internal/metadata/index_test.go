@@ -417,3 +417,35 @@ func TestBuildIndex_DuplicateTagsDeduped(t *testing.T) {
 		t.Errorf("ByTag(go) returned %d pages, want 1 (no duplicate)", len(pages))
 	}
 }
+
+func TestCountByTag(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"a.md": {Data: []byte("---\ntags: [go, api]\n---\n# A")},
+		"b.md": {Data: []byte("---\ntags: [go]\n---\n# B")},
+	}
+	idx, err := BuildIndex(context.Background(), files, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+
+	tests := []struct {
+		tag  string
+		want int
+	}{
+		{"go", 2},
+		{"api", 1},
+		{"GO", 2},      // case-insensitive, matches ByTag
+		{"missing", 0}, // unknown tag
+	}
+	for _, tt := range tests {
+		if got := idx.CountByTag(tt.tag); got != tt.want {
+			t.Errorf("CountByTag(%q) = %d, want %d", tt.tag, got, tt.want)
+		}
+		// CountByTag must agree with len(ByTag).
+		if got, want := idx.CountByTag(tt.tag), len(idx.ByTag(tt.tag)); got != want {
+			t.Errorf("CountByTag(%q)=%d disagrees with len(ByTag)=%d", tt.tag, got, want)
+		}
+	}
+}

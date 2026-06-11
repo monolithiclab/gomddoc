@@ -64,7 +64,7 @@ func (h *TagsIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tags := h.index.AllTags() // already alphabetical
 	entries := make([]template.TagCount, 0, len(tags))
 	for _, tag := range tags {
-		entries = append(entries, template.TagCount{Tag: tag, Count: len(h.index.ByTag(tag))})
+		entries = append(entries, template.TagCount{Tag: tag, Count: h.index.CountByTag(tag)})
 	}
 	body, err := h.renderer.RenderTagsIndex(r.Context(), h.lang, h.tFunc, entries)
 	if err != nil {
