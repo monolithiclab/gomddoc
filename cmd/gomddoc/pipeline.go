@@ -392,9 +392,12 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 	langPipelineConfigs := make(map[string]server.LangPipelineConfig, len(lp.ByLang))
 	for lang, langPipe := range lp.ByLang {
 		langPipelineConfigs[lang] = server.LangPipelineConfig{
-			SearchIndex: langPipe.SearchIndex,
-			MetaIndex:   langPipe.MetaIndex,
-			Provider:    langPipe.Provider,
+			SearchIndex:      langPipe.SearchIndex,
+			MetaIndex:        langPipe.MetaIndex,
+			Provider:         langPipe.Provider,
+			Resolver:         langPipe.Resolver,
+			RedirectFinder:   langPipe.RedirectFinder,
+			EnricherRegistry: langPipe.EnricherRegistry,
 		}
 	}
 

@@ -323,7 +323,7 @@ func TestIntegration_ExtensionStripping(t *testing.T) {
 	})
 
 	// Wrap handler with extension redirect middleware
-	middleware := ExtensionRedirect(resolver, []string{".md"})
+	middleware := ExtensionRedirect(resolver, []string{".md"}, "")
 	wrappedHandler := middleware(http.HandlerFunc(handler.ServeContent))
 
 	tests := []struct {

@@ -58,9 +58,23 @@ func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver) URL
 	return redirects
 }
 
+// stripPathPrefix returns middleware that removes a leading path prefix
+// (e.g. "/fr-FR") from the request URL before invoking the next handler. Used
+// to mount per-language handlers whose provider/resolver are rooted at the
+// language subdirectory and therefore expect content-root-relative paths.
+func stripPathPrefix(prefix string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.StripPrefix(prefix, next)
+	}
+}
+
 // ExtensionRedirect returns middleware that 301-redirects requests with
 // strippable extensions to their canonical extensionless URL.
-func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string) func(http.Handler) http.Handler {
+//
+// basePath is prepended to the redirect Location, allowing per-language
+// handlers (mounted under /{lang} with the prefix already stripped) to emit
+// language-prefixed redirect targets. Pass "" for the default language.
+func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string, basePath string) func(http.Handler) http.Handler {
 	// Build a set for fast lookup.
 	extSet := make(map[string]bool, len(stripExts))
 	for _, ext := range stripExts {
@@ -83,7 +97,7 @@ func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string) func(
 			// Strip leading "/" to get the fs-relative path.
 			realPath := strings.TrimPrefix(r.URL.Path, "/")
 			if cleanPath, found := resolver.CleanPath(realPath); found {
-				http.Redirect(w, r, "/"+cleanPath, http.StatusMovedPermanently) // #nosec G710 -- cleanPath is from resolver's validated map, not user input
+				http.Redirect(w, r, basePath+"/"+cleanPath, http.StatusMovedPermanently) // #nosec G710 -- cleanPath is from resolver's validated map, not user input
 				return
 			}
 

@@ -47,11 +47,18 @@ type HTTPServer struct {
 	handler *Handler
 }
 
-// LangPipelineConfig holds per-language pipeline dependencies.
+// LangPipelineConfig holds per-language pipeline dependencies. Each language
+// has its own provider (rooted at the language subdirectory), resolver,
+// redirect finder, and enricher registry (navigation tree), built from that
+// subdirectory — using the default-language equivalents would serve the wrong
+// content and navigation for localized pages.
 type LangPipelineConfig struct {
-	SearchIndex *search.Index
-	MetaIndex   *metadata.Index
-	Provider    provider.Provider
+	SearchIndex      *search.Index
+	MetaIndex        *metadata.Index
+	Provider         provider.Provider
+	Resolver         *resolve.PathResolver
+	RedirectFinder   RedirectFinder
+	EnricherRegistry enricher.EnricherRegistry
 }
 
 // HTTPServerConfig holds all dependencies for creating an HTTPServer.
@@ -159,10 +166,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	for lang, lp := range opts.LangPipelines {
 		prefix := "/" + lang
 		if lp.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-			langSitemapHandler := NewSitemapHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, opts.Resolver, prefix)
+			langSitemapHandler := NewSitemapHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, lp.Resolver, prefix)
 			auth.Handle("GET "+prefix+"/sitemap.xml", langSitemapHandler)
 
-			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, opts.Resolver, prefix)
+			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, lp.Resolver, prefix)
 			auth.Handle("GET "+prefix+"/feed.xml", langFeedHandler)
 		}
 
@@ -198,21 +205,27 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		langHandler := NewHandler(HandlerConfig{
 			Provider:         lp.Provider,
 			Registry:         opts.Registry,
-			EnricherRegistry: opts.EnricherRegistry,
+			EnricherRegistry: lp.EnricherRegistry,
 			TemplateRenderer: opts.TemplateRenderer,
 			SiteConfig:       &cfg.Site,
-			RedirectFinder:   opts.RedirectFinder,
-			Resolver:         opts.Resolver,
+			RedirectFinder:   lp.RedirectFinder,
+			Resolver:         lp.Resolver,
 			Lang:             lang,
 			TFunc:            langTFunc,
 			Languages:        langInfos,
 		})
 
-		langContent := auth.Subgroup("/"+lang,
+		// StripPrefix removes the /{lang} segment so the language provider,
+		// resolver, exclusion, and handler all operate on content-root-relative
+		// paths — matching build mode, which walks the language sub-FS directly.
+		// ExtensionRedirect re-adds the prefix to its 301 Location via basePath.
+		prefix := "/" + lang
+		langContent := auth.Subgroup(prefix,
+			stripPathPrefix(prefix),
 			Compression,
 			NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),
 			ContentExclusion(cfg.Site.Exclude),
-			ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions),
+			ExtensionRedirect(lp.Resolver, cfg.Site.StripExtensions, prefix),
 			Metrics,
 		)
 		langContent.HandleFunc("/", langHandler.ServeContent)
@@ -241,9 +254,9 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	// Content handler with content-specific middleware (outermost first)
 	content := auth.Subgroup("",
 		Compression, // Gzip responses >= 1KB when client accepts
-		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead), // Only allow GET and HEAD
-		ContentExclusion(cfg.Site.Exclude),                         // Block hidden files and user-configured exclusions
-		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions), // Redirect .md URLs to clean URLs
+		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),     // Only allow GET and HEAD
+		ContentExclusion(cfg.Site.Exclude),                             // Block hidden files and user-configured exclusions
+		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions, ""), // Redirect .md URLs to clean URLs
 		Metrics, // Innermost: measure actual handler time
 	)
 	content.HandleFunc("/", handler.ServeContent)

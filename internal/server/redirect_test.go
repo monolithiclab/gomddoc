@@ -187,7 +187,7 @@ func TestExtensionRedirect(t *testing.T) {
 		},
 	}
 
-	middleware := ExtensionRedirect(resolver, []string{".md"})
+	middleware := ExtensionRedirect(resolver, []string{".md"}, "")
 	handler := middleware(okHandler)
 
 	for _, tt := range tests {
@@ -217,7 +217,7 @@ func TestExtensionRedirect_NilResolver(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := ExtensionRedirect(nil, []string{".md"})
+	middleware := ExtensionRedirect(nil, []string{".md"}, "")
 	handler := middleware(okHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/guide.md", nil)
@@ -241,7 +241,7 @@ func TestExtensionRedirect_EmptyStripExts(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	middleware := ExtensionRedirect(resolver, nil)
+	middleware := ExtensionRedirect(resolver, nil, "")
 	handler := middleware(okHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/guide.md", nil)
