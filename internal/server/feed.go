@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/xml"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
@@ -23,35 +21,22 @@ const feedMaxEntries = 20
 // The feed is generated once on first request and cached, since
 // the metadata index is immutable after construction.
 type FeedHandler struct {
-	index        *metadata.Index
-	domain       string
-	defaultIndex string
-	provider     provider.Provider
-	siteTitle    string
-	resolver     *resolve.PathResolver
-	pathPrefix   string // e.g. "/fr-FR" for per-language feeds
-
-	mu     sync.Mutex
-	cached []byte
+	body *lazyBytes
 }
 
 // NewFeedHandler creates a new FeedHandler.
 // pathPrefix is prepended to all page paths (empty for default language).
 func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, siteTitle string, resolver *resolve.PathResolver, pathPrefix string) *FeedHandler {
 	return &FeedHandler{
-		index:        index,
-		domain:       domain,
-		defaultIndex: defaultIndex,
-		provider:     prov,
-		siteTitle:    siteTitle,
-		resolver:     resolver,
-		pathPrefix:   pathPrefix,
+		body: newLazyBytes("feed", func() ([]byte, error) {
+			return GenerateFeed(context.Background(), index, domain, defaultIndex, prov, siteTitle, resolver, pathPrefix)
+		}),
 	}
 }
 
 // ServeHTTP writes the Atom feed response.
 func (h *FeedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	data, err := h.getOrGenerate()
+	data, err := h.body.get()
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -60,25 +45,6 @@ func (h *FeedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mimeAtom)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
-}
-
-// getOrGenerate returns cached feed XML, generating it on first successful
-// call. Unlike sync.Once, subsequent requests retry if generation failed.
-func (h *FeedHandler) getOrGenerate() ([]byte, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.cached != nil {
-		return h.cached, nil
-	}
-
-	out, err := GenerateFeed(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.siteTitle, h.resolver, h.pathPrefix)
-	if err != nil {
-		slog.Error("Failed to generate feed", slog.Any("error", err))
-		return nil, err
-	}
-	h.cached = out
-	return h.cached, nil
 }
 
 // atomFeed is the root element of an Atom feed.

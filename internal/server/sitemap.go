@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/xml"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
-	"sync"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -21,27 +19,16 @@ import (
 // The sitemap is generated once on first request and cached, since
 // the metadata index is immutable after construction.
 type SitemapHandler struct {
-	index        *metadata.Index
-	domain       string
-	defaultIndex string
-	provider     provider.Provider
-	resolver     *resolve.PathResolver
-	pathPrefix   string // e.g. "/fr-FR" for per-language sitemaps
-
-	mu     sync.Mutex
-	cached []byte
+	body *lazyBytes
 }
 
 // NewSitemapHandler creates a new SitemapHandler.
 // pathPrefix is prepended to all page paths (empty for default language).
 func NewSitemapHandler(index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver, pathPrefix string) *SitemapHandler {
 	return &SitemapHandler{
-		index:        index,
-		domain:       domain,
-		defaultIndex: defaultIndex,
-		provider:     prov,
-		resolver:     resolver,
-		pathPrefix:   pathPrefix,
+		body: newLazyBytes("sitemap", func() ([]byte, error) {
+			return GenerateSitemap(context.Background(), index, domain, defaultIndex, prov, resolver, pathPrefix)
+		}),
 	}
 }
 
@@ -99,7 +86,7 @@ func GenerateSitemapIndex(domain string, langs []string) ([]byte, error) {
 
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	data, err := h.getOrGenerate()
+	data, err := h.body.get()
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -108,25 +95,6 @@ func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mimeXML)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
-}
-
-// getOrGenerate returns cached sitemap XML, generating it on first successful
-// call. Unlike sync.Once, subsequent requests retry if generation failed.
-func (h *SitemapHandler) getOrGenerate() ([]byte, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.cached != nil {
-		return h.cached, nil
-	}
-
-	out, err := GenerateSitemap(context.Background(), h.index, h.domain, h.defaultIndex, h.provider, h.resolver, h.pathPrefix)
-	if err != nil {
-		slog.Error("Failed to generate sitemap", slog.Any("error", err))
-		return nil, err
-	}
-	h.cached = out
-	return h.cached, nil
 }
 
 // GenerateSitemap produces the sitemap XML bytes.
