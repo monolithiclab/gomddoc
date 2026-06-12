@@ -2352,3 +2352,56 @@ func seeAlsoPartialBytes(t *testing.T) []byte {
 	}
 	return data
 }
+
+// TestExecutePartial_Caching proves the parsed partial is cached when caching is
+// enabled (so tag pages do not re-parse per request) and re-read otherwise.
+// Regression test for REVIEW.md §9.3.
+func TestExecutePartial_Caching(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"assets/themes/default/partials/probe.html.tmpl": {
+			Data: []byte(`{{ define "probe" }}P:{{ . }}{{ end }}`),
+		},
+	}
+	siteConfig := config.NewSiteConfig(".")
+
+	t.Run("cached when enabled", func(t *testing.T) {
+		t.Parallel()
+		r := NewHTMLRenderer(&siteConfig, testFS, WithCache(&CachedTemplateStore{}))
+		out, err := r.executePartial("probe", "x")
+		if err != nil {
+			t.Fatalf("executePartial: %v", err)
+		}
+		if string(out) != "P:x" {
+			t.Fatalf("output = %q, want %q", out, "P:x")
+		}
+		t1, ok := r.partialCache.Load("default/probe")
+		if !ok {
+			t.Fatal("partial not cached after first render")
+		}
+		// Second call must reuse the same parsed template.
+		if _, err := r.executePartial("probe", "y"); err != nil {
+			t.Fatalf("executePartial 2: %v", err)
+		}
+		t2, _ := r.partialCache.Load("default/probe")
+		if t1 != t2 {
+			t.Error("partial re-parsed despite caching being enabled")
+		}
+		r.ClearCache()
+		if _, ok := r.partialCache.Load("default/probe"); ok {
+			t.Error("ClearCache did not clear the partial cache")
+		}
+	})
+
+	t.Run("not cached when disabled", func(t *testing.T) {
+		t.Parallel()
+		r := NewHTMLRenderer(&siteConfig, testFS) // no WithCache => dev mode
+		if _, err := r.executePartial("probe", "x"); err != nil {
+			t.Fatalf("executePartial: %v", err)
+		}
+		if _, ok := r.partialCache.Load("default/probe"); ok {
+			t.Error("partial cached even though caching is disabled (dev mode)")
+		}
+	})
+}

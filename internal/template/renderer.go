@@ -184,6 +184,7 @@ type HTMLRenderer struct {
 	hasSearchIndex bool                  // Whether a search index was successfully built
 	loggedMissing  sync.Map              // Tracks template names already warned about
 	assetCache     sync.Map              // asset name → []byte
+	partialCache   sync.Map              // theme/name → *template.Template
 	cacheAssets    bool                  // Set by WithCache; off in dev mode
 }
 
@@ -390,8 +391,40 @@ type tagsIndexData struct {
 // executePartial runs a single named partial against data and returns the
 // rendered bytes. Used for server-side composition of synthetic pages
 // (tag listings, tag index) where the body is pre-built then passed
-// through the standard layout via Page.Content.
+// through the standard layout via Page.Content. The parsed partial is cached
+// (when caching is enabled) so tag pages do not re-read and re-parse the
+// partial from the asset FS on every request.
 func (h *HTMLRenderer) executePartial(name string, data any) ([]byte, error) {
+	tmpl, err := h.partialTemplate(name)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		if buf.Cap() <= 65536 {
+			bufferPool.Put(buf)
+		}
+	}()
+	if err := tmpl.ExecuteTemplate(buf, name, data); err != nil {
+		return nil, err
+	}
+	return slices.Clone(buf.Bytes()), nil
+}
+
+// partialTemplate returns the parsed partial for name, falling back from the
+// configured theme to the default theme. Results are cached per renderer when
+// caching is enabled (production); dev/preview mode re-parses every call so
+// edited partials are picked up without a restart.
+func (h *HTMLRenderer) partialTemplate(name string) (*template.Template, error) {
+	cacheKey := h.siteConfig.Theme.Name + "/" + name
+	if h.cacheAssets {
+		if cached, ok := h.partialCache.Load(cacheKey); ok {
+			return cached.(*template.Template), nil
+		}
+	}
+
 	partialPath := path.Join("assets", "themes", h.siteConfig.Theme.Name, "partials", name+".html.tmpl")
 	tmpl, err := template.New(name+".html.tmpl").Funcs(h.funcMap()).ParseFS(h.assetsFS, partialPath)
 	if err != nil {
@@ -402,11 +435,11 @@ func (h *HTMLRenderer) executePartial(name string, data any) ([]byte, error) {
 			return nil, err
 		}
 	}
-	var buf bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
-		return nil, err
+
+	if h.cacheAssets {
+		h.partialCache.Store(cacheKey, tmpl)
 	}
-	return buf.Bytes(), nil
+	return tmpl, nil
 }
 
 // parseTemplate parses a layout template with its partials, with automatic fallback to default theme.
@@ -710,6 +743,7 @@ func (h *HTMLRenderer) HasTemplate(name string) bool {
 func (h *HTMLRenderer) ClearCache() {
 	h.cache.Clear()
 	h.assetCache.Clear()
+	h.partialCache.Clear()
 	slog.Info("[DEV] Template cache cleared")
 }
 
