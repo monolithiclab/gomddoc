@@ -317,6 +317,13 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 			path:    "/nonexistent.md",
 			wantErr: ErrNotFound,
 		},
+		{
+			// Defense-in-depth: a relative parent-traversal path that survives
+			// path.Clean must be rejected by the fs.ValidPath guard (REVIEW §9.9).
+			name:    "parent traversal rejected",
+			path:    "../secret.md",
+			wantErr: ErrNotFound,
+		},
 	}
 
 	for _, tt := range tests {
@@ -404,6 +411,13 @@ func TestGitProvider_StatMocked(t *testing.T) {
 		{
 			name:    "not found",
 			path:    "/nonexistent.md",
+			wantErr: ErrNotFound,
+		},
+		{
+			// Defense-in-depth: parent-traversal path rejected by fs.ValidPath
+			// guard (REVIEW §9.9).
+			name:    "parent traversal rejected",
+			path:    "../secret.md",
 			wantErr: ErrNotFound,
 		},
 	}

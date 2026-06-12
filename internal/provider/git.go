@@ -373,6 +373,9 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 	defer g.mu.RUnlock()
 
 	cleanPath := normalizePath(requestPath)
+	if cleanPath != "." && !fs.ValidPath(cleanPath) {
+		return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
+	}
 
 	// Handle root directory
 	if cleanPath == "." {
@@ -492,6 +495,9 @@ func (g *GitProvider) Stat(ctx context.Context, requestPath string) (fs.FileInfo
 	defer g.mu.RUnlock()
 
 	cleanPath := normalizePath(requestPath)
+	if cleanPath != "." && !fs.ValidPath(cleanPath) {
+		return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrNotFound}
+	}
 
 	// Root directory
 	if cleanPath == "." {
