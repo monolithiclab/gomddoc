@@ -10,6 +10,10 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
+// maxTagLength bounds the {tag} route segment. Real tags are short; rejecting
+// over-long values avoids needlessly lowercasing huge inputs (REVIEW §9.9).
+const maxTagLength = 128
+
 // TagPageHandler serves the HTML page for /tags/{tag} (or /{lang}/tags/{tag}).
 type TagPageHandler struct {
 	index    *metadata.Index
@@ -25,7 +29,7 @@ func NewTagPageHandler(index *metadata.Index, renderer template.Renderer, tFunc 
 
 func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tag := r.PathValue("tag")
-	if tag == "" {
+	if tag == "" || len(tag) > maxTagLength {
 		http.NotFound(w, r)
 		return
 	}

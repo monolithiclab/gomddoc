@@ -74,6 +74,23 @@ func TestTagPageHandler_NotFound(t *testing.T) {
 	}
 }
 
+func TestTagPageHandler_OverlongTagRejected(t *testing.T) {
+	t.Parallel()
+
+	h, _ := newTagPageHandler(t)
+
+	longTag := strings.Repeat("a", maxTagLength+1)
+	req := httptest.NewRequest("GET", "/tags/x", nil)
+	req.SetPathValue("tag", longTag)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("over-long tag: status = %d, want 404", w.Code)
+	}
+}
+
 func TestTagPageHandler_DecodesPathValue(t *testing.T) {
 	t.Parallel()
 

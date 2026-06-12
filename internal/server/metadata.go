@@ -33,6 +33,12 @@ func (h *MetadataHandler) TagPagesHandler(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tag parameter required"})
 		return
 	}
+	if len(tag) > maxTagLength {
+		// Over-long tag can't match any indexed tag; return an empty list
+		// rather than lowercasing a huge input.
+		writeJSON(w, http.StatusOK, []metadata.PageInfo{})
+		return
+	}
 
 	pages := h.index.ByTag(tag)
 	if pages == nil {

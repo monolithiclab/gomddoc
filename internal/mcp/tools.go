@@ -70,6 +70,11 @@ type SearchDocsInput struct {
 	Limit int    `json:"limit,omitempty" jsonschema:"maximum results to return (default 20)"`
 }
 
+// maxArgLen bounds free-form string arguments (paths, heading IDs, tags). The
+// MCP request body is already capped, but rejecting absurdly long values keeps
+// processing bounded and is consistent with the HTTP handlers (REVIEW §9.9).
+const maxArgLen = 1024
+
 // ReadPageInput is the input for read_page.
 type ReadPageInput struct {
 	Path string `json:"path" jsonschema:"page file path (e.g. guide/configuration.md)"`
@@ -142,7 +147,7 @@ func (s *MCPServer) handleReadPage(ctx context.Context, _ *mcp.CallToolRequest, 
 	if input.Path == "" {
 		return textResult("Path must not be empty."), nil, nil
 	}
-	if provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
+	if len(input.Path) > maxArgLen || provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
@@ -172,6 +177,10 @@ func (s *MCPServer) handleListPages(_ context.Context, _ *mcp.CallToolRequest, i
 	}
 	if limit > 200 {
 		limit = 200
+	}
+
+	if len(input.Tag) > maxArgLen {
+		return textResult(fmt.Sprintf("No pages found with tag %q.", input.Tag)), nil, nil
 	}
 
 	var pages []pageEntry
@@ -237,7 +246,8 @@ func (s *MCPServer) handleReadSection(ctx context.Context, _ *mcp.CallToolReques
 	if input.Path == "" || input.HeadingID == "" {
 		return textResult("Both path and heading_id are required."), nil, nil
 	}
-	if provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
+	if len(input.Path) > maxArgLen || len(input.HeadingID) > maxArgLen ||
+		provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
@@ -257,7 +267,7 @@ func (s *MCPServer) handleFindRelated(_ context.Context, _ *mcp.CallToolRequest,
 	if input.Path == "" {
 		return textResult("Path must not be empty."), nil, nil
 	}
-	if provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
+	if len(input.Path) > maxArgLen || provider.IsRestrictedPath(input.Path, s.deps.ExcludePatterns) {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 	if s.deps.MetaIndex == nil {
