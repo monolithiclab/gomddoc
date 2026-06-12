@@ -258,16 +258,11 @@ func (b *BuildCmd) Run() error {
 
 	// Generate sitemap-index.xml when multiple languages exist
 	if len(detectedLangs) > 0 && cfg.Site.Meta.Domain != "" {
-		var sitemapIndex strings.Builder
-		sitemapIndex.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
-		sitemapIndex.WriteString(`<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
-		sitemapIndex.WriteString(`  <sitemap><loc>https://` + cfg.Site.Meta.Domain + `/sitemap.xml</loc></sitemap>` + "\n")
-		for _, lang := range detectedLangs {
-			sitemapIndex.WriteString(`  <sitemap><loc>https://` + cfg.Site.Meta.Domain + `/` + lang + `/sitemap.xml</loc></sitemap>` + "\n")
+		indexData, err := server.GenerateSitemapIndex(cfg.Site.Meta.Domain, detectedLangs)
+		if err != nil {
+			return fmt.Errorf("generate sitemap-index.xml: %w", err)
 		}
-		sitemapIndex.WriteString(`</sitemapindex>` + "\n")
-
-		if err := b.writeOutputFile("sitemap-index.xml", []byte(sitemapIndex.String())); err != nil {
+		if err := b.writeOutputFile("sitemap-index.xml", indexData); err != nil {
 			return fmt.Errorf("write sitemap-index.xml: %w", err)
 		}
 	}

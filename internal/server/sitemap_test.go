@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -218,5 +219,36 @@ func TestGenerateSitemap_IncludesTagPages(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("sitemap missing %q\n%s", want, body)
 		}
+	}
+}
+
+func TestGenerateSitemapIndex(t *testing.T) {
+	t.Parallel()
+
+	data, err := GenerateSitemapIndex("example.com", []string{"fr", "de"})
+	if err != nil {
+		t.Fatalf("GenerateSitemapIndex: %v", err)
+	}
+	out := string(data)
+
+	for _, want := range []string{
+		xml.Header,
+		"<sitemapindex",
+		"<loc>https://example.com/sitemap.xml</loc>",
+		"<loc>https://example.com/fr/sitemap.xml</loc>",
+		"<loc>https://example.com/de/sitemap.xml</loc>",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("sitemap-index missing %q\ngot:\n%s", want, out)
+		}
+	}
+
+	// Must be well-formed XML (the whole point of using xml.Marshal).
+	var parsed sitemapIndex
+	if err := xml.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("output is not valid XML: %v", err)
+	}
+	if len(parsed.Sitemaps) != 3 {
+		t.Errorf("got %d sitemap entries, want 3", len(parsed.Sitemaps))
 	}
 }

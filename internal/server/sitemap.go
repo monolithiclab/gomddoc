@@ -58,6 +58,45 @@ type sitemapURL struct {
 	LastMod string `xml:"lastmod,omitempty"`
 }
 
+// sitemapIndex is the root element of a sitemap index document, referencing
+// per-language sitemaps.
+type sitemapIndex struct {
+	XMLName  xml.Name          `xml:"sitemapindex"`
+	XMLNS    string            `xml:"xmlns,attr"`
+	Sitemaps []sitemapIndexLoc `xml:"sitemap"`
+}
+
+// sitemapIndexLoc is a single <sitemap> entry in a sitemap index.
+type sitemapIndexLoc struct {
+	Loc string `xml:"loc"`
+}
+
+// GenerateSitemapIndex builds a sitemap-index.xml referencing the default-
+// language sitemap plus one per additional language. URLs are built via
+// seo.PageURL for consistent scheme handling, and the document is produced with
+// xml.Marshal (never string concatenation) so special characters are escaped.
+func GenerateSitemapIndex(domain string, langs []string) ([]byte, error) {
+	entries := make([]sitemapIndexLoc, 0, len(langs)+1)
+	entries = append(entries, sitemapIndexLoc{Loc: seo.PageURL(domain, "/sitemap.xml", "")})
+	for _, lang := range langs {
+		entries = append(entries, sitemapIndexLoc{Loc: seo.PageURL(domain, "/"+lang+"/sitemap.xml", "")})
+	}
+
+	doc := sitemapIndex{
+		XMLNS:    "http://www.sitemaps.org/schemas/sitemap/0.9",
+		Sitemaps: entries,
+	}
+
+	out := []byte(xml.Header)
+	body, err := xml.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, body...)
+	out = append(out, '\n')
+	return out, nil
+}
+
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	data, err := h.getOrGenerate()
