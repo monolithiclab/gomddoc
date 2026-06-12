@@ -173,8 +173,19 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 	// implementation detail). Title first, path as a stable tiebreaker.
 	slices.SortFunc(related, compareRelatedDocs)
 
+	// Defensive cap: a page sharing a very common tag could otherwise pull in
+	// hundreds of related docs and bloat every rendered page. Keep the first
+	// maxRelatedDocs after sorting.
+	if len(related) > maxRelatedDocs {
+		related = related[:maxRelatedDocs]
+	}
+
 	return related
 }
+
+// maxRelatedDocs bounds the see-also section so a page with a very common tag
+// does not render an unbounded list.
+const maxRelatedDocs = 10
 
 // compareRelatedDocs orders related docs by title (case-insensitive) with path
 // as a stable tiebreaker, mirroring metadata.CompareTitles for PageInfo.

@@ -2,6 +2,7 @@ package enricher
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 	"testing/fstest"
@@ -250,6 +251,30 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_SortedStable(t *testing.T) {
 	if result.RelatedDocs[2].Path != "/dup1.md" || result.RelatedDocs[3].Path != "/dup2.md" {
 		t.Errorf("equal-title docs not path-ordered: %q then %q",
 			result.RelatedDocs[2].Path, result.RelatedDocs[3].Path)
+	}
+}
+
+// TestMarkdownEnricher_Enrich_RelatedDocs_Capped asserts the see-also list is
+// bounded so a very common tag cannot bloat every page (REVIEW §9.4).
+func TestMarkdownEnricher_Enrich_RelatedDocs_Capped(t *testing.T) {
+	t.Parallel()
+	fsys := fstest.MapFS{}
+	for i := range 25 {
+		name := fmt.Sprintf("p%02d.md", i)
+		fsys[name] = &fstest.MapFile{Data: []byte("---\ntitle: P" + fmt.Sprintf("%02d", i) + "\ntags: [common]\n---\n# p")}
+	}
+	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex() error = %v", err)
+	}
+	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
+
+	result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [common]\n---\n# c"), "/current.md")
+	if err != nil {
+		t.Fatalf("Enrich() error = %v", err)
+	}
+	if len(result.RelatedDocs) != maxRelatedDocs {
+		t.Errorf("RelatedDocs len = %d, want capped at %d", len(result.RelatedDocs), maxRelatedDocs)
 	}
 }
 
