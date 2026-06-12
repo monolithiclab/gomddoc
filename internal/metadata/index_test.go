@@ -307,6 +307,36 @@ func TestAllPages_ReturnsCopy(t *testing.T) {
 	}
 }
 
+// TestAllPages_DeepCopiesInnerReferences asserts the Tags slice and Meta map are
+// cloned, not shared with the index (REVIEW §9.8).
+func TestAllPages_DeepCopiesInnerReferences(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"test.md": {Data: []byte("---\ntitle: Test\ntags: [go, api]\ncategory: docs\n---\n")},
+	}
+	idx, err := BuildIndex(context.Background(), testFS, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex failed: %v", err)
+	}
+
+	pages1 := idx.AllPages()
+	if len(pages1[0].Tags) == 0 || pages1[0].Meta == nil {
+		t.Fatalf("fixture must have tags and meta: %+v", pages1[0])
+	}
+	// Mutate the returned slice and map.
+	pages1[0].Tags[0] = "MUTATED"
+	pages1[0].Meta["category"] = "MUTATED"
+
+	pages2 := idx.AllPages()
+	if pages2[0].Tags[0] == "MUTATED" {
+		t.Error("AllPages must clone the Tags slice; mutation leaked into the index")
+	}
+	if pages2[0].Meta["category"] == "MUTATED" {
+		t.Error("AllPages must clone the Meta map; mutation leaked into the index")
+	}
+}
+
 func TestBuildIndex_CancelledContext(t *testing.T) {
 	t.Parallel()
 

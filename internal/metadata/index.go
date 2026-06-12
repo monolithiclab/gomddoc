@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	stdpath "path"
 	"runtime"
 	"slices"
@@ -197,9 +198,22 @@ func pageFromFrontmatter(path string, fm map[string]any) PageInfo {
 	return page
 }
 
-// AllPages returns all indexed pages.
+// clonePage returns a deep copy of p. The Tags slice and Meta map are cloned so
+// callers cannot mutate the index's internal state through the returned value.
+func clonePage(p PageInfo) PageInfo {
+	p.Tags = slices.Clone(p.Tags)
+	p.Meta = maps.Clone(p.Meta)
+	return p
+}
+
+// AllPages returns a defensive deep copy of all indexed pages: the slice and
+// each page's Tags/Meta are cloned, so callers may freely mutate the result.
 func (idx *Index) AllPages() []PageInfo {
-	return slices.Clone(idx.pages)
+	out := make([]PageInfo, len(idx.pages))
+	for i := range idx.pages {
+		out[i] = clonePage(idx.pages[i])
+	}
+	return out
 }
 
 // AllTags returns all unique tags, sorted alphabetically.
