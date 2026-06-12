@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -172,13 +171,6 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	if _, ok := metadata["title"]; !ok {
 		metadata["title"] = text.DeriveTitle(r.URL.Path)
 	}
-
-	// Sort related docs deterministically. The enricher returns them in
-	// tag-iteration order, which is non-deterministic from the user's
-	// perspective; sorting here keeps the rendered see-also section stable.
-	slices.SortFunc(enrichment.RelatedDocs, func(a, b enricher.RelatedDoc) int {
-		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
-	})
 
 	context := &tmpl.TemplateContext{
 		Site: h.siteConfig,

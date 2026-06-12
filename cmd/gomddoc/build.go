@@ -441,10 +441,6 @@ func (b *BuildCmd) buildFile(
 		metadata["title"] = text.DeriveTitle("/" + filePath)
 	}
 
-	slices.SortFunc(enrichment.RelatedDocs, func(a, b enricher.RelatedDoc) int {
-		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
-	})
-
 	templateCtx := &tmpl.TemplateContext{
 		Site: bc.siteConfig,
 		Page: tmpl.PageContext{

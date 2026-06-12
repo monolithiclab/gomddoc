@@ -420,12 +420,7 @@ func (idx *Index) tagOnlyResults(pages []metadata.PageInfo, limit int) []SearchR
 			pages[i].Description = idx.docs[docIdx].description
 		}
 	}
-	slices.SortFunc(pages, func(a, b metadata.PageInfo) int {
-		if c := metadata.CompareTitles(a, b); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Path, b.Path)
-	})
+	slices.SortFunc(pages, metadata.CompareTitles)
 
 	if limit > len(pages) {
 		limit = len(pages)

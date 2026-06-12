@@ -2,6 +2,7 @@ package enricher
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"testing/fstest"
 
@@ -212,6 +213,43 @@ func TestMarkdownEnricher_Enrich_RelatedDocs(t *testing.T) {
 		if doc.Path == "/current.md" {
 			t.Error("RelatedDocs should not include the current page")
 		}
+	}
+}
+
+// TestMarkdownEnricher_Enrich_RelatedDocs_SortedStable asserts related docs are
+// returned in a deterministic order (title case-insensitive, path tiebreaker)
+// so serve and build render the see-also section identically (REVIEW §9.4).
+func TestMarkdownEnricher_Enrich_RelatedDocs_SortedStable(t *testing.T) {
+	t.Parallel()
+	fsys := fstest.MapFS{
+		"zebra.md": {Data: []byte("---\ntitle: Alpha\ntags: [x]\n---\n# z")},
+		"apple.md": {Data: []byte("---\ntitle: Beta\ntags: [x]\n---\n# a")},
+		"dup2.md":  {Data: []byte("---\ntitle: Same\ntags: [x]\n---\n# d2")},
+		"dup1.md":  {Data: []byte("---\ntitle: Same\ntags: [x]\n---\n# d1")},
+	}
+	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex() error = %v", err)
+	}
+	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
+
+	result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [x]\n---\n# c"), "/current.md")
+	if err != nil {
+		t.Fatalf("Enrich() error = %v", err)
+	}
+
+	gotTitles := make([]string, len(result.RelatedDocs))
+	for i, d := range result.RelatedDocs {
+		gotTitles[i] = d.Title
+	}
+	wantTitles := []string{"Alpha", "Beta", "Same", "Same"}
+	if !slices.Equal(gotTitles, wantTitles) {
+		t.Fatalf("related titles = %v, want %v", gotTitles, wantTitles)
+	}
+	// Equal titles ("Same") must be ordered by path: /dup1.md before /dup2.md.
+	if result.RelatedDocs[2].Path != "/dup1.md" || result.RelatedDocs[3].Path != "/dup2.md" {
+		t.Errorf("equal-title docs not path-ordered: %q then %q",
+			result.RelatedDocs[2].Path, result.RelatedDocs[3].Path)
 	}
 }
 

@@ -1,8 +1,10 @@
 package enricher
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
+	txt "github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // NavBuilder generates navigation items for a given path.
@@ -165,5 +168,19 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 		}
 	}
 
+	// Sort deterministically here so both serve and build render the see-also
+	// section in the same, stable order (tag-iteration order is otherwise an
+	// implementation detail). Title first, path as a stable tiebreaker.
+	slices.SortFunc(related, compareRelatedDocs)
+
 	return related
+}
+
+// compareRelatedDocs orders related docs by title (case-insensitive) with path
+// as a stable tiebreaker, mirroring metadata.CompareTitles for PageInfo.
+func compareRelatedDocs(a, b RelatedDoc) int {
+	if c := txt.CompareTitles(a.Title, b.Title); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.Path, b.Path)
 }

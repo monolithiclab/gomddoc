@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/monolithiclab/gomddoc/internal/provider"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // PageInfo holds metadata extracted from a Markdown file's frontmatter.
@@ -305,8 +307,13 @@ func (idx *Index) CountByTag(tag string) int {
 }
 
 // CompareTitles is a case-insensitive comparator for use with slices.SortFunc.
+// Pages with equal titles are ordered by path, so the result is stable and
+// deterministic across builds.
 func CompareTitles(a, b PageInfo) int {
-	return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+	if c := text.CompareTitles(a.Title, b.Title); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.Path, b.Path)
 }
 
 // frontmatter delimiter
