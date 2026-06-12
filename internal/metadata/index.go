@@ -165,15 +165,14 @@ func pageFromFrontmatter(path string, fm map[string]any) PageInfo {
 				if !ok {
 					continue
 				}
-				normalized := strings.ToLower(strings.TrimSpace(s))
+				normalized := normalizeTag(s)
 				if normalized == "" {
-					continue
-				}
-				if strings.ContainsAny(normalized, "/\\") {
-					slog.Warn("Skipping tag with invalid character",
-						slog.String("tag", s),
-						slog.String("path", path),
-						slog.String("reason", "tags may not contain '/' or '\\'"))
+					if t := strings.TrimSpace(s); t != "" && strings.ContainsAny(t, "/\\") {
+						slog.Warn("Skipping tag with invalid character",
+							slog.String("tag", s),
+							slog.String("path", path),
+							slog.String("reason", "tags may not contain '/' or '\\'"))
+					}
 					continue
 				}
 				if slices.Contains(page.Tags, normalized) {
@@ -249,6 +248,53 @@ func (idx *Index) ByTag(tag string) []PageInfo {
 		result[i] = idx.pages[pageIdx]
 	}
 	return result
+}
+
+// normalizeTag lowercases and trims a single tag, returning "" if the result is
+// empty or contains a path separator ('/' or '\'). It is the single rule shared
+// by the metadata index and the tag-chip template helper.
+func normalizeTag(s string) string {
+	n := strings.ToLower(strings.TrimSpace(s))
+	if n == "" || strings.ContainsAny(n, "/\\") {
+		return ""
+	}
+	return n
+}
+
+// NormalizeTags normalizes a YAML-decoded frontmatter "tags" value into a
+// canonical, deduplicated []string using normalizeTag. It accepts the []any
+// (and []string) shapes yaml/v3 produces and returns nil for any other type or
+// when no valid tags remain. This is the single source of truth for tag
+// normalization, so chips, links, related docs, and the index always agree.
+func NormalizeTags(raw any) []string {
+	appendTag := func(out []string, s string) []string {
+		if n := normalizeTag(s); n != "" && !slices.Contains(out, n) {
+			return append(out, n)
+		}
+		return out
+	}
+
+	var out []string
+	switch v := raw.(type) {
+	case []any:
+		out = make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = appendTag(out, s)
+			}
+		}
+	case []string:
+		out = make([]string, 0, len(v))
+		for _, s := range v {
+			out = appendTag(out, s)
+		}
+	default:
+		return nil
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // CountByTag returns the number of pages with the given tag, matched

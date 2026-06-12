@@ -1982,6 +1982,11 @@ func TestPageTags(t *testing.T) {
 		{"already []string", map[string]any{"tags": []string{"go", "docs"}}, []string{"go", "docs"}},
 		{"non-string entries skipped", map[string]any{"tags": []any{"go", 42, "docs"}}, []string{"go", "docs"}},
 		{"non-list value", map[string]any{"tags": "go"}, nil},
+		// Normalization must match the metadata index (REVIEW §9.4): lowercase,
+		// trim, drop slash tags, dedup — so chip labels and tagURL links resolve.
+		{"lowercased and trimmed", map[string]any{"tags": []any{"Deployment", " Ops "}}, []string{"deployment", "ops"}},
+		{"slash tags dropped", map[string]any{"tags": []any{"team/x", "ok"}}, []string{"ok"}},
+		{"duplicates removed", map[string]any{"tags": []any{"go", "Go", " go "}}, []string{"go"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

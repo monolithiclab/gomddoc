@@ -685,33 +685,15 @@ func tagURL(defaultLang, lang, tag string) string {
 	return "/" + lang + "/tags/" + url.PathEscape(tag)
 }
 
-// pageTags normalizes the YAML-decoded value of frontmatter "tags" into a
-// []string. Returns nil when the key is absent, the value is the wrong type,
-// or the list contains no strings.
+// pageTags returns the page's frontmatter tags normalized identically to the
+// metadata index (lowercased, trimmed, slash-filtered, deduplicated) so chip
+// labels and their tagURL links always match the /tags pages. Returns nil when
+// the key is absent or no valid tags remain.
 func pageTags(meta map[string]any) []string {
 	if meta == nil {
 		return nil
 	}
-	raw, ok := meta["tags"]
-	if !ok {
-		return nil
-	}
-	switch v := raw.(type) {
-	case []string:
-		return slices.Clone(v)
-	case []any:
-		out := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok {
-				out = append(out, s)
-			}
-		}
-		if len(out) == 0 {
-			return nil
-		}
-		return out
-	}
-	return nil
+	return metadata.NormalizeTags(meta["tags"])
 }
 
 // HasTemplate checks if a layout template exists for the current theme.
