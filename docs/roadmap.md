@@ -297,32 +297,31 @@ Dogfooding the MCP interface with gomddoc's own docs.
 
 ## Distribution and Packaging
 
-_Make gomddoc easy to install across platforms and deployment targets. Currently gomddoc is built
-from source via `make build` — these items add standard distribution channels._
+_Make gomddoc easy to install across platforms and deployment targets. A GoReleaser-based release
+pipeline now exists (`.goreleaser.yaml` + `.github/workflows/release.yml`); it activates on a pushed
+`vX.Y.Z` tag and requires the `HOMEBREW_TAP_TOKEN` repo secret plus ghcr package permissions._
 
-- [ ] **`go install` support**: Ensure `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest`
-      works cleanly. Requires the module path to be publicly resolvable and the `embed` directive
-      to work with `go install` (assets must be in the module, not generated). Verify version
-      injection via `-ldflags` still works. May need a thin `main.go` wrapper if the `assets/`
-      embed causes issues with `go install`. Low complexity.
-- [ ] **Official Docker image**: Publish a multi-arch (`linux/amd64`, `linux/arm64`) Docker image
-      to GitHub Container Registry (`ghcr.io/monolithiclab/gomddoc`). Multi-stage build with
-      `gcr.io/distroless/static-debian12` as the runtime image (~5MB). Tags: `latest`, semver
-      (`v1.2.3`), major (`v1`). Include a `HEALTHCHECK` instruction pointing at `/health/live`.
-      Document `docker run` examples for serve, build, and mcp subcommands. Medium complexity.
-- [ ] **Homebrew tap**: Create a `homebrew-tap` repository with a formula that downloads the
-      pre-built binary from GitHub Releases. Formula should include a `test` block that runs
-      `gomddoc --version`. Consider whether to start with a tap (`brew tap monolithiclab/tap && brew
-install gomddoc`) or aim for Homebrew core inclusion later. Low complexity once releases
-      exist.
-- [ ] **GitHub Releases with GoReleaser**: Set up GoReleaser to produce cross-platform binaries
-      (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) on tagged releases.
-      Generate checksums and a changelog from conventional commits. GoReleaser can also drive the
-      Homebrew formula and Docker image builds. Medium complexity.
-- [x] **CI pipeline (GitHub Actions)**: Minimal `.github/workflows/ci.yml` runs `make lint test`
-      (vet, gofmt, staticcheck, golangci-lint, gosec, gocritic, `go test -race -cover`) on every
-      push. _Remaining enhancements (deferred):_ coverage threshold enforcement (87%+), linter
-      install caching, concurrency cancellation of superseded runs, coverage artifact upload.
+- [x] **GitHub Releases with GoReleaser**: `.goreleaser.yaml` produces cross-platform binaries
+      (linux/darwin × amd64/arm64) as tar.gz archives with `SHA256SUMS`, a grouped changelog from
+      conventional commits, and a GitHub Release on tagged builds. Checksums are cosign-signed (keyless
+      via OIDC). _Note:_ windows builds were omitted (gomddoc is primarily a server) — add a `windows`
+      goos entry if a Windows binary is wanted.
+- [x] **`go install` support**: module path is public, assets are embedded in-module via `//go:embed`,
+      and `-ldflags -X main.version` injection is wired. `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest`
+      should work — verify against the first published tag.
+- [x] **Official Docker image**: GoReleaser `dockers:` + `docker_manifests:` publish a multi-arch
+      (`linux/amd64`, `linux/arm64`) image to `ghcr.io/monolithiclab/gomddoc` with `latest` + semver
+      tags, built from the `gcr.io/distroless/static-debian12:nonroot` runtime and cosign-signed.
+      _Deferred:_ a `HEALTHCHECK` instruction (distroless has no shell; would need a binary-based probe)
+      and major-version (`v1`) tag.
+- [x] **Homebrew tap**: GoReleaser `brews:` publishes a formula to `monolithiclab/homebrew-tap`
+      (`brew install monolithiclab/tap/gomddoc`) with a `gomddoc --version` smoke test. Requires the
+      `HOMEBREW_TAP_TOKEN` secret.
+- [x] **CI pipeline (GitHub Actions)**: `.github/workflows/ci.yml` runs `make lint test` (vet, gofmt,
+      staticcheck, golangci-lint, gosec, gocritic, `go test -race -cover`) on an ubuntu+macOS matrix
+      for pushes to `main` and all PRs, with Go module caching, concurrency cancellation of superseded
+      runs, and coverage-artifact upload. _Remaining enhancement (deferred):_ coverage threshold
+      enforcement (87%+).
 - [ ] **Install script**: One-liner `curl | sh` install script that detects OS/arch, downloads the
       correct binary from GitHub Releases, and places it in `/usr/local/bin` (or `$HOME/.local/bin`).
       Common pattern for CLI tools. Low complexity.

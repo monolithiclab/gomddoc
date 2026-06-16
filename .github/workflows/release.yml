@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+
+permissions:
+  contents: write       # GitHub Release create/upload
+  packages: write       # ghcr.io push
+  id-token: write       # cosign keyless via OIDC
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # GoReleaser needs full history for changelog
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # cosign v3 still ships .sig + .pem alongside the artifact; v4 changed to a single
+      # .sigstore.json bundle and deprecated the --output-signature/--output-certificate
+      # flags our .goreleaser.yaml signs args use. Stay on v3 until we migrate goreleaser's
+      # signs config to the new bundle shape.
+      - uses: sigstore/cosign-installer@v3
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

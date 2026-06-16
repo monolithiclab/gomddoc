@@ -6,5 +6,6 @@ GEMINI.md
 cover.out
 
 build/
+dist/
 docs/.gomddoc/
 .worktrees/

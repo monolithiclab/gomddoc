@@ -18,9 +18,28 @@ A production-ready HTTP server for serving Markdown documentation with automatic
 
 ### Installation
 
+Once a release is published, install gomddoc one of these ways:
+
+```bash
+# Homebrew (macOS / Linux)
+brew install monolithiclab/tap/gomddoc
+
+# Go toolchain
+go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest
+
+# Docker (multi-arch image on GitHub Container Registry)
+docker run --rm -p 8080:8080 -v "$PWD:/site" ghcr.io/monolithiclab/gomddoc serve /site
+```
+
+Prebuilt binaries and checksums for Linux and macOS (amd64/arm64) are attached to each
+[GitHub Release](https://github.com/monolithiclab/gomddoc/releases); checksums are signed with
+[cosign](https://github.com/sigstore/cosign).
+
+Build from source:
+
 ```bash
 # Clone and build
-git clone <repository-url>
+git clone https://github.com/monolithiclab/gomddoc
 cd gomddoc
 make build
 
@@ -438,7 +457,13 @@ All contributions must maintain or improve test coverage (78.9%+).
 
 ## License
 
-[Add your license here]
+gomddoc is **dual-licensed**:
+
+- **Noncommercial use** (personal projects, hobby use, education, research, and other noncommercial
+  purposes) is free under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+- **Commercial use** — any use that is not a noncommercial purpose, including use in or for a
+  for-profit business, product, or service — requires a separate commercial license. See
+  [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
 
 ## Changelog
 
