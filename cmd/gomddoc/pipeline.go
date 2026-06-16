@@ -206,13 +206,8 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	// Enricher options — navigation is optional (build doesn't use it).
 	enricherOpts := enricher.MarkdownEnricherOptions{}
 
-	if opts.EnableNavigation {
-		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, cfg.Site.Exclude, resolver)
-		enricherOpts.NavBuilder = navBuilderAdapter(navGen)
-		enricherOpts.PrevNextBuilder = prevNextBuilderAdapter(navGen)
-		p.RedirectFinder = redirectFinderAdapter(navGen)
-	}
-
+	// Build the metadata index before navigation so the nav generator can label
+	// leaf pages from indexed titles instead of opening every file.
 	if opts.EnableMetadata {
 		metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot, cfg.Site.Exclude)
 		if err != nil {
@@ -221,6 +216,22 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		enricherOpts.MetaIndex = metaIndex
 		p.MetaIndex = metaIndex
 		p.URLRedirects = server.BuildRedirectMap(metaIndex, p.Resolver)
+	}
+
+	if opts.EnableNavigation {
+		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, cfg.Site.Exclude, resolver)
+		if p.MetaIndex != nil {
+			metaIndex := p.MetaIndex
+			navGen.SetTitleLookup(func(filePath string) string {
+				if pg := metaIndex.ByPath("/" + filePath); pg != nil {
+					return pg.Title
+				}
+				return ""
+			})
+		}
+		enricherOpts.NavBuilder = navBuilderAdapter(navGen)
+		enricherOpts.PrevNextBuilder = prevNextBuilderAdapter(navGen)
+		p.RedirectFinder = redirectFinderAdapter(navGen)
 	}
 
 	if opts.EnableSearch && cfg.Site.Search.Index {

@@ -1,6 +1,7 @@
 package navigation
 
 import (
+	"io/fs"
 	"mime"
 	"strings"
 	"testing"
@@ -11,6 +12,20 @@ import (
 
 func init() {
 	_ = mime.AddExtensionType(".md", "text/markdown")
+}
+
+// fnFS wraps an fstest.MapFS to record which files are opened, so tests can
+// assert the title lookup avoids opening files.
+type fnFS struct {
+	fstest.MapFS
+	onOpen func(string)
+}
+
+func (f fnFS) Open(name string) (fs.File, error) {
+	if f.onOpen != nil {
+		f.onOpen(name)
+	}
+	return f.MapFS.Open(name)
 }
 
 func TestTree_BasicShape(t *testing.T) {
@@ -45,6 +60,50 @@ func TestTree_BasicShape(t *testing.T) {
 	}
 	if root.Children[2].Label != "API Reference" {
 		t.Errorf("third child label should be 'API Reference', got %q", root.Children[2].Label)
+	}
+}
+
+// TestTree_TitleLookup verifies leaf labels come from the indexed title lookup
+// (no file open) when available, and fall back to the file's heading otherwise.
+// Regression test for REVIEW.md §9.8.
+func TestTree_TitleLookup(t *testing.T) {
+	t.Parallel()
+
+	opened := map[string]bool{}
+	fsys := fnFS{
+		MapFS: fstest.MapFS{
+			"indexed.md":  {Data: []byte("# Heading Title")},
+			"fallback.md": {Data: []byte("# Scanned Heading")},
+		},
+		onOpen: func(name string) { opened[name] = true },
+	}
+
+	gen := NewGenerator(fsys, "README.md", nil, nil)
+	gen.SetTitleLookup(func(filePath string) string {
+		if filePath == "indexed.md" {
+			return "Indexed Title"
+		}
+		return "" // fallback.md has no indexed title
+	})
+	root := gen.Tree()
+
+	labels := map[string]string{}
+	for _, c := range root.Children {
+		labels[c.Path] = c.Label
+	}
+	if labels["/indexed"] != "Indexed Title" && labels["/indexed.md"] != "Indexed Title" {
+		t.Errorf("indexed page label = %v, want %q (from lookup)", labels, "Indexed Title")
+	}
+	// The indexed page must NOT have been opened (the lookup short-circuits).
+	if opened["indexed.md"] {
+		t.Error("indexed.md was opened despite an indexed title being available")
+	}
+	// The page without an indexed title falls back to a file scan of its heading.
+	if labels["/fallback"] != "Scanned Heading" && labels["/fallback.md"] != "Scanned Heading" {
+		t.Errorf("fallback page label = %v, want %q (from file scan)", labels, "Scanned Heading")
+	}
+	if !opened["fallback.md"] {
+		t.Error("fallback.md should have been opened for its heading")
 	}
 }
 

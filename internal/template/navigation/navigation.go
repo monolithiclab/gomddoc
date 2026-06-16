@@ -51,10 +51,23 @@ type Generator struct {
 	excludePatterns []string
 	resolver        *resolve.PathResolver
 
+	// titleLookup, when set, returns a page's title for an fs-relative path
+	// (e.g. "guide/setup.md") from the metadata index, avoiding a file open.
+	// It returns "" when the page has no indexed title, in which case the tree
+	// builder falls back to scanning the file for its first heading.
+	titleLookup func(filePath string) string
+
 	cacheOnce   sync.Once
 	cachedTree  *NavNode
 	cachedPages []PageEntry
 	cachedIndex map[string]int // cleanPath → index in cachedPages
+}
+
+// SetTitleLookup installs a title lookup (backed by the metadata index) used to
+// label leaf pages without opening each file. Must be called before the tree is
+// first built (i.e. during setup, before serving requests).
+func (g *Generator) SetTitleLookup(fn func(filePath string) string) {
+	g.titleLookup = fn
 }
 
 // NewGenerator creates a new navigation generator.
@@ -171,7 +184,15 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 					urlPath = "/" + clean
 				}
 			}
-			label := g.extractTitle(entryPath)
+			// Prefer the indexed title (no file open); fall back to scanning the
+			// file's first heading, then to a title-cased filename.
+			var label string
+			if g.titleLookup != nil {
+				label = g.titleLookup(entryPath)
+			}
+			if label == "" {
+				label = g.extractTitle(entryPath)
+			}
 			if label == "" {
 				// Fall back to title-cased filename without extension,
 				// replacing hyphens and underscores with spaces
