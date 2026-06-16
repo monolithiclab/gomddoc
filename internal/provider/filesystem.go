@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -13,7 +12,7 @@ import (
 
 // FilesystemProvider implements Provider for local filesystem access
 type FilesystemProvider struct {
-	root            fs.StatFS
+	root            fs.FS
 	defaultIndex    string
 	dirIndex        bool
 	excludePatterns []string
@@ -38,14 +37,12 @@ func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool,
 		return nil, ErrEmptyDefaultIndex
 	}
 
-	// Type assertion to fs.StatFS (needed for Stat() method)
-	statFS, ok := fsys.(fs.StatFS)
-	if !ok {
-		return nil, fmt.Errorf("filesystem does not support Stat")
-	}
-
+	// Any fs.FS is accepted: all stat/read calls route through the package-level
+	// fs.Stat/fs.ReadFile/fs.ReadDir helpers, which work on filesystems that do
+	// not implement fs.StatFS (e.g. the generic wrapper fs.Sub returns for an
+	// os.DirFS, which lacks a Sub method — see per-language pipelines).
 	return &FilesystemProvider{
-		root:            statFS,
+		root:            fsys,
 		defaultIndex:    defaultIndex,
 		dirIndex:        dirIndex,
 		excludePatterns: excludePatterns,
