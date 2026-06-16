@@ -1,0 +1,135 @@
+version: 2
+
+project_name: gomddoc
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gomddoc
+    main: ./cmd/gomddoc
+    binary: gomddoc
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+
+archives:
+  - id: gomddoc
+    ids: [gomddoc]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files: [LICENSE, LICENSE-COMMERCIAL.md, README.md]
+
+checksum:
+  name_template: "SHA256SUMS"
+
+signs:
+  - id: cosign-checksums
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+# Note: GoReleaser deprecates `dockers:` + `docker_manifests:` in favor of
+# `dockers_v2:`. The new shape needs a multi-stage Dockerfile that uses
+# buildx's TARGETOS/TARGETARCH build args to pick the right binary per
+# platform — a non-trivial Dockerfile rewrite. Revisit when migrating
+# away from the (still-functional) deprecated keys becomes urgent.
+dockers:
+  - id: gomddoc-amd64
+    image_templates: ["ghcr.io/monolithiclab/gomddoc:{{ .Version }}-amd64"]
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.source=https://github.com/monolithiclab/gomddoc"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+  - id: gomddoc-arm64
+    image_templates: ["ghcr.io/monolithiclab/gomddoc:{{ .Version }}-arm64"]
+    use: buildx
+    dockerfile: Dockerfile
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.source=https://github.com/monolithiclab/gomddoc"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/monolithiclab/gomddoc:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/monolithiclab/gomddoc:{{ .Version }}-amd64"
+      - "ghcr.io/monolithiclab/gomddoc:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/monolithiclab/gomddoc:latest"
+    skip_push: auto
+    image_templates:
+      - "ghcr.io/monolithiclab/gomddoc:{{ .Version }}-amd64"
+      - "ghcr.io/monolithiclab/gomddoc:{{ .Version }}-arm64"
+
+docker_signs:
+  - cmd: cosign
+    args: ["sign", "--yes", "${artifact}@${digest}"]
+    artifacts: manifests
+
+# Note: GoReleaser deprecates `brews:` in favor of `homebrew_casks:`, but
+# casks generate macOS-only Cask DSL files (`brew install --cask`) that
+# break Linux installs and require a different `brew install` command.
+# `brews:` still produces the Formula we want for a CLI distributed on
+# both macOS and Linux. Revisit if/when GoReleaser ships a
+# `homebrew_formulas:` key or removes `brews:` outright.
+brews:
+  - name: gomddoc
+    repository:
+      owner: monolithiclab
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/monolithiclab/gomddoc"
+    description: "Production-ready, git-native HTTP server that serves Markdown files as HTML."
+    license: "PolyForm-Noncommercial-1.0.0"
+    skip_upload: auto
+    install: |
+      bin.install "gomddoc"
+    test: |
+      system "#{bin}/gomddoc --version"
+
+changelog:
+  use: git
+  sort: asc
+  abbrev: -1
+  filters:
+    exclude:
+      - "^Merge"
+      - "^chore"
+  groups:
+    - title: "Features"
+      regexp: '^.*?feat(\(.+\))?:'
+      order: 0
+    - title: "Bug fixes"
+      regexp: '^.*?fix(\(.+\))?:'
+      order: 1
+    - title: "Documentation"
+      regexp: '^.*?docs(\(.+\))?:'
+      order: 2
+    - title: "Other"
+      order: 999
+
+release:
+  github:
+    owner: monolithiclab
+    name: gomddoc
+  prerelease: auto
+  # Re-runs of a partially-failed release (e.g. brew step 401'd after the
+  # GitHub Release was already created) need to overwrite existing assets
+  # rather than 422-fail on already_exists.
+  replace_existing_artifacts: true
