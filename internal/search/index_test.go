@@ -496,6 +496,35 @@ func TestSearch_TagOnlyStableOrder(t *testing.T) {
 	}
 }
 
+func TestSearch_MultiTagAndIntersection(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, fstest.MapFS{
+		"ab.md":  &fstest.MapFile{Data: []byte("---\ntitle: AB\ntags:\n  - alpha\n  - beta\n---\n# AB\n\nAlpha beta body.")},
+		"a.md":   &fstest.MapFile{Data: []byte("---\ntitle: A\ntags:\n  - alpha\n---\n# A\n\nAlpha only body.")},
+		"b.md":   &fstest.MapFile{Data: []byte("---\ntitle: B\ntags:\n  - beta\n---\n# B\n\nBeta only body.")},
+		"abc.md": &fstest.MapFile{Data: []byte("---\ntitle: ABC\ntags:\n  - alpha\n  - beta\n  - gamma\n---\n# ABC\n\nAlpha beta gamma body.")},
+	})
+
+	// Two tags: only pages carrying BOTH alpha and beta survive the narrowing.
+	got := resultPaths(idx.Search("tag:alpha tag:beta", 10))
+	slices.Sort(got)
+	if want := []string{"/ab.md", "/abc.md"}; !slices.Equal(got, want) {
+		t.Errorf("tag:alpha tag:beta = %v, want %v", got, want)
+	}
+
+	// Three tags: the chain narrows further to the single page with all three.
+	got = resultPaths(idx.Search("tag:alpha tag:beta tag:gamma", 10))
+	if want := []string{"/abc.md"}; !slices.Equal(got, want) {
+		t.Errorf("tag:alpha tag:beta tag:gamma = %v, want %v", got, want)
+	}
+
+	// A second tag that no page carries collapses the intersection to empty,
+	// even though the first tag matches pages.
+	if got := idx.Search("tag:alpha tag:nonexistent", 10); len(got) != 0 {
+		t.Errorf("tag:alpha tag:nonexistent = %v, want empty", resultPaths(got))
+	}
+}
+
 func TestSearch_TagPlusFreeText(t *testing.T) {
 	t.Parallel()
 	idx := buildTaggedIndex(t, taggedSite())

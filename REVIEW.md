@@ -394,18 +394,22 @@ path resolution.
 
 ### 9.5 Test coverage gaps (verified)
 
-- **HIGH risk: multi-language `build` mode is entirely untested** — `walkAndBuildLang`
-  (`build.go:342`, 0%), the per-language build block (`build.go:202-273`), per-language
-  sitemap/feed/tags/404, and `sitemap-index.xml` generation all run at 0%. No `cmd/gomddoc` test
-  creates BCP-47 language directories. Combined with §9.1, the entire i18n content feature ships
-  without an end-to-end serving/build test.
-- **HIGH risk: multi-tag `tag:` AND-intersection untested** — `internal/search/index.go:382`
-  `taggedPages` (33%); `parseQuery` parses `tag:foo tag:bar` but no test calls `Search()` with two
-  tag filters, so the intersection narrowing has zero coverage.
-- **MEDIUM: `generateRedirectFiles` body untested** — `build.go:589` (21%); only the empty-map
-  early return is covered. Build-mode `redirect_from` emission is unverified.
-- LOW: tag HTML handler 500 branches (`tags_html.go`); `emitTagPages` lang-prefix branch
-  (subsumed by the multi-language-build test above).
+- ~~**HIGH risk: multi-language `build` mode is entirely untested**~~ FIXED —
+  `TestBuildCmd_Run_MultiLanguage` (`cmd/gomddoc/build_test.go`) creates a `fr-FR/` BCP-47 directory
+  and asserts per-language content, 404, sitemap, feed, tag pages, and root `sitemap-index.xml`.
+  **The test immediately caught a real bug** that §9.7 had dismissed as a low-priority "exception":
+  `fs.Sub(os.DirFS(dir), lang)` is **not** `fs.StatFS` (os.dirFS has no `Sub` method), so every
+  per-language pipeline failed to build and all per-language sitemap/feed/tag output was silently
+  skipped. Fixed by relaxing `NewFilesystemProviderFromFS` to accept any `fs.FS` (see §9.7).
+- ~~**HIGH risk: multi-tag `tag:` AND-intersection untested**~~ FIXED —
+  `TestSearch_MultiTagAndIntersection` (`internal/search/index_test.go`) exercises `Search()` with
+  two and three `tag:` filters (narrowing) plus a second unknown tag (collapse-to-empty), covering
+  the `taggedPages` intersection loop.
+- ~~**MEDIUM: `generateRedirectFiles` body untested**~~ FIXED —
+  `TestBuildCmd_GeneratesRedirectFiles` writes `redirect_from` frontmatter and asserts each source
+  becomes a `source/index.html` meta-refresh redirect to the canonical target.
+- LOW: tag HTML handler 500 branches (`tags_html.go`); `emitTagPages` lang-prefix branch (now
+  covered by the multi-language-build test above).
 
 ### 9.6 Documentation drift (verified)
 
@@ -429,15 +433,21 @@ path resolution.
   (exact 6 tools / 4 resources / 3 prompts), `architecture.md` (resolve, MCP, i18n), Makefile
   targets in `CLAUDE.md`.
 
-### 9.7 False positive caught during verification (do NOT re-raise)
+### 9.7 ~~False positive~~ — CORRECTION: the "exception" was a real bug (FIXED)
 
-- **"Multi-language pipelines are silently dropped because `fs.Sub` isn't `fs.StatFS`"** — reported
-  as HIGH with a fabricated "empirical" proof. **FALSE.** `fs.Sub(os.DirFS(dir), lang)` returns the
-  underlying `os.dirFS` (via the `SubFS` optimization), which **does** implement `fs.StatFS`;
-  `NewFilesystemProviderFromFS` accepts it and the per-language pipelines build successfully (the
-  per-language tag tests pass). The i18n content breakage is real but its cause is §9.1 (missing
-  prefix strip), not provider construction. _(Possible exception: a git-backed `RootFS` whose
-  sub-FS isn't `StatFS` — unverified, low priority.)_
+- **"Multi-language pipelines are silently dropped because `fs.Sub` isn't `fs.StatFS`"** — the
+  verification dismissed this as FALSE on the assumption that `fs.Sub(os.DirFS(dir), lang)` returns
+  the underlying `os.dirFS` via a `SubFS` optimization. **That assumption was wrong.** `os.dirFS`
+  does **not** implement `fs.SubFS` (it has no `Sub` method), so `fs.Sub` returns a generic wrapper
+  that is **not** `fs.StatFS`. `NewFilesystemProviderFromFS` then rejected it with "filesystem does
+  not support Stat", so every per-language pipeline silently failed (`WARN Failed to create provider
+  for language`) and per-language sitemap/feed/tag output was skipped. The serve-mode tag tests
+  passed only because they feed `fstest.MapFS` differently, masking the real-FS path.
+- **Fix:** `NewFilesystemProviderFromFS` now accepts any `fs.FS` (field `root fs.FS`, no StatFS
+  assertion). The provider already routed every stat through the package-level `fs.Stat(f.root, …)`,
+  which works on non-StatFS filesystems, so the assertion was both unnecessary and the sole blocker.
+  Regression-tested by `TestBuildCmd_Run_MultiLanguage` (§9.5). _(The §9.1 prefix-strip breakage was
+  a separate, also-real issue — both are now fixed.)_
 
 ### 9.8 Still-open items carried from earlier passes (re-confirmed against `main`)
 

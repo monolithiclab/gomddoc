@@ -987,6 +987,91 @@ func TestBuildCmd_EmitsTagPages(t *testing.T) {
 	}
 }
 
+func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	// Default language content (en-US).
+	writeTestFile(t, srcDir, "README.md", "---\ntitle: Home\n---\n# Home")
+	// Non-default language directory (BCP 47), with a tagged page so the
+	// per-language tag pages get exercised too.
+	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "README.md", "---\ntitle: Accueil\n---\n# Accueil")
+	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "guide.md", "---\ntitle: Guide\ntags: [docs]\n---\n# Guide")
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir, Domain: "build.example.com"}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// Default-language outputs at the root.
+	if !strings.Contains(readTestFile(t, outDir, "index.html"), "Home") {
+		t.Error("root index.html should contain default-language content")
+	}
+
+	// walkAndBuildLang: per-language content built under fr-FR/.
+	frHome := readTestFile(t, filepath.Join(outDir, "fr-FR"), "index.html")
+	if !strings.Contains(frHome, "Accueil") {
+		t.Error("fr-FR/index.html should contain the French content")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "fr-FR", "guide", "index.html")); err != nil {
+		t.Errorf("expected fr-FR/guide/index.html: %v", err)
+	}
+
+	// Per-language 404, sitemap, feed, and tag pages.
+	for _, want := range []string{
+		filepath.Join("fr-FR", "404.html"),
+		filepath.Join("fr-FR", "sitemap.xml"),
+		filepath.Join("fr-FR", "feed.xml"),
+		filepath.Join("fr-FR", "tags", "index.html"),
+		filepath.Join("fr-FR", "tags", "docs", "index.html"),
+	} {
+		if _, err := os.Stat(filepath.Join(outDir, want)); err != nil {
+			t.Errorf("expected per-language output %s: %v", want, err)
+		}
+	}
+
+	// sitemap-index.xml stitches the languages together and references fr-FR.
+	indexContent := readTestFile(t, outDir, "sitemap-index.xml")
+	if !strings.Contains(indexContent, "fr-FR/sitemap.xml") {
+		t.Errorf("sitemap-index.xml should reference the fr-FR sitemap, got:\n%s", indexContent)
+	}
+
+	// Parity fix (REVIEW §9.2): the static 404 carries the language switcher,
+	// so the fr-FR code appears in the default 404 page.
+	if root404 := readTestFile(t, outDir, "404.html"); !strings.Contains(root404, "fr-FR") {
+		t.Error("static 404.html should include the language switcher (fr-FR)")
+	}
+}
+
+func TestBuildCmd_GeneratesRedirectFiles(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	writeTestFile(t, srcDir, "new-page.md",
+		"---\ntitle: New Page\nredirect_from:\n  - /old-page\n  - /legacy/url\n---\n# New Page")
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// Each redirect_from source becomes source/index.html with a redirect to
+	// the canonical (extensionless) target.
+	for _, src := range []string{"old-page", filepath.Join("legacy", "url")} {
+		body := readTestFile(t, outDir, filepath.Join(src, "index.html"))
+		if !strings.Contains(body, "/new-page") {
+			t.Errorf("redirect %s/index.html should point at /new-page, got:\n%s", src, body)
+		}
+		if !strings.Contains(strings.ToLower(body), "refresh") {
+			t.Errorf("redirect %s/index.html should be a meta-refresh redirect, got:\n%s", src, body)
+		}
+	}
+}
+
 func TestBuildCmd_EmitsSeeAlsoSection(t *testing.T) {
 	t.Parallel()
 
