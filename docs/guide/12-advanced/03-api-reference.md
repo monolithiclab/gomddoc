@@ -67,9 +67,13 @@ Full-text search across all markdown content.
 
 | Parameter | Required | Default | Max | Description |
 |-----------|----------|---------|-----|-------------|
-| `q` | Yes | | 500 chars | Search query (AND semantics for multiple terms) |
+| `q` | Yes | | 500 chars | Search query (AND semantics for multiple terms; supports `tag:` filters) |
 | `limit` | No | 20 | 100 | Maximum results to return |
 | `lang` | No | default language | | BCP 47 language code to search a specific language's index |
+
+The query supports `tag:<name>` filters (case-insensitive, AND-combined): `tag:go tag:tutorial` matches pages carrying
+both tags, and `tag:go channels` narrows tagged pages by the free-text term. A tag-only query returns matches sorted
+alphabetically by title. See [Full-Text Search](../10-search.md#tag-filters) for details.
 
 When multiple languages are configured, the `lang` parameter selects which language's search index to query. If
 omitted, the language is resolved from the `Accept-Language` request header, falling back to the site's default
@@ -125,6 +129,20 @@ Returns all pages tagged with the specified tag. Tag matching is case-insensitiv
 ```
 
 Returns an empty array if no pages have the specified tag.
+
+### `GET /tags/` and `GET /tags/{tag}` (HTML)
+
+In addition to the JSON API above, gomddoc serves human-readable HTML tag pages rendered with the active theme:
+
+| Endpoint | Description |
+|---|---|
+| `GET /tags/` | Index page listing every tag with its page count |
+| `GET /tags/{tag}` | Landing page listing all pages carrying `{tag}`, sorted by title |
+
+Tag values are percent-encoded in the path (e.g. `/tags/machine%20learning`). When multiple languages are detected,
+each language gets prefixed routes (`GET /{lang}/tags/` and `GET /{lang}/tags/{tag}`). These pages are also emitted as
+static HTML by `build` mode, so they work on static hosts. The JSON `/api/tags` routes remain available for
+integrations.
 
 ---
 

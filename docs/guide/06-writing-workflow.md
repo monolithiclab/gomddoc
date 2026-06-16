@@ -83,3 +83,28 @@ Every markdown file can include optional YAML frontmatter at the top, enclosed b
 Frontmatter fields affect how the page is rendered, indexed, and displayed in search results. See
 [Markdown Extensions](12-advanced/02-markdown-extensions.md) for the full frontmatter field reference and
 [Configuration](02-configuration.md) for how frontmatter interacts with site-level settings.
+
+## Tags and Discovery
+
+Adding a `tags` list to a page's frontmatter drives three discovery features automatically — no extra
+configuration beyond the relevant theme feature flags:
+
+```yaml
+---
+title: Deploying with Docker
+tags: [deployment, docker]
+---
+```
+
+- **Tag chips** — the `tag_chips` theme feature renders the page's tags as clickable chips near the top
+  of the page, each linking to that tag's landing page.
+- **Tag pages** — gomddoc serves an HTML index at `/tags/` listing every tag, and a landing page at
+  `/tags/{tag}` listing all pages carrying that tag. These are emitted as static HTML in `build` mode
+  too. (See the [API Reference](12-advanced/03-api-reference.md) for the tag endpoints.)
+- **See-also (related pages)** — the `see_also` theme feature appends a "See also" section listing other
+  pages that share one or more tags with the current page, ranked by overlap.
+
+Tags are normalized (lowercased, trimmed, deduplicated) for indexing, and they are also queryable via
+the `tag:` syntax in [full-text search](10-search.md#tag-filters) and the JSON `/api/tags` endpoints.
+Both `tag_chips` and `see_also` are enabled by default in the built-in themes and can be toggled per
+site or per page via [feature flags](02-configuration.md).

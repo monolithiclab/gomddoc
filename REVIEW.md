@@ -411,23 +411,22 @@ path resolution.
 - LOW: tag HTML handler 500 branches (`tags_html.go`); `emitTagPages` lang-prefix branch (now
   covered by the multi-language-build test above).
 
-### 9.6 Documentation drift (verified)
+### 9.6 Documentation drift (verified) — ALL FIXED
 
-- **HIGH: `CLAUDE.md` "Project Structure" omits 5 real packages** — `locale`, `mcp`, `resolve`,
-  `seo`, `testutil` are missing, and the `cmd/gomddoc/` line omits the `mcp` and `info`
-  subcommands (`cmd/gomddoc/main.go:20-25`). The structure map an agent reads first is materially
-  incomplete.
-- **MEDIUM: `make run` documented without its argument** — `CLAUDE.md:20` shows
-  `go run ./cmd/gomddoc serve` but `Makefile:40` runs `... serve testsite`.
-- **MEDIUM: shipped features undocumented in the guide** — `tag:` search syntax (absent from
-  `10-search.md` and the `/api/search` reference), the HTML tag pages `/tags/` and `/tags/{tag}`
-  (only the JSON `/api/tags` routes are documented), and the tag-chips/see-also partials + the
-  see-also feature itself (`05-theming-and-assets.md`, `06-writing-workflow.md`).
-- **MEDIUM: `decisions.md` contradicts shipped reality** — `decisions.md:415` lists i18n as
-  "Deferred / out of scope", and `:438` says related-pages and `tag:` search are deferred — all
-  three have shipped.
-- **LOW: "ships with 8 themes"** — the source tree embeds only `default`; the other 7 live in
-  `gomddoc-themes` and there is no documented sync target. Document the theme-bundling mechanism.
+- ~~**HIGH: `CLAUDE.md` "Project Structure" omits 5 real packages**~~ FIXED — added `locale`, `mcp`,
+  `resolve`, `seo`, `testutil` to the structure tree (now alphabetized) and corrected the
+  `cmd/gomddoc/` line to list all six subcommands (build, info, init, mcp, preview, serve).
+- ~~**MEDIUM: `make run` documented without its argument**~~ FIXED — `CLAUDE.md` now shows
+  `go run ./cmd/gomddoc serve testsite`, matching the Makefile.
+- ~~**MEDIUM: shipped features undocumented in the guide**~~ FIXED — added a "Tag Filters" section to
+  `10-search.md` and the `tag:` note to the `/api/search` reference; documented the HTML `/tags/` and
+  `/tags/{tag}` pages in `03-api-reference.md`; documented the `tag_chips`/`see_also` partials,
+  `pageTags`/`tagURL` functions, and `.Page.RelatedDocs`/`PrevPage`/`NextPage` in
+  `05-theming-and-assets.md`; and added a "Tags and Discovery" section to `06-writing-workflow.md`.
+- ~~**MEDIUM: `decisions.md` contradicts shipped reality**~~ FIXED — removed the stale "i18n —
+  Deferred" row and updated the related-pages/`tag:` note to record that both have since shipped.
+- ~~**LOW: "ships with 8 themes"**~~ FIXED — `05-theming-and-assets.md` now states only `default` is
+  embedded in the source tree and documents the `gomddoc-themes` overlay mechanism for the other 7.
 - _Verified accurate (no drift):_ `02-configuration.md` (all CLI flags/env/config fields incl.
   `--domain`, `exclude`, `strip_extensions`, `robots`, `language`, `redirect_from`), `04-mcp.md`
   (exact 6 tools / 4 resources / 3 prompts), `architecture.md` (resolve, MCP, i18n), Makefile

@@ -10,7 +10,7 @@ gomddoc uses an **Overlay Filesystem** to handle assets. This means you can "ove
 
 ## Built-in Themes
 
-gomddoc ships with 8 themes. Set the theme in `.gomddoc/config.yml` or via `GOMDDOC_SITE_THEME_NAME`:
+gomddoc offers 8 themes. Set the theme in `.gomddoc/config.yml` or via `GOMDDOC_SITE_THEME_NAME`:
 
 | Theme | Style | Description |
 |-------|-------|-------------|
@@ -24,6 +24,8 @@ gomddoc ships with 8 themes. Set the theme in `.gomddoc/config.yml` or via `GOMD
 | `ocean` | Colorful | Teal/navy gradients, sine-wave header clip-path |
 
 All themes include: light/dark mode, TOC sidebar, navigation sidebar, breadcrumbs, admonitions, color chips, copy-to-clipboard code blocks, heading anchors, KaTeX math, Mermaid diagrams, and touch device accessibility.
+
+> **Theme bundling:** only the `default` theme is embedded in the gomddoc source tree (`cmd/gomddoc/assets/themes/`). The other 7 themes are maintained in the separate [`gomddoc-themes`](https://github.com/monolithiclab/gomddoc-themes) repository. To use one when building from source, copy its directory into your site's `.gomddoc/assets/themes/<name>/` overlay (see [Static Asset Overlay](#static-asset-overlay)), which takes precedence over the embedded assets.
 
 ### Switching Themes
 
@@ -102,6 +104,8 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
     - `.Page.Meta`: Map of YAML Front Matter metadata (e.g., `{{ index .Page.Meta "title" }}`).
     - `.Page.Features`: Pre-merged feature toggles (site defaults + page overrides).
     - `.Page.TOC`: Table of Contents tree (use the `toc` template function to render).
+    - `.Page.RelatedDocs`: Pages sharing frontmatter tags with this page, rendered by the `see-also` partial.
+    - `.Page.PrevPage` / `.Page.NextPage`: Adjacent pages in navigation order (each has `.Path` and `.Title`).
 
 ### Template Functions
 
@@ -157,6 +161,19 @@ Custom functions available in templates:
   <a href="{{ contentURL "docs/guide.md" }}">Guide</a>
   {{/* Output: /docs/guide (with extension stripping) */}}
   {{/* Output: /docs/guide.md (without extension stripping) */}}
+  ```
+
+- **`pageTags`**: Returns the current page's normalized frontmatter tags (lowercased, trimmed, deduplicated — the same
+  normalization the metadata index applies). Used by the `tag-chips` partial.
+  ```html
+  {{ range pageTags .Page.Meta }}<a href="{{ tagURL $.Lang . }}">{{ . }}</a>{{ end }}
+  ```
+
+- **`tagURL`**: Returns the URL path for a tag's landing page, language-prefixed when the page is in a non-default
+  language. Pass the current language (`$.Lang`) and the tag.
+  ```html
+  <a href="{{ tagURL $.Lang "go" }}">go</a>
+  {{/* Output: /tags/go (default lang) or /fr-FR/tags/go (non-default) */}}
   ```
 
 - **`inlineJSAsset`**: Loads an asset from the theme directory (falling back to shared assets) and returns it as `template.JS` for safe embedding inside `<script>` tags.
@@ -385,6 +402,8 @@ When creating a custom theme, ensure it supports these features for parity with 
 - **Search modal** — guarded by `{{ .Feature "search" }}`. Uses `{{ inlineJSAsset "search.mjs" }}` with CSS custom properties for styling.
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`
 - **Color chip web component** — guarded by `{{ .Feature "color_chips" }}`. Uses `{{ inlineJSAsset "gmd-color-chip.mjs" }}`.
+- **Tag chips** — guarded by `{{ .Feature "tag_chips" }}`. Uses `{{ template "tag-chips" . }}`, rendering the page's `pageTags` as links to their `tagURL` landing pages.
+- **See-also (related pages)** — guarded by `{{ .Feature "see_also" }}`. Uses `{{ template "see-also" . }}`, listing `.Page.RelatedDocs` (pages sharing frontmatter tags).
 - **Copy-to-clipboard** — guarded by `{{ .Feature "code_copy" }}`. Uses `{{ inlineJSAsset "code-copy.mjs" }}`, creates `.copy-btn` on code blocks. Customize text with `data-copy-label`/`data-copied-label` on `<html>`.
 - **Heading anchors** (`.heading-anchor` class, revealed on hover)
 - **Touch accessibility** with `@media (hover: none)` for copy buttons and heading anchors

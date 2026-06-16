@@ -79,6 +79,24 @@ Queries use **AND semantics** — all terms must appear in a document for it to 
 noise and returns more focused results. For example, searching for `git authentication` only returns
 pages that contain both "git" and "authentication".
 
+## Tag Filters
+
+Queries can filter by frontmatter tags using the `tag:` prefix. Tag matching is case-insensitive and
+uses the same AND semantics as free-text terms:
+
+| Query | Matches |
+|-------|---------|
+| `tag:go` | All pages tagged `go` |
+| `tag:go tag:tutorial` | Pages tagged with **both** `go` and `tutorial` |
+| `tag:go channels` | Pages tagged `go` that also contain the term "channels" |
+
+A **tag-only** query (no free-text terms) returns every matching page sorted alphabetically by title,
+making `tag:` a quick way to list a topic. When free-text terms are present, the tag set first narrows
+the candidate pages and the terms are then ranked by relevance within that set. An unknown tag (or any
+tag in an AND chain that no page carries) yields no results.
+
+The `tag:` syntax works identically in the browser search modal and the JSON API below.
+
 ## Search API
 
 The search engine is also accessible via a JSON REST API, which is useful for integrations, scripts,
@@ -90,7 +108,7 @@ GET /api/search?q=<query>&limit=<n>&lang=<code>
 
 | Parameter | Required | Default | Max | Description |
 |-----------|----------|---------|-----|-------------|
-| `q` | Yes | | 500 chars | Search query (multiple terms use AND semantics) |
+| `q` | Yes | | 500 chars | Search query (multiple terms use AND semantics; supports `tag:` filters) |
 | `limit` | No | 20 | 100 | Maximum results to return |
 | `lang` | No | default language | | BCP 47 code to search a specific language's index (e.g., `fr-FR`) |
 
@@ -126,6 +144,9 @@ curl 'http://localhost:8080/api/search?q=configuration'
 
 # Limit to top 5 results
 curl 'http://localhost:8080/api/search?q=getting+started&limit=5'
+
+# Filter by tag (URL-encode the colon as %3A or quote the query)
+curl 'http://localhost:8080/api/search?q=tag:go+channels'
 
 # Use content negotiation to get raw markdown for a result
 curl -H "Accept: text/markdown" 'http://localhost:8080/docs/guide.md'

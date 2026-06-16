@@ -17,7 +17,7 @@ make test                   # Tests with coverage (target: 87%+)
 make lint -j8               # Parallelize linting
 make build                  # Production binary → build/gomddoc
 make bench                  # Benchmarks
-make run                    # Run locally (go run ./cmd/gomddoc serve)
+make run                    # Run locally (go run ./cmd/gomddoc serve testsite)
 FORCE_UPDATE=1 make lint    # Reinstall linters
 ```
 
@@ -60,18 +60,23 @@ docs/
 ## Project Structure
 
 ```
-cmd/gomddoc/           # CLI (Kong): serve, build, preview, init subcommands
+cmd/gomddoc/           # CLI (Kong): build, info, init, mcp, preview, serve subcommands
 internal/
+├── assets/            # Overlay filesystem for theme overrides
 ├── config/            # Config loading (CLI > env > YAML > defaults), validation
 ├── enricher/          # Pre-rendering extraction (metadata, TOC, navigation, related docs)
+├── locale/            # i18n: BCP 47 language detection, locale bundles, translation lookup
+├── mcp/               # Model Context Protocol server (tools, resources, prompts)
 ├── metadata/          # Frontmatter indexing, tag API
 ├── negotiate/         # HTTP content negotiation (Accept header, MIME types)
 ├── provider/          # Content sources (filesystem, git, overlay)
 ├── renderer/          # Content renderers (markdown→HTML, passthrough)
+├── resolve/           # Clean-URL ↔ real-path resolution (strip_extensions, redirects)
 ├── search/            # Full-text search (inverted index, TF-IDF ranking)
+├── seo/               # Canonical URL building for sitemap/feed/SEO tags
 ├── server/            # HTTP server, handlers, middleware, RouteGroup
 ├── template/          # HTML rendering, caching, breadcrumbs, navigation
-├── assets/            # Overlay filesystem for theme overrides
+├── testutil/          # Shared test helpers
 └── text/              # Text utilities (sanitize, title case)
 testsite/              # Lorem ipsum test site for quick testing
 ```

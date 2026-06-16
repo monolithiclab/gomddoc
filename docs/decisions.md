@@ -412,7 +412,6 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 | Database providers (PostgreSQL/SQLite) | Discarded | Git is the database; keeps app stateless |
 | REST/GraphQL APIs | Discarded | gomddoc is a viewer, not a headless CMS |
 | Editorial workflows (drafts, reviews) | Discarded | Use Git branches instead |
-| i18n / multi-language | Deferred | Out of scope for current focus |
 | VS Code extension | Deferred | Low priority |
 | Plugin architecture / dynamic loading | Deferred | Interface-based extensibility is sufficient |
 | Content versioning | Discarded | Use Git history directly |
@@ -435,6 +434,6 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 
 **Why percent-encoding**: tag values already exist in frontmatter as plain strings; encoding rather than slugifying preserves them exactly. Pathological tag values containing `/` or whitespace-only entries are skipped at `metadata.Index` build time with a logged warning, so the encoding stays simple and the bad-data surface is closed at the source.
 
-**Why no related-pages or `tag:` search**: deferred to follow-up sub-specs to keep this PR focused on the user-visible discovery features (chips + landing pages).
+**Related-pages and `tag:` search**: originally deferred to follow-up sub-specs to keep the first PR focused on the user-visible discovery features (chips + landing pages). Both have since shipped — see-also related pages via the enricher, and `tag:` filter syntax in full-text search.
 
 **Renderer interface extension**: `RenderTagPage` and `RenderTagsIndex` were added to the `template.Renderer` interface (not just the `*HTMLRenderer` concrete type) so the server can register handlers via the abstract dependency without type-asserting. There's only one renderer implementation today; the interface is a layering signal more than a polymorphism enabler.
