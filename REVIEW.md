@@ -1,10 +1,13 @@
 # Codebase & Architecture Review: gomddoc
 
 - **Review Date:** 2026-06-11 (14th pass — Fresh Review; see §9). Prior: 2026-04-08 (13th pass).
+- **Status:** 14th pass **CONCLUDED** 2026-06-16 — the entire §9.10 priority list is fixed (§9.1–§9.6
+  + the §9.7 provider bug). Two perf opportunities are deferred to a future pass: the per-request
+  nav-tree copy (§9.3 `buildNavItems`) and the double markdown parse (§9.8) — neither is a defect.
 - **Reviewers:** Claude Architecture Analysis (6 parallel review agents + manual verification)
 - **Branch:** main
 - **Go Version:** 1.26.1
-- **Coverage:** 81.3% aggregate (`go test ./...`); most `internal/*` packages 87–96%, `cmd/gomddoc` 68.4%
+- **Coverage:** 82.7% aggregate (`go test ./...`); most `internal/*` packages 87–96%, `cmd/gomddoc` 76.1%
 - **Source LoC:** ~8,025 (production) + ~19,232 (tests)
 - **Latest findings:** §9 (14th pass). Sections 1–8 are the 13th-pass record, retained for history.
 
@@ -296,7 +299,12 @@ improvements that can be addressed opportunistically.
 
 ### 9.1 HIGH — Correctness
 
-#### HIGH: Per-language content pages 404 in `serve` mode (i18n content tree non-functional)
+#### ~~HIGH: Per-language content pages 404 in `serve` mode (i18n content tree non-functional)~~ FIXED
+
+> **FIXED** — the `/{lang}` prefix is now stripped before the language handler and each language
+> pipeline builds its own resolver; serve+build integration tests added (§9.5). Fixing this also
+> exposed the §9.7 provider bug (`fs.Sub(os.DirFS)` not `fs.StatFS`), now also fixed. Original
+> finding retained below for the record.
 
 `internal/server/server.go:211-218` registers the per-language content handler under
 `auth.Subgroup("/"+lang, ...)` **without `http.StripPrefix`**. `RouteGroup.Subgroup`
@@ -326,13 +334,9 @@ path resolution.
 
 ### 9.2 MEDIUM — Consistency / serve-build parity
 
-- **See-also links emit raw `.md` paths** — `cmd/gomddoc/assets/themes/default/partials/see-also.html.tmpl:8`
-  renders `<a href="{{ $doc.Path }}">` where `$doc.Path` is the metadata index's raw path
-  (`/foo.md`, set in `internal/enricher/markdown.go:161-164`). Every other link type is
-  extension-normalized (nav via `resolver.CleanPath`, prev/next via `canonicalURL`). On a
-  `strip_extensions` site the see-also section links to `/foo.md` (an extra 301 hop in serve;
-  fragile in build) while the rest of the page links to `/foo`. Fix in the template via the existing
-  `contentURL` func, or normalize `RelatedDoc.Path` in the enricher. Affects both serve and build.
+- ~~**See-also links emit raw `.md` paths**~~ FIXED — `see-also.html.tmpl` now wraps `$doc.Path` in
+  the `contentURL` func, so related-page links are extension-normalized like every other link type on
+  `strip_extensions` sites (no extra 301 hop). Affected both serve and build.
 - ~~**`serveHTML` and `buildFile` duplicate the entire `TemplateContext`/`PageContext` assembly**~~
   FIXED — extracted `tmpl.BuildPageContext(...)` (`internal/template/context.go`). `serveHTML`
   (`handler.go`) and `buildFile` (`build.go`) now both feed `PageContextInput`; default-title
@@ -343,54 +347,40 @@ path resolution.
   (`internal/template/context.go`), used by `handler.go` and `build.go`. The parity gap is closed:
   build now passes `bc.languageInfos` (was `nil`), so the static 404 carries the language switcher
   like the live server.
-- **`sitemap-index.xml` built with manual `strings.Builder`** — `cmd/gomddoc/build.go:260-273`
-  string-concatenates `<sitemapindex>` with a hard-coded `https://`, while
-  `internal/server/sitemap.go` and `feed.go` use `xml.MarshalIndent`. Violates the CLAUDE.md rule
-  against constructing markup with `fmt`/string-building, and bypasses `seo.PageURL` scheme
-  handling. Define a `sitemapIndex` struct and marshal it.
+- ~~**`sitemap-index.xml` built with manual `strings.Builder`**~~ FIXED — replaced with a
+  `sitemapIndex` struct marshalled via `xml.MarshalIndent` (`server.GenerateSitemapIndex`), matching
+  the sitemap/feed code path and respecting `seo.PageURL` scheme handling.
 
 ### 9.3 MEDIUM — Performance (recently-landed code)
 
-- **Tag pages re-parse their partial template on every request** — `executePartial`
-  (`internal/template/renderer.go:394-410`) calls `template.New(...).Funcs(...).ParseFS(...)`
-  unconditionally, including in production. `RenderTagPage`/`RenderTagsIndex` route through it on
-  every `/tags/` and `/tags/{tag}` hit, bypassing the `TemplateCache`+`singleflight` that the main
-  content path uses. Also returns a non-pooled `bytes.Buffer`. A clear regression specific to the
-  tag feature — cache the parsed partial (key by `theme/name`). _(Independently found by two
-  agents.)_
-- **`TagsIndexHandler` allocates a full `[]PageInfo` per tag just to count** —
-  `internal/server/tags_html.go:65-68` calls `len(h.index.ByTag(tag))`, and `ByTag`
-  (`internal/metadata/index.go:228-237`) allocates+copies a slice of every matching page only for
-  its length. Add `CountByTag(tag) int { return len(idx.byTag[strings.ToLower(tag)]) }`.
-- **`buildNavItems` deep-copies the whole nav tree per content request** —
-  `cmd/gomddoc/pipeline.go:265-289` allocates a fresh `NavItem` for every node in the site nav on
-  each request just to flip `Active`/`Open` on the current path. O(total pages) allocations per
-  page view — the largest per-request allocation after rendering itself. Only the active spine
-  changes between requests. _(Medium confidence — correctness-preserving refactor; extend the
-  existing navigation benchmark to cover the adapter.)_
+- ~~**Tag pages re-parse their partial template on every request**~~ FIXED — parsed partials are now
+  cached (keyed by `theme/name`) in the renderer, so `RenderTagPage`/`RenderTagsIndex` use the same
+  cache path as the main content path instead of re-parsing on every `/tags/` hit.
+- ~~**`TagsIndexHandler` allocates a full `[]PageInfo` per tag just to count**~~ FIXED — added
+  `metadata.Index.CountByTag(tag)`, which returns the bucket length without allocating/copying a page
+  slice.
+- **`buildNavItems` deep-copies the whole nav tree per content request** (STILL OPEN — deferred) —
+  `cmd/gomddoc/pipeline.go` allocates a fresh `NavItem` for every node in the site nav on each
+  request just to flip `Active`/`Open` on the current path. O(total pages) allocations per page view.
+  Correctness-preserving refactor deferred to a future pass alongside the §9.8 double-parse work.
 
-### 9.4 LOW
+### 9.4 LOW — ALL FIXED
 
-- **`pageTags` returns frontmatter tags verbatim** — `internal/template/renderer.go:691-715` skips
-  the lowercase/trim/slash-reject/dedup that `metadata.pageFromFrontmatter` applies
-  (`index.go:160-184`). Chips therefore display original case/whitespace and can show slash-tags the
-  index dropped. Links mostly still resolve because `ByTag` lowercases its lookup; the genuine
-  breakage is slash-tags (chip links to a contentless tag page → 404) and cosmetic display drift.
-  Expose `metadata.NormalizeTags(...)` and reuse it in `pageTags` (and `findRelatedDocs`).
-- **`findRelatedDocs` has no result cap** — `internal/enricher/markdown.go:130-168`; a page with a
-  very common tag renders every co-tagged page into the see-also section. Cap to top-N.
-- **`RelatedDocs` sort duplicated + reimplements `CompareTitles`** — identical inline
-  `slices.SortFunc(...ToLower...)` in `handler.go:179-181` and `build.go:444-446`; the canonical
-  comparator is `metadata.CompareTitles` (`index.go:241`). Note `CompareTitles` itself lacks a path
-  tiebreaker, so tag-page ordering is unstable for equal titles (the search path adds
-  `cmp.Compare(a.Path,b.Path)` — the tag/HTML paths don't). Unify and add a secondary key.
-- **`NewHTTPServer` dereferences `LocaleBundle` unconditionally in the per-language loop** —
-  `server.go:195` (`opts.LocaleBundle.TFunc(lang)`) while the default path guards `!= nil`
-  (`server.go:222`). Latent nil-panic if a caller sets `LangPipelines` without a bundle.
-- **Search query truncated on a byte boundary** — `internal/server/search.go:52-54`
-  (`q = q[:maxQueryLength]`) can split a UTF-8 rune. Truncate on a rune boundary.
-- **`headingLevel` indentation check ignores tabs** — `internal/mcp/section.go:60-63` trims only
-  spaces; comment and code disagree on tab handling. Author-controlled content, low impact.
+- ~~**`pageTags` returns frontmatter tags verbatim**~~ FIXED — `pageTags` now applies the same
+  lowercase/trim/slash-reject/dedup normalization as the metadata index, so chips no longer drift in
+  case/whitespace or link to dropped slash-tags.
+- ~~**`findRelatedDocs` has no result cap**~~ FIXED — the related-docs list is now capped to a top-N,
+  so a page with a very common tag no longer renders every co-tagged page into see-also.
+- ~~**`RelatedDocs` sort duplicated + reimplements `CompareTitles`**~~ FIXED — unified on
+  `metadata.CompareTitles`, and the comparator gained a `cmp.Compare(a.Path, b.Path)` secondary key so
+  equal-title ordering is now stable across the tag/HTML/search paths.
+- ~~**`NewHTTPServer` dereferences `LocaleBundle` unconditionally in the per-language loop**~~ FIXED —
+  the per-language loop now guards `LocaleBundle != nil` like the default path, closing the latent
+  nil-panic.
+- ~~**Search query truncated on a byte boundary**~~ FIXED — query truncation now respects UTF-8 rune
+  boundaries.
+- ~~**`headingLevel` indentation check ignores tabs**~~ FIXED — the indentation check is now
+  tab-aware, matching the comment.
 
 ### 9.5 Test coverage gaps (verified)
 
@@ -448,17 +438,21 @@ path resolution.
   Regression-tested by `TestBuildCmd_Run_MultiLanguage` (§9.5). _(The §9.1 prefix-strip breakage was
   a separate, also-real issue — both are now fixed.)_
 
-### 9.8 Still-open items carried from earlier passes (re-confirmed against `main`)
+### 9.8 Carried items from earlier passes (re-confirmed against `main`)
 
-- **`extractTitle` opens every markdown file on first nav build** — `navigation.go:195` still scans
-  files for `# ` headings instead of reusing metadata-index titles. Highest-value carried LOW.
-- **`AllMappings` returns the internal map without a defensive copy** — `resolve/resolver.go:138`.
-- **`AllPages` shallow clone shares inner references** — `metadata/index.go`.
-- **SitemapHandler/FeedHandler caching pattern duplicated** — `server/sitemap.go` + `feed.go`
-  (`robots.go` is a third, eager variant — three caching idioms for three static endpoints).
-- **Double markdown parsing for enrichment + rendering** — architectural; a bounded response-body
-  cache keyed by `(path, Accept, lang)` would also remove per-hit re-render/recompress for this
-  read-heavy, immutable-content server (perf opportunity, not a defect).
+- ~~**`extractTitle` opens every markdown file on first nav build**~~ FIXED — the nav generator now
+  labels leaf pages from the metadata index via a `SetTitleLookup` hook, falling back to a file scan
+  only when a page has no indexed title.
+- ~~**`AllMappings` returns the internal map without a defensive copy**~~ FIXED — `resolve.Resolver`
+  now returns a defensive copy.
+- ~~**`AllPages` shallow clone shares inner references**~~ FIXED — `metadata.Index.AllPages` now
+  deep-copies the inner `Meta`/`Tags` references.
+- ~~**SitemapHandler/FeedHandler caching pattern duplicated**~~ FIXED — extracted a shared `lazyBytes`
+  helper for the sitemap/feed static-endpoint caching.
+- **Double markdown parsing for enrichment + rendering** (STILL OPEN — DEFERRED) — architectural; a
+  bounded response-body cache keyed by `(path, Accept, lang)` would also remove per-hit
+  re-render/recompress for this read-heavy, immutable-content server. A perf opportunity, not a
+  defect — deferred to a future pass.
 
 ### 9.9 Security — clean
 
@@ -468,16 +462,27 @@ is blocked by the `io/fs` containment model plus `IsHiddenPath` (rejects any `..
 endpoints use `MaxBytesReader`; search query/limit are capped/clamped; excluded/hidden paths return
 404 (no existence leakage); auth uses constant-time bcrypt with a dummy-hash timing defense; the
 crafted-`{lang}` route cannot escape the content root (`fs.Sub` enforces `fs.ValidPath`). Two
-optional LOW hardening items: add an `fs.ValidPath` guard in the git provider's `normalizePath`
-callers (`provider/git.go:367,486`) for non-HTTP robustness, and cap the `{tag}` route / MCP string
-inputs for consistency with the search handler.
+optional LOW hardening items were implemented anyway: an `fs.ValidPath` guard in the git provider's
+`ReadFile`/`Stat` for non-HTTP robustness, and length caps on the `{tag}` route / MCP string inputs
+for consistency with the search handler. ✅ Both FIXED.
 
-### 9.10 Recommended priority order
+### 9.10 Recommended priority order — COMPLETE
 
-1. **Fix §9.1** (i18n per-language content 404) — a shipped feature is non-functional in serve mode;
-   add the missing serve+build integration tests (§9.5) alongside the fix.
-2. **See-also `.md` links + `executePartial` re-parse** (§9.2, §9.3) — small, high-value correctness
-   and perf fixes in the new tag/see-also code.
-3. **Documentation drift** (§9.6) — cheap, and §9.1's existence shows the docs oversold i18n.
-4. **Remaining MEDIUM consistency** (shared context/error builders, sitemap-index marshalling).
-5. **LOW items and carried items** (§9.4, §9.8) as opportunity permits.
+All items below were addressed in the 14th pass (concluded 2026-06-16):
+
+1. ✅ **§9.1** (i18n per-language content 404) — fixed via `StripPrefix` + per-language resolver; serve
+   and build integration tests added (§9.5). Exposed and fixed the §9.7 provider bug.
+2. ✅ **See-also `.md` links + `executePartial` re-parse** (§9.2, §9.3) — links normalized via
+   `contentURL`; tag-page partials now cached.
+3. ✅ **Documentation drift** (§9.6) — CLAUDE.md structure/subcommands, guide coverage for
+   tag/search/see-also features, decisions.md, and the theme-bundling note all corrected.
+4. ✅ **Remaining MEDIUM consistency** — shared `BuildPageContext`/`BuildErrorContext` builders
+   (§9.2), sitemap-index marshalling (§9.2), tag counting without allocation (§9.3).
+5. ✅ **LOW and carried items** (§9.4, §9.8) — including `extractTitle` reuse of indexed titles,
+   defensive copies, and lazy sitemap/feed caching.
+
+**Deferred (not defects) — two perf opportunities for a future pass:**
+
+- `buildNavItems` deep-copies the nav tree per request (§9.3) — O(total pages) allocations per view.
+- Double markdown parsing for enrichment + rendering (§9.8) — a bounded response-body cache would also
+  remove per-hit re-render/recompress.

@@ -463,21 +463,17 @@ _Enable community theme sharing via a GitHub-based registry._
 
 ## Bugs
 
-- [ ] **Per-language content pages 404 in `serve` mode** (HIGH — see REVIEW.md §9.1). The
-      per-language content handler is mounted under `/{lang}` without stripping the prefix, so
-      `ServeContent` passes `/{lang}/page.md` to a provider already rooted at the language subdir
-      and the lookup misses. Tag routes work (they use the metadata index, not the provider), which
-      masked the bug; there is no per-language content-serving test. `build` mode is unaffected
-      (it walks the language sub-FS directly), so static builds emit correct localized pages while
-      the live server 404s them. Fix: `http.StripPrefix` the `/{lang}` segment and build a
-      per-language resolver; add serve+build integration tests.
-- [ ] **See-also links emit raw `.md` paths** (MEDIUM — REVIEW.md §9.2). `see-also.html.tmpl` renders
-      `$doc.Path` unresolved, so on `strip_extensions` sites related-page links point to `/foo.md`
-      while every other link is `/foo`. Fix via the `contentURL` template func or normalize in the
-      enricher.
-- [ ] **Tag pages re-parse their partial template on every request** (MEDIUM perf — REVIEW.md §9.3).
-      `executePartial` bypasses the template cache used by the main content path; cache the parsed
-      partial.
+- [x] **Per-language content pages 404 in `serve` mode** (HIGH — REVIEW.md §9.1). FIXED: the
+      `/{lang}` prefix is now stripped before the language handler and each language pipeline builds
+      its own resolver; serve+build integration tests added (§9.5). A follow-on provider bug
+      (`fs.Sub(os.DirFS)` not being `fs.StatFS`, §9.7) that silently dropped per-language pipelines
+      was also fixed.
+- [x] **See-also links emit raw `.md` paths** (MEDIUM — REVIEW.md §9.2). FIXED: `see-also.html.tmpl`
+      now resolves `$doc.Path` via the `contentURL` template func, matching every other link type on
+      `strip_extensions` sites.
+- [x] **Tag pages re-parse their partial template on every request** (MEDIUM perf — REVIEW.md §9.3).
+      FIXED: parsed partials are now cached (keyed by `theme/name`), so `/tags/` requests use the same
+      cache path as the main content path.
 - [ ] When falling back to the default theme for layout (eg. error.html.tmpl), the template loads the
       partials from default rather than those from the overloaded theme.
 
@@ -516,11 +512,13 @@ Development proceeds in phases building on stable foundations. Each phase delive
 4. **Bug fix** — theme-fallback layout loads partials from the default theme instead of the active
    overloaded theme (see Bugs).
 
-**Maintenance:** A fresh review pass landed 2026-06-11 (REVIEW.md §9). It surfaced a HIGH bug
-(per-language content 404s in serve mode), several MEDIUM consistency/perf items in the new
-tag/see-also code, test gaps in multi-language build mode and multi-tag search, and documentation
-drift. Address the §9.10 priority list — starting with the i18n serve bug — before the
-distribution push, since broken i18n undercuts a public launch.
+**Maintenance:** The 14th review pass (REVIEW.md §9, landed 2026-06-11) is **concluded** as of
+2026-06-16. The entire §9.10 priority list was addressed: the HIGH i18n serve 404 (§9.1) plus a
+follow-on provider bug it exposed (§9.7), the MEDIUM tag/see-also consistency and perf items
+(§9.2/§9.3), the shared page/error context builders (§9.2), the test gaps in multi-language build and
+multi-tag search (§9.5), and the documentation drift (§9.6). Two perf opportunities are deferred to a
+future pass (neither a defect): the per-request nav-tree copy (§9.3 `buildNavItems`) and the double
+markdown parse (§9.8). With i18n now functional end-to-end, the distribution push is unblocked.
 
 **Deferred:** CI benchmark tracking (now unblocked but low priority), build-mode search (Phase 5,
 Pagefind), partial clones (blocked by go-git).
