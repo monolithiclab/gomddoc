@@ -333,16 +333,16 @@ path resolution.
   `strip_extensions` site the see-also section links to `/foo.md` (an extra 301 hop in serve;
   fragile in build) while the rest of the page links to `/foo`. Fix in the template via the existing
   `contentURL` func, or normalize `RelatedDoc.Path` in the enricher. Affects both serve and build.
-- **`serveHTML` and `buildFile` duplicate the entire `TemplateContext`/`PageContext` assembly** —
-  `internal/server/handler.go:165-207` vs `cmd/gomddoc/build.go:436-468`. Default-title fallback,
-  the RelatedDocs sort, all `PageContext` fields, `MergeFeatures`, `WithI18n`, `ResolveLayout`,
-  `Render` are hand-built in both. Every new field must be added twice or serve/build silently
-  diverge. Extract a shared `tmpl.BuildPageContext(...)` and add a parity test diffing rendered
-  bytes for identical input.
-- **Error-page rendering duplicated** — `handler.go:254-279` vs `build.go:738-758` build the same
-  `errorMeta` + context. Note a real parity gap: build passes `nil` languages to `WithI18n` (no
-  language switcher on the static 404) while serve passes `h.languages`. Extract
-  `tmpl.BuildErrorContext(...)`.
+- ~~**`serveHTML` and `buildFile` duplicate the entire `TemplateContext`/`PageContext` assembly**~~
+  FIXED — extracted `tmpl.BuildPageContext(...)` (`internal/template/context.go`). `serveHTML`
+  (`handler.go`) and `buildFile` (`build.go`) now both feed `PageContextInput`; default-title
+  fallback, `MergeFeatures`, all `PageContext` fields, and `WithI18n` live in one place. New page
+  fields can no longer diverge. Unit-tested in `context_test.go`. (The RelatedDocs sort noted here
+  had already moved to the enricher in §9.4.)
+- ~~**Error-page rendering duplicated**~~ FIXED — extracted `tmpl.BuildErrorContext(...)`
+  (`internal/template/context.go`), used by `handler.go` and `build.go`. The parity gap is closed:
+  build now passes `bc.languageInfos` (was `nil`), so the static 404 carries the language switcher
+  like the live server.
 - **`sitemap-index.xml` built with manual `strings.Builder`** — `cmd/gomddoc/build.go:260-273`
   string-concatenates `<sitemapindex>` with a hard-coded `https://`, while
   `internal/server/sitemap.go` and `feed.go` use `xml.MarshalIndent`. Violates the CLAUDE.md rule

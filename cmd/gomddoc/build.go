@@ -32,7 +32,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
-	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // BuildCmd holds all flags for the build subcommand.
@@ -428,31 +427,17 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("render %s: %w", filePath, err)
 	}
 
-	metadata := enrichment.Metadata
-	if metadata == nil {
-		metadata = make(map[string]any)
-	}
-	if _, ok := metadata["title"]; !ok {
-		metadata["title"] = text.DeriveTitle("/" + filePath)
-	}
+	templateCtx := tmpl.BuildPageContext(tmpl.PageContextInput{
+		Site:       bc.siteConfig,
+		Path:       "/" + filePath,
+		Content:    template.HTML(renderResult.Content), // #nosec G203
+		Enrichment: enrichment,
+		Lang:       bc.lang,
+		TFunc:      bc.tFunc,
+		Languages:  bc.languageInfos,
+	})
 
-	templateCtx := &tmpl.TemplateContext{
-		Site: bc.siteConfig,
-		Page: tmpl.PageContext{
-			Content:     template.HTML(renderResult.Content), // #nosec G203
-			Path:        "/" + filePath,
-			Meta:        metadata,
-			Features:    config.MergeFeatures(bc.siteConfig.Theme.Features, enrichment.Features),
-			TOC:         enrichment.TOC,
-			Navigation:  enrichment.Navigation,
-			PrevPage:    enrichment.PrevPage,
-			NextPage:    enrichment.NextPage,
-			RelatedDocs: enrichment.RelatedDocs,
-		},
-	}
-	templateCtx.WithI18n(bc.lang, bc.tFunc, bc.languageInfos)
-
-	templateName := tmpl.ResolveLayout(bc.templateRenderer, metadata)
+	templateName := tmpl.ResolveLayout(bc.templateRenderer, templateCtx.Page.Meta)
 	rendered, err := bc.templateRenderer.Render(ctx, templateName, templateCtx)
 	if err != nil {
 		return fmt.Errorf("template render %s: %w", filePath, err)
@@ -725,25 +710,19 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 	return nil
 }
 
-// renderErrorPage renders an error page through the template engine.
+// renderErrorPage renders an error page through the template engine. Passing
+// bc.languageInfos (rather than nil) keeps the static error page in parity with
+// the live server, which includes the language switcher.
 func (b *BuildCmd) renderErrorPage(statusCode int, bc *buildContext) ([]byte, error) {
-	statusTitle := http.StatusText(statusCode)
-
-	ctx := &tmpl.TemplateContext{
-		Site: bc.siteConfig,
-		Page: tmpl.PageContext{
-			Path: "/" + strconv.Itoa(statusCode),
-			Meta: map[string]any{
-				"title":         statusTitle,
-				"robots":        "noindex",
-				"error_code":    statusCode,
-				"error_title":   statusTitle,
-				"error_message": server.StatusMessage(statusCode),
-			},
-			Features: config.MergeFeatures(bc.siteConfig.Theme.Features),
-		},
-	}
-	ctx.WithI18n(bc.lang, bc.tFunc, nil)
+	ctx := tmpl.BuildErrorContext(tmpl.ErrorContextInput{
+		Site:       bc.siteConfig,
+		Path:       "/" + strconv.Itoa(statusCode),
+		StatusCode: statusCode,
+		Message:    server.StatusMessage(statusCode),
+		Lang:       bc.lang,
+		TFunc:      bc.tFunc,
+		Languages:  bc.languageInfos,
+	})
 
 	return bc.templateRenderer.Render(context.Background(), "error.html.tmpl", ctx)
 }

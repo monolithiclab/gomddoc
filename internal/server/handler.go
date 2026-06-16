@@ -162,33 +162,17 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 
 // serveHTML wraps HTML content in the site template and serves it.
 func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData) {
-	metadata := enrichment.Metadata
-	if metadata == nil {
-		metadata = make(map[string]any)
-	}
+	context := tmpl.BuildPageContext(tmpl.PageContextInput{
+		Site:       h.siteConfig,
+		Path:       r.URL.Path,
+		Content:    template.HTML(htmlContent), // #nosec G203
+		Enrichment: enrichment,
+		Lang:       h.lang,
+		TFunc:      h.tFunc,
+		Languages:  h.languages,
+	})
 
-	// Default title logic
-	if _, ok := metadata["title"]; !ok {
-		metadata["title"] = text.DeriveTitle(r.URL.Path)
-	}
-
-	context := &tmpl.TemplateContext{
-		Site: h.siteConfig,
-		Page: tmpl.PageContext{
-			Content:     template.HTML(htmlContent), // #nosec G203
-			Path:        r.URL.Path,
-			Meta:        metadata,
-			Features:    config.MergeFeatures(h.siteConfig.Theme.Features, enrichment.Features),
-			TOC:         enrichment.TOC,
-			Navigation:  enrichment.Navigation,
-			PrevPage:    enrichment.PrevPage,
-			NextPage:    enrichment.NextPage,
-			RelatedDocs: enrichment.RelatedDocs,
-		},
-	}
-	context.WithI18n(h.lang, h.tFunc, h.languages)
-
-	templateName := tmpl.ResolveLayout(h.templateRenderer, metadata)
+	templateName := tmpl.ResolveLayout(h.templateRenderer, context.Page.Meta)
 	rendered, err := h.templateRenderer.Render(r.Context(), templateName, context)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
@@ -244,28 +228,19 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 // renderErrorPage renders an error page through the template engine.
 // Falls back to plain text if template rendering fails.
 func (h *Handler) renderErrorPage(r *http.Request, statusCode int, pagePath string) []byte {
-	statusTitle := http.StatusText(statusCode)
-
-	errorMeta := map[string]any{
-		"title":         statusTitle,
-		"robots":        "noindex",
-		"error_code":    statusCode,
-		"error_title":   statusTitle,
-		"error_message": StatusMessage(statusCode),
-	}
-	context := &tmpl.TemplateContext{
-		Site: h.siteConfig,
-		Page: tmpl.PageContext{
-			Path:     pagePath,
-			Meta:     errorMeta,
-			Features: config.MergeFeatures(h.siteConfig.Theme.Features),
-		},
-	}
-	context.WithI18n(h.lang, h.tFunc, h.languages)
+	context := tmpl.BuildErrorContext(tmpl.ErrorContextInput{
+		Site:       h.siteConfig,
+		Path:       pagePath,
+		StatusCode: statusCode,
+		Message:    StatusMessage(statusCode),
+		Lang:       h.lang,
+		TFunc:      h.tFunc,
+		Languages:  h.languages,
+	})
 
 	rendered, err := h.templateRenderer.Render(r.Context(), "error.html.tmpl", context)
 	if err != nil {
-		return fmt.Appendf(nil, "%d %s", statusCode, statusTitle)
+		return fmt.Appendf(nil, "%d %s", statusCode, http.StatusText(statusCode))
 	}
 	return rendered
 }
