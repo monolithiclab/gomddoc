@@ -9,6 +9,24 @@ author: "nicolasm"
 ### 1. Installation
 
 ```bash
+# Install script (Linux / macOS, amd64 / arm64)
+curl -fsSL https://raw.githubusercontent.com/monolithiclab/gomddoc/main/scripts/install.sh | sh
+
+# Homebrew (macOS / Linux)
+brew install monolithiclab/tap/gomddoc
+
+# Go toolchain
+go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest
+```
+
+The install script picks the archive matching your OS and architecture, verifies it against the
+release `SHA256SUMS`, and installs to `/usr/local/bin` (falling back to `~/.local/bin` when that
+is not writable). Set `GOMDDOC_INSTALL_DIR` to choose a different target, or `GOMDDOC_VERSION`
+to pin a release instead of taking the latest.
+
+Building from source:
+
+```bash
 # Build from source
 make build
 # The binary is now at ./build/gomddoc

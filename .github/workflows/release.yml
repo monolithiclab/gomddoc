@@ -15,6 +15,48 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
+      # v0.1.0 failed *after* a 4-minute build: the tap token could authenticate but
+      # lacked Contents:write on monolithiclab/homebrew-tap, so GoReleaser 403'd on the
+      # very last step, leaving a published GitHub Release with no Homebrew formula.
+      # Check the token up front so that misconfiguration costs seconds, not a re-tag.
+      # Prerelease tags are only warned about, matching `skip_upload: auto` in
+      # .goreleaser.yaml (which skips the brew step for prereleases anyway).
+      - name: Preflight - verify Homebrew tap token
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP: monolithiclab/homebrew-tap
+        run: |
+          set -uo pipefail
+          case "${GITHUB_REF_NAME}" in
+            *-*) severity=warning ;;   # prerelease: brew upload is skipped
+            *)   severity=error   ;;
+          esac
+          fail() {
+            echo "::${severity}::$1"
+            [ "$severity" = error ] && exit 1 || exit 0
+          }
+
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            fail "HOMEBREW_TAP_TOKEN is not set. Add a fine-grained PAT with 'Contents: Read and write' on ${TAP} to this repository's Actions secrets."
+          fi
+
+          response=$(curl -sS -o /tmp/tap.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${HOMEBREW_TAP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${TAP}") || fail "Could not reach the GitHub API to validate HOMEBREW_TAP_TOKEN."
+
+          case "$response" in
+            200) ;;
+            401) fail "HOMEBREW_TAP_TOKEN is invalid or expired (401). Mint a new fine-grained PAT with 'Contents: Read and write' on ${TAP}." ;;
+            404) fail "HOMEBREW_TAP_TOKEN cannot see ${TAP} (404). A fine-grained PAT must list ${TAP} under 'Repository access'." ;;
+            *)   fail "Unexpected HTTP ${response} validating HOMEBREW_TAP_TOKEN against ${TAP}." ;;
+          esac
+
+          if [ "$(jq -r '.permissions.push // false' /tmp/tap.json)" != "true" ]; then
+            fail "HOMEBREW_TAP_TOKEN can read ${TAP} but cannot push to it. Grant 'Contents: Read and write' - read-only is what made the v0.1.0 release 403."
+          fi
+          echo "HOMEBREW_TAP_TOKEN verified: push access to ${TAP} confirmed."
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # GoReleaser needs full history for changelog

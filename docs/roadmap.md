@@ -301,6 +301,21 @@ _Make gomddoc easy to install across platforms and deployment targets. A GoRelea
 pipeline now exists (`.goreleaser.yaml` + `.github/workflows/release.yml`); it activates on a pushed
 `vX.Y.Z` tag and requires the `HOMEBREW_TAP_TOKEN` repo secret plus ghcr package permissions._
 
+**Publishing status (as of v0.1.1 prep).** Every engineering item below is done, but none of the
+install paths work for the public yet, because `monolithiclab/gomddoc` is still a **private**
+repository:
+
+| Path                     | Blocker                                                              |
+| ------------------------ | -------------------------------------------------------------------- |
+| `curl \| sh`             | Release assets are private — needs repo visibility flip.              |
+| `brew install`           | Formula never published: v0.1.0's release job 403'd on a read-only `HOMEBREW_TAP_TOKEN`. Needs a token with `Contents: Read and write` on `monolithiclab/homebrew-tap`. |
+| `go install`             | `proxy.golang.org` cannot fetch a private module — needs the flip.    |
+| `docker pull`            | The `ghcr.io/monolithiclab/gomddoc` package is private — flip it too. |
+
+The v0.1.0 GitHub Release itself is intact (binaries, `SHA256SUMS`, cosign `.sig`/`.pem`), and the
+ghcr image was pushed. Unblocking is four operator actions — fix the secret, make the repo public,
+make the ghcr package public, tag `v0.1.1` — not further code.
+
 - [x] **GitHub Releases with GoReleaser**: `.goreleaser.yaml` produces cross-platform binaries
       (linux/darwin × amd64/arm64) as tar.gz archives with `SHA256SUMS`, a grouped changelog from
       conventional commits, and a GitHub Release on tagged builds. Checksums are cosign-signed (keyless
@@ -322,9 +337,17 @@ pipeline now exists (`.goreleaser.yaml` + `.github/workflows/release.yml`); it a
       for pushes to `main` and all PRs, with Go module caching, concurrency cancellation of superseded
       runs, and coverage-artifact upload. _Remaining enhancement (deferred):_ coverage threshold
       enforcement (87%+).
-- [ ] **Install script**: One-liner `curl | sh` install script that detects OS/arch, downloads the
-      correct binary from GitHub Releases, and places it in `/usr/local/bin` (or `$HOME/.local/bin`).
-      Common pattern for CLI tools. Low complexity.
+- [x] **Install script**: `scripts/install.sh` — POSIX `sh`, no dependencies beyond curl/wget and
+      tar. Detects OS/arch (linux/darwin × amd64/arm64), resolves the latest tag via the GitHub API
+      (or honours `GOMDDOC_VERSION`), verifies the archive against the release `SHA256SUMS` before
+      installing, and targets `/usr/local/bin` with a `~/.local/bin` fallback (`GOMDDOC_INSTALL_DIR`
+      overrides). Warns when the install dir is off `PATH`. Served via
+      `curl -fsSL .../scripts/install.sh | sh`.
+- [x] **Release preflight for the Homebrew tap token**: `.github/workflows/release.yml` validates
+      that `HOMEBREW_TAP_TOKEN` has push access to `monolithiclab/homebrew-tap` **before** building,
+      distinguishing unset / 401 / 404 / read-only and printing the exact remediation. Prerelease
+      tags warn instead of failing, matching `skip_upload: auto`. Added after the v0.1.0 release
+      failed at the final step (403) having already published a formula-less GitHub Release.
 
 ## Phase 11: Enterprise Features
 
@@ -499,10 +522,12 @@ Development proceeds in phases building on stable foundations. Each phase delive
 
 **Immediate focus (next steps, in priority order):**
 
-1. **Distribution & Packaging** — the main blocker to public adoption. gomddoc is build-from-source
-   only today. Sequence: GoReleaser → GitHub Releases (cross-platform binaries + checksums) → then
-   `go install` verification, `curl | sh` install script, Homebrew tap, and the multi-arch Docker
-   image, all of which build on releases. CI already runs `make lint test`.
+1. **Distribution & Packaging** — still the main blocker to public adoption, but no longer a coding
+   task. The pipeline, install script, and preflight check are all in place; what remains are four
+   operator actions, in this order: (a) replace `HOMEBREW_TAP_TOKEN` with a PAT holding
+   `Contents: Read and write` on `monolithiclab/homebrew-tap`, (b) make `monolithiclab/gomddoc`
+   public, (c) make the `ghcr.io/monolithiclab/gomddoc` package public, (d) tag `v0.1.1`. Then
+   verify all four install paths end to end. See the table under Distribution and Packaging.
 2. **Self-Documentation via MCP** — bundle `docs/guide/` via `embed.FS` so `gomddoc mcp` (no content
    dir) serves gomddoc's own guide, plus a `learn_gomddoc` onboarding prompt. Contained, high-leverage
    differentiator that dogfoods the MCP interface.

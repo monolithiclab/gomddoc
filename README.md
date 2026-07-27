@@ -12,15 +12,16 @@ A production-ready HTTP server for serving Markdown documentation with automatic
 - **Secure by Design**: Built-in path traversal protection, hidden file blocking, secure defaults
 - **Production Ready**: Proper HTTP status codes, security headers, graceful shutdown
 - **Extensible Architecture**: Plugin-style renderer system for custom content types
-- **Well Tested**: 78.9% test coverage with comprehensive integration tests
+- **Well Tested**: 83.5% test coverage with comprehensive integration tests
 
 ## Quick Start
 
 ### Installation
 
-Once a release is published, install gomddoc one of these ways:
-
 ```bash
+# Install script (Linux / macOS, amd64 / arm64)
+curl -fsSL https://raw.githubusercontent.com/monolithiclab/gomddoc/main/scripts/install.sh | sh
+
 # Homebrew (macOS / Linux)
 brew install monolithiclab/tap/gomddoc
 
@@ -31,9 +32,25 @@ go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest
 docker run --rm -p 8080:8080 -v "$PWD:/site" ghcr.io/monolithiclab/gomddoc serve /site
 ```
 
+The install script downloads the matching release archive, verifies it against the release
+`SHA256SUMS`, and installs to `/usr/local/bin` (falling back to `~/.local/bin`). Override the
+target with `GOMDDOC_INSTALL_DIR`, or pin a version with `GOMDDOC_VERSION`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/monolithiclab/gomddoc/main/scripts/install.sh \
+  | GOMDDOC_VERSION=0.1.1 GOMDDOC_INSTALL_DIR="$HOME/bin" sh
+```
+
 Prebuilt binaries and checksums for Linux and macOS (amd64/arm64) are attached to each
-[GitHub Release](https://github.com/monolithiclab/gomddoc/releases); checksums are signed with
-[cosign](https://github.com/sigstore/cosign).
+[GitHub Release](https://github.com/monolithiclab/gomddoc/releases). Checksums are signed with
+[cosign](https://github.com/sigstore/cosign) — verify them with:
+
+```bash
+cosign verify-blob SHA256SUMS \
+  --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+  --certificate-identity-regexp '^https://github.com/monolithiclab/gomddoc/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
 Build from source:
 
