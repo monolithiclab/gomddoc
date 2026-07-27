@@ -1,0 +1,40 @@
+version: 2
+
+# gomddoc keeps its dependency surface deliberately small (13 direct modules),
+# so updates are grouped rather than one-PR-per-bump: minor/patch bumps land as
+# a single PR per ecosystem, and only majors get individual review.
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    # "chore(...)" rather than "ci(...)": .goreleaser.yaml's changelog excludes
+    # ^chore but not ^ci, so a ci-prefixed bump would surface in release notes.
+    commit-message:
+      prefix: "chore(ci-deps)"
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  # The release image is built FROM gcr.io/distroless/static-debian12:nonroot;
+  # base-image CVEs are the main reason to rebuild between releases.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(docker)"

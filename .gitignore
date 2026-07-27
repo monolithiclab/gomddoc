@@ -1,5 +1,6 @@
 .claude/
 GEMINI.md
+.agents/
 
 .DS_Store
 *.log
