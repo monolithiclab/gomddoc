@@ -301,20 +301,20 @@ _Make gomddoc easy to install across platforms and deployment targets. A GoRelea
 pipeline now exists (`.goreleaser.yaml` + `.github/workflows/release.yml`); it activates on a pushed
 `vX.Y.Z` tag and requires the `HOMEBREW_TAP_TOKEN` repo secret plus ghcr package permissions._
 
-**Publishing status (as of v0.1.1 prep).** Every engineering item below is done, but none of the
-install paths work for the public yet, because `monolithiclab/gomddoc` is still a **private**
-repository:
+**Publishing status (verified against the published v0.1.1).** v0.1.0's release job 403'd on a
+read-only `HOMEBREW_TAP_TOKEN`, and the repo and ghcr package were both private. All four are
+resolved; every install path was exercised end to end:
 
-| Path                     | Blocker                                                              |
-| ------------------------ | -------------------------------------------------------------------- |
-| `curl \| sh`             | Release assets are private — needs repo visibility flip.              |
-| `brew install`           | Formula never published: v0.1.0's release job 403'd on a read-only `HOMEBREW_TAP_TOKEN`. Needs a token with `Contents: Read and write` on `monolithiclab/homebrew-tap`. |
-| `go install`             | `proxy.golang.org` cannot fetch a private module — needs the flip.    |
-| `docker pull`            | The `ghcr.io/monolithiclab/gomddoc` package is private — flip it too. |
+| Path            | Status                                                                    |
+| --------------- | ------------------------------------------------------------------------- |
+| `curl \| sh`    | ✅ Resolves latest, verifies the SHA256 against `SHA256SUMS`, installs.    |
+| `brew install`  | ✅ Formula published to `monolithiclab/homebrew-tap`.                      |
+| `go install`    | ✅ Installs from `proxy.golang.org`.                                       |
+| `docker pull`   | ✅ Anonymous pull works; multi-arch index (`linux/amd64`, `linux/arm64`).  |
+| cosign          | ✅ `verify-blob` on `SHA256SUMS` returns `Verified OK`.                    |
 
-The v0.1.0 GitHub Release itself is intact (binaries, `SHA256SUMS`, cosign `.sig`/`.pem`), and the
-ghcr image was pushed. Unblocking is four operator actions — fix the secret, make the repo public,
-make the ghcr package public, tag `v0.1.1` — not further code.
+_Note:_ docker tags are **unprefixed** (`ghcr.io/monolithiclab/gomddoc:0.1.1`, not `:v0.1.1`) —
+GoReleaser's `{{ .Version }}` strips the `v`.
 
 - [x] **GitHub Releases with GoReleaser**: `.goreleaser.yaml` produces cross-platform binaries
       (linux/darwin × amd64/arm64) as tar.gz archives with `SHA256SUMS`, a grouped changelog from
@@ -322,8 +322,11 @@ make the ghcr package public, tag `v0.1.1` — not further code.
       via OIDC). _Note:_ windows builds were omitted (gomddoc is primarily a server) — add a `windows`
       goos entry if a Windows binary is wanted.
 - [x] **`go install` support**: module path is public, assets are embedded in-module via `//go:embed`,
-      and `-ldflags -X main.version` injection is wired. `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest`
-      should work — verify against the first published tag.
+      and `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest` works. `-ldflags -X main.version`
+      injection is wired for GoReleaser and `make build`, but `go install` applies no ldflags — v0.1.1
+      installed that way reported `dev`. `cmd/gomddoc/version.go` now falls back to the module version
+      the toolchain stamps into build info (`debug.ReadBuildInfo`), and normalizes every source to the
+      unprefixed form so all build paths agree.
 - [x] **Official Docker image**: GoReleaser `dockers:` + `docker_manifests:` publish a multi-arch
       (`linux/amd64`, `linux/arm64`) image to `ghcr.io/monolithiclab/gomddoc` with `latest` + semver
       tags, built from the `gcr.io/distroless/static-debian12:nonroot` runtime and cosign-signed.

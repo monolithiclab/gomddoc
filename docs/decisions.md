@@ -437,3 +437,17 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 **Related-pages and `tag:` search**: originally deferred to follow-up sub-specs to keep the first PR focused on the user-visible discovery features (chips + landing pages). Both have since shipped — see-also related pages via the enricher, and `tag:` filter syntax in full-text search.
 
 **Renderer interface extension**: `RenderTagPage` and `RenderTagsIndex` were added to the `template.Renderer` interface (not just the `*HTMLRenderer` concrete type) so the server can register handlers via the abstract dependency without type-asserting. There's only one renderer implementation today; the interface is a layering signal more than a polymorphism enabler.
+
+## Version String Resolution
+
+**Chosen**: `-ldflags -X main.version` as the primary source, with `debug.ReadBuildInfo().Main.Version` as a fallback, normalized to the unprefixed form.
+
+**Why the fallback**: ldflags are applied by GoReleaser and `make build` — but *not* by `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest`, which is a documented install path. v0.1.1 installed that way reported `dev`. The Go toolchain already stamps the resolved module version into the binary's build info (`mod github.com/monolithiclab/gomddoc v0.1.1`), so the correct value is present with no build-system changes.
+
+**Alternatives considered**:
+- **Drop ldflags, use build info only**: build info reports `(devel)` for anything built from a working tree, so `make build` would lose its `git describe` value. Rejected.
+- **Resolve lazily at each call site**: `version` has four consumers (`--version`, `info`, the generator meta tag, the MCP handshake). A single `init()` keeps them consistent.
+
+**Constraint worth remembering**: `var version = "dev"` must stay initialized to a *constant string expression*. `-X` is documented to only take effect on variables declared uninitialized or initialized to a constant — `var version = resolve(...)` would silently defeat the linker. That is why resolution happens in `init()` rather than in the initializer.
+
+**Normalization**: GoReleaser injects `{{ .Version }}` (unprefixed, `0.1.1`), the Makefile injects `git describe` (prefixed, `v0.1.1-2-gabc1234`), and build info carries module versions (`v0.1.1`). All three are trimmed to the unprefixed form so `--version` output matches the archive names and docker tags.

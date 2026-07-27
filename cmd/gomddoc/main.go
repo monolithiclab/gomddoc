@@ -11,9 +11,6 @@ import (
 //go:embed assets
 var embeddedAssets embed.FS
 
-// version is set at build time via ldflags.
-var version = "dev"
-
 // CLI is the top-level Kong command struct.
 type CLI struct {
 	Version kong.VersionFlag `name:"version" help:"Show version and exit."`
