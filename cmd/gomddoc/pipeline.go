@@ -143,6 +143,8 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 			continue
 		}
 
+		langPipeline.TemplateRenderer.Configure(template.WithLangPrefix(lang))
+
 		// Warn if user content in this language directory shadows auto-generated /tags routes.
 		warnTagsContentCollision(subFS, lang)
 
@@ -413,6 +415,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 			Resolver:         langPipe.Resolver,
 			RedirectFinder:   langPipe.RedirectFinder,
 			EnricherRegistry: langPipe.EnricherRegistry,
+			TemplateRenderer: langPipe.TemplateRenderer,
 		}
 	}
 

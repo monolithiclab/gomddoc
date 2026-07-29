@@ -5,16 +5,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
 
-func setupTagRenderer(t *testing.T) *tmpl.HTMLRenderer {
+func setupTagRenderer(t *testing.T, opts ...tmpl.RendererOption) *tmpl.HTMLRenderer {
 	t.Helper()
 
 	tagsListPartial, err := os.ReadFile("../../cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl")
@@ -40,7 +42,7 @@ func setupTagRenderer(t *testing.T) *tmpl.HTMLRenderer {
 
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test Site"
-	return tmpl.NewHTMLRenderer(&siteConfig, testFS)
+	return tmpl.NewHTMLRenderer(&siteConfig, testFS, opts...)
 }
 
 func TestServer_TagRoutes_DefaultLang(t *testing.T) {
@@ -120,14 +122,20 @@ func TestServer_TagRoutes_PerLanguage(t *testing.T) {
 		t.Fatalf("BuildIndex en: %v", err)
 	}
 
-	// French files
+	// French files. "b.md" exists only here, so the default-language resolver
+	// cannot map it — linking it correctly requires the fr pipeline's own.
 	frFiles := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: French A\ntags: [tutoriel]\n---\n# A")},
+		"b.md": {Data: []byte("---\ntitle: French B\ntags: [tutoriel]\n---\n# B")},
 	}
 	frIdx, err := metadata.BuildIndex(context.Background(), frFiles, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex fr: %v", err)
 	}
+	frResolver := resolve.Build(frFiles, resolve.BuildOptions{
+		StripExtensions: []string{".md"},
+		HasRenderer:     func(string) bool { return true },
+	})
 
 	localeFS := fstest.MapFS{
 		"locales/en-US.yml": {Data: []byte(`
@@ -166,8 +174,10 @@ tags_index_title: "Toutes les étiquettes"
 		AllLanguages:     []string{"fr"},
 		LangPipelines: map[string]LangPipelineConfig{
 			"fr": {
-				MetaIndex: frIdx,
-				Provider:  newMemoryProvider(frFiles, "README.md", false),
+				MetaIndex:        frIdx,
+				Provider:         newMemoryProvider(frFiles, "README.md", false),
+				Resolver:         frResolver,
+				TemplateRenderer: setupTagRenderer(t, tmpl.WithResolver(frResolver), tmpl.WithLangPrefix("fr")),
 			},
 		},
 	})
@@ -175,11 +185,14 @@ tags_index_title: "Toutes les étiquettes"
 	tests := []struct {
 		path string
 		want int
+		// body, when set, must appear in the response. Tag listings hold real
+		// file paths, so a wrong-pipeline renderer emits "/b.md" here.
+		body string
 	}{
-		{"/tags/docs", http.StatusOK},
-		{"/fr/tags/tutoriel", http.StatusOK},
-		{"/fr/tags/missing", http.StatusNotFound},
-		{"/fr/tags/", http.StatusOK},
+		{path: "/tags/docs", want: http.StatusOK},
+		{path: "/fr/tags/tutoriel", want: http.StatusOK, body: `href="/fr/b"`},
+		{path: "/fr/tags/missing", want: http.StatusNotFound},
+		{path: "/fr/tags/", want: http.StatusOK},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -189,6 +202,9 @@ tags_index_title: "Toutes les étiquettes"
 			srv.server.Handler.ServeHTTP(w, req)
 			if w.Code != tt.want {
 				t.Errorf("%s: status = %d, want %d", tt.path, w.Code, tt.want)
+			}
+			if tt.body != "" && !strings.Contains(w.Body.String(), tt.body) {
+				t.Errorf("%s: body missing %s:\n%s", tt.path, tt.body, w.Body.String())
 			}
 		})
 	}

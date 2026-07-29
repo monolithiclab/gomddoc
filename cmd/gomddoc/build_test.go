@@ -1186,3 +1186,60 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 		t.Error("index.html canonical is not the site root")
 	}
 }
+
+// TestBuildCmd_Run_DefaultThemeLinksAndHreflang covers the two ways the bundled
+// default theme used to emit URLs a visitor cannot follow: it forked head-meta
+// and so shipped no hreflang at all, and the tag listing linked to raw
+// PageInfo.Path values (".md" paths, with no language prefix, so every
+// translated hit landed on the English page).
+func TestBuildCmd_Run_DefaultThemeLinksAndHreflang(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	writeTestFile(t, srcDir, "README.md", "---\ntitle: Home\n---\n# Home")
+	writeTestFile(t, srcDir, "guides/alpha.md", "---\ntitle: Alpha\ntags: [guide]\n---\n# Alpha")
+	// beta exists only in French, so the default resolver cannot map it.
+	writeTestFile(t, srcDir, "fr-FR/guides/beta.md", "---\ntitle: FR Beta\ntags: [guide]\n---\n# FR Beta")
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir, Domain: "build.example.com"}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// hreflang lives in head-shared's head-meta. The default theme re-implemented
+	// that block and dropped the one line it could not afford to lose.
+	alpha := readTestFile(t, filepath.Join(outDir, "guides", "alpha"), "index.html")
+	for _, want := range []string{
+		`<link rel="alternate" hreflang="en-US" href="/guides/alpha">`,
+		`<link rel="alternate" hreflang="x-default" href="/guides/alpha">`,
+		`<link rel="alternate" hreflang="fr-FR" href="/fr-FR/guides/alpha">`,
+	} {
+		if !strings.Contains(alpha, want) {
+			t.Errorf("guides/alpha/index.html missing %s", want)
+		}
+	}
+
+	// The viewport tag is the one the switch to head-meta physically moved.
+	if !strings.Contains(alpha, `<meta name="viewport" content="width=device-width, initial-scale=1">`) {
+		t.Error("guides/alpha/index.html lost its viewport tag when switching to head-meta")
+	}
+
+	// A tag listing links real file paths, so it has to resolve them.
+	tagPage := readTestFile(t, filepath.Join(outDir, "tags", "guide"), "index.html")
+	if strings.Contains(tagPage, ".md\"") {
+		t.Errorf("tags/guide/index.html links a raw .md path:\n%s", tagPage)
+	}
+	if !strings.Contains(tagPage, `<a class="tag-result-title" href="/guides/alpha">`) {
+		t.Errorf("tags/guide/index.html does not link the clean page URL:\n%s", tagPage)
+	}
+
+	// A language index stores paths relative to its own sub-FS, so contentURL
+	// must apply the pipeline's language prefix — otherwise this href is
+	// "/guides/beta", which does not exist.
+	frTagPage := readTestFile(t, filepath.Join(outDir, "fr-FR", "tags", "guide"), "index.html")
+	if !strings.Contains(frTagPage, `<a class="tag-result-title" href="/fr-FR/guides/beta">`) {
+		t.Errorf("fr-FR/tags/guide/index.html does not link into the fr-FR tree:\n%s", frTagPage)
+	}
+}

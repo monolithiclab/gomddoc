@@ -39,6 +39,7 @@ func TestNewHTTPServer_NilLocaleBundleWithLangPipelines(t *testing.T) {
 		LocaleBundle:     nil,
 		LangPipelines: map[string]LangPipelineConfig{
 			"fr": {
+				TemplateRenderer: setupTestRenderer(),
 				Provider:         newMemoryProvider(frFiles, "README.md", false),
 				EnricherRegistry: setupTestEnricherRegistry(),
 			},
@@ -106,6 +107,7 @@ func TestServer_ContentRoutes_PerLanguage(t *testing.T) {
 		AllLanguages:     []string{"fr"},
 		LangPipelines: map[string]LangPipelineConfig{
 			"fr": {
+				TemplateRenderer: setupTestRenderer(),
 				MetaIndex:        frIdx,
 				Provider:         newMemoryProvider(frFiles, "README.md", false),
 				EnricherRegistry: setupTestEnricherRegistry(),
@@ -195,6 +197,7 @@ func TestServer_ContentRoutes_PerLanguage_ExtensionRedirect(t *testing.T) {
 		AllLanguages:     []string{"fr"},
 		LangPipelines: map[string]LangPipelineConfig{
 			"fr": {
+				TemplateRenderer: setupTestRenderer(),
 				MetaIndex:        frIdx,
 				Provider:         newMemoryProvider(frFiles, "README.md", false),
 				Resolver:         frResolver,

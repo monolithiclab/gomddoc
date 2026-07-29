@@ -140,6 +140,11 @@ testsite/              # Lorem ipsum test site for quick testing
   is how static builds shipped `.md` canonicals and dead prev/next links. (Build's
   `prettyOutputPath` is a *separate* mapping — file to output path, not file to URL. They diverge
   in some configs; see `REVIEW.md` §10.2.)
+- **Templates link content through `contentURL`, never a raw path** — it applies `PageURLPath` *and*
+  the renderer's language prefix, so a partial must not add `/{lang}` itself. The corollary: hand a
+  per-language pipeline its **own** `TemplateRenderer` (`LangPipelineConfig.TemplateRenderer`), never
+  the default one — the default resolver cannot map a page that exists only in that language, so the
+  link silently degrades to a raw `.md` path pointing at the wrong tree.
 
 ### `io/fs` Spec Compliance
 

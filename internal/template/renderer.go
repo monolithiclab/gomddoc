@@ -180,6 +180,7 @@ type HTMLRenderer struct {
 	parseGroup     singleflight.Group    // Coalesces concurrent cache-miss parses
 	breadcrumbGen  breadcrumb.Generator  // Optional breadcrumb generator
 	resolver       *resolve.PathResolver // Optional path resolver for clean URLs
+	langPrefix     string                // "/{lang}" for a language pipeline, "" for the default one
 	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
 	hasSearchIndex bool                  // Whether a search index was successfully built
 	loggedMissing  sync.Map              // Tracks template names already warned about
@@ -205,6 +206,16 @@ func WithCache(cache TemplateCache) RendererOption {
 func WithBreadcrumbGenerator(gen breadcrumb.Generator) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.breadcrumbGen = gen
+	}
+}
+
+// WithLangPrefix marks the renderer as belonging to a language pipeline, whose
+// resolver is keyed on paths relative to that language's sub-FS. contentURL
+// prepends the prefix so its output is a servable absolute URL. Leave unset for
+// the default language, which is served unprefixed.
+func WithLangPrefix(lang string) RendererOption {
+	return func(r *HTMLRenderer) {
+		r.langPrefix = "/" + lang
 	}
 }
 
@@ -683,8 +694,13 @@ func ResolveLayout(r Renderer, metadata map[string]any) string {
 
 // contentURL exposes resolve.PageURLPath to templates, which hold real file
 // paths (see-also entries, tag listings) but must link to published URLs.
+//
+// A language pipeline's paths are relative to its own sub-FS, so the renderer's
+// language prefix is prepended here rather than in each template — a template
+// that forgot it would link every localized page to its default-language
+// namesake, or to a 404 when the page exists only in that language.
 func (h *HTMLRenderer) contentURL(filePath string) string {
-	return h.resolver.PageURLPath(filePath, h.siteConfig.DefaultIndex)
+	return h.langPrefix + h.resolver.PageURLPath(filePath, h.siteConfig.DefaultIndex)
 }
 
 // tagURL builds the URL for a tag's listing page, scoped to the active

@@ -1,34 +1,11 @@
 {{ define "head" }}
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="{{ .Site.Meta.Description }}">
   {{ if .Page.Meta.robots }}<meta name="robots" content="{{ .Page.Meta.robots }}">
   {{ else if .Site.Meta.Robots }}<meta name="robots" content="{{ .Site.Meta.Robots }}">{{ end }}
   <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
+  {{ template "head-meta" . }}
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
-  {{ $url := canonicalURL .Page.Path }}{{ if $url }}
-  <link rel="canonical" href="{{ $url }}">{{ end }}
-  {{ $feedURL := canonicalURL "/feed.xml" }}{{ if $feedURL }}
-  <link rel="alternate" type="application/atom+xml" title="{{ .Site.Meta.Title }}" href="{{ $feedURL }}">{{ end }}
-  {{ if .Page.PrevPage }}{{ $prevURL := canonicalURL .Page.PrevPage.Path }}{{ if $prevURL }}
-  <link rel="prev" href="{{ $prevURL }}">{{ end }}{{ end }}
-  {{ if .Page.NextPage }}{{ $nextURL := canonicalURL .Page.NextPage.Path }}{{ if $nextURL }}
-  <link rel="next" href="{{ $nextURL }}">{{ end }}{{ end }}
-
-  <!-- Open Graph -->{{ if $url }}
-  <meta property="og:url" content="{{ $url }}">{{ end }}
-  {{ if .Page.Meta.og_type }}<meta property="og:type" content="{{ .Page.Meta.og_type }}">{{ else }}<meta property="og:type" content="article">{{ end }}
-  <meta property="og:site_name" content="{{ .Site.Meta.Title }}">
-  {{ if .Page.Meta.title }}<meta property="og:title" content="{{ .Page.Meta.title }}">{{ end }}
-  {{ if .Page.Meta.description }}<meta property="og:description" content="{{ .Page.Meta.description }}">
-  {{ else if .Site.Meta.Description }}<meta property="og:description" content="{{ .Site.Meta.Description }}">{{ end }}
-
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary">
-  {{ if .Page.Meta.title }}<meta name="twitter:title" content="{{ .Page.Meta.title }}">{{ end }}
-  {{ if .Page.Meta.description }}<meta name="twitter:description" content="{{ .Page.Meta.description }}">
-  {{ else if .Site.Meta.Description }}<meta name="twitter:description" content="{{ .Site.Meta.Description }}">{{ end }}
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1010,10 +987,7 @@
     }
   </style>
 
-  {{- if .Feature "katex" }}
-  <!-- KaTeX -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
-  {{- end }}
+  {{ template "head-katex" . }}
 
   {{ template "jsonld" . }}
 </head>

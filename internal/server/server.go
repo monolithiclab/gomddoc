@@ -49,9 +49,9 @@ type HTTPServer struct {
 
 // LangPipelineConfig holds per-language pipeline dependencies. Each language
 // has its own provider (rooted at the language subdirectory), resolver,
-// redirect finder, and enricher registry (navigation tree), built from that
-// subdirectory — using the default-language equivalents would serve the wrong
-// content and navigation for localized pages.
+// template renderer, redirect finder, and enricher registry (navigation tree),
+// built from that subdirectory — using the default-language equivalents would
+// serve the wrong content and navigation for localized pages.
 type LangPipelineConfig struct {
 	SearchIndex      *search.Index
 	MetaIndex        *metadata.Index
@@ -59,6 +59,13 @@ type LangPipelineConfig struct {
 	Resolver         *resolve.PathResolver
 	RedirectFinder   RedirectFinder
 	EnricherRegistry enricher.EnricherRegistry
+
+	// TemplateRenderer carries the language's own resolver, which is what the
+	// contentURL template func consults. The default-language renderer cannot
+	// resolve a path that exists only in this language's tree, so it would fall
+	// back to the raw ".md" path — build mode uses the per-language renderer and
+	// would emit a clean URL for the same page.
+	TemplateRenderer template.Renderer
 }
 
 // HTTPServerConfig holds all dependencies for creating an HTTPServer.
@@ -176,8 +183,8 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		// Tag routes per language
 		if lp.MetaIndex != nil && opts.LocaleBundle != nil {
 			langTagTFunc := opts.LocaleBundle.TFunc(lang)
-			auth.Handle("GET "+prefix+"/tags/{tag}", NewTagPageHandler(lp.MetaIndex, opts.TemplateRenderer, langTagTFunc, lang))
-			auth.Handle("GET "+prefix+"/tags/", NewTagsIndexHandler(lp.MetaIndex, opts.TemplateRenderer, langTagTFunc, lang))
+			auth.Handle("GET "+prefix+"/tags/{tag}", NewTagPageHandler(lp.MetaIndex, lp.TemplateRenderer, langTagTFunc, lang))
+			auth.Handle("GET "+prefix+"/tags/", NewTagsIndexHandler(lp.MetaIndex, lp.TemplateRenderer, langTagTFunc, lang))
 		}
 	}
 
@@ -209,7 +216,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 			Provider:         lp.Provider,
 			Registry:         opts.Registry,
 			EnricherRegistry: lp.EnricherRegistry,
-			TemplateRenderer: opts.TemplateRenderer,
+			TemplateRenderer: lp.TemplateRenderer,
 			SiteConfig:       &cfg.Site,
 			RedirectFinder:   lp.RedirectFinder,
 			Resolver:         lp.Resolver,

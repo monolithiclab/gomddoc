@@ -463,6 +463,21 @@ and can be disabled per-site or per-page:
 site-level partials (`.gomddoc/partials/`). Uses Go's `template.ParseFS` where last `{{ define }}` wins.
 Site partials override specific theme partials without copying the whole theme.
 
+**Shared head/script blocks:** `head-shared.html.tmpl` defines `head-meta` (canonical, feed, prev/next,
+OpenGraph, Twitter Card, viewport, description, hreflang), `head-katex` and `scripts-shared`. Every theme,
+bundled and external, calls these rather than re-implementing them — a theme that inlines its own copy
+stops receiving anything added to the shared block, which is how the bundled `default` theme came to emit
+no `hreflang` tags at all while all seven external themes did.
+
+**Linking to content from a template:** templates that hold a *real file path* — tag listings, see-also
+entries — must run it through the `contentURL` func rather than emitting it as an `href`. `contentURL`
+applies `PageURLPath` **and** the renderer's language prefix (`template.WithLangPrefix`, set when
+`setupLanguagePipelines` builds each language's renderer), so it is the only place the `/{lang}` rule for
+content links lives. A per-language pipeline therefore needs its own renderer everywhere it is used —
+`LangPipelineConfig.TemplateRenderer` on serve, `Pipeline.TemplateRenderer` in build. Passing the
+default-language renderer resolves language paths against the wrong tree and falls back to a raw `.md`
+link for any page that exists only in that language.
+
 **Theme Variables:** CSS custom properties injected from `theme.vars` config map. Each key-value becomes
 `--theme-{key}: {value}` in a `:root` block. Dark mode uses naming convention (`dark-bg`, `dark-text`).
 Theme CSS references variables with fallbacks: `var(--theme-bg, #ffffff)`. Cached via `sync.Once`.

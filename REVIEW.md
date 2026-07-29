@@ -874,7 +874,7 @@ no resolver dependency, so the mapping belongs in `internal/server/search.go` or
 
 ### 10.3 HIGH/MEDIUM — correctness (affects both paths)
 
-#### HIGH: tag pages link to raw `.md` paths and drop the language prefix ✅ reproduced
+#### ~~HIGH: tag pages link to raw `.md` paths and drop the language prefix~~ ✅ FIXED
 
 `see-also.html.tmpl` does it right (`{{ contentURL $doc.Path }}`, fixed in §9.2).
 `cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl:9` does not:
@@ -889,7 +889,19 @@ no `/fr-FR` prefix, because the language index stores paths relative to the lang
 link resolves to the **English** page. `contentURL` is already in the partial func map
 (`internal/template/renderer.go:542`) — a one-line fix plus a lang prefix.
 
-#### HIGH: the bundled `default` theme forks `head-meta` and loses hreflang ✅ reproduced
+- **Fixed:** the partial now renders `{{ contentURL $page.Path }}`, and the language prefix moved
+  *into* `contentURL` — `HTMLRenderer` gained a `langPrefix` set by `template.WithLangPrefix(lang)`
+  when the per-language pipeline is built (`pipeline.go`). Prefixing in the template was the first
+  attempt; it was rejected because it makes every partial responsible for remembering the rule, and
+  `see-also.html.tmpl:8` had already forgotten it (its links pointed at the default-language tree —
+  fixed for free by this move). Serve had a second half of the same bug: `server.go` handed the
+  per-language tag handlers `opts.TemplateRenderer`, the *default* pipeline's, so a page existing
+  only under `fr/` linked as `/fr/b.md` where build emitted `/fr/b`. `LangPipelineConfig` gained a
+  `TemplateRenderer` field, matching the `Resolver` field beside it. Covered by
+  `TestBuildCmd_Run_DefaultThemeLinksAndHreflang` (build) and `TestServer_TagRoutes_PerLanguage`
+  (serve), both with a French-only page so the default resolver cannot accidentally satisfy them.
+
+#### ~~HIGH: the bundled `default` theme forks `head-meta` and loses hreflang~~ ✅ FIXED
 
 `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl:1-7` exists explicitly *"to avoid
 duplicating the same ~20-line block in every head.html.tmpl"*, and **all 7** themes in
@@ -899,6 +911,57 @@ only file in the repo that mentions neither `head-meta` nor `hreflang`. The one 
 is `{{ template "hreflang" . }}` (`head-shared.html.tmpl:30`), so the default theme — the one every
 new site starts on — emits **zero `<link rel="alternate" hreflang>` tags**. Deleting the duplicated
 block and calling `head-meta` fixes the SEO bug and removes ~20 duplicated lines.
+
+- **Fixed:** `head.html.tmpl` now calls `{{ template "head-meta" . }}`, matching all 7 external
+  themes; the duplicated canonical/feed/prev/next/og/twitter block and the redundant
+  viewport/description tags are gone (−24 lines). The same file's hand-inlined KaTeX stylesheet —
+  the last fork of a shared block in the bundled theme — now calls `{{ template "head-katex" . }}`,
+  so the pinned KaTeX version lives in one place again.
+  `TestBuildCmd_Run_DefaultThemeLinksAndHreflang` asserts the three hreflang links.
+
+#### MEDIUM: tag pages render with nil `Languages` and nil `Features` — NEW (found while fixing §10.3)
+
+`internal/template/renderer.go:338` (`RenderTagPage`) builds its context with `nil` languages and no
+feature map. Two consequences, both invisible until you look at a rendered tag page:
+
+- `head-meta`'s `hreflang` block is gated on `gt (len .Languages) 1`, so it emits **nothing** on
+  `/tags/*` — the fix above reaches content pages only.
+- `config.FeatureEnabled` returns `true` for a nil map (`internal/config/features.go:16-18`), so a
+  site with `theme.features.search: false` still ships `search.mjs` on every tag page.
+
+The natural fix — render tag pages against a real `TemplateContext` — has a trap:
+`tagPageData.Lang` is `""` for the default language, while `TemplateContext.Lang()` never returns
+`""` (it falls back to `Site.Language`, default `en-US`). Anything that switches to the latter and
+still derives a URL prefix from it produces `/en-US/...`. `TestServer_TagRoutes_PerLanguage` and
+`TestBuildCmd_Run_DefaultThemeLinksAndHreflang` both assert unprefixed default-language links, so
+they will catch it.
+
+#### LOW: two disagreeing answers to "when does a URL get a language prefix" — NEW (found while fixing §10.3)
+
+`tagURL` (`internal/template/renderer.go:655-660`) omits the prefix when `lang == "" || lang ==
+defaultLang`; `contentURL`'s `langPrefix` is set for every pipeline in `lp.ByLang`. They agree today
+only because `locale.DetectLanguages` never yields the default language as a *separate* pipeline in
+practice — but it does not exclude a directory matching `site.language` either
+(`internal/locale/detect.go:27-40`). With `site.language: en-US` **and** an `en-US/` content dir, the
+tag page is served at `/en-US/tags/{tag}` while `tagURL` links it as `/tags/{tag}`. Either make
+`DetectLanguages` skip the default language, or make both funcs consult one predicate.
+
+#### LOW: no structural guard that a theme calls the shared head/script blocks — NEW (found while fixing §10.3)
+
+The `head-meta` fork was caught by output assertions, i.e. only after it had shipped an observable
+loss. A ~15-line test over the **embedded** theme FS (`cmd/gomddoc/assets/themes/*/partials/`)
+asserting each `head.html.tmpl` contains `{{ template "head-meta" . }}` and `{{ template "head-katex"
+. }}`, and each `scripts.html.tmpl` contains `scripts-shared`, would fail at the moment of forking.
+Note it must **not** run against `assetsFS` or live in `ValidateDefaultTheme` — that FS is the
+overlay, where a site's own `.gomddoc/assets/.../head.html.tmpl` legitimately shadows the bundled
+one, and failing startup on a valid override would be worse than the bug.
+
+#### LOW: `/api/tags/{tag}` returns real file paths, undocumented as such — NEW (found while fixing §10.3)
+
+`internal/server/server.go:126-127` serves `metadata.PageInfo.Path` verbatim. That is deliberate —
+MCP and the metadata API are path-oriented — but nothing says so, and the tag *page* now emits URLs
+for the same data. One sentence in `docs/guide/` stating that API paths are file paths, not URLs, and
+that consumers wanting a link must resolve them.
 
 #### HIGH: language directories are indexed into the *default* pipeline
 
@@ -1435,8 +1498,12 @@ three `"text/markdown; charset=utf-8"`).
    now the only file-path-to-URL derivation; the four hand-rolled copies were collapsed onto it.
    Fixes canonical/og/JSON-LD/breadcrumbs **and** prev/next **and** sidebar state. Surfaced three
    new findings in §10.2 (serve's two canonical forms, `redirect_from` on index pages, search hrefs).
-5. **§10.3 tag-list `.md` links + default-theme `head-meta`/hreflang** — two small template edits,
-   both user-visible SEO/i18n wins, one of which deletes 20 duplicated lines.
+5. ~~**§10.3 tag-list `.md` links + default-theme `head-meta`/hreflang**~~ — **DONE.** The default
+   theme no longer forks `head-meta` or `head-katex`; the language prefix moved into `contentURL`
+   (`template.WithLangPrefix`), which also fixed `see-also`'s links, and per-language pipelines now
+   carry their own `TemplateRenderer` on serve. Surfaced four new findings in §10.3 (nil
+   `Languages`/`Features` on tag pages, the `tagURL`/`contentURL` prefix disagreement, the missing
+   theme-contract test, and the undocumented raw paths in `/api/tags/{tag}`).
 6. **§10.1 admin port to loopback; `install.sh` fail-closed; pin actions to SHAs.**
 7. **§10.3 inert env vars** — either wire `cfg.ApplyEnvOverrides()` or delete them from `info.go` and
    the docs. Advertising inert configuration is worse than having none.
