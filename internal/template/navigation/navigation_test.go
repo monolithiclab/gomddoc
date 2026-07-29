@@ -509,9 +509,10 @@ func TestTree_CleanPaths(t *testing.T) {
 		"about.md": &fstest.MapFile{Data: []byte("# About")},
 	}
 
-	resolver := resolve.Build(fsys, []string{".md"}, func(mime string) bool {
+	resolver := resolve.Build(fsys, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(mime string) bool {
 		return mime == "text/markdown"
-	})
+	}})
+
 	gen := NewGenerator(fsys, "README.md", nil, resolver)
 	root := gen.Tree()
 

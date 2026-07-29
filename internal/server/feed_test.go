@@ -161,7 +161,7 @@ func TestGenerateFeed_WithResolver(t *testing.T) {
 	hasRenderer := func(mimeType string) bool {
 		return mimeType == "text/markdown"
 	}
-	resolver := resolve.Build(feedTestFS, []string{".md"}, hasRenderer)
+	resolver := resolve.Build(feedTestFS, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: hasRenderer})
 
 	data, err := GenerateFeed(context.Background(), idx, "https://docs.example.com", "README.md", prov, "Test Site", resolver, "")
 	if err != nil {

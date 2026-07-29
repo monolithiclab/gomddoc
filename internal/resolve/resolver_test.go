@@ -31,7 +31,7 @@ func TestResolver_BasicResolution(t *testing.T) {
 		"images/logo.jpg": {},
 	}
 
-	r := Build(fsys, []string{".md"}, mockRenderer("text/markdown"))
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
 
 	tests := []struct {
 		name      string
@@ -74,7 +74,7 @@ func TestResolver_MultiExtensionCollision(t *testing.T) {
 	}
 
 	// .md is first, so it wins the "guide" clean path.
-	r := Build(fsys, []string{".md", ".html"}, mockRenderer("text/markdown", "text/html"))
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md", ".html"}, HasRenderer: mockRenderer("text/markdown", "text/html")})
 
 	real, found := r.Resolve("guide")
 	if !found || real != "guide.md" {
@@ -97,7 +97,7 @@ func TestResolver_DirectoryCollision(t *testing.T) {
 		"guide/overview.md": {},
 	}
 
-	r := Build(fsys, []string{".md"}, mockRenderer("text/markdown"))
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
 
 	// File wins over directory.
 	real, found := r.Resolve("guide")
@@ -124,7 +124,7 @@ func TestResolver_MultipleDots(t *testing.T) {
 		"my.config.md": {},
 	}
 
-	r := Build(fsys, []string{".md"}, mockRenderer("text/markdown"))
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
 
 	real, found := r.Resolve("my.config")
 	if !found || real != "my.config.md" {
@@ -144,7 +144,7 @@ func TestResolver_EmptyConfig(t *testing.T) {
 		"index.md": {},
 	}
 
-	r := Build(fsys, nil, mockRenderer("text/markdown"))
+	r := Build(fsys, BuildOptions{StripExtensions: nil, HasRenderer: mockRenderer("text/markdown")})
 
 	if !r.IsEmpty() {
 		t.Error("expected empty resolver with nil stripExts")
@@ -155,7 +155,7 @@ func TestResolver_EmptyConfig(t *testing.T) {
 		t.Error("empty resolver should not resolve anything")
 	}
 
-	r2 := Build(fsys, []string{}, mockRenderer("text/markdown"))
+	r2 := Build(fsys, BuildOptions{StripExtensions: []string{}, HasRenderer: mockRenderer("text/markdown")})
 	if !r2.IsEmpty() {
 		t.Error("expected empty resolver with empty stripExts")
 	}
@@ -170,7 +170,7 @@ func TestResolver_CleanPath(t *testing.T) {
 		"assets/style.css": {},
 	}
 
-	r := Build(fsys, []string{".md"}, mockRenderer("text/markdown"))
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
 
 	tests := []struct {
 		name      string
@@ -207,7 +207,7 @@ func TestResolver_NonRenderedFileSkipped(t *testing.T) {
 	}
 
 	// .csv is in strip list but hasRenderer returns false for text/csv.
-	r := Build(fsys, []string{".csv", ".md"}, mockRenderer("text/markdown"))
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".csv", ".md"}, HasRenderer: mockRenderer("text/markdown")})
 
 	// .csv should not be stripped since it has no renderer.
 	_, found := r.Resolve("data")
@@ -230,7 +230,7 @@ func TestResolver_AllMappings(t *testing.T) {
 		"b.md": {},
 	}
 
-	r := Build(fsys, []string{".md"}, mockRenderer("text/markdown"))
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
 
 	m := r.AllMappings()
 	if len(m) != 2 {
@@ -256,5 +256,49 @@ func TestResolver_AllMappings(t *testing.T) {
 	}
 	if m2 := r.AllMappings(); len(m2) != 2 {
 		t.Errorf("resolver mutated via returned map: AllMappings() now has %d entries, want 2", len(m2))
+	}
+}
+
+// TestResolver_ExcludedPathsHaveNoMapping guards the clean-URL exclude bypass
+// (REVIEW §10.1). The request-path exclusion middleware matches "TODO.md", but
+// strip_extensions means the served URL is "/TODO", so the resolver is the
+// only layer that can keep excluded content unreachable.
+func TestResolver_ExcludedPathsHaveNoMapping(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{
+		"index.md":         {},
+		"TODO.md":          {},
+		"notes.bak.md":     {},
+		"drafts/plan.md":   {},
+		"drafts/deep/x.md": {},
+		"docs/guide.md":    {},
+		".gomddoc/hide.md": {},
+		"docs/.secret.md":  {},
+	}
+
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, Exclude: []string{"TODO.md", "*.bak.md", "drafts/"}, HasRenderer: mockRenderer("text/markdown")})
+
+	blocked := []string{
+		"TODO", "notes.bak", "drafts/plan", "drafts/deep/x",
+		".gomddoc/hide", "docs/.secret",
+	}
+	for _, clean := range blocked {
+		if real, found := r.Resolve(clean); found {
+			t.Errorf("Resolve(%q) = %q, want no mapping (path is excluded or hidden)", clean, real)
+		}
+	}
+
+	// AllMappings drives the static build's extension-redirect stubs, which
+	// would otherwise publish excluded filenames even though their content is
+	// never written. Only the two allowed files may appear.
+	if got := len(r.AllMappings()); got != 2 {
+		t.Errorf("AllMappings() has %d entries, want 2: %v", got, r.AllMappings())
+	}
+
+	for clean, want := range map[string]string{"index": "index.md", "docs/guide": "docs/guide.md"} {
+		if real, found := r.Resolve(clean); !found || real != want {
+			t.Errorf("Resolve(%q) = %q (found=%v), want %q", clean, real, found, want)
+		}
 	}
 }

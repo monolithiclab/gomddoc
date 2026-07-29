@@ -67,6 +67,8 @@ The `internal/resolve` package provides the `PathResolver` component that sits b
 - **Redirects**: Returns 301 redirects when a request includes a stripped extension (e.g., `/docs/guide.md` → `/docs/guide`)
 - **Collision handling**: Resolves priority when multiple files match (first configured extension wins)
 - **Build mode**: Generates directory-based URLs (`guide/index.html`) for static host compatibility
+- **Exclusions**: Hidden and `exclude`-matched files get no mapping at all, so they are unreachable
+  at their clean URL as well as their real path
 
 ```go
 type PathResolver struct {
@@ -81,7 +83,14 @@ type ResolveResult struct {
 }
 ```
 
-The resolver is configured with `strip_extensions` from site config (default: `[".md"]`). Request flow is Handler → PathResolver → Provider.
+The resolver is configured via `resolve.BuildOptions` with `strip_extensions` and `exclude` from
+site config (default: `[".md"]` and `[]`). Request flow is Handler → PathResolver → Provider.
+
+The `exclude` patterns are load-bearing here, not just an optimization: the `ContentExclusion`
+middleware matches the *request* path, which no longer carries the extension, so a pattern like
+`TODO.md` cannot match a request for `/TODO`. Every content index — `resolve.Build`,
+`metadata.BuildIndex`, `navigation.NewGenerator`, `search.BuildIndex` — must therefore be given the
+same patterns.
 
 **Git Storage Backends:**
 - **MemoryStorageFactory** (default) — In-memory clone for fast startup and small repos

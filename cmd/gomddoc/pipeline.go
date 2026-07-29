@@ -188,9 +188,13 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 
 	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
 
-	resolver := resolve.Build(contentRoot, cfg.Site.StripExtensions, func(mimeType string) bool {
-		_, _, err := registry.Get(mimeType, []negotiate.MediaType{{Type: "text", Subtype: "html", Q: 1.0}})
-		return err == nil
+	resolver := resolve.Build(contentRoot, resolve.BuildOptions{
+		StripExtensions: cfg.Site.StripExtensions,
+		Exclude:         cfg.Site.Exclude,
+		HasRenderer: func(mimeType string) bool {
+			_, _, err := registry.Get(mimeType, []negotiate.MediaType{{Type: "text", Subtype: "html", Q: 1.0}})
+			return err == nil
+		},
 	})
 
 	templateRenderer.Configure(template.WithResolver(resolver))

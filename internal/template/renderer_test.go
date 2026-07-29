@@ -1659,7 +1659,7 @@ func TestContentURL(t *testing.T) {
 		"README.md":      {Data: []byte("# Root")},
 		"docs/image.jpg": {Data: []byte("binary")},
 	}
-	resolver := resolve.Build(contentFS, []string{".md"}, func(string) bool { return true })
+	resolver := resolve.Build(contentFS, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(string) bool { return true }})
 
 	tests := []struct {
 		name     string
@@ -1700,7 +1700,7 @@ func TestContentURLInTemplate(t *testing.T) {
 	contentFS := fstest.MapFS{
 		"docs/guide.md": {Data: []byte("# Guide")},
 	}
-	resolver := resolve.Build(contentFS, []string{".md"}, func(string) bool { return true })
+	resolver := resolve.Build(contentFS, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(string) bool { return true }})
 
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/default.html.tmpl": {
@@ -2309,7 +2309,7 @@ func TestRender_SeeAlso_ContentURL(t *testing.T) {
 		"api.md":   {Data: []byte("# API")},
 		"guide.md": {Data: []byte("# Guide")},
 	}
-	resolver := resolve.Build(contentFS, []string{".md"}, func(string) bool { return true })
+	resolver := resolve.Build(contentFS, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(string) bool { return true }})
 
 	testFS := fstest.MapFS{
 		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(

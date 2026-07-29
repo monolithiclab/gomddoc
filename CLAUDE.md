@@ -103,6 +103,10 @@ testsite/              # Lorem ipsum test site for quick testing
   CSS sanitization) is not needed — treat these as false positives in reviews.
 - **Minimal dependencies** across all repos
 - **Prevent duplicated code** — extract shared helpers
+- **Every content index takes `cfg.Site.Exclude`** — `resolve.Build`, `metadata.BuildIndex`,
+  `navigation.NewGenerator`, `search.BuildIndex`. Access control cannot live in the request-path
+  middleware alone: `strip_extensions` means the served URL (`/TODO`) does not match the pattern
+  (`TODO.md`), so an index that ignores exclusions makes excluded content reachable
 - **Manual testing**: Use Chrome DevTools MCP, target `testsite/`
 - **Options struct pattern** or **functional options**, depending on the case
 - **`path` not `filepath`** for `fs.FS` operations (forward slashes per `io/fs` spec)

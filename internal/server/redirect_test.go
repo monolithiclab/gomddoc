@@ -134,9 +134,9 @@ func TestExtensionRedirect(t *testing.T) {
 		"image.jpg":     &fstest.MapFile{Data: []byte{0xFF, 0xD8}},
 	}
 
-	resolver := resolve.Build(files, []string{".md"}, func(mimeType string) bool {
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(mimeType string) bool {
 		return mimeType == "text/markdown"
-	})
+	}})
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -235,7 +235,7 @@ func TestExtensionRedirect_EmptyStripExts(t *testing.T) {
 	files := fstest.MapFS{
 		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
 	}
-	resolver := resolve.Build(files, []string{".md"}, func(string) bool { return true })
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(string) bool { return true }})
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

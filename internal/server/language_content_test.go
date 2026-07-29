@@ -168,8 +168,8 @@ func TestServer_ContentRoutes_PerLanguage_ExtensionRedirect(t *testing.T) {
 	}
 
 	isRenderable := func(string) bool { return true }
-	enResolver := resolve.Build(enFiles, []string{".md"}, isRenderable)
-	frResolver := resolve.Build(frFiles, []string{".md"}, isRenderable)
+	enResolver := resolve.Build(enFiles, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: isRenderable})
+	frResolver := resolve.Build(frFiles, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: isRenderable})
 
 	bundle, err := locale.LoadBundle("en-US", localeFSForLangTest(), "locales")
 	if err != nil {

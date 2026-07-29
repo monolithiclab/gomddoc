@@ -510,7 +510,18 @@ All items below were addressed in the 14th pass (concluded 2026-06-16):
 
 ### 10.1 HIGH — Security
 
-#### HIGH: `exclude` patterns are bypassable via clean URLs — excluded content is served ✅ reproduced
+#### ~~HIGH: `exclude` patterns are bypassable via clean URLs — excluded content is served~~ ✅ FIXED
+
+> **Fixed:** `resolve.Build` now takes `resolve.BuildOptions{StripExtensions, Exclude, HasRenderer}`
+> and skips hidden/excluded entries via `provider.SkipWalkEntry`, matching its three peer indexes.
+> Verified end-to-end: `/TODO` now 404s and the static build emits no `TODO.md`/`drafts/` stubs.
+> The two directory/file walks were merged into one in the same change (closes the §10.7 LOW item
+> "resolver does two full filesystem walks at startup") — `WalkDir` visits lexically and `cleanPath`
+> is always a sibling of `p`, so a directory is always seen before the file that shadows it.
+> Regression tests: `resolve.TestResolver_ExcludedPathsHaveNoMapping` (unit, incl. `AllMappings`)
+> and `server.TestHandlerResolverHonoursExclusions` (middleware + handler, canary body).
+
+Original finding:
 
 `internal/resolve/resolver.go:30` — `resolve.Build` is the **only** content index not given
 `cfg.Site.Exclude`. Its three peers all take it (`cmd/gomddoc/pipeline.go:212,222,238`). So the
@@ -976,8 +987,8 @@ subgroup carrying at least Compression + Metrics.
 - **Inline-asset cache stores raw `[]byte`** (`internal/template/inline_asset.go:36-62`) — `readAsset`
   caches bytes, then each call does `template.JS(data)`/`CSS`/`HTML`, a full copy per render
   (~22.8 KB/page across 7 inlined JS assets). Cache the converted value.
-- **Resolver does two full filesystem walks at startup** (`internal/resolve/resolver.go:48-115`) —
-  one for directories, one for files. Collapse into one, branching on `d.IsDir()`.
+- ~~**Resolver does two full filesystem walks at startup**~~ **FIXED** — collapsed into one walk as
+  part of the §10.1 exclude fix.
 - **`HasTemplate` does an `fs.Stat` per request** (`internal/template/renderer.go:735-739`, via
   `ResolveLayout` at `handler.go:175`). The template set is fixed after startup; memoize, gated on
   `cacheAssets`.
@@ -1261,8 +1272,8 @@ three `"text/markdown; charset=utf-8"`).
 
 ### 10.10 Recommended priority order
 
-1. **§10.1 exclude bypass** — thread `cfg.Site.Exclude` into `resolve.Build`. Serves excluded content
-   under the default configuration; fixes the build-mode path disclosure for free.
+1. ~~**§10.1 exclude bypass**~~ — **DONE.** `cfg.Site.Exclude` threaded into `resolve.Build`; the
+   build-mode path disclosure went with it.
 2. **§10.1 git tree data race + nil-tree panic** — unrecoverable crashes on git-backed sites. Add the
    concurrent-`ReadFile` test that would have caught it (§10.6).
 3. **§10.1 `govulncheck`** — four `go get` bumps, then add a CI gate so it cannot recur.

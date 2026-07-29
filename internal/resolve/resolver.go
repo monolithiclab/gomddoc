@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
+	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
 // RendererCheck reports whether a MIME type has an HTML renderer.
@@ -22,45 +23,67 @@ type PathResolver struct {
 	toClean map[string]string // real file path -> extensionless
 }
 
-// Build walks fsys and builds a PathResolver that strips the given extensions
-// from file paths whose MIME types pass hasRenderer.
+// BuildOptions configures Build. StripExtensions and Exclude are both string
+// slices, so they are named rather than positional: transposing them would
+// silently disable exclusion.
+type BuildOptions struct {
+	// StripExtensions lists the extensions to strip, in priority order:
+	// earlier extensions win collisions. If empty, Build returns an empty
+	// resolver.
+	StripExtensions []string
+
+	// Exclude lists path.Match patterns whose files get no clean-URL mapping.
+	Exclude []string
+
+	// HasRenderer reports whether a MIME type has an HTML renderer. Files
+	// whose MIME type fails this check are not mapped.
+	HasRenderer RendererCheck
+}
+
+// Build walks fsys and builds a PathResolver that strips the configured
+// extensions from file paths whose MIME types have an HTML renderer.
 //
-// Extensions in stripExts define priority: earlier extensions win collisions.
-// If stripExts is empty, an empty resolver is returned.
-func Build(fsys fs.FS, stripExts []string, hasRenderer RendererCheck) *PathResolver {
+// Hidden paths and paths matching opts.Exclude are skipped, so an excluded
+// file has no clean-URL mapping. This is a security invariant, not an
+// optimization: the request-path exclusion middleware cannot see through
+// extension stripping, so a mapped exclusion would be reachable at its clean
+// URL even though its real path 404s.
+func Build(fsys fs.FS, opts BuildOptions) *PathResolver {
 	r := &PathResolver{
 		toReal:  make(map[string]string),
 		toClean: make(map[string]string),
 	}
 
-	if len(stripExts) == 0 {
+	if len(opts.StripExtensions) == 0 {
 		return r
 	}
 
 	// Build extension priority map: lower index = higher priority.
-	extPriority := make(map[string]int, len(stripExts))
-	for i, ext := range stripExts {
+	extPriority := make(map[string]int, len(opts.StripExtensions))
+	for i, ext := range opts.StripExtensions {
 		extPriority[ext] = i
 	}
 
-	// Collect directories for collision detection.
+	// Directories seen so far, for collision detection, and the extension that
+	// claimed each clean path, for priority comparison.
+	//
+	// One walk suffices for both: WalkDir visits lexically and cleanPath is
+	// always a sibling of p, so a directory "guide" is always visited before
+	// the file "guide.md" that would shadow it.
 	dirs := make(map[string]bool)
+	claimedBy := make(map[string]string)
+
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if d.IsDir() && p != "." {
-			dirs[p] = true
+		if skip, skipErr := provider.SkipWalkEntry(p, d.Name(), d.IsDir(), opts.Exclude); skip {
+			return skipErr
 		}
-		return nil
-	})
-
-	// Track which extension claimed each clean path (for priority comparison).
-	claimedBy := make(map[string]string) // clean path -> extension that claimed it
-
-	// Walk again to find candidate files.
-	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if d.IsDir() {
+			if p != "." {
+				dirs[p] = true
+			}
 			return nil
 		}
 
@@ -70,7 +93,7 @@ func Build(fsys fs.FS, stripExts []string, hasRenderer RendererCheck) *PathResol
 		}
 
 		mimeType := negotiate.NormalizeMimeType(negotiate.DetectMIME(p))
-		if !hasRenderer(mimeType) {
+		if !opts.HasRenderer(mimeType) {
 			return nil // no renderer for this MIME type
 		}
 

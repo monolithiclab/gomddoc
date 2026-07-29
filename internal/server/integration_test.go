@@ -306,9 +306,9 @@ func TestIntegration_ExtensionStripping(t *testing.T) {
 	}
 
 	// Build resolver for extension stripping
-	resolver := resolve.Build(files, []string{".md"}, func(mimeType string) bool {
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(mimeType string) bool {
 		return mimeType == "text/markdown"
-	})
+	}})
 
 	// Set up handler with resolver
 	siteConfig := config.NewSiteConfig(".")

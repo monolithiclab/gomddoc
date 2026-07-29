@@ -159,7 +159,7 @@ func TestGenerateSitemap_WithResolver(t *testing.T) {
 	hasRenderer := func(mimeType string) bool {
 		return mimeType == "text/markdown"
 	}
-	resolver := resolve.Build(sitemapTestFS, []string{".md"}, hasRenderer)
+	resolver := resolve.Build(sitemapTestFS, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: hasRenderer})
 
 	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", prov, resolver, "")
 	if err != nil {
@@ -203,7 +203,7 @@ func TestGenerateSitemap_IncludesTagPages(t *testing.T) {
 	hasRenderer := func(mimeType string) bool {
 		return mimeType == "text/markdown"
 	}
-	resolver := resolve.Build(files, []string{".md"}, hasRenderer)
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: hasRenderer})
 
 	xml, err := GenerateSitemap(context.Background(), idx, "https://example.com", "README.md", prov, resolver, "")
 	if err != nil {

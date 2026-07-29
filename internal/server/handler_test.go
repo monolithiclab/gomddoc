@@ -484,9 +484,9 @@ func TestHandlerResolverFallback(t *testing.T) {
 		"docs/intro.md": &fstest.MapFile{Data: []byte("# Intro")},
 	}
 
-	resolver := resolve.Build(files, []string{".md"}, func(mimeType string) bool {
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(mimeType string) bool {
 		return mimeType == "text/markdown"
-	})
+	}})
 
 	siteConfig := config.NewSiteConfig(".")
 	prov := newMemoryProvider(files, "README.md", false)
@@ -648,5 +648,47 @@ func TestServeHTML_IncludesSeeAlsoSection(t *testing.T) {
 	}
 	if strings.Contains(body, ">Unrelated<") {
 		t.Errorf("see-also should not include unrelated page\n%s", body)
+	}
+}
+
+// TestHandlerResolverHonoursExclusions is the end-to-end counterpart to
+// TestResolver_ExcludedPathsHaveNoMapping: middleware plus handler, asserting
+// an excluded file is unreachable at both its real and its clean URL.
+func TestHandlerResolverHonoursExclusions(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":       &fstest.MapFile{Data: []byte("# Guide")},
+		"TODO.md":        &fstest.MapFile{Data: []byte("# CANARY")},
+		"drafts/plan.md": &fstest.MapFile{Data: []byte("# CANARY")},
+	}
+	exclude := []string{"TODO.md", "drafts/"}
+
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, Exclude: exclude, HasRenderer: func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	}})
+
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Exclude = exclude
+	handler := NewHandler(HandlerConfig{
+		Provider:         newMemoryProvider(files, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		SiteConfig:       &siteConfig,
+		Resolver:         resolver,
+	})
+	guarded := ContentExclusion(exclude)(http.HandlerFunc(handler.ServeContent))
+
+	for _, path := range []string{"/TODO", "/TODO.md", "/drafts/plan", "/drafts/plan.md"} {
+		w := httptest.NewRecorder()
+		guarded.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, w.Code)
+		}
+		if strings.Contains(w.Body.String(), "CANARY") {
+			t.Errorf("GET %s leaked excluded content", path)
+		}
 	}
 }

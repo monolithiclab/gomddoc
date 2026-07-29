@@ -216,6 +216,8 @@ exclude:
 *   **Default:** `[]` (empty — only dot files are blocked)
 
 Excluded files return HTTP 404, are omitted from navigation, search, directory listings, and MCP tool access.
+This holds for their clean URL too: with `strip_extensions` active, `TODO.md` blocks both `/TODO.md`
+and `/TODO`, and neither appears in a static build's output.
 
 ### URL Extension Stripping
 
