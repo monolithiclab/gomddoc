@@ -18,7 +18,8 @@ make lint -j8               # Parallelize linting
 make build                  # Production binary → build/gomddoc
 make bench                  # Benchmarks
 make run                    # Run locally (go run ./cmd/gomddoc serve testsite)
-FORCE_UPDATE=1 make lint    # Reinstall linters
+make vulncheck              # govulncheck dependency scan (needs network; not in `make ci`)
+FORCE_UPDATE=1 make lint    # Reinstall linters (same for vulncheck after a Go toolchain bump)
 ```
 
 Always use Makefile targets. `make ci` is the single command to validate changes.

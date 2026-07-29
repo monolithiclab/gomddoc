@@ -574,7 +574,8 @@ configuration.** Reproduced with `exclude: ["TODO.md", "drafts/"]`:
 > `TestGitProvider_ConcurrentReadsAreRaceFree` — 40 goroutines over nested paths hitting
 > `ReadFile` + `Stat` + `RootFS().Open` on one tree. Confirmed falsifiable: reverting the lock to
 > `RWMutex`/`RLock` reproduces `WARNING: DATA RACE ... object.(*Tree).FindEntry()` at
-> `tree.go:131/132`. This closes the §10.6 gap "concurrent `ReadFile` is never tested".
+> `tree.go:131/132` (v5.17.2; `:151/152` after the v5.19.1 bump — the memoisation is still
+> unsynchronised there). This closes the §10.6 gap "concurrent `ReadFile` is never tested".
 >
 > Also folded in: `gitDirFile` no longer retains the shared root tree (it materialises its entries
 > under the lock), which closes a latent hole where `ReadDir` touched the tree after the lock was
@@ -635,7 +636,22 @@ exists between `ensureCloned` returning and `g.mu.RLock()` being taken, where `C
 - **Fix:** assign `g.repo` only after the tree is cached; re-validate `g.closed`/`g.tree != nil`
   under the `RLock` in `ReadFile`/`Stat`.
 
-#### MEDIUM: 15 govulncheck-reachable vulnerabilities; no vuln gate in CI ✅ reproduced
+#### ~~MEDIUM: 15 govulncheck-reachable vulnerabilities; no vuln gate in CI~~ ✅ FIXED
+
+> All four modules bumped to their fixed versions (which pulled `sha1cd`, `x/net`, `x/sync` and
+> `x/sys` along with them). `govulncheck ./...` now reports **0 affected**; the 8 that remain are in
+> required-but-uncalled modules.
+>
+> The gate is a `vulncheck` Makefile target plus a dedicated CI job, rather than a step bolted onto
+> `test`: the scan needs network and a separate tool install, so folding it into the matrix would
+> have paid for both twice and coupled a supply-chain signal to a flaky-network test run.
+> `make vulncheck` runs the same command locally; `FORCE_UPDATE=1` refreshes the tool (needed after a
+> Go toolchain bump — a govulncheck built against an older Go fails to load `std` and reports
+> confusing type errors rather than a clean version complaint).
+>
+> Not added to `make ci`: it would put a network round-trip in the inner edit-test loop.
+>
+> Original finding:
 
 `govulncheck ./...` → *"Your code is affected by 15 vulnerabilities from 4 modules."*
 
@@ -1341,7 +1357,8 @@ three `"text/markdown; charset=utf-8"`).
 2. ~~**§10.1 git tree data race + nil-tree panic**~~ — **DONE.** `gitTreeState` is now the sole owner
    of the cached tree behind one exclusive mutex; `cloneLocked` rolls back on failure.
    `TestGitProvider_ConcurrentReadsAreRaceFree` closes the §10.6 coverage gap.
-3. **§10.1 `govulncheck`** — four `go get` bumps, then add a CI gate so it cannot recur.
+3. ~~**§10.1 `govulncheck`**~~ — **DONE.** Four modules bumped to fixed versions; `make vulncheck`
+   plus a CI job gates against recurrence.
 4. **§10.2 `Page.Path` resolution in build** — one change fixes canonical/og/JSON-LD/breadcrumbs
    **and** prev/next **and** sidebar state, all of which trace to the same `.md`-vs-clean key.
 5. **§10.3 tag-list `.md` links + default-theme `head-meta`/hreflang** — two small template edits,

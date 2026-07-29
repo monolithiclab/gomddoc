@@ -46,5 +46,10 @@ test:  ## Run unit tests with coverage and race detection
 	go tool cover -func cover.out
 
 
-.SILENT: bench bench-compare bench-save build deploy install run test
-.PHONY: bench bench-compare bench-save build deploy install run test
+vulncheck:  ## Scan dependencies for known vulnerabilities (needs network)
+	((test -z "$$FORCE_UPDATE" && which govulncheck) || go install golang.org/x/vuln/cmd/govulncheck@latest) > /dev/null
+	$$(go env GOPATH)/bin/govulncheck ./...
+
+
+.SILENT: bench bench-compare bench-save build deploy install run test vulncheck
+.PHONY: bench bench-compare bench-save build deploy install run test vulncheck
