@@ -134,6 +134,12 @@ testsite/              # Lorem ipsum test site for quick testing
 - **go-git reads are writes** — `object.Tree` memoises lookups into unsynchronised maps and go-git's
   storers mutate on read. Tree/blob access needs an *exclusive* mutex; an `RWMutex` lets two
   "readers" hit a concurrent map write (an unrecoverable runtime throw). See `gitTreeState`.
+- **Never derive a page URL from a file path by hand** — call
+  `(*resolve.PathResolver).PageURLPath(realPath, defaultIndex)`. It is the only implementation of
+  the clean-path lookup plus default-index fold. Four hand-rolled copies silently disagreed, which
+  is how static builds shipped `.md` canonicals and dead prev/next links. (Build's
+  `prettyOutputPath` is a *separate* mapping — file to output path, not file to URL. They diverge
+  in some configs; see `REVIEW.md` §10.2.)
 
 ### `io/fs` Spec Compliance
 

@@ -71,6 +71,7 @@ type buildContext struct {
 	enricherRegistry enricher.EnricherRegistry
 	templateRenderer *tmpl.HTMLRenderer
 	siteConfig       *config.SiteConfig
+	resolver         *resolve.PathResolver // derives each file's URL path; see buildFile
 	bundle           *locale.Bundle
 	languageInfos    []tmpl.LanguageInfo // shared across all pages (Active set per-walk)
 	lang             string              // resolved language for this walk
@@ -151,6 +152,7 @@ func (b *BuildCmd) Run() error {
 		enricherRegistry: pipeline.EnricherRegistry,
 		templateRenderer: pipeline.TemplateRenderer,
 		siteConfig:       &cfg.Site,
+		resolver:         pipeline.Resolver,
 		bundle:           bundle,
 		languageInfos:    tmpl.WithActiveLang(languageInfos, cfg.Site.Language),
 		lang:             cfg.Site.Language,
@@ -202,18 +204,22 @@ func (b *BuildCmd) Run() error {
 	for _, lang := range detectedLangs {
 		langPipe := lp.ByLang[lang]
 
-		langBC := &buildContext{
-			registry:         bc.registry,
-			enricherRegistry: bc.enricherRegistry,
-			templateRenderer: bc.templateRenderer,
-			siteConfig:       bc.siteConfig,
-			bundle:           bundle,
-			languageInfos:    tmpl.WithActiveLang(languageInfos, lang),
-			lang:             lang,
-			tFunc:            bundle.TFunc(lang),
+		// The language walk runs over the language sub-FS, so its file paths are
+		// language-relative and only that language's resolver can map them. The
+		// default resolver is keyed on root-relative paths, so falling back to
+		// it would silently hit root-level namesakes; leave it nil instead and
+		// let PageURLPath degrade to the real path.
+		langBC := *bc
+		if langPipe != nil {
+			langBC.resolver = langPipe.Resolver
+		} else {
+			langBC.resolver = nil
 		}
+		langBC.languageInfos = tmpl.WithActiveLang(languageInfos, lang)
+		langBC.lang = lang
+		langBC.tFunc = bundle.TFunc(lang)
 
-		langStats, langErr := b.walkAndBuildLang(contentRoot, langBC, lang)
+		langStats, langErr := b.walkAndBuildLang(contentRoot, &langBC, lang)
 		if langErr != nil {
 			slog.Warn("Failed to build language", slog.String("lang", lang), slog.Any("error", langErr))
 			continue
@@ -223,7 +229,7 @@ func (b *BuildCmd) Run() error {
 		stats.totalBytes.Add(langStats.totalBytes.Load())
 
 		// Generate per-language 404 page
-		langErrorContent, langErrPage := b.renderErrorPage(http.StatusNotFound, langBC)
+		langErrorContent, langErrPage := b.renderErrorPage(http.StatusNotFound, &langBC)
 		if langErrPage != nil {
 			slog.Warn("Failed to render 404 page for language", slog.String("lang", lang), slog.Any("error", langErrPage))
 			continue
@@ -417,7 +423,14 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("read %s: %w", filePath, err)
 	}
 
-	enrichment, err := bc.enricherRegistry.Get(mimeType).Enrich(ctx, content, "/"+filePath)
+	// Serve mode is handed a URL and resolves backwards to a file; build walks
+	// files, so it has to derive the URL. Passing the raw file path instead
+	// makes every path-keyed lookup miss: navigation and prev/next index on
+	// clean paths, and Page.Path feeds canonical, og:url, JSON-LD @id,
+	// breadcrumbs and hreflang.
+	pagePath := bc.resolver.PageURLPath(filePath, bc.siteConfig.DefaultIndex)
+
+	enrichment, err := bc.enricherRegistry.Get(mimeType).Enrich(ctx, content, pagePath)
 	if err != nil {
 		return fmt.Errorf("enrich %s: %w", filePath, err)
 	}
@@ -429,7 +442,7 @@ func (b *BuildCmd) buildFile(
 
 	templateCtx := tmpl.BuildPageContext(tmpl.PageContextInput{
 		Site:       bc.siteConfig,
-		Path:       "/" + filePath,
+		Path:       pagePath,
 		Content:    template.HTML(renderResult.Content), // #nosec G203
 		Enrichment: enrichment,
 		Lang:       bc.lang,
@@ -448,7 +461,7 @@ func (b *BuildCmd) buildFile(
 		htmlPath = prettyOutputPath(filePath, bc.siteConfig.DefaultIndex, dirsWithIndexMD)
 	} else {
 		htmlPath = strings.TrimSuffix(filePath, path.Ext(filePath)) + ".html"
-		if server.IsDefaultIndex(filePath, bc.siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
+		if resolve.IsDefaultIndex(filePath, bc.siteConfig.DefaultIndex) && !dirsWithIndexMD[path.Dir(filePath)] {
 			htmlPath = path.Join(path.Dir(filePath), "index.html")
 		}
 	}
@@ -619,7 +632,7 @@ func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, de
 	}
 
 	for realPath, cleanPath := range resolver.AllMappings() {
-		if server.IsDefaultIndex(realPath, defaultIndex) {
+		if resolve.IsDefaultIndex(realPath, defaultIndex) {
 			continue
 		}
 		html := server.GenerateRedirectHTML("/" + cleanPath)

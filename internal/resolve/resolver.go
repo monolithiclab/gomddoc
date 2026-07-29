@@ -163,3 +163,39 @@ func (r *PathResolver) IsEmpty() bool {
 func (r *PathResolver) AllMappings() map[string]string {
 	return maps.Clone(r.toClean)
 }
+
+// PageURLPath returns the absolute URL path a content file is published at:
+// the containing directory for a default-index file, the extensionless clean
+// path when stripping mapped it, and the real path otherwise.
+//
+// Serve mode never needs it — it is handed the URL and resolves backwards to a
+// file — but anything holding a real path and rendering a link does. See
+// "One Derivation of a Page's URL" in docs/decisions.md.
+//
+// A nil receiver skips the clean-path lookup, so this is safe to call before
+// Build.
+func (r *PathResolver) PageURLPath(realPath, defaultIndex string) string {
+	realPath = strings.TrimPrefix(realPath, "/")
+
+	if IsDefaultIndex(realPath, defaultIndex) {
+		dir := path.Dir(realPath)
+		if dir == "." {
+			return "/"
+		}
+		return "/" + dir
+	}
+
+	if r != nil {
+		if clean, found := r.CleanPath(realPath); found {
+			return "/" + clean
+		}
+	}
+	return "/" + realPath
+}
+
+// IsDefaultIndex reports whether filePath's basename is the site's default
+// index file (e.g. "README.md"), which is published at its directory's URL
+// rather than at a path of its own.
+func IsDefaultIndex(filePath, defaultIndex string) bool {
+	return defaultIndex != "" && strings.EqualFold(path.Base(filePath), defaultIndex)
+}

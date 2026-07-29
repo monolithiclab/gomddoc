@@ -908,10 +908,13 @@ func newTestBuildContext(t *testing.T, siteConfig *config.SiteConfig, templateRe
 func writeTestFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		t.Fatalf("Failed to create directory %s: %v", dir, err)
+	// name may itself contain directories ("guides/README.md"), so mkdir the
+	// full parent rather than just dir.
+	full := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(full), 0750); err != nil {
+		t.Fatalf("Failed to create directory %s: %v", filepath.Dir(full), err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+	if err := os.WriteFile(full, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to write test file %s: %v", name, err)
 	}
 }
@@ -1102,5 +1105,84 @@ func TestBuildCmd_EmitsSeeAlsoSection(t *testing.T) {
 	}
 	if !strings.Contains(body, ">B<") {
 		t.Errorf("see-also missing related page B\n%s", body)
+	}
+}
+
+// TestBuildCmd_Run_PagePathIsTheURLPath pins build mode's Page.Path to the URL
+// the page is actually published at.
+//
+// Build walks files while serve is handed URLs, so build has to derive the URL
+// itself. When it passed the raw file path instead, every path-keyed lookup
+// missed: canonical/og:url/JSON-LD advertised a `.md` URL the site does not
+// serve — contradicting the sitemap the same build emitted — and prev/next
+// links plus sidebar active state silently vanished from every static build.
+func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	writeTestFile(t, srcDir, "README.md", "---\ntitle: Home\n---\n# Home")
+	writeTestFile(t, srcDir, "guides/README.md", "---\ntitle: Guides\n---\n# Guides")
+	writeTestFile(t, srcDir, "guides/alpha.md", "---\ntitle: Alpha\n---\n# Alpha")
+	// Three siblings so the middle one has both a prev and a next.
+	writeTestFile(t, srcDir, "guides/beta.md", "---\ntitle: Beta\n---\n# Beta")
+	writeTestFile(t, srcDir, "guides/gamma.md", "---\ntitle: Gamma\n---\n# Gamma")
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir, Domain: "build.example.com"}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	alpha := readTestFile(t, filepath.Join(outDir, "guides", "alpha"), "index.html")
+
+	// The whole point: no rendered URL may carry the source extension.
+	if strings.Contains(alpha, "guides/alpha.md") {
+		t.Errorf("guides/alpha/index.html leaks the .md path:\n%s", alpha)
+	}
+
+	// canonical, og:url and JSON-LD @id all derive from Page.Path, so checking
+	// each one separately guards against a fix that only reaches the first.
+	for _, want := range []string{
+		`<link rel="canonical" href="https://build.example.com/guides/alpha">`,
+		`<meta property="og:url" content="https://build.example.com/guides/alpha">`,
+		`"@id":"https://build.example.com/guides/alpha"`,
+	} {
+		if !strings.Contains(alpha, want) {
+			t.Errorf("guides/alpha/index.html missing %s", want)
+		}
+	}
+
+	// The sitemap and the page must agree on one URL per page — the
+	// self-contradiction that made this bug visible.
+	sitemap := readTestFile(t, outDir, "sitemap.xml")
+	if !strings.Contains(sitemap, "<loc>https://build.example.com/guides/alpha</loc>") {
+		t.Errorf("sitemap disagrees with the page canonical:\n%s", sitemap)
+	}
+
+	// Navigation and prev/next index on clean paths, so a `.md` Page.Path made
+	// both look up a key that does not exist and render nothing at all.
+	if !strings.Contains(alpha, "<details open") {
+		t.Error("guides/alpha/index.html has no expanded sidebar ancestor")
+	}
+	beta := readTestFile(t, filepath.Join(outDir, "guides", "beta"), "index.html")
+	for _, want := range []string{
+		`rel="prev" href="https://build.example.com/guides/alpha"`,
+		`rel="next" href="https://build.example.com/guides/gamma"`,
+	} {
+		if !strings.Contains(beta, want) {
+			t.Errorf("guides/beta/index.html missing %s", want)
+		}
+	}
+
+	// A directory's default index is published at the directory, not at
+	// /guides/README.
+	guides := readTestFile(t, filepath.Join(outDir, "guides"), "index.html")
+	if !strings.Contains(guides, `<link rel="canonical" href="https://build.example.com/guides">`) {
+		t.Error("guides/index.html canonical is not the directory URL")
+	}
+	root := readTestFile(t, outDir, "index.html")
+	if !strings.Contains(root, `<link rel="canonical" href="https://build.example.com/">`) {
+		t.Error("index.html canonical is not the site root")
 	}
 }

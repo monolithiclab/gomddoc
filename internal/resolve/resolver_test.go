@@ -302,3 +302,51 @@ func TestResolver_ExcludedPathsHaveNoMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestResolver_PageURLPath(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{
+		"README.md":              {},
+		"guides/README.md":       {},
+		"guides/quickstart.md":   {},
+		"guides/data.csv":        {},
+		"reference/api.markdown": {},
+	}
+	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
+
+	tests := []struct {
+		name         string
+		resolver     *PathResolver
+		realPath     string
+		defaultIndex string
+		want         string
+	}{
+		{"mapped file loses its extension", r, "guides/quickstart.md", "README.md", "/guides/quickstart"},
+		{"leading slash is tolerated", r, "/guides/quickstart.md", "README.md", "/guides/quickstart"},
+		{"root default index is the site root", r, "README.md", "README.md", "/"},
+		{"nested default index is its directory", r, "guides/README.md", "README.md", "/guides"},
+		{"default index match is case-insensitive", r, "guides/readme.md", "README.md", "/guides"},
+		// An unmapped file is served at its real path — the URL must keep the
+		// extension or the link 404s.
+		{"unmapped extension keeps the path", r, "guides/data.csv", "README.md", "/guides/data.csv"},
+		{"unstripped extension keeps the path", r, "reference/api.markdown", "README.md", "/reference/api.markdown"},
+		// Callers hold a *PathResolver that is nil before Build runs, and an
+		// empty one when strip_extensions is disabled. Both must degrade to the
+		// real path rather than panic.
+		{"nil resolver falls back to the real path", nil, "guides/quickstart.md", "README.md", "/guides/quickstart.md"},
+		{"nil resolver still resolves the default index", nil, "guides/README.md", "README.md", "/guides"},
+		// With no default index configured, README.md is an ordinary page and
+		// gets an ordinary clean URL rather than its directory's.
+		{"empty default index disables index folding", r, "guides/README.md", "", "/guides/README"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.resolver.PageURLPath(tt.realPath, tt.defaultIndex); got != tt.want {
+				t.Errorf("PageURLPath(%q, %q) = %q, want %q", tt.realPath, tt.defaultIndex, got, tt.want)
+			}
+		})
+	}
+}

@@ -571,7 +571,7 @@ func (h *HTMLRenderer) generateJSONLD(page PageContext) template.JS {
 	}
 
 	// Detect index page
-	isIndex := page.Path == "/" || path.Base(page.Path) == h.siteConfig.DefaultIndex
+	isIndex := page.Path == "/" || resolve.IsDefaultIndex(page.Path, h.siteConfig.DefaultIndex)
 
 	p := seo.JSONLDPage{
 		Path:        page.Path,
@@ -681,31 +681,10 @@ func ResolveLayout(r Renderer, metadata map[string]any) string {
 	return defaultTemplate
 }
 
-// contentURL returns the absolute URL path (without scheme or domain) for a content file.
-// If extension stripping is active and the file has a clean path, the extensionless form is returned.
-// Default index files (e.g., README.md) are stripped to their directory path.
+// contentURL exposes resolve.PageURLPath to templates, which hold real file
+// paths (see-also entries, tag listings) but must link to published URLs.
 func (h *HTMLRenderer) contentURL(filePath string) string {
-	// Normalize: strip leading slash for resolver lookup
-	p := strings.TrimPrefix(filePath, "/")
-
-	// Default index files map to their directory path, not an extensionless path.
-	// The resolver would produce "docs/README" but the correct URL is "docs/".
-	if path.Base(p) == h.siteConfig.DefaultIndex {
-		p = path.Dir(p)
-		if p == "." {
-			p = ""
-		}
-		return "/" + p
-	}
-
-	// Try resolver for clean (extensionless) path
-	if h.resolver != nil {
-		if clean, ok := h.resolver.CleanPath(p); ok {
-			p = clean
-		}
-	}
-
-	return "/" + p
+	return h.resolver.PageURLPath(filePath, h.siteConfig.DefaultIndex)
 }
 
 // tagURL builds the URL for a tag's listing page, scoped to the active

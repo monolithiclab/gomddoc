@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
@@ -118,9 +117,9 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 			continue
 		}
 
-		pagePath := resolvedPagePath(page.Path, defaultIndex, resolver)
+		pagePath := resolver.PageURLPath(page.Path, defaultIndex)
 
-		loc := seo.PageURL(domain, pathPrefix+pagePath, defaultIndex)
+		loc := seo.PageURL(domain, pathPrefix+pagePath, "")
 		if loc != "" {
 			entry := sitemapURL{Loc: loc}
 			if contentRoot != nil {
@@ -160,26 +159,4 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 	out = append(out, body...)
 	out = append(out, '\n')
 	return out, nil
-}
-
-// resolvedPagePath returns the URL path for a page, using the resolver for
-// extensionless paths when available. Default index files are excluded from
-// resolver lookup — their URL is the directory path, handled by seo.PageURL.
-func resolvedPagePath(pagePath, defaultIndex string, resolver *resolve.PathResolver) string {
-	if resolver == nil {
-		return pagePath
-	}
-	lookupPath := strings.TrimPrefix(pagePath, "/")
-	if IsDefaultIndex(lookupPath, defaultIndex) {
-		return pagePath
-	}
-	if clean, found := resolver.CleanPath(lookupPath); found {
-		return "/" + clean
-	}
-	return pagePath
-}
-
-// IsDefaultIndex reports whether filePath's basename matches defaultIndex.
-func IsDefaultIndex(filePath, defaultIndex string) bool {
-	return defaultIndex != "" && strings.EqualFold(path.Base(filePath), defaultIndex)
 }

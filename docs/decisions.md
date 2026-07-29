@@ -464,3 +464,25 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 - **Finer-grained locking (e.g. release before reading blob contents)**: the blob is arguably detached from the tree by the time `Tree.File` returns, but that depends on go-git internals that vary by storer and version. Not worth betting server stability on for a memcpy. Revisit only with a benchmark.
 
 **Consequence to remember**: git-backed sites now serve reads one at a time, including blob decompression. That is a real throughput reduction versus the (incorrect) previous behaviour. The scaling lever is independent repo handles, *not* a finer lock.
+
+## One Derivation of a Page's URL
+
+**Chosen**: `(*resolve.PathResolver).PageURLPath(realPath, defaultIndex)` is the only function that turns a content file path into the URL that file is published at.
+
+**Why it needs to exist at all**: serve and build approach the mapping from opposite ends. Serve is handed a URL and resolves *backwards* to a file, so it never derives a URL. Build walks files, so it must. Anything else holding a real path and rendering a link — the `contentURL` template function, the sitemap and feed generators — is in build's position, not serve's.
+
+**What went wrong without it**: three near-copies existed and one was missing. `buildFile` used `"/" + filePath`, so static builds advertised `rel="canonical"`, `og:url` and JSON-LD `@id` with a `.md` extension the site does not serve — contradicting the sitemap the *same build* emitted. The same string keys navigation and prev/next, which index on clean paths, so both silently rendered nothing in every static build, as did sidebar active/open-ancestor state. §9.2 had already extracted `BuildPageContext` to stop serve and build diverging; the divergence moved into the *value* of `Path`.
+
+**Alternatives considered**:
+- **Fix `buildFile` in place with a resolver lookup**: the one-line version of this. Rejected — it leaves `contentURL` and `resolvedPagePath` as two more implementations of the same mapping, which is how the bug arose.
+- **Put the helper in `internal/server` next to `IsDefaultIndex`**: `internal/template` needs it too and cannot import `server` (server imports template). `internal/resolve` already owns clean↔real mapping and is importable by both, so `IsDefaultIndex` moved there.
+
+**Scope of the claim**: `PageURLPath` is the single implementation of the *serve URL scheme's*
+file-to-URL mapping. Build has a second, independent mapping — `prettyOutputPath`, which decides
+where the HTML is *written* — and the two disagree when `strip_extensions` is empty or a directory
+holds both `README.md` and `index.md`. Reconciling them means deciding whether build may have a URL
+space of its own at all (with stripping off it renders `.md` to `.html` and copies no `.md`, so its
+URLs cannot match serve's), which is a larger question than `Page.Path`. Tracked in `REVIEW.md`
+§10.2.
+
+**Deliberately not fixed here**: serve canonicalises a directory index to `/guides/` when requested that way and `/guides` when requested without the slash — `Page.Path` in serve is the request, not a stable page identity. Both forms return 200, so a directory index has two canonical URLs. That is a serve-side bug present before and after this change, tracked separately in `REVIEW.md`; build now consistently emits the no-slash form, matching the sitemap and every internal link.

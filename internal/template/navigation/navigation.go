@@ -178,12 +178,10 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 				parent.Children = append(parent.Children, node)
 			}
 		} else {
-			urlPath := "/" + entryPath
-			if g.resolver != nil {
-				if clean, found := g.resolver.CleanPath(entryPath); found {
-					urlPath = "/" + clean
-				}
-			}
+			// The nav tree produces the clean paths that Page.Path is later
+			// matched against (cachedIndex, CompareClean), so it must derive
+			// them the same way every other producer does.
+			urlPath := g.resolver.PageURLPath(entryPath, g.defaultIndex)
 			// Prefer the indexed title (no file open); fall back to scanning the
 			// file's first heading, then to a title-cased filename.
 			var label string

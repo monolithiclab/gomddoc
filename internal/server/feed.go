@@ -127,9 +127,9 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 	// Build Atom entries.
 	entries := make([]atomEntry, 0, len(candidates))
 	for _, c := range candidates {
-		pagePath := resolvedPagePath(c.page.Path, defaultIndex, resolver)
+		pagePath := resolver.PageURLPath(c.page.Path, defaultIndex)
 
-		loc := seo.PageURL(domain, pathPrefix+pagePath, defaultIndex)
+		loc := seo.PageURL(domain, pathPrefix+pagePath, "")
 		if loc == "" {
 			continue
 		}

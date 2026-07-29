@@ -86,6 +86,19 @@ type ResolveResult struct {
 The resolver is configured via `resolve.BuildOptions` with `strip_extensions` and `exclude` from
 site config (default: `[".md"]` and `[]`). Request flow is Handler → PathResolver → Provider.
 
+`PageURLPath(realPath, defaultIndex)` runs that mapping in the **reverse** direction — file path to
+published URL — and is the single implementation of it. Serve mode never needs it (it is handed a
+URL and resolves backwards to a file), but build mode walks files, and anything holding a real path
+and rendering a link needs it: `buildFile`'s `Page.Path`, the `contentURL` template function
+(see-also entries), the sitemap and feed generators, and `navigation.buildTree` — which is the
+*producer* of the clean paths `Page.Path` is later matched against for prev/next and sidebar state.
+Deriving it ad hoc is what let static builds advertise a `.md` canonical URL while the same build's
+sitemap advertised the clean one. Default-index files fold to their directory (`guides/README.md` →
+`/guides`, root → `/`); a nil receiver degrades to the real path, which is what a language walk with
+no per-language pipeline gets. It describes the **serve** URL scheme: build's `prettyOutputPath`
+independently decides where HTML is *written*, and the two are not yet reconciled for
+`strip_extensions: []` or directories holding both `README.md` and `index.md`.
+
 The `exclude` patterns are load-bearing here, not just an optimization: the `ContentExclusion`
 middleware matches the *request* path, which no longer carries the extension, so a pattern like
 `TODO.md` cannot match a request for `/TODO`. Every content index — `resolve.Build`,
