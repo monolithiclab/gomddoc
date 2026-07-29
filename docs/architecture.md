@@ -101,7 +101,8 @@ same patterns.
 - Secure by default (DirIndex=false)
 - Hidden file filtering in directory listings
 - Directory requests try default index, then optionally generate listings
-- Safe resource lifecycle: `RootFS()` returns `gitTreeFS` backed by shared `gitFSState` — `Close()` invalidates all outstanding FS references via mutex-protected nil, preventing use-after-close and breaking the reference chain for GC
+- Safe resource lifecycle: `RootFS()` returns `gitTreeFS` backed by shared `gitTreeState` — `Close()` invalidates all outstanding FS references via mutex-protected nil, preventing use-after-close and breaking the reference chain for GC
+- **Git reads are serialised**: `gitTreeState` owns the cached tree behind an *exclusive* mutex, and it is the only synchronisation point for the git object graph. `GitProvider.ReadFile`/`Stat` and every `gitTreeFS` share it. This is a correctness requirement, not a choice — go-git memoises `object.Tree` lookups into unsynchronised maps and its storers mutate on read, so an `RWMutex` would let two "readers" hit a concurrent map write (an unrecoverable runtime throw). The only safe way to parallelise is N independent repo handles
 
 ### 2. Renderer Layer
 

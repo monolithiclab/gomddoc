@@ -557,7 +557,31 @@ configuration.** Reproduced with `exclude: ["TODO.md", "drafts/"]`:
   three indexes. Defence in depth: re-check `IsRestrictedPath(realPath)` in `handler.go` after
   `resolver.Resolve`, and in `FilesystemProvider.ReadFile`.
 
-#### HIGH: shared `*object.Tree` mutated under a read lock — data race, unrecoverable crash ✅ confirmed in dependency source
+#### ~~HIGH: shared `*object.Tree` mutated under a read lock — data race, unrecoverable crash~~ ✅ FIXED
+
+> **Fixed:** `gitFSState` was renamed `gitTreeState` and made the *sole* owner of the cached tree,
+> behind an exclusive `sync.Mutex`. `GitProvider.tree` is gone — it was a second alias to the same
+> mutable object guarded by a second lock (`g.mu`), which is why the two files could not be reasoned
+> about together. `ReadFile`, `Stat` and `gitTreeFS.Open` now all take the one lock.
+>
+> The "stop sharing one tree, re-derive `commit.Tree()` per operation" alternative was tested and
+> **rejected**: under `-race` against a packed disk-backed repo it races *earlier*, inside
+> `filesystem.ObjectStorage.EncodedObject`, because the storers are not concurrency-safe either. It
+> also costs a fresh decode of every tree along the path. Recorded in `docs/decisions.md`
+> ("Serialised Git Reads") along with the throughput consequence.
+>
+> The nil-tree panic below was fixed in the same change. Regression test:
+> `TestGitProvider_ConcurrentReadsAreRaceFree` — 40 goroutines over nested paths hitting
+> `ReadFile` + `Stat` + `RootFS().Open` on one tree. Confirmed falsifiable: reverting the lock to
+> `RWMutex`/`RLock` reproduces `WARNING: DATA RACE ... object.(*Tree).FindEntry()` at
+> `tree.go:131/132`. This closes the §10.6 gap "concurrent `ReadFile` is never tested".
+>
+> Also folded in: `gitDirFile` no longer retains the shared root tree (it materialises its entries
+> under the lock), which closes a latent hole where `ReadDir` touched the tree after the lock was
+> released and kept the git object graph alive past `Close()`. Its entry-building loop, which had
+> drifted into a duplicate of `listDirectoryLocked`, is now the shared `treeDirEntries` helper.
+
+Original finding:
 
 `internal/provider/git.go:372-373,386,393` and `internal/provider/gitfs.go:40,55,61`.
 
@@ -586,7 +610,19 @@ only `ensureCloned` and pre-populates `repo`/`tree`, so all 50 goroutines return
 - **Fix:** serialize tree access with a full `Mutex`, or stop sharing one tree (re-derive
   `commit.Tree()` per operation).
 
-#### HIGH: `ensureCloned` reports success with a `nil` tree → nil-pointer panic
+#### ~~HIGH: `ensureCloned` reports success with a `nil` tree → nil-pointer panic~~ ✅ FIXED
+
+> **Fixed** alongside the tree race. `cloneLocked` now un-publishes `g.repo` (and `g.storage`) if
+> `resolveCommitLocked`/`cacheTreeLocked` fails, so the "initialised" predicate can never be true
+> without a tree, and the next call retries — matching how a failed clone already behaved. An
+> explicit `initialised bool` was considered and rejected: it adds a second field that must be kept
+> in agreement with `repo`/`storage`/`tree`, with nothing enforcing it.
+>
+> The `Close()`-interleaving window is separate and remains reachable, so `ReadFile`/`Stat` also
+> re-check `tree != nil` under the tree lock and return `ErrProviderClosed` instead of panicking.
+> Regression test: `TestGitProvider_NilTreeIsAnErrorNotAPanic`.
+
+Original finding:
 
 `internal/provider/git.go:195-198,251,254`. `g.repo` is published at `:251` **before** commit/tree
 resolution can fail at `:254`, but the liveness predicate is `g.repo != nil`, not `g.tree != nil`.
@@ -982,6 +1018,32 @@ These are the *most* compressible payloads on the site. `http_requests_total` li
 requests only, under-reporting real traffic. `RouteGroup.Subgroup` composes cleanly; hang these off a
 subgroup carrying at least Compression + Metrics.
 
+#### MEDIUM: git reads do redundant work under the (now serialised) tree lock
+
+Surfaced while fixing the §10.1 tree race. All of these are now on the critical path of a single
+exclusive lock, so they cost throughput on git-backed sites rather than just CPU:
+
+- **`Stat` decompresses an entire blob to read `file.Size`** (`internal/provider/git.go:509`).
+  `tree.File()` calls `GetBlob`, which loads and decodes the whole object; only `Mode` and `Size` are
+  used. On packfile-backed disk storage that is a full delta/zlib decode, discarded immediately —
+  and `cmd/gomddoc/pipeline.go:167` wires `prov.Stat` into the breadcrumb generator, so it runs once
+  per path segment per request. `tree.FindEntry` + `tree.Size` (header only, no decompression)
+  answers both questions.
+- **Every path is resolved twice on a directory hit** — `git.go:393`+`400`, `git.go:509`+`522`,
+  `gitfs.go:63`+`69` each run `FindEntry` for the same path once as a file and once as a tree. One
+  `FindEntry` then switching on `entry.Mode` does it in one pass. Worse on the filesystem storer,
+  where the failing `File()` attempt fully decodes the tree object before discarding it on the type
+  check.
+- **`file.Contents()` round-trips through a `bytes.Buffer` and a `string`** (`git.go:420`,
+  `gitfs.go:84`) — roughly 3N allocated and 4N copied for an N-byte page, given the trailing
+  `[]byte(content)`. `file.Reader()` + `io.ReadFull` into a `make([]byte, file.Size)` is one
+  exact-size allocation.
+
+Whether the blob read can move *outside* the lock is a separate question — the blob looks detached
+from the tree once `Tree.File` returns, but that depends on storer- and version-specific go-git
+internals (see `docs/decisions.md`, "Serialised Git Reads"). Do not change it without a benchmark
+justifying the risk.
+
 #### LOW — performance
 
 - **Inline-asset cache stores raw `[]byte`** (`internal/template/inline_asset.go:36-62`) — `readAsset`
@@ -1116,7 +1178,9 @@ real key and never reads it; it and the nonexistent-key test assert the *identic
 `TestCreateHostKeyCallback_WithKnownHosts` never invokes the callback — so whether the fail-closed
 host-key control accepts a matching key and rejects a mismatched one is untested. `cloneLocked` is at
 16.7%; `TestGitProvider_EnsureCloned_ConcurrentAccess` pre-populates `repo`/`tree`, so the clone-once
-race is never exercised — which is why §10.1's tree race is invisible to CI.
+race is never exercised. (The *tree* race this hid is now covered by
+`TestGitProvider_ConcurrentReadsAreRaceFree`; `cloneLocked` itself still needs a network clone to
+reach, so its rollback path stays uncovered.)
 `internal/metadata/index.go:157-160` — the `case string:` date branch has **no test** (tests only use
 unquoted `date:`, which YAML decodes as `time.Time`); quoted `date: "2025-01-15"` is an ordinary
 frontmatter shape.
@@ -1274,8 +1338,9 @@ three `"text/markdown; charset=utf-8"`).
 
 1. ~~**§10.1 exclude bypass**~~ — **DONE.** `cfg.Site.Exclude` threaded into `resolve.Build`; the
    build-mode path disclosure went with it.
-2. **§10.1 git tree data race + nil-tree panic** — unrecoverable crashes on git-backed sites. Add the
-   concurrent-`ReadFile` test that would have caught it (§10.6).
+2. ~~**§10.1 git tree data race + nil-tree panic**~~ — **DONE.** `gitTreeState` is now the sole owner
+   of the cached tree behind one exclusive mutex; `cloneLocked` rolls back on failure.
+   `TestGitProvider_ConcurrentReadsAreRaceFree` closes the §10.6 coverage gap.
 3. **§10.1 `govulncheck`** — four `go get` bumps, then add a CI gate so it cannot recur.
 4. **§10.2 `Page.Path` resolution in build** — one change fixes canonical/og/JSON-LD/breadcrumbs
    **and** prev/next **and** sidebar state, all of which trace to the same `.md`-vs-clean key.

@@ -451,3 +451,16 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 **Constraint worth remembering**: `var version = "dev"` must stay initialized to a *constant string expression*. `-X` is documented to only take effect on variables declared uninitialized or initialized to a constant — `var version = resolve(...)` would silently defeat the linker. That is why resolution happens in `init()` rather than in the initializer.
 
 **Normalization**: GoReleaser injects `{{ .Version }}` (unprefixed, `0.1.1`), the Makefile injects `git describe` (prefixed, `v0.1.1-2-gabc1234`), and build info carries module versions (`v0.1.1`). All three are trimmed to the unprefixed form so `--version` output matches the archive names and docker tags.
+
+## Serialised Git Reads
+
+**Chosen**: one exclusive `sync.Mutex` (`gitTreeState`) guarding every post-clone read of the git object graph — tree lookups, blob contents, and directory listings, for both `GitProvider` and the `gitTreeFS` handles it hands out.
+
+**Why it is not a tuning choice**: go-git is not safe for concurrent reads. `object.Tree` memoises lookups by writing unsynchronised maps (`FindEntry` writes `t.t`, `entry` writes `t.m`), so `Tree.File`/`Tree.Tree` are *writes* to the receiver. The storers mutate on read too, and `filesystem.ObjectStorage` shares one packfile handle it seeks on. Two concurrent readers produce a concurrent map write, which Go turns into an unrecoverable `throw()` — not a panic any middleware could catch. The previous code served reads under an `RWMutex` read lock and, worse, guarded one shared tree with *two* different locks (`GitProvider.mu` and `gitFSState.mu`).
+
+**Alternatives considered**:
+- **Stop sharing the tree; re-derive `commit.Tree()` per request**: tested under `-race` against a packed disk-backed repo. It still races, and *earlier* — in `filesystem.ObjectStorage.EncodedObject`, before a tree is even decoded. It is also strictly more expensive: a fresh root-tree decode per request, and it throws away `FindEntry`'s subtree cache so nested paths re-decode every intermediate. Rejected.
+- **Pre-warm the tree caches at clone time so lookups become read-only**: `FindEntry` still writes `t.t` for two-segment paths regardless of what is cached. Rejected as unsound.
+- **Finer-grained locking (e.g. release before reading blob contents)**: the blob is arguably detached from the tree by the time `Tree.File` returns, but that depends on go-git internals that vary by storer and version. Not worth betting server stability on for a memcpy. Revisit only with a benchmark.
+
+**Consequence to remember**: git-backed sites now serve reads one at a time, including blob decompression. That is a real throughput reduction versus the (incorrect) previous behaviour. The scaling lever is independent repo handles, *not* a finer lock.

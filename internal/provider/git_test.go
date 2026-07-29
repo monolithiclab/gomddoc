@@ -277,7 +277,7 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 		dirIndex:     true,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		tree:         tree,
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -378,7 +378,7 @@ func TestGitProvider_StatMocked(t *testing.T) {
 		dirIndex:     true,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		tree:         tree,
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -475,7 +475,7 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			dirIndex:     true,
 			maxFileSize:  defaultMaxFileSize,
 			repo:         repo,
-			tree:         tree,
+			treeState:    gitTreeState{tree: tree, modTime: commitTime},
 			commitTime:   commitTime,
 		}
 
@@ -510,7 +510,7 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			dirIndex:     false,
 			maxFileSize:  defaultMaxFileSize,
 			repo:         repo,
-			tree:         tree,
+			treeState:    gitTreeState{tree: tree, modTime: commitTime},
 			commitTime:   commitTime,
 		}
 
@@ -546,7 +546,7 @@ func TestGitProvider_LFSPointerDetection(t *testing.T) {
 		dirIndex:     false,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		tree:         tree,
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -905,7 +905,7 @@ func TestGitProvider_FileSizeLimit(t *testing.T) {
 		dirIndex:     false,
 		maxFileSize:  1, // 1 byte limit
 		repo:         repo,
-		tree:         tree,
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -951,7 +951,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 		dirIndex:     true,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		tree:         docsTree, // Use the subdirectory tree
+		treeState:    gitTreeState{tree: docsTree, modTime: commitTime}, // Use the subdirectory tree
 		commitTime:   commitTime,
 		commitHash:   head.Hash(),
 	}
@@ -1034,9 +1034,8 @@ func TestGitProvider_RootFS_Mocked(t *testing.T) {
 		defaultIndex: "README.md",
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		tree:         tree,
 		commitTime:   commitTime,
-		fsState:      gitFSState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
 	}
 
 	rootFS, err := p.RootFS(t.Context())
@@ -1095,7 +1094,7 @@ func TestGitProvider_EnsureCloned_AlreadyCloned(t *testing.T) {
 		defaultIndex: "README.md",
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		tree:         tree,
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -1123,7 +1122,7 @@ func TestGitProvider_EnsureCloned_ConcurrentAccess(t *testing.T) {
 		defaultIndex: "README.md",
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		tree:         tree,
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -1143,6 +1142,96 @@ func TestGitProvider_EnsureCloned_ConcurrentAccess(t *testing.T) {
 		if err != nil {
 			t.Errorf("goroutine %d: ensureCloned() = %v, want nil", i, err)
 		}
+	}
+}
+
+// TestGitProvider_ConcurrentReadsAreRaceFree hammers every tree-reading entry
+// point at once. Serving git reads under a read lock is a concurrent map
+// write — see gitTreeState for why go-git lookups are writes.
+//
+// TestGitProvider_EnsureCloned_ConcurrentAccess does not cover this: every
+// goroutine there returns at ensureCloned's fast path without touching a tree.
+func TestGitProvider_ConcurrentReadsAreRaceFree(t *testing.T) {
+	t.Parallel()
+
+	repo := createTestRepo(t, map[string]string{
+		"README.md":          "# Root",
+		"docs/guide.md":      "# Guide",
+		"docs/api/types.md":  "# Types",
+		"docs/api/errors.md": "# Errors",
+	})
+	tree := mustGetTree(t, repo)
+	commitTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+
+	p := &GitProvider{
+		parsedURL:    &ParsedGitURL{Ref: "HEAD"},
+		defaultIndex: "README.md",
+		dirIndex:     true,
+		maxFileSize:  defaultMaxFileSize,
+		repo:         repo,
+		commitTime:   commitTime,
+		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+	}
+
+	rootFS, err := p.RootFS(t.Context())
+	if err != nil {
+		t.Fatalf("RootFS() error = %v", err)
+	}
+
+	// Nested paths are required: FindEntry only populates its subtree cache
+	// while descending, so a flat repo would not reproduce the race. The
+	// directory entry exercises the tree-lookup path alongside the blob one.
+	paths := []string{"/docs/api/types.md", "/docs/api/errors.md", "/docs/guide.md", "/docs", "/README.md"}
+
+	const goroutines = 40
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+	for i := range goroutines {
+		wg.Go(func() {
+			reqPath := paths[i%len(paths)]
+			if _, _, err := p.ReadFile(t.Context(), reqPath); err != nil {
+				errs[i] = fmt.Errorf("ReadFile(%s): %w", reqPath, err)
+				return
+			}
+			if _, err := p.Stat(t.Context(), reqPath); err != nil {
+				errs[i] = fmt.Errorf("Stat(%s): %w", reqPath, err)
+				return
+			}
+			// RootFS shares the same tree, so it must share the same lock.
+			if _, err := rootFS.Open(normalizePath(reqPath)); err != nil {
+				errs[i] = fmt.Errorf("Open(%s): %w", reqPath, err)
+			}
+		})
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// TestGitProvider_NilTreeIsAnErrorNotAPanic covers the state a failed ref
+// resolution used to leave behind: a repo published as "cloned" with no cached
+// tree, which made every later request dereference nil. cloneLocked now rolls
+// back, but Close can still land between ensureCloned and the tree lock, so
+// the guard has to stay.
+func TestGitProvider_NilTreeIsAnErrorNotAPanic(t *testing.T) {
+	t.Parallel()
+
+	p := &GitProvider{
+		parsedURL:    &ParsedGitURL{Ref: "HEAD"},
+		defaultIndex: "README.md",
+		maxFileSize:  defaultMaxFileSize,
+		repo:         createTestRepo(t, map[string]string{"README.md": "# Root"}),
+	}
+
+	if _, _, err := p.ReadFile(t.Context(), "/README.md"); !errors.Is(err, ErrProviderClosed) {
+		t.Errorf("ReadFile() error = %v, want %v", err, ErrProviderClosed)
+	}
+	if _, err := p.Stat(t.Context(), "/README.md"); !errors.Is(err, ErrProviderClosed) {
+		t.Errorf("Stat() error = %v, want %v", err, ErrProviderClosed)
 	}
 }
 
@@ -1250,19 +1339,17 @@ func TestGitProvider_CacheTreeLocked(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cacheTreeLocked() error = %v", err)
 		}
-		if p.tree == nil {
-			t.Fatal("tree should not be nil after cacheTreeLocked")
+		if p.treeState.tree == nil {
+			t.Fatal("treeState.tree should not be nil after cacheTreeLocked")
+		}
+		if p.treeState.modTime != p.commitTime {
+			t.Errorf("treeState.modTime = %v, want %v", p.treeState.modTime, p.commitTime)
 		}
 
 		// Verify we can read files through the cached tree
-		_, fileErr := p.tree.File("README.md")
+		_, fileErr := p.treeState.tree.File("README.md")
 		if fileErr != nil {
 			t.Errorf("tree.File(\"README.md\") error = %v", fileErr)
-		}
-
-		// Verify fsState was populated
-		if p.fsState.tree == nil {
-			t.Error("fsState.tree should not be nil")
 		}
 	})
 
@@ -1288,13 +1375,13 @@ func TestGitProvider_CacheTreeLocked(t *testing.T) {
 		}
 
 		// Tree should be the docs subtree — guide.md is at root
-		_, fileErr := p.tree.File("guide.md")
+		_, fileErr := p.treeState.tree.File("guide.md")
 		if fileErr != nil {
 			t.Errorf("tree.File(\"guide.md\") error = %v", fileErr)
 		}
 
 		// Root README should NOT be accessible
-		_, fileErr = p.tree.File("README.md")
+		_, fileErr = p.treeState.tree.File("README.md")
 		if fileErr == nil {
 			t.Error("tree.File(\"README.md\") should fail for subdir tree")
 		}

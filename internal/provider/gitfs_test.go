@@ -17,7 +17,7 @@ func TestGitTreeFS_Open_File(t *testing.T) {
 	})
 	tree := mustGetTree(t, repo)
 	modTime := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: modTime}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: modTime}}
 
 	f, err := gfs.Open("readme.md")
 	if err != nil {
@@ -63,7 +63,7 @@ func TestGitTreeFS_Open_Directory(t *testing.T) {
 	})
 	tree := mustGetTree(t, repo)
 	modTime := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: modTime}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: modTime}}
 
 	f, err := gfs.Open("docs")
 	if err != nil {
@@ -90,7 +90,7 @@ func TestGitTreeFS_Open_Root(t *testing.T) {
 		"readme.md": "# Hello",
 	})
 	tree := mustGetTree(t, repo)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: time.Now()}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: time.Now()}}
 
 	f, err := gfs.Open(".")
 	if err != nil {
@@ -117,7 +117,7 @@ func TestGitTreeFS_Open_NotExist(t *testing.T) {
 		"readme.md": "# Hello",
 	})
 	tree := mustGetTree(t, repo)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: time.Now()}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: time.Now()}}
 
 	_, err := gfs.Open("nonexistent.md")
 	if err == nil {
@@ -140,7 +140,7 @@ func TestGitTreeFS_Open_InvalidPath(t *testing.T) {
 		"readme.md": "# Hello",
 	})
 	tree := mustGetTree(t, repo)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: time.Now()}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: time.Now()}}
 
 	tests := []struct {
 		name string
@@ -180,7 +180,7 @@ func TestGitBlobFile_ReadStatClose(t *testing.T) {
 	})
 	tree := mustGetTree(t, repo)
 	modTime := time.Date(2024, 3, 15, 8, 30, 0, 0, time.UTC)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: modTime}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: modTime}}
 
 	f, err := gfs.Open("file.txt")
 	if err != nil {
@@ -227,7 +227,7 @@ func TestGitDirFile_ReadError(t *testing.T) {
 		"docs/guide.md": "# Guide",
 	})
 	tree := mustGetTree(t, repo)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: time.Now()}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: time.Now()}}
 
 	f, err := gfs.Open("docs")
 	if err != nil {
@@ -261,7 +261,7 @@ func TestGitDirFile_ReadDir(t *testing.T) {
 		"docs/gamma.md": "# Gamma",
 	})
 	tree := mustGetTree(t, repo)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: time.Now()}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: time.Now()}}
 
 	t.Run("n<=0 returns all non-dotfile entries", func(t *testing.T) {
 		f, err := gfs.Open("docs")
@@ -350,7 +350,7 @@ func TestGitDirFile_ReadDir_Sequential(t *testing.T) {
 		"d.md": "# D",
 	})
 	tree := mustGetTree(t, repo)
-	gfs := &gitTreeFS{state: &gitFSState{tree: tree, modTime: time.Now()}}
+	gfs := &gitTreeFS{state: &gitTreeState{tree: tree, modTime: time.Now()}}
 
 	// Open root directory
 	f, err := gfs.Open(".")
@@ -402,7 +402,7 @@ func TestGitTreeFS_Open_AfterClose(t *testing.T) {
 		"readme.md": "# Hello",
 	})
 	tree := mustGetTree(t, repo)
-	state := &gitFSState{tree: tree, modTime: time.Now()}
+	state := &gitTreeState{tree: tree, modTime: time.Now()}
 	gfs := &gitTreeFS{state: state}
 
 	// Verify it works before close

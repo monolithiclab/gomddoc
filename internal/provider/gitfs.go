@@ -13,21 +13,40 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// gitFSState holds shared state between GitProvider and all gitTreeFS instances.
+// gitTreeState owns the cached git tree and is the single synchronisation point
+// for every post-clone read of the git object graph, shared by GitProvider and
+// by every gitTreeFS instance RootFS hands out.
+//
+// The lock is exclusive rather than an RWMutex on purpose, for two reasons:
+//
+//   - object.Tree memoises lookups by writing unsynchronised maps
+//     (Tree.FindEntry writes t.t, Tree.entry writes t.m), so File and Tree are
+//     *writes* to the receiver.
+//   - the storer underneath is not safe for concurrent use either. Both
+//     go-git storage backends mutate on read, and filesystem.ObjectStorage
+//     shares one packfile handle it seeks on.
+//
+// Concurrent "readers" therefore hit a concurrent map write, which the runtime
+// turns into an unrecoverable throw — no middleware can recover from it. Note
+// that this rules out the obvious refactor of dropping the shared tree and
+// re-deriving commit.Tree() per request: that races in the storer instead, and
+// costs a fresh decode of every tree along the path. The only safe way to
+// parallelise git reads is N independent repo handles, not a finer lock.
+//
 // When the provider is closed, the tree reference is nilled under the lock,
 // which prevents use-after-close and breaks the reference chain so the git
 // object graph (tree → storer) can be garbage collected.
-type gitFSState struct {
-	mu      sync.RWMutex
+type gitTreeState struct {
+	mu      sync.Mutex
 	tree    *object.Tree
 	modTime time.Time
 }
 
 // gitTreeFS adapts a go-git object.Tree to io/fs.FS.
-// It shares state with the GitProvider via gitFSState so that
+// It shares state with the GitProvider via gitTreeState so that
 // Close() invalidates all outstanding FS references.
 type gitTreeFS struct {
-	state *gitFSState
+	state *gitTreeState
 }
 
 var _ fs.FS = (*gitTreeFS)(nil)
@@ -37,8 +56,8 @@ func (g *gitTreeFS) Open(name string) (fs.File, error) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
 
-	g.state.mu.RLock()
-	defer g.state.mu.RUnlock()
+	g.state.mu.Lock()
+	defer g.state.mu.Unlock()
 
 	if g.state.tree == nil {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrClosed}
@@ -93,15 +112,39 @@ func (f *gitBlobFile) Stat() (fs.FileInfo, error) { return f.info, nil }
 func (f *gitBlobFile) Read(b []byte) (int, error) { return f.reader.Read(b) }
 func (f *gitBlobFile) Close() error               { return nil }
 
+// treeDirEntries converts a tree's entries to fs.DirEntry, skipping hidden
+// files. Must be called with gitTreeState.mu held when tree is the shared root
+// tree. Sizes are omitted: reporting one would mean loading every blob.
+func treeDirEntries(tree *object.Tree, modTime time.Time) []fs.DirEntry {
+	entries := make([]fs.DirEntry, 0, len(tree.Entries))
+	for _, entry := range tree.Entries {
+		if strings.HasPrefix(entry.Name, ".") {
+			continue
+		}
+		fileMode, _ := entry.Mode.ToOSFileMode()
+		entries = append(entries, &gitDirEntry{
+			name:     entry.Name,
+			isDir:    !entry.Mode.IsFile(),
+			fileMode: fileMode,
+			modTime:  modTime,
+		})
+	}
+	return entries
+}
+
 // gitDirFile implements fs.ReadDirFile for a git tree (directory).
+//
+// It holds the materialised entries rather than the tree itself: Open may hand
+// back the shared root tree, and the handle outlives the lock that guards it.
+// Copying also lets Close() release the git object graph while a handle is
+// still open.
 type gitDirFile struct {
 	info    *gitFileInfo
-	tree    *object.Tree
-	modTime time.Time
 	entries []fs.DirEntry
 	offset  int
 }
 
+// newGitDirFile must be called with gitTreeState.mu held.
 func newGitDirFile(tree *object.Tree, name string, modTime time.Time) *gitDirFile {
 	return &gitDirFile{
 		info: &gitFileInfo{
@@ -110,8 +153,7 @@ func newGitDirFile(tree *object.Tree, name string, modTime time.Time) *gitDirFil
 			modTime: modTime,
 			isDir:   true,
 		},
-		tree:    tree,
-		modTime: modTime,
+		entries: treeDirEntries(tree, modTime),
 	}
 }
 
@@ -122,23 +164,6 @@ func (d *gitDirFile) Read([]byte) (int, error) {
 func (d *gitDirFile) Close() error { return nil }
 
 func (d *gitDirFile) ReadDir(n int) ([]fs.DirEntry, error) {
-	if d.entries == nil {
-		d.entries = make([]fs.DirEntry, 0, len(d.tree.Entries))
-		for _, entry := range d.tree.Entries {
-			if strings.HasPrefix(entry.Name, ".") {
-				continue
-			}
-			isDir := !entry.Mode.IsFile()
-			fileMode, _ := entry.Mode.ToOSFileMode()
-			d.entries = append(d.entries, &gitDirEntry{
-				name:     entry.Name,
-				isDir:    isDir,
-				fileMode: fileMode,
-				modTime:  d.modTime,
-			})
-		}
-	}
-
 	if n <= 0 {
 		entries := slices.Clone(d.entries[d.offset:])
 		d.offset = len(d.entries)

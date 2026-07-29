@@ -88,19 +88,19 @@ type GitProvider struct {
 	// Authentication (nil for anonymous)
 	auth transport.AuthMethod
 
-	// Lazily initialized state (protected by mu)
+	// Lazily initialized clone state (protected by mu). A non-nil repo means
+	// the clone completed *and* the tree was cached; see cloneLocked.
 	mu         sync.RWMutex
 	closed     bool
 	storage    storage.Storer
 	repo       *git.Repository
-	tree       *object.Tree
 	commitTime time.Time
 	commitHash plumbing.Hash
 
-	// Shared state for gitTreeFS instances returned by RootFS().
-	// When Close() nils fsState.tree, all outstanding FS references
-	// become invalid, breaking the reference chain to the git object graph.
-	fsState gitFSState
+	// The cached tree, shared with the gitTreeFS instances returned by
+	// RootFS(). It carries its own exclusive lock and mu must not be used to
+	// guard it; see gitTreeState for why the lock cannot be an RWMutex.
+	treeState gitTreeState
 }
 
 // NewGitProvider creates a Git provider from a git:// URL.
@@ -158,9 +158,7 @@ func (g *GitProvider) RootFS(ctx context.Context) (fs.FS, error) {
 	if err := g.ensureCloned(ctx); err != nil {
 		return nil, err
 	}
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	return &gitTreeFS{state: &g.fsState}, nil
+	return &gitTreeFS{state: &g.treeState}, nil
 }
 
 // Close releases resources held by the provider.
@@ -171,14 +169,13 @@ func (g *GitProvider) Close() error {
 
 	g.closed = true
 	g.repo = nil
-	g.tree = nil
 	g.storage = nil
 
 	// Invalidate all outstanding gitTreeFS references so they
 	// return fs.ErrClosed and break the reference chain to the storer.
-	g.fsState.mu.Lock()
-	g.fsState.tree = nil
-	g.fsState.mu.Unlock()
+	g.treeState.mu.Lock()
+	g.treeState.tree = nil
+	g.treeState.mu.Unlock()
 
 	return nil
 }
@@ -250,13 +247,19 @@ func (g *GitProvider) cloneLocked(ctx context.Context) error {
 	}
 	g.repo = repo
 
-	// Resolve the reference to a commit
-	if err := g.resolveCommitLocked(); err != nil {
-		return err
+	// Resolve the reference to a commit and cache its tree for fast file access.
+	// ensureCloned treats a non-nil repo as "initialised", so on failure the
+	// repo has to be un-published: otherwise every later call reports success
+	// and then dereferences a nil tree.
+	err = g.resolveCommitLocked()
+	if err == nil {
+		err = g.cacheTreeLocked()
 	}
-
-	// Cache the tree for fast file access
-	return g.cacheTreeLocked()
+	if err != nil {
+		g.repo = nil
+		g.storage = nil
+	}
+	return err
 }
 
 // setupAuthLocked configures authentication based on the endpoint protocol.
@@ -322,13 +325,11 @@ func (g *GitProvider) cacheTreeLocked() error {
 		tree = subtree
 	}
 
-	g.tree = tree
-
-	// Update shared FS state so gitTreeFS instances see the new tree.
-	g.fsState.mu.Lock()
-	g.fsState.tree = tree
-	g.fsState.modTime = g.commitTime
-	g.fsState.mu.Unlock()
+	// Publish the tree so the provider and gitTreeFS instances can see it.
+	g.treeState.mu.Lock()
+	g.treeState.tree = tree
+	g.treeState.modTime = g.commitTime
+	g.treeState.mu.Unlock()
 
 	return nil
 }
@@ -369,30 +370,35 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 		return nil, "", err
 	}
 
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
 	cleanPath := normalizePath(requestPath)
 	if cleanPath != "." && !fs.ValidPath(cleanPath) {
 		return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
 	}
 
+	g.treeState.mu.Lock()
+	defer g.treeState.mu.Unlock()
+
+	// Close may have run between ensureCloned and the lock.
+	if g.treeState.tree == nil {
+		return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrProviderClosed}
+	}
+	tree, modTime := g.treeState.tree, g.treeState.modTime
+
 	// Handle root directory
 	if cleanPath == "." {
-		return g.handleDirectoryLocked(".", requestPath)
+		return g.handleDirectoryLocked(tree, modTime, requestPath)
 	}
 
 	// Try to get as file first
-	file, err := g.tree.File(cleanPath)
+	file, err := tree.File(cleanPath)
 	if err == nil {
 		return g.readFileLocked(file, requestPath)
 	}
 
 	// Try as directory
 	if errors.Is(err, object.ErrFileNotFound) {
-		_, treeErr := g.tree.Tree(cleanPath)
-		if treeErr == nil {
-			return g.handleDirectoryLocked(cleanPath, requestPath)
+		if subtree, treeErr := tree.Tree(cleanPath); treeErr == nil {
+			return g.handleDirectoryLocked(subtree, modTime, requestPath)
 		}
 	}
 
@@ -400,7 +406,7 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 }
 
 // readFileLocked reads the content of a file object.
-// Must be called with g.mu held for reading.
+// Must be called with g.treeState.mu held.
 func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]byte, string, error) {
 	// Check file size limit
 	if file.Size > g.maxFileSize {
@@ -429,21 +435,9 @@ func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]b
 	return []byte(content), mimeType, nil
 }
 
-// handleDirectoryLocked processes directory requests.
-// Must be called with g.mu held for reading.
-func (g *GitProvider) handleDirectoryLocked(dirPath, requestPath string) ([]byte, string, error) {
-	// Determine which tree to use
-	var dirTree *object.Tree
-	if dirPath == "." {
-		dirTree = g.tree
-	} else {
-		var err error
-		dirTree, err = g.tree.Tree(dirPath)
-		if err != nil {
-			return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
-		}
-	}
-
+// handleDirectoryLocked processes a directory request against an
+// already-resolved tree. Must be called with g.treeState.mu held.
+func (g *GitProvider) handleDirectoryLocked(dirTree *object.Tree, modTime time.Time, requestPath string) ([]byte, string, error) {
 	return handleDirectory(requestPath, g.defaultIndex, g.dirIndex, g.excludePatterns,
 		func() ([]byte, error) {
 			indexFile, err := dirTree.File(g.defaultIndex)
@@ -456,33 +450,8 @@ func (g *GitProvider) handleDirectoryLocked(dirPath, requestPath string) ([]byte
 			}
 			return []byte(content), nil
 		},
-		func() ([]fs.DirEntry, error) { return g.listDirectoryLocked(dirTree) },
+		func() ([]fs.DirEntry, error) { return treeDirEntries(dirTree, modTime), nil },
 	)
-}
-
-// listDirectoryLocked creates fs.DirEntry slice from a tree.
-// Must be called with g.mu held for reading.
-func (g *GitProvider) listDirectoryLocked(tree *object.Tree) ([]fs.DirEntry, error) {
-	var entries []fs.DirEntry
-
-	for _, entry := range tree.Entries {
-		// Skip hidden files
-		if strings.HasPrefix(entry.Name, ".") {
-			continue
-		}
-
-		isDir := !entry.Mode.IsFile()
-		fileMode, _ := entry.Mode.ToOSFileMode()
-		entries = append(entries, &gitDirEntry{
-			name:     entry.Name,
-			isDir:    isDir,
-			fileMode: fileMode,
-			size:     0, // Size requires loading blob, skip for listing
-			modTime:  g.commitTime,
-		})
-	}
-
-	return entries, nil
 }
 
 // Stat returns a FileInfo describing the named file.
@@ -491,13 +460,19 @@ func (g *GitProvider) Stat(ctx context.Context, requestPath string) (fs.FileInfo
 		return nil, err
 	}
 
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
 	cleanPath := normalizePath(requestPath)
 	if cleanPath != "." && !fs.ValidPath(cleanPath) {
 		return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrNotFound}
 	}
+
+	g.treeState.mu.Lock()
+	defer g.treeState.mu.Unlock()
+
+	// Close may have run between ensureCloned and the lock.
+	if g.treeState.tree == nil {
+		return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrProviderClosed}
+	}
+	tree, modTime := g.treeState.tree, g.treeState.modTime
 
 	// Root directory
 	if cleanPath == "." {
@@ -505,32 +480,32 @@ func (g *GitProvider) Stat(ctx context.Context, requestPath string) (fs.FileInfo
 			name:    "/",
 			size:    0,
 			mode:    fs.ModeDir | 0755,
-			modTime: g.commitTime,
+			modTime: modTime,
 			isDir:   true,
 		}, nil
 	}
 
 	// Try as file
-	file, err := g.tree.File(cleanPath)
+	file, err := tree.File(cleanPath)
 	if err == nil {
 		fileMode, _ := file.Mode.ToOSFileMode()
 		return &gitFileInfo{
 			name:    path.Base(cleanPath),
 			size:    file.Size,
 			mode:    fileMode,
-			modTime: g.commitTime,
+			modTime: modTime,
 			isDir:   false,
 		}, nil
 	}
 
 	// Try as directory
-	_, err = g.tree.Tree(cleanPath)
+	_, err = tree.Tree(cleanPath)
 	if err == nil {
 		return &gitFileInfo{
 			name:    path.Base(cleanPath),
 			size:    0,
 			mode:    fs.ModeDir | 0755,
-			modTime: g.commitTime,
+			modTime: modTime,
 			isDir:   true,
 		}, nil
 	}

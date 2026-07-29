@@ -128,6 +128,11 @@ testsite/              # Lorem ipsum test site for quick testing
   paths (e.g., if the fast path lowercases, the error path must too)
 - **Counters over string-length comparisons** — detect "nothing written" with a counter, not by
   comparing buffer length against a magic string constant (breaks silently if format changes)
+- **One mutable object, one lock** — never guard the same value with two independent mutexes. If two
+  types need it, give one type ownership and let the other borrow through it.
+- **go-git reads are writes** — `object.Tree` memoises lookups into unsynchronised maps and go-git's
+  storers mutate on read. Tree/blob access needs an *exclusive* mutex; an `RWMutex` lets two
+  "readers" hit a concurrent map write (an unrecoverable runtime throw). See `gitTreeState`.
 
 ### `io/fs` Spec Compliance
 
