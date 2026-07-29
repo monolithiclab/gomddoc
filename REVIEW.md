@@ -1,15 +1,19 @@
 # Codebase & Architecture Review: gomddoc
 
-- **Review Date:** 2026-06-11 (14th pass — Fresh Review; see §9). Prior: 2026-04-08 (13th pass).
-- **Status:** 14th pass **CONCLUDED** 2026-06-16 — the entire §9.10 priority list is fixed (§9.1–§9.6
-  + the §9.7 provider bug). Two perf opportunities are deferred to a future pass: the per-request
-  nav-tree copy (§9.3 `buildNavItems`) and the double markdown parse (§9.8) — neither is a defect.
+- **Review Date:** 2026-07-29 (15th pass — Fresh Review; see §10). Prior: 2026-06-11 (14th pass).
+- **Status:** 15th pass **OPEN**. Six parallel agents + independent manual reproduction of every
+  HIGH. This pass found the first **HIGH-severity security defect** since the review series began
+  (§10.1 exclude bypass) and a cluster of **serve/build output divergences** (§10.2) that make the
+  static build materially different from the live server.
 - **Reviewers:** Claude Architecture Analysis (6 parallel review agents + manual verification)
 - **Branch:** main
-- **Go Version:** 1.26.1
-- **Coverage:** 82.7% aggregate (`go test ./...`); most `internal/*` packages 87–96%, `cmd/gomddoc` 76.1%
-- **Source LoC:** ~8,025 (production) + ~19,232 (tests)
-- **Latest findings:** §9 (14th pass). Sections 1–8 are the 13th-pass record, retained for history.
+- **Go Version:** 1.26 (toolchain 1.26.5)
+- **Coverage:** 88.1% product code — **above the 87% target**. The commonly-quoted 82.7% is an
+  artifact: it includes the untracked `docs/skills/favicons/scripts` package (0%, 148 stmts) and the
+  `internal/testutil/*` helpers. Excluding `docs/skills` alone → 87.2%; excluding both → 88.1%.
+- **Source LoC:** ~12,785 (production) + ~27,311 (tests)
+- **Latest findings:** §10 (15th pass). Sections 1–8 are the 13th-pass record and §9 the 14th-pass
+  record, both retained for history.
 
 ---
 
@@ -486,3 +490,796 @@ All items below were addressed in the 14th pass (concluded 2026-06-16):
 - `buildNavItems` deep-copies the nav tree per request (§9.3) — O(total pages) allocations per view.
 - Double markdown parsing for enrichment + rendering (§9.8) — a bounded response-body cache would also
   remove per-hit re-render/recompress.
+
+---
+
+## 10. 15th Pass — Fresh Review (2026-07-29)
+
+- **Reviewers:** 6 parallel agents (performance, security incl. supply chain, Go idioms/code quality,
+  duplication & serve-build parity, test coverage & quality, documentation drift) + independent
+  manual reproduction.
+- **Scope:** whole codebase, with emphasis on territory never reviewed before — the release and
+  distribution pipeline (GoReleaser, `scripts/install.sh`, Dockerfile, GitHub Actions), and the
+  git provider's concurrency model.
+- **Linters:** `make lint -j8`, `go vet`, `staticcheck`, `gosec`, `gocritic` — **all clean, zero
+  findings**. `go test -race ./...` — clean. Every finding below came from manual reading.
+
+> **Verification note:** every HIGH below was reproduced against a running binary or confirmed by
+> reading the actual dependency source — not inferred. Findings are marked ✅ *reproduced* where a
+> command-line repro exists. Trust the verdicts here over raw agent output.
+
+### 10.1 HIGH — Security
+
+#### HIGH: `exclude` patterns are bypassable via clean URLs — excluded content is served ✅ reproduced
+
+`internal/resolve/resolver.go:30` — `resolve.Build` is the **only** content index not given
+`cfg.Site.Exclude`. Its three peers all take it (`cmd/gomddoc/pipeline.go:212,222,238`). So the
+resolver maps a clean URL to *every* file, excluded or not.
+
+`ContentExclusion` (`internal/server/middleware.go:94`) only inspects the **incoming** `r.URL.Path`,
+and `Handler.ServeContent` (`internal/server/handler.go:98-99`) feeds the resolver's output straight
+back into the provider with no re-check. `FilesystemProvider.ReadFile` does not check exclusions for
+regular files either. Exclude patterns match the *filename* (`TODO.md`); the served URL is
+*extensionless* (`/TODO`); the middleware never fires.
+
+`strip_extensions` defaults to `[".md"]` (`internal/config/config.go:204`) — **this is the default
+configuration.** Reproduced with `exclude: ["TODO.md", "drafts/"]`:
+
+| Request | Result |
+| ------------------ | -------------------------------------- |
+| `GET /TODO.md` | 404 ✅ correctly excluded |
+| `GET /TODO` | **200 — full file contents served** ❌ |
+| `GET /drafts/plan.md` | 404 ✅ |
+| `GET /drafts/plan` | 404 ✅ |
+
+- **Scope:** filename/extension-shaped patterns (`TODO.md`, `*.draft.md`) are bypassable.
+  Directory-prefix patterns (`drafts/`) are **not** — the prefix still matches the clean path.
+  Hidden (`.`-prefixed) paths are **not** — stripping `.md` from `.secret.md` leaves `.secret`.
+- **Why it is worse than a plain leak:** search, metadata and navigation all correctly omit the file
+  (`/api/search` for the canary returns `[]`), so the page is invisible in every listing while being
+  directly fetchable. The operator gets no signal.
+- **Also leaks into `build`** ✅ reproduced — `generateExtensionRedirects` (`cmd/gomddoc/build.go:616`)
+  iterates the unfiltered `resolver.AllMappings()` and emits `TODO.md` and `drafts/plan.md` as
+  meta-refresh stubs pointing at the live URLs. No content leaks, but the existence and names of
+  every excluded file are published — including the `drafts/` case that serve mode blocks.
+- **Fix:** thread `cfg.Site.Exclude` into `resolve.Build` and skip excluded files, matching the other
+  three indexes. Defence in depth: re-check `IsRestrictedPath(realPath)` in `handler.go` after
+  `resolver.Resolve`, and in `FilesystemProvider.ReadFile`.
+
+#### HIGH: shared `*object.Tree` mutated under a read lock — data race, unrecoverable crash ✅ confirmed in dependency source
+
+`internal/provider/git.go:372-373,386,393` and `internal/provider/gitfs.go:40,55,61`.
+
+```go
+g.mu.RLock()
+defer g.mu.RUnlock()
+...
+file, err := g.tree.File(cleanPath)   // git.go:386
+_, treeErr := g.tree.Tree(cleanPath)  // git.go:393
+```
+
+Both `File` and `Tree` funnel into `FindEntry`, which **mutates the receiver with no
+synchronization** — verified in the pinned `go-git/v5@v5.17.2` source,
+`plumbing/object/tree.go:129-133` (`t.t = make(map[string]*Tree)`), `:159` (`t.t[pathCurrent] = tree`),
+and `:184-186` → `buildMap()` writing `t.m`.
+
+`RLock` permits concurrent readers, so N simultaneous requests to a git-backed site all write the
+same maps. A concurrent map write is a runtime `throw()` — **not recoverable**, and there is no
+recovery middleware anywhere in the repo. Agent reproduced with `-race` (64 goroutines, one shared
+tree): `WARNING: DATA RACE ... object.(*Tree).FindEntry()`.
+
+CI is green because `TestGitProvider_EnsureCloned_ConcurrentAccess` (`git_test.go:1109`) exercises
+only `ensureCloned` and pre-populates `repo`/`tree`, so all 50 goroutines return at the first
+`RLock` — a concurrent `ReadFile` is never tested (see §10.7).
+
+- **Fix:** serialize tree access with a full `Mutex`, or stop sharing one tree (re-derive
+  `commit.Tree()` per operation).
+
+#### HIGH: `ensureCloned` reports success with a `nil` tree → nil-pointer panic
+
+`internal/provider/git.go:195-198,251,254`. `g.repo` is published at `:251` **before** commit/tree
+resolution can fail at `:254`, but the liveness predicate is `g.repo != nil`, not `g.tree != nil`.
+After any `resolveCommitLocked`/`cacheTreeLocked` failure (bad `#ref`, or `#main:missing-subdir`),
+the provider is permanently in a state where `ensureCloned` returns `nil` and `g.tree` is `nil`.
+`FindEntry`'s first statement writes `t.t`, so this panics rather than erroring. The same window
+exists between `ensureCloned` returning and `g.mu.RLock()` being taken, where `Close()` (`git.go:174`,
+`g.tree = nil`) can interleave.
+
+- **Fix:** assign `g.repo` only after the tree is cached; re-validate `g.closed`/`g.tree != nil`
+  under the `RLock` in `ReadFile`/`Stat`.
+
+#### MEDIUM: 15 govulncheck-reachable vulnerabilities; no vuln gate in CI ✅ reproduced
+
+`govulncheck ./...` → *"Your code is affected by 15 vulnerabilities from 4 modules."*
+
+| Module | Current | Fixed in | Count |
+| ---------------------------- | -------- | -------- | ----- |
+| `golang.org/x/crypto` (ssh) | v0.49.0 | v0.52.0 | 7 |
+| `github.com/go-git/go-git/v5`| v5.17.2 | v5.19.1 | 5 |
+| `github.com/go-git/go-billy/v5` | v5.8.0 | v5.9.0 | 2 (chroot escape) |
+| `golang.org/x/text` | v0.35.0 | v0.39.0 | 1 |
+
+`x/text` is the only **request-path-reachable** trace (`internal/text/text.go:22 TitleCase →
+cases.Caser.String → norm.Form.Properties`). The ssh/go-git ones need a configured git provider —
+still real exposure for git-backed deployments. All four are plain `go get` bumps. Dependabot only
+landed in `1ac1169`, so this is a one-time catch-up. `.github/workflows/ci.yml:34` runs only
+`make lint test` — add a `govulncheck` step or this recurs silently.
+
+#### MEDIUM: admin port serves `/metrics` and `/debug/pprof/*` unauthenticated ✅ reproduced
+
+`internal/server/admin.go:28` — no auth middleware in the constructor, and `--admin-port :18101`
+binds all interfaces, not loopback. Running with `--basic-auth-file` does **not** protect it:
+`curl http://localhost:18101/debug/pprof/cmdline` returns the full command line including the
+credential file path. `/debug/pprof/heap` dumps in-memory content — including excluded documents and
+parsed credential material. `/debug/pprof/profile` is a free 30s-CPU-burn DoS primitive.
+
+Real exposure rather than a nicety because the admin port is *documented* as the way to scrape
+metrics, so operators will expose it to a metrics network. Minimum fix: default the admin listener
+to `127.0.0.1`; gate `--pprof` behind the credential store. Secondary: the admin server sets only
+`ReadHeaderTimeout` — no `WriteTimeout`/`IdleTimeout`.
+
+#### MEDIUM: `install.sh` fails open on checksum verification, never verifies the cosign signature
+
+`scripts/install.sh:91` — when neither `sha256sum` nor `shasum` is present it `warn`s and
+`return 0`s. A `curl | sh` installer should `die`. An attacker who can influence the environment
+(minimal container, stripped `PATH`) downgrades to no verification and gets an unchecked binary
+installed with `install -m 0755`, sometimes via `sudo` (`:179`).
+
+Compounding: `SHA256SUMS` is fetched from the **same origin** as the archive (`:163-166`), so anyone
+who can serve a malicious tarball can serve a matching sums file. The `.sig`/`.pem` that
+`.goreleaser.yaml` produces are never downloaded or verified, despite the file header at `:11`
+claiming *"Checksums are also cosign-signed"* — which reads as a stronger guarantee than delivered.
+Minor: no `--proto '=https' --tlsv1.2` on the `curl` calls (`:38`, `:49`), so `-L` would follow a
+redirect to plain HTTP.
+
+Positives: `set -eu`, `mktemp -d` with `trap ... EXIT INT TERM`, strict OS/arch allowlists,
+shellcheck gating in CI.
+
+#### MEDIUM: release workflow actions pinned to mutable tags while holding `id-token: write`
+
+`.github/workflows/release.yml:9` scopes `contents/packages/id-token` exactly right. But every action
+is a mutable ref (`actions/checkout@v6`, `setup-go@v6`, `docker/*@v4`, `sigstore/cosign-installer@v3`,
+`goreleaser-action@v7` with `version: latest`). Any upstream tag repoint executes attacker code in a
+job holding an OIDC token capable of producing **valid Sigstore signatures over arbitrary
+artifacts**, plus write access to releases, GHCR, and `HOMEBREW_TAP_TOKEN`. Downstream signature
+verification would then succeed on a backdoored binary. Pin to full commit SHAs; pin goreleaser to an
+exact version.
+
+#### MEDIUM: unauthenticated bcrypt CPU amplification
+
+`internal/server/htpasswd.go:53` — the dummy-hash timing defence is correct and worth keeping, but an
+unauthenticated attacker controls how often it runs. Measured (cost-10, 100 requests at concurrency
+50): bad credentials **0.916s wall, 99% CPU** (~80ms server CPU/request) vs 0.186s with no
+`Authorization` header. ~10× amplification, no rate limit, no concurrency cap, no lockout. Consider a
+bounded semaphore around `Validate` or per-IP rate limiting on 401s.
+
+#### LOW — security
+
+- `.github/workflows/ci.yml` has **no `permissions:` block** — jobs inherit the default token scope
+  on `pull_request`. Add `permissions: contents: read`.
+- `FilesystemProvider` lacks the `fs.ValidPath` guard §9.9 added to the git provider
+  (`internal/provider/filesystem.go:68-77`). `normalizePath` leaves `../x` intact, `fs.Stat` returns
+  `fs.ErrInvalid`, which matches no sentinel in `classifyError` → **500** where the git provider
+  returns 404. Not a traversal hole (`io/fs` containment holds) but a half-applied hardening and a
+  "consistent behavior across code paths" violation.
+- MCP resource/prompt handlers skip the `maxArgLen` cap their tool siblings apply
+  (`internal/mcp/resources.go:76,101`, `prompts.go:115`); `search_docs` (`tools.go:109-121`) has no
+  query cap at all, unlike the HTTP handler's 500-rune truncation.
+- No max-file-size cap in `FilesystemProvider.ReadFile` (git enforces 50MB). Content is
+  author-controlled, so not an attack vector — but a stray large file is an unbounded per-request
+  allocation. `gitTreeFS` (`gitfs.go:76-88`) **bypasses** the git provider's own 50MB cap and copies
+  every blob 2–3× (`Contents()` string → `[]byte` → `io.ReadAll`).
+- Supply-chain nicety: `.goreleaser.yaml` signs checksums and Docker manifests but generates no SBOM
+  and no SLSA provenance. `before: hooks: - go mod tidy` (`:7`) can mutate `go.sum` during a release
+  build; `go mod download` + verify is the reproducible choice.
+
+### 10.2 HIGH — serve/build parity (static builds are materially different)
+
+All four reproduced by building and serving `testsite/` with `meta.domain` set and diffing output.
+
+#### HIGH: `Page.Path` keeps the `.md` extension in build ✅ reproduced
+
+`internal/server/handler.go:167` passes the *request* path; `cmd/gomddoc/build.go:432` passes the
+*file* path (`"/" + filePath`). `Page.Path` feeds `canonicalURL`, `og:url`, JSON-LD `@id`,
+`breadcrumbs`, `editURL` and hreflang. Measured on `guides/getting-started`:
+
+| | serve | build |
+| ------------------- | --------------------------------------- | ------------------------------------------- |
+| `rel="canonical"` | `https://example.com/guides/getting-started` | `…/guides/getting-started.md` ❌ |
+| `og:url` | `…/getting-started` | `…/getting-started.md` ❌ |
+| JSON-LD `@id` | `…/getting-started` | `…/getting-started.md` ❌ |
+
+The **same build** emits `<loc>https://example.com/guides/getting-started</loc>` in its own
+`sitemap.xml` (`internal/server/sitemap.go:121` uses `resolvedPagePath`) — so a static site advertises
+one URL in the sitemap and a different, self-contradicting canonical on the page. §9.2 extracted
+`BuildPageContext` to prevent divergence; the divergence moved into the *value* of `Path`.
+
+- **Fix:** run `filePath` through the resolver before building the context. This one change also
+  fixes the next two findings.
+
+#### HIGH: prev/next links absent from every static build ✅ reproduced
+
+`cmd/gomddoc/build.go:125` enables navigation explicitly *"needed for prev/next page links"*, but
+`Generator.PrevNext` (`internal/template/navigation/navigation.go:98`) looks up
+`cachedIndex[NormalizeRequestPath(currentPath)]`, and the index is keyed on **resolver clean paths**.
+Build passes `/guides/getting-started.md` → miss → `nil, nil`. Verified: serve renders
+`<link rel="prev">` and `<link rel="next">`; the built page renders **zero** prev/next markup. The
+feature is silently dead in every static build with `strip_extensions` (the default).
+
+#### MEDIUM: sidebar active/open-ancestor state absent from static builds ✅ reproduced
+
+Same root cause — `buildNavItems` (`cmd/gomddoc/pipeline.go:276-300`) compares
+`node.CompareClean(currentPath)` against the normalized `.md` path. Verified: serve renders
+`<details open>` ×1; build renders 0. Every page in a static build shows a fully-collapsed,
+unhighlighted sidebar.
+
+#### MEDIUM: `/sitemap-index.xml` is generated by build but 404s in serve ✅ reproduced
+
+`cmd/gomddoc/build.go:259-266` writes it; `internal/server/server.go:150-182` never registers it.
+`GET /sitemap-index.xml` → **404**. Documented as a live endpoint in
+`docs/guide/12-advanced/03-api-reference.md:161-164`.
+
+#### MEDIUM: per-language tag pages gated on a domain in build only
+
+`cmd/gomddoc/build.go:236` gates the per-language `emitTagPages` on `cfg.Site.Meta.Domain != ""`;
+`internal/server/server.go:177` gates the serve routes on `MetaIndex != nil && LocaleBundle != nil`
+with no domain condition. A multi-language site with no domain serves `/fr/tags/` fine but ships a
+build with those pages missing and every in-page tag chip pointing at a 404. Sitemap/feed legitimately
+need a domain; tag pages do not. (The *default*-language `emitTagPages` at `:188` has no domain check,
+so the divergence exists inside build mode too.)
+
+#### MEDIUM: the search UI ships in static builds with no backend
+
+Build runs with `EnableSearch` unset (`build.go:123-127`), but `config.FeatureEnabled` returns `true`
+for absent keys (`internal/config/features.go:15-23`), so every built page renders `#search-toggle`
+and inlines `search.mjs`, whose only data source is `fetch('/api/search?q=' …)`
+(`cmd/gomddoc/assets/shared/search.mjs:248`). Static hosts have no `/api/search` → Ctrl+K opens a
+permanently-empty box. Either force `search: false` into merged features during build, or emit a
+static index the script can fetch.
+
+### 10.3 HIGH/MEDIUM — correctness (affects both paths)
+
+#### HIGH: tag pages link to raw `.md` paths and drop the language prefix ✅ reproduced
+
+`see-also.html.tmpl` does it right (`{{ contentURL $doc.Path }}`, fixed in §9.2).
+`cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl:9` does not:
+
+```gotemplate
+<a class="tag-result-title" href="{{ $page.Path }}">{{ $page.Title }}</a>
+```
+
+Verified: `/tags/getting-started` → `href="/README.md"`. On serve every one of these is a 301 hop; in
+a static build it lands on a meta-refresh stub. On `/fr-FR/tags/guide` the link is **`/page.md`** —
+no `/fr-FR` prefix, because the language index stores paths relative to the language sub-FS, so the
+link resolves to the **English** page. `contentURL` is already in the partial func map
+(`internal/template/renderer.go:542`) — a one-line fix plus a lang prefix.
+
+#### HIGH: the bundled `default` theme forks `head-meta` and loses hreflang ✅ reproduced
+
+`cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl:1-7` exists explicitly *"to avoid
+duplicating the same ~20-line block in every head.html.tmpl"*, and **all 7** themes in
+`gomddoc-themes` call `{{ template "head-meta" . }}`. The bundled default theme does **not** —
+`partials/head.html.tmpl` re-implements canonical/feed/prev/next/og:*/twitter:* verbatim and is the
+only file in the repo that mentions neither `head-meta` nor `hreflang`. The one line it fails to copy
+is `{{ template "hreflang" . }}` (`head-shared.html.tmpl:30`), so the default theme — the one every
+new site starts on — emits **zero `<link rel="alternate" hreflang>` tags**. Deleting the duplicated
+block and calling `head-meta` fixes the SEO bug and removes ~20 duplicated lines.
+
+#### HIGH: language directories are indexed into the *default* pipeline
+
+`metadata.BuildIndex` and `navigation.buildTree` filter only via `SkipWalkEntry`/`IsRestrictedPath`;
+neither skips BCP 47 dirs. With one `fr-FR/page.md`, identically on serve and build:
+
+- default `sitemap.xml` contains `https://example.com/fr-FR/page` — duplicated in `fr-FR/sitemap.xml`
+  (duplicate-content signal to crawlers); default `feed.xml` and `/tags/guide` likewise include it.
+- default sidebar shows a directory labelled `Fr-Fr`.
+- build reports `markdown_files=4` for 3 source files: `fr-FR/page.md` is rendered **twice**, both
+  writing `fr-FR/page/index.html`. Correctness currently depends on walk ordering.
+
+Two behaviours presently *depend* on this leak and will break when it is fixed: per-language
+`redirect_from` (only the default pipeline gets `URLRedirects` — `server.go:250` vs the per-language
+handler at `:208-219`; `generateRedirectFiles` likewise default-only, `build.go:178`) and
+per-language extension redirects in build. Fix the leak and wire those per-language in the same change.
+
+#### HIGH: two declared-and-documented parameters are silently ignored ✅ verified
+
+- `internal/mcp/tools.go:227` — `handleGetTOC` never references `input`. `GetTOCInput.Path` is in the
+  generated JSON Schema (`tools.go:90-92`, `jsonschema:"subtree root path"`) and documented as
+  working in `docs/guide/04-mcp.md:187`. A client passing `path: "guide/"` gets the whole site back
+  with no error — the worst tool-contract failure mode, because the model believes it was scoped.
+- `cmd/gomddoc/pipeline.go` — `redirectFinderAdapter` ignores its path argument and calls
+  `navigation.FindFirstPage(navGen.Tree())`, a global DFS from the root. The contract
+  (`internal/server/handler.go:21-23`) is *"returns the first page path under **a directory**"*, so
+  `/guide/` with no index redirects to the **site's** first page, not the first page under `/guide/`.
+
+#### HIGH: six advertised environment variables are inert ✅ reproduced
+
+`internal/config/config.go:144` calls `cfg.Site.ApplyEnvOverrides()` — the **site-only** walker.
+`(*Config).ApplyEnvOverrides` (`:232`) exists but its only callers are tests. Kong exposes no
+equivalent flags, so `GOMDDOC_SERVER_DEV_MODE` and all five `GOMDDOC_SERVER_HTTP_*` vars silently do
+nothing — while `cmd/gomddoc/info.go:31-42` advertises every one of them via `config.EnvVars()`, and
+`docs/guide/02-configuration.md:492-503` documents them as *"only configurable via environment
+variables"*. Fix: call `cfg.ApplyEnvOverrides()` (which walks nested structs including `Site`).
+
+#### MEDIUM: `findRelatedDocs` bypasses the documented single source of truth for tag normalization
+
+`internal/metadata/index.go:266-270` states `NormalizeTags` is *"the single source of truth … so
+chips, links, related docs, and the index always agree."* `internal/enricher/markdown.go:139-157`
+instead type-asserts `[]any` (missing the `[]string` shape) and passes raw strings to `ByTag`, which
+only lowercases without trimming. Reproduced with `tags: ["  Deployment  "]`: the tag chip and
+`/tags/deployment` work, but the see-also section is **absent** (control run with the untrimmed tag
+renders 7 matches).
+
+#### MEDIUM: index pages appear in their own "related docs" — serve only
+
+`internal/enricher/markdown.go:147-148` — `currentPath` is `r.URL.Path` verbatim, so for `/guide/` the
+self-exclusion key is `/guide/` while the index stores `/guide/README`. Build passes `"/"+filePath`
+and is correct, so serve and build render different see-also blocks for every index page.
+
+#### MEDIUM: synthetic tag pages ignore site feature config and have no i18n switcher
+
+`internal/template/renderer.go:332-340,371-381` build a `PageContext` with **no `Features`** and `nil`
+languages. Content pages go through `config.MergeFeatures` (`internal/template/context.go:46`).
+Because `FeatureEnabled` treats `nil` as "all on", a site that disables `search`/`toc`/`katex` in
+`theme.features` gets them **silently re-enabled on tag pages only**. `nil` languages also means no
+language switcher and no hreflang on `/tags/*`.
+
+#### MEDIUM: git submodules classified as directories → `build` aborts
+
+`internal/provider/git.go:474`, `gitfs.go:131` — `isDir := !entry.Mode.IsFile()`. go-git's
+`filemode.IsFile()` is true for `Regular`/`Deprecated`/`Executable`/`Symlink`; the only non-file modes
+are `Dir` **and `Submodule`**. A gitlink yields `isDir == true`, `fs.WalkDir` descends, both
+`tree.File` and `tree.Tree` fail, and `cmd/gomddoc/build.go:353-355` turns the `fs.ErrNotExist` into
+`return fmt.Errorf("walk %s: %w", …)`, **aborting the whole build**. Should be
+`entry.Mode == filemode.Dir`, skipping submodules.
+
+#### MEDIUM: `.well-known` silently dropped from git-backed sites
+
+`internal/provider/gitfs.go:128` and `git.go:470` apply a blanket `strings.HasPrefix(entry.Name, ".")`
+filter, while `IsHiddenPath` (`exclusion.go:20-22`) carves out `.well-known` as an explicit RFC 8615
+exception that the filesystem provider honours. `gomddoc build` therefore omits `.well-known`
+entirely from a git-backed site. Direct `ReadFile` still works, which makes the divergence silent.
+The filter is duplicated verbatim in two places that must stay in sync.
+
+#### MEDIUM: search results nondeterministically ordered on ties
+
+`internal/search/index.go:296-298,351-353` — `candidates` is seeded from map iteration (randomized),
+and `slices.SortFunc` is pdqsort (not stable) with no secondary key. Ties are common: title matches
+score `3.0 * idf` ignoring `freq`, and a term present in every document has `idf = 0`, tying **all**
+candidates. Exactly the defect §9.4 fixed for `CompareTitles`. Fix both halves: seed from the ordered
+`posts` slice and add a path tiebreak. Same class: `internal/server/feed.go:118` sorts by mtime with
+no secondary key — pages sharing an mtime (universal after a fresh `git clone`) reorder between
+requests, producing spurious feed churn.
+
+#### MEDIUM: snippet body truncated on a byte boundary → invalid UTF-8
+
+`internal/search/index.go:146-149` — `maxSnippetBody = 8192` is **bytes**; the cut lands mid-rune for
+any non-ASCII document, and neither `generateSnippet` nor `truncateAtWord` re-aligns, so the partial
+sequence reaches the JSON response as U+FFFD. Same class as §9.4's query-truncation fix, missed for
+the body.
+
+#### MEDIUM: canonical URLs for non-root index pages lack the trailing slash the build serves
+
+`internal/seo/url.go:37-42` — `normalizePagePath` reduces `/docs/README.md` to `/docs`; only the root
+becomes `/`. But build writes `docs/index.html`, i.e. the real URL is `/docs/`. Every non-root index
+page gets a canonical and a sitemap `<loc>` that redirect-hop. The slash should be added whenever
+`defaultIndex` was stripped, not only at the root.
+
+#### MEDIUM: config loading is silently permissive
+
+`internal/config/config.go:209-228` `yaml.Unmarshal`s the whole file into `SiteConfig` with no
+`KnownFields`. A `config.yml` written with a `site:` wrapper — or with top-level `features:` instead
+of `theme.features` — parses successfully and applies **nothing**: no warning, no error. Confirmed:
+`meta.domain` under a `site:` key produced a `robots.txt` with no `Sitemap:` line and no
+`sitemap.xml`. `yaml.Decoder` + `KnownFields(true)` turns a silent no-op into an actionable error.
+(This also cost time during this review pass.)
+
+#### MEDIUM: divergent frontmatter parsers
+
+`internal/text/frontmatter.go:11-17` vs `internal/metadata/index.go:326-363`. `extractFrontmatter`
+tolerates leading whitespace and an indented closing `---`; `StripFrontmatter` requires both at
+column 0. For those inputs the index extracts frontmatter but the stripper does not, so **raw YAML
+flows into the search corpus, the markdown passthrough response, and every MCP read path**.
+
+### 10.4 MEDIUM/LOW — Performance
+
+#### HIGH: `findRelatedDocs` is O(co-tagged pages) per request with a full `PageInfo` copy per tag
+
+`internal/enricher/markdown.go:133-184` + `internal/metadata/index.go:243-253`. `ByTag` materializes a
+full `[]PageInfo` (~104 B each) per tag; `findRelatedDocs` then builds a `seen` map over all of them,
+sorts the whole candidate list, and discards everything past index 9. Runs in `Enrich` on **every**
+markdown request and for **every file** in a static build (making builds O(n²) in co-tagged pages).
+
+| corpus | ns/op | B/op | allocs/op |
+| ------ | ------- | ------- | --------- |
+| baseline (no metaIndex) | 13,236 | 16,680 | 181 |
+| 100 pages | 39,257 | 56,209 | 420 |
+| 500 pages | 149,805 | 231,157 | 1,228 |
+| 2000 pages | 550,190 | 885,934 | 4,245 |
+
+At 2000 pages related-docs alone is ~40× the enrichment baseline and dominates request latency.
+**Fix:** add an allocation-free accessor mirroring the existing `CountByTag`, and keep a top-N heap
+instead of collect-all-then-sort-then-truncate.
+
+#### HIGH: search builds a `map[int][]posting` over the entire posting list, per query token
+
+`internal/search/index.go:278-322`. Rebuilt from scratch on every query, for every token, over the
+**whole** posting list — including documents the AND-intersection immediately discards. pprof:
+`Search` accounts for **77.6%** of query allocations (2000 docs: 493µs, 591 KB, 4,824 allocs).
+
+The key fact: phase 3 of `BuildIndex` (`:194-211`) appends postings in ascending `docIdx` order, so
+posting lists are **already sorted** — intersection is a linear merge needing zero maps. Compute `df`
+by counting distinct `docIdx` transitions during the scan.
+
+#### MEDIUM: the compression buffer pool is poisoned after the first request ✅ verified
+
+`internal/server/compression.go` — `flushBuffer` sets `cw.buf = nil` on both branches, and `Close`
+does the same, so by the time the deferred `returnBuf` runs `cw.buf` is **always** `nil`:
+
+```go
+if cap(cw.buf) <= maxPoolBufferSize {  // cap(nil) == 0, always true
+    *cw.bufPtr = cw.buf[:0]            // stores a nil slice back into the pool
+    bufPool.Put(cw.bufPtr)
+}
+```
+
+The pool is refilled with zero-capacity slices forever — every request re-grows from scratch, and
+`maxPoolBufferSize` is dead code. `New` allocates `make([]byte, 0, 4096)`, so the intent is clear.
+**Fix:** reset the length instead of niling (or nil *after* `returnBuf`). Separately, `Write` copies
+the entire body via `append` even though `serveWithETag` delivers it in a single call — skip
+buffering when the first `Write` already exceeds `minCompressionSize`.
+
+#### MEDIUM: breadcrumbs generated twice per request ✅ verified
+
+`cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl:20` calls `breadcrumbs .Page.Path`, and
+`partials/head.html.tmpl:1018` → `{{ template "jsonld" . }}` → `jsonLD .Page` →
+`internal/template/renderer.go:565 generateJSONLD` calls `breadcrumbGen.Generate(page.Path)` again.
+`Generate` calls `g.isDir()` **per path segment**, and that closure is a real provider `Stat` syscall
+(`cmd/gomddoc/pipeline.go:166-169`), plus `text.TitleCase` per segment. Measured: 2,158 ns / 2,184 B /
+23 allocs per `Generate` *excluding* the syscalls. Compute once per render and share. (This also
+subsumes the `cases.Title` `sync.Pool` idea already marked Won't-Fix in §5 — that decision stands.)
+
+#### MEDIUM: `findBestWindow` lowercases ~50 substrings per search result
+
+`internal/search/snippet.go:112` — `strings.ToLower(content[pos:end])` inside a ~50-iteration sampling
+loop, allocating a fresh copy each time. **13.9%** of all search-query allocations. Fix: lower the
+document body once per doc, or store a pre-lowered snippet body in the index at build time.
+
+#### MEDIUM: MCP TOC rebuilds the nav tree per call and re-opens every markdown file ✅ verified
+
+`internal/mcp/tools.go:233-234` constructs a fresh `navigation.NewGenerator` per call, making its
+`sync.Once` cache useless, and never installs `SetTitleLookup` — so `buildTree` falls through to
+`extractTitle`, which **opens and line-scans every `.md` file in the site** on every
+`get_table_of_contents` call. §9.8 eliminated exactly this for the HTTP path; the MCP path was left
+behind even though `s.deps.MetaIndex` is right there. (The pipeline's cached generator at
+`cmd/gomddoc/pipeline.go:222` is never passed into `ServerDeps`.)
+
+#### MEDIUM: compression and metrics cover only 2 of 8 route groups ✅ reproduced
+
+`internal/server/server.go:228,259` — the only two `Compression` occurrences, both content subgroups.
+Measured:
+
+```
+GET /guides/getting-started  Accept-Encoding: gzip → Content-Encoding: gzip
+GET /tags/                   Accept-Encoding: gzip → NOT COMPRESSED (51 KB HTML)
+GET /sitemap.xml             Accept-Encoding: gzip → NOT COMPRESSED
+```
+
+`/api/search`, `/tags/`, `/tags/{tag}`, `/sitemap.xml`, `/feed.xml`, `/_assets/` (CSS/JS) and
+`/robots.txt` are never gzipped — and per CLAUDE.md's own rule never get `Vary: Accept-Encoding`.
+These are the *most* compressible payloads on the site. `http_requests_total` likewise counts content
+requests only, under-reporting real traffic. `RouteGroup.Subgroup` composes cleanly; hang these off a
+subgroup carrying at least Compression + Metrics.
+
+#### LOW — performance
+
+- **Inline-asset cache stores raw `[]byte`** (`internal/template/inline_asset.go:36-62`) — `readAsset`
+  caches bytes, then each call does `template.JS(data)`/`CSS`/`HTML`, a full copy per render
+  (~22.8 KB/page across 7 inlined JS assets). Cache the converted value.
+- **Resolver does two full filesystem walks at startup** (`internal/resolve/resolver.go:48-115`) —
+  one for directories, one for files. Collapse into one, branching on `d.IsDir()`.
+- **`HasTemplate` does an `fs.Stat` per request** (`internal/template/renderer.go:735-739`, via
+  `ResolveLayout` at `handler.go:175`). The template set is fixed after startup; memoize, gated on
+  `cacheAssets`.
+- **`emitTagPages` renders serially** (`cmd/gomddoc/build.go:733-772`) while the markdown walk is
+  parallel — a serial tail on a tag-heavy build. Wrap in an errgroup at `runtime.NumCPU()`.
+- **Tag pages rebuilt from scratch per request** (`internal/server/tags_html.go`) — `ByTag` copy +
+  sort + full render, uncapped and uncached, on an index that is immutable after startup.
+- **Corpus read twice at startup** — `metadata.BuildIndex` and `search.BuildIndex` each independently
+  `fs.ReadFile` every `.md`. Merging into one read pass would halve startup I/O.
+- **`request-scoped context.Background()`** (`cmd/gomddoc/pipeline.go:166-169`) — the breadcrumb
+  `isDir` closure runs on the request path but is uncancellable, because
+  `breadcrumb.IsDirFunc` drops the context. For a git provider this can block on a clone no client
+  can cancel. Relatedly, `internal/provider/git.go:202-247` runs the clone under the write lock driven
+  by a *request* context, so one client navigating away aborts a provider-global operation for
+  everyone queued behind `g.mu.Lock()`.
+
+### 10.5 Documentation drift
+
+§9.6's fixes **held** — CLAUDE.md's package tree still matches all 16 `internal/` packages, `make run`
+still shows its argument, MCP counts are still 6/4/3. One §9.6 fix was *incomplete rather than
+regressed*: the theme-count correction was applied to `05-theming-and-assets.md` only.
+
+**HIGH — actively wrong; a new user following these fails immediately:**
+
+| # | Doc | Reality |
+| --- | ---------------------------------------- | ------------------------------------------------- |
+| D1 | `README.md:118,377` documents `serve --dev` | ✅ verified: `unknown flag --dev`. Dev mode is reachable only via `preview` |
+| D2 | `README.md:118` uses `-d ./testsite` as the directory | ✅ verified: `-d` is `--domain` (`serve.go:20`); fails with *"domain should not include path"*. Same bug in the k8s manifest at `09-deployment.md:229`, which also omits the subcommand — the pod crash-loops |
+| D3 | `02-configuration.md:492-503` documents 5 `GOMDDOC_SERVER_HTTP_*` vars + `DEV_MODE` | ✅ verified inert — see §10.3 |
+| D4 | `05-theming-and-assets.md:128,261,397` + website + themes docs document a `navigation` template function | The FuncMap (`renderer.go:528-550`) has 13 entries and no `navigation`. A theme calling it fails to parse |
+| D5 | `08-observability.md:26-27` — `--admin-port` removes health *"from the main port entirely"* | ✅ verified: `/health/live` returns 200 on **both** ports. Only `/metrics` and pprof are gated (`server.go:93-97` vs `:116-120`) |
+| D6 | `docs/custom-renderers.md` teaches `Renderer` with a dead interface | All 9 examples are non-compiling. The real contract is `InputMimeTypes`/`OutputMimeTypes`/`Render(ctx, content, *enricher.EnrichmentData)`. `docs/guide/` has **zero** replacement coverage |
+| D7 | `09-deployment.md:105-118` — *"multi-stage Dockerfile"*, `docker build -t gomddoc .` | The Dockerfile is 11 lines, single-stage, and `COPY gomddoc /gomddoc` expects a GoReleaser-built binary. A fresh clone cannot build it. The `docker run` example also ends in a bare `gomddoc`, which exits non-zero (no default command) |
+| D8 | `02-configuration.md:88` — README.md generates *"both `README.html` and `index.html`"* | `prettyOutputPath` (`build.go:600-604`) emits only `<dir>/index.html`; `:616-622` explicitly skips the redirect stub |
+| D9 | `03-api-reference.md:161-164` lists `GET /sitemap-index.xml` as a live endpoint | Build-only — see §10.2 |
+| D10 | *"8 built-in themes"* in `architecture.md`, `decisions.md`, `roadmap.md`, `guide/README.md:14`, `10-search.md`, `11-seo.md` + 6 website files | ✅ verified: `cmd/gomddoc/assets/themes/` contains only `default`. Only `05-theming-and-assets.md:28` says this correctly |
+| D11 | `gomddoc-website/docs/distribution.md:75-97` — wrong archive filenames; advertises Windows binaries | `.goreleaser.yaml:14,23-24` builds linux/darwin × amd64/arm64 only; `install.sh:62` hard-`die`s on any other OS |
+| D12 | Top-level `features:` documented in `02-markdown-extensions.md:205-210` + website | Features live at `theme.features`; the top-level key is silently dropped (see the `KnownFields` finding in §10.3) |
+| D13 | `docs/seo-competitive-analysis.md:18-32` claims canonical URLs, OG, robots and sitemap are **absent**; `:605` recommends skipping hreflang | All shipped. ~14 of its 18 recommendations are implemented. Reads as a current gap analysis with no "superseded" marker |
+| D14 | `gomddoc-website/docs/distribution.md:36-38` shows plain `https://…git` as a Git source | Only `git://`, `git+ssh://`, `git+https://` are accepted (`config.go:379-383`) |
+| D15 | `gomddoc-themes/themes/CLAUDE.md:94,150,167` reference `color-chip.mjs` | The file is `gmd-color-chip.mjs`. Copy-paste produces 404s |
+
+**MEDIUM — incomplete or stale (abridged):** README's *"~8MB binary"* (actually 32 MB unstripped,
+22 MB with GoReleaser's `-s -w`); `01-http-behavior.md` overstates Cache-Control, ETag and
+compression as universal (all three are scoped — see §10.4); `13-internationalization.md` documents
+3 locale layers (there are 2), 20 translation keys (there are 26), and preview on `:8080` (it is
+`:auto`); `07-security.md:54` names a `BlockHiddenPaths` middleware and `provider.IsHiddenPath` — the
+real names are `ContentExclusion` and `provider.IsRestrictedPath`; the website has **no CLI reference
+page** (6 subcommands, 20+ flags) and omits `language`, `exclude`, `strip_extensions`, `search.index`,
+`theme.vars`, `theme.features`, `meta.robots`, `server.admin_port`; the website says 11 template
+functions (13) and omits the `.gomddoc/partials/` override layer; `gomddoc-themes` has no root README;
+stale "Go 1.25" references (go.mod says 1.26); `CLAUDE.md:29-36` omits `docs/plans/`, and four plan
+documents are misfiled under `docs/specs/`.
+
+**Godoc:** 21 of 22 packages have **no package doc comment** — only `internal/resolve/resolver.go:1`
+has one. There is no `.golangci.yml`, so no `revive`/`stylecheck` rule enforces it.
+
+### 10.6 Test coverage & quality
+
+**The 87% target is already met** (88.1% product code) — see the header. No coverage-chasing work is
+needed; the debt is in test *quality*.
+
+#### The untracked `docs/skills/` package ✅ verified
+
+`docs/skills/favicons/scripts/favicon-check.go` is a standalone `package main` (484 lines) — Claude
+Code agent tooling, not product code — that **is** in the module: `go list ./...` includes
+`github.com/monolithiclab/gomddoc/docs/skills/favicons/scripts`, and its 148 uncovered statements are
+the sole reason aggregate coverage reads below target. Because CI checks out without the directory,
+local `make test` and CI compute permanently different totals. It also carries a
+`.claude/settings.local.json` permission allowlist invisible to `git status` (`.gitignore` ignores
+`.claude/`). **Decide:** gitignore it (consistent with the `.agents/` ignore from `1ac1169`), move it
+outside the module root, or commit it and add `docs/` to `.covignore` (which currently lists only
+`testutil/`).
+
+#### HIGH: unfalsifiable assertions ✅ verified
+
+- `internal/server/sitemap_test.go:57,61` assert `Contains(body, "https://docs.example.com/")` and
+  `".../docs/"`, labelled *"README.md stripped"*. Both are **prefixes** of
+  `https://docs.example.com/docs/guide.md`, which line `:53` already proved is present. **Neither
+  assertion can ever fail.** Same defect at `:215` and `feed_test.go:46`.
+- `internal/server/feed_test.go:103` — `TestGenerateFeed_LimitsEntries` asserts
+  `if count > feedMaxEntries`. **One-sided:** a feed emitting *zero* entries passes. Should be `!=`.
+- `feed_test.go` never asserts entry **ordering** despite staggering ModTimes; reversing the sort is
+  invisible. Neither `TestGenerateSitemap` nor `TestGenerateFeed` `xml.Unmarshal`s its output, unlike
+  `TestGenerateSitemapIndex` (`:238`), which does it correctly.
+- `internal/metadata/index_test.go:340` — `TestBuildIndex_CancelledContext` asserts
+  `if err != nil && !errors.Is(err, context.Canceled)`, so it **passes when `err == nil`**.
+
+#### HIGH: static-build tests are existence-only, over a parallel write path
+
+`cmd/gomddoc/build.go:376,510` write output from an errgroup; the tests never read what was written.
+`TestBuildCmd_EmitsTagPages` (`build_test.go:960`) makes three `os.Stat` calls and **zero byte reads**;
+`TestBuildCmd_Run_WithSubdirectories` (`:650`) five. If the errgroup raced and wrote one page's
+content into another's `index.html` — the canonical bug for parallel per-file rendering — green.
+`TestBuildCmd_Run_MultiLanguage` (`:990`) `os.Stat`s `fr-FR/sitemap.xml` but never inspects it, so a
+per-language sitemap full of English URLs is invisible. `feed.xml` content is never asserted anywhere.
+**This is precisely the failure class that shipped as a real bug in §9.5/§9.7.**
+
+#### HIGH: silent-degradation branches untested
+
+`cmd/gomddoc/pipeline.go:128-130,134-136,140-143` — all three `slog.Warn(...) + continue` paths are
+uncovered. These are the exact branches that hid the §9.7 `fs.Sub`/`fs.StatFS` bug. The bug was fixed;
+**the silent-failure mechanism that hid it was not tested.** Same class:
+`internal/metadata/index.go:92-101` (concurrent-parse silent skips) and `cmd/gomddoc/build.go:218-223`,
+where per-language failures `slog.Warn; continue` while default-language failures `return err` — a
+build can exit 0 having produced no French site. (`build.go:221-223` also aggregates 3 of 4 counters,
+silently dropping `skippedFiles`.)
+
+#### HIGH: `navigation.Generator`'s lazy cache has zero concurrent coverage
+
+`internal/template/navigation/navigation.go:60-63` — `cacheOnce sync.Once` guarding `cachedTree`/
+`cachedPages`/`cachedIndex`, populated lazily from concurrent HTTP handlers. `navigation_test.go`
+contains no goroutines, so `-race` never observes it. Highest-risk untested concurrency primitive in
+the repo. Same gap, lower blast radius: `internal/server/lazybytes.go:17`,
+`internal/template/themevars.go:15`, `internal/seo/url.go:18`. The pattern to copy is
+`internal/template/renderer_test.go:1553` — 50 goroutines on a cold cache asserting exactly one `Set`.
+
+**MEDIUM:** MCP `ExcludePatterns` is never set in any MCP test (grep count: 0), so dropping it from
+all five call sites passes the suite — and `MCPCmd.Run` is at 0% with no `cmd/gomddoc/mcp_test.go`, so
+the field has no coverage at either end of its wire. `ServeCmd.setup()`'s basic-auth branch
+(`serve.go:46-52`) is never exercised with `BasicAuthFile` set across 14 call sites — dropping
+`AuthStore:` from the options literal yields a silently unauthenticated server with a green suite.
+SSH auth: the `PublicKeysCallback` closure never runs (`TestSetupSSHAuth_WithValidKey` generates a
+real key and never reads it; it and the nonexistent-key test assert the *identical* thing), and
+`TestCreateHostKeyCallback_WithKnownHosts` never invokes the callback — so whether the fail-closed
+host-key control accepts a matching key and rejects a mismatched one is untested. `cloneLocked` is at
+16.7%; `TestGitProvider_EnsureCloned_ConcurrentAccess` pre-populates `repo`/`tree`, so the clone-once
+race is never exercised — which is why §10.1's tree race is invisible to CI.
+`internal/metadata/index.go:157-160` — the `case string:` date branch has **no test** (tests only use
+unquoted `date:`, which YAML decodes as `time.Time`); quoted `date: "2025-01-15"` is an ordinary
+frontmatter shape.
+
+**Tests that assert nothing** (recommend deleting rather than leaving as false confidence):
+`build_test.go:685` (`if err != nil { t.Logf("acceptable") }` — both branches pass),
+`preview_test.go:183` (constructs `&PreviewCmd{Open: true}`, asserts `cmd.Open`),
+`pipeline_test.go:80` (46 lines of setup, zero properties asserted),
+`mcp/server_test.go:437` (`Contains(text, "related")` — all three return paths contain it).
+
+**Helper duplication (CLAUDE.md violation):** the `.gomddoc/config.yml`-in-`t.TempDir()` pair is
+inlined 8× in `internal/config` (no `testhelpers_test.go`); the default-layout MapFS is re-inlined 37×
+in `internal/template`; `internal/server` *has* a canonical `setupTestRenderer` yet re-inlines its
+body 4× plus two near-duplicate named helpers. **Latent bug:** `server_test.go:55-57` and `:146-148`
+hand-roll the registry and **omit `NewMarkdownPassthroughRenderer()`**, so those two tests exercise a
+different registry than every other server test. `mime.AddExtensionType(".md", …)` appears in 4
+`init()`s with **inconsistent values** (`navigation_test.go:14` registers `"text/markdown"`, the other
+three `"text/markdown; charset=utf-8"`).
+
+**Missing benchmarks on hot paths:** `metadata.BuildIndex` (runs at every startup; `search` has one,
+`metadata` does not), `provider` (no benchmarks at all), `resolve` lookup, `template/breadcrumb`,
+`locale.Bundle.T`. `make bench` works; 22 benchmarks across 10 packages; the §9.3 fixes are guarded
+(`BenchmarkTree` 2.16 ns, `BenchmarkPrevNext` 58 ns, 0 allocs, flat across 50/200/1000 pages).
+
+### 10.7 LOW — code quality (abridged)
+
+- **Four different 404 shapes**: themed HTML (`handler.go:218-225`), plain-text *"File not found"*
+  (`middleware.go:99-105`), `http.NotFound` (`tags_html.go`, `assets_handler.go`), and Go's default
+  mux 404. A client cannot distinguish "excluded" from "missing"; only one honours the theme.
+- **`/api/tags/{tag}` and `/tags/{tag}` disagree on unknown tags** — 200 with `[]`
+  (`metadata.go:43-47`) vs 404 (`tags_html.go:37-41`). Same index, same question, two answers.
+- **Cache headers only on some endpoints** — `/sitemap.xml`, `/feed.xml`, `/robots.txt` hand-roll
+  `Set`+`WriteHeader`+`Write` with no ETag and no Cache-Control, even though all three are
+  `lazyBytes`-cached immutable byte slices, i.e. ideal ETag candidates.
+- **Dead code:** `navigation/flatten.go:5 FlattenPages` (duplicates `appendLeaves`),
+  `template/renderer.go:743 ClearCache`, `assets/overlay.go:14 NewOverlayFS` (zero callers in all
+  three repos), `locale/detect.go:43 ExtractLangFromPath` (last call site removed by §6),
+  `locale/bundle.go:38 DefaultLang`, `negotiate/accept.go:50 (MediaType).String()`,
+  `mcp/server.go:23 ServerDeps.SiteName` (populated by both call sites, never read),
+  `server/server.go:47 HTTPServer.handler` (assigned at `:284`, never read — pins the whole handler
+  graph for the server's lifetime).
+- **Aliasing:** `metadata.ByPath`/`ByTag` return values aliasing the index's `Tags` slice and `Meta`
+  map — `clonePage` exists and is used by `AllPages` (§9.8) but not here, and
+  `search/index.go:381` documents the opposite. `template/context.go:32-38` — `meta` aliases
+  `in.Enrichment.Metadata`, so `meta["title"] = …` mutates the caller's `EnrichmentData`; safe only
+  because enrichment is per-request, and becomes a race the moment the §9.8 response cache lands.
+- **`fs` contract violations:** `provider/overlay_fs.go:53,84,125,185` return bare `fs.ErrNotExist`
+  where `io/fs` requires `*fs.PathError`, so `errors.As` consumers lose the path.
+  `gitfs.go:78` leaks a raw go-git error out of `Open`.
+- **Latent panics:** `search/snippet.go:100-103` guards `pos > 0` instead of `pos < len(content)` —
+  brute-forced to `index out of range` with `content="あ", windowSize=1`; unreachable today but
+  `generateSnippet` takes `maxLen` as a parameter. `renderer/markdown.go:128` — unchecked
+  `doc.(*ast.Document)` assertion in the hot request path.
+- **Unwrapped errors** (CLAUDE.md requires `%w`): `template/renderer.go:306-309,410-412,430-436`.
+  `:434-436` discards the *primary theme's* parse error entirely and surfaces only the fallback's, so
+  a broken theme partial reports as a missing default partial.
+- **Ignored errors:** `build.go:324` uses `err == io.EOF` not `errors.Is`;
+  `provider/git.go:118-121,318-321` collapse four distinct `parseGitURL` messages into a bare sentinel
+  (and this is the failure that produces §10.1's nil-tree state, so the cause matters);
+  `renderer/markdown_passthrough.go:49-56` drops a `yaml.Marshal` error with no log;
+  `resolve/resolver.go:48-51` silently tolerates an unreadable subtree (symptom: 404s on clean URLs,
+  no log line) where both peer index builders wrap and return.
+- **Misleading comments/naming:** `search/snippet.go:255` says *"using insertion sort"* over a
+  `slices.SortFunc` body (CLAUDE.md bans manual insertion sorts — the comment claims one exists);
+  `snippet.go:14` calls byte offsets "character range" in the one file where that distinction is the
+  entire difficulty; `search/tokenizer.go:60,68` says "shorter than 2 characters" over a byte check;
+  `template/renderer.go:647 filterTOCNodes(nodes, min, max)` shadows the `min`/`max` builtins CLAUDE.md
+  lists as target idioms; `mcp/section.go:27,104` shadows the imported `internal/text` package (the
+  enricher solved the same collision with `txt "…/internal/text"`).
+- **`locale.IsBCP47Dir` accepts only `ll-CC`** (`detect.go:8-23`) — `fr`, `en`, `zh-Hans`, `es-419`
+  are all valid BCP 47 and all rejected. The name promises more than the implementation delivers.
+- **Misc:** `.md`/`.markdown` MIME types are registered in `internal/renderer` (`markdown.go:28-29`),
+  a package `resolve` does not import — so the entire clean-URL feature depends on `internal/renderer`
+  happening to be linked in; move them next to the `.mjs` registration in `negotiate/mime.go`.
+  `exclusion.go:81-86`'s trailing-`/` branch uses `HasPrefix`, so `drafts/*/` matches nothing and
+  **fails open**, contradicting its own doc comment. `negotiate/accept.go:83-85` sorts by `q` only,
+  ignoring RFC 9110 §12.5.1 specificity, so `Accept: */*, text/markdown` resolves at `*/*`.
+  `build.go:286-289 guardOutputDir` returns `nil` on *any* stat error, so a permission error reads as
+  "nothing to guard". No `*.test` entry in `.gitignore` (a 19 MB `template.test` artifact appeared in
+  the working tree during this review).
+
+### 10.8 `docs/architecture.md` drift
+
+| Line | Claim | Reality |
+| ---- | -------------------------------------------- | ------------------------------------------- |
+| 230, 264 | `navigation` template func | Does not exist (see D4) |
+| 238 | `assetURL` *"(validates existence)"* | `return "/_assets/" + name` — no validation |
+| 386 | ContentExclusion *"uses `provider.IsHiddenPath()`"* | Uses `IsRestrictedPath()`; both exist, the doc names the wrong one |
+| 391-398 | Route table | Omits `/feed.xml`, `/tags/`, `/tags/{tag}`, all `/{lang}/*` variants, and the per-language content subgroups |
+| 404 | *"8 bundled themes"* | One (see D10) |
+| 505 | sitemap-index | Should note serve does not expose it |
+
+### 10.9 Verified clean
+
+- **All linters clean** — `gofmt`, `go vet`, `staticcheck`, `golangci-lint`, `gosec`, `gocritic`, zero
+  findings repo-wide. `go test -race ./...` clean (602 test functions, one conditional skip).
+  No `TODO`/`FIXME`/`XXX`/`HACK` in any non-test file.
+- **Path containment** — `..`, `%2e%2e`, `..%2f`, double-encoded and backslash variants all 404 or
+  redirect within the root. `IsHiddenPath` 100% covered, `SkipWalkEntry` 100%, `IsRestrictedPath`
+  100%. `fs.ValidPath` guards on the git provider; `os.DirFS`+`fs.Sub` used correctly; `path` not
+  `filepath` throughout `fs.FS` code (`filepath` appears only for genuine OS operations).
+- **`io/fs` spec compliance** — `gitDirFile.ReadDir` is fully correct: `n <= 0` returns all remaining
+  with `nil` error (never `io.EOF`), `n > 0` returns `io.EOF` only when exhausted, both branches
+  `slices.Clone`.
+- **goldmark concurrency** — sharing one `goldmark.Markdown` across requests is safe in both the
+  renderer and the enricher: fresh `parser.Context` and `text.Reader` per call, no per-request write
+  to a shared field.
+- **Template caching** — `sync.Map` + `singleflight` with a correct double-check inside the flight;
+  pooled buffers reset before `Put`, `slices.Clone` before return. The §5 `Configure` Won't-Fix holds.
+- **Index build concurrency** — both `BuildIndex` implementations pre-size results and have each
+  goroutine write a distinct index. No shared map writes, no slice growth, no race. Only `Search`'s
+  candidate seeding leaks map order (§10.3).
+- **Auth** — bcrypt cost and the dummy-hash constant-time path are correct; 401s verified on `/`,
+  `/_mcp/`, `/api/search`, `/sitemap.xml`, `/tags/`. Unauthenticated by design and appropriately so:
+  `/health/*`, `/robots.txt`, `/_assets/`.
+- **Git provider** — no `exec.Command` anywhere (pure go-git); scheme allowlist; shallow single-branch
+  clone with a 60s timeout; `createHostKeyCallback` **fails closed** when known_hosts is unavailable.
+- **Container** — distroless `static-debian12:nonroot`, binary only, no secrets in layers, non-root by
+  default. Absent `HEALTHCHECK` is correct for distroless. Release workflow permissions are scoped
+  exactly to need, and the tap-token preflight is a genuinely good failure-mode design.
+- **Metrics cardinality** — labels are `{method, status}` only, and `MethodFilterMiddleware` is
+  chained *outside* `Metrics`, so unbounded method strings cannot reach the label set.
+- **Sorting/idioms** — every sort uses `slices.SortFunc`/`SortStableFunc` with `cmp.Compare`/
+  `time.Compare`; no manual insertion sorts. Modern Go is genuinely current throughout
+  (`slices`/`maps`/`cmp`, `SplitSeq`/`FieldsSeq`, `atomic.Pointer[T]`, range-over-int, `b.Loop()`,
+  `slog`). Zero `interface{}`. `yaml.Marshal` for all YAML output. Pointer receivers consistent on
+  every type. No package-level mutable state outside sentinels, pools and immutable regexps.
+- **Sentinel errors** — all classified with `errors.Is`, `Unwrap` wired so `errors.As` works
+  end-to-end. `classifyCloneError` prefers typed matching, falling back to strings only for the two
+  cases go-git does not export.
+- **serve/build parity that *does* hold** (byte- or field-compared on `testsite/` and an i18n
+  fixture): `robots.txt`; `sitemap.xml` `<loc>` sets, ordering and `<lastmod>`; `feed.xml` entry ids,
+  ordering and 20-entry cap; per-language sitemap/feed when a domain is set; `/tags/` and `/tags/{tag}`
+  HTML; the 404 page (shared `BuildErrorContext`); rendered markdown body, heading anchors,
+  admonitions, colour chips, `<gmd-*>` components; TOC markup; tag chips on content pages; see-also
+  ordering and cap; inline theme CSS/JS and `_assets/` copy; extension redirects; `redirect_from`
+  including the language case; the language switcher.
+- **CLAUDE.md testing conventions: substantially compliant** — zero `t.Setenv`/`t.Parallel`
+  collisions across 10 sites; the single `AllocsPerRun` site is correctly non-parallel; every
+  Prometheus before/after-delta test correctly omits `t.Parallel()`; all six cancellation tests use
+  already-cancelled `context.WithCancel`, not sleep/timeout patterns.
+- **Extensive documentation verified accurate** — the `02-configuration.md` CLI tables match the Kong
+  structs exactly (including `-d, --domain`); config precedence, `theme.features` shape and key
+  pattern, theme-var sanitization, `dir_index` behaviour, git URL schemes; weak-ETag semantics, gzip
+  threshold/skip-list/`Vary`, Accept negotiation incl. 406, resolver-after-provider-miss ordering;
+  the full route table; SEO scheme defaulting, robots body, sitemap `noindex` exclusion, feed cap and
+  RFC3339, JSON-LD shape; i18n fallback chain, URL prefixing, `LanguageInfo` ordering, per-language
+  index/sitemap/feed/nav/404; the GFM/admonition/colour-chip/KaTeX extension set; exactly 6 MCP tools,
+  4 resources and 3 prompts with documented names and limits; the three-layer asset overlay and
+  partial precedence; search UX keybindings and TF-IDF boosts. The release pipeline itself
+  (`.goreleaser.yaml` ↔ README ↔ `install.sh` archive naming and checksum flow) is internally
+  consistent.
+
+### 10.10 Recommended priority order
+
+1. **§10.1 exclude bypass** — thread `cfg.Site.Exclude` into `resolve.Build`. Serves excluded content
+   under the default configuration; fixes the build-mode path disclosure for free.
+2. **§10.1 git tree data race + nil-tree panic** — unrecoverable crashes on git-backed sites. Add the
+   concurrent-`ReadFile` test that would have caught it (§10.6).
+3. **§10.1 `govulncheck`** — four `go get` bumps, then add a CI gate so it cannot recur.
+4. **§10.2 `Page.Path` resolution in build** — one change fixes canonical/og/JSON-LD/breadcrumbs
+   **and** prev/next **and** sidebar state, all of which trace to the same `.md`-vs-clean key.
+5. **§10.3 tag-list `.md` links + default-theme `head-meta`/hreflang** — two small template edits,
+   both user-visible SEO/i18n wins, one of which deletes 20 duplicated lines.
+6. **§10.1 admin port to loopback; `install.sh` fail-closed; pin actions to SHAs.**
+7. **§10.3 inert env vars** — either wire `cfg.ApplyEnvOverrides()` or delete them from `info.go` and
+   the docs. Advertising inert configuration is worse than having none.
+8. **§10.5 D1/D2/D7** — the README quickstart and the deployment guide's Docker/k8s examples cannot
+   work as written; these are the first commands a new user runs.
+9. **§10.6 unfalsifiable assertions** — cheapest, highest-signal fixes in the pass (`<loc>`
+   delimiters, `>` → `!=`), plus making build tests read their outputs.
+10. **§10.3 language-directory leak** — do it together with wiring `URLRedirects` and
+    `generateExtensionRedirects` per language, which currently free-ride on the leak.
+11. **§10.4 performance** — `findRelatedDocs` top-N, search merge-intersection, compression pool nil,
+    double breadcrumb generation, compression/metrics route coverage.
+12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
+13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.
