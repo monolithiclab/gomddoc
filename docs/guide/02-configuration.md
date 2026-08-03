@@ -504,6 +504,18 @@ Advanced settings to tune the HTTP server timeouts and limits. These are only co
 | `GOMDDOC_SERVER_HTTP_IDLE_TIMEOUT` | Keep-alive connection idle time. | `120s` | `10m` |
 | `GOMDDOC_SERVER_HTTP_MAX_HEADER_MB` | Max request header size (MB). | `1` | `10` |
 
+An out-of-range value on the four timeout/limit rows is not an error: it logs a warning and falls
+back to the default. `SHUTDOWN_TIMEOUT` is checked instead by validation — a negative value is a
+startup error, and a value above the max is kept as-is.
+
+---
+
+## Development Mode (`GOMDDOC_SERVER_DEV_MODE`)
+
+`GOMDDOC_SERVER_DEV_MODE=true` disables caching and re-parses templates on every request
+(default `false`). Also environment-only — no command exposes a `--dev` flag. `gomddoc preview`
+turns dev mode on unconditionally, so this variable is only useful with `gomddoc serve`.
+
 ---
 
 ## Priority Order
@@ -516,7 +528,12 @@ When a setting is defined in multiple places, gomddoc follows this strict priori
 4. **Defaults** — hardcoded fallback values
 
 The full loading sequence in `config.NewFromServeArgs()` is:
-Defaults → CLI args → Dynamic defaults (e.g. title from dir name) → Config file → Env (re-apply) → Validate.
+Defaults → Env → CLI args → Dynamic defaults (e.g. title from dir name) → Config file → Env (re-apply) →
+Normalize → Validate.
+
+The first Env pass exists only for settings no flag owns (`SERVER_HTTP_*`, `SERVER_DEV_MODE`). Flags
+stay on top because the CLI parser has already folded `GOMDDOC_*` into every flag it defines — which is
+also why that pass runs *before* the args rather than after.
 
 ### Environment Variable Naming
 

@@ -1046,7 +1046,7 @@ per-language extension redirects in build. Fix the leak and wire those per-langu
   (`internal/server/handler.go:21-23`) is *"returns the first page path under **a directory**"*, so
   `/guide/` with no index redirects to the **site's** first page, not the first page under `/guide/`.
 
-#### HIGH: six advertised environment variables are inert ✅ reproduced
+#### ~~HIGH: six advertised environment variables are inert~~ ✅ reproduced — **FIXED**
 
 `internal/config/config.go:144` calls `cfg.Site.ApplyEnvOverrides()` — the **site-only** walker.
 `(*Config).ApplyEnvOverrides` (`:232`) exists but its only callers are tests. Kong exposes no
@@ -1054,6 +1054,32 @@ equivalent flags, so `GOMDDOC_SERVER_DEV_MODE` and all five `GOMDDOC_SERVER_HTTP
 nothing — while `cmd/gomddoc/info.go:31-42` advertises every one of them via `config.EnvVars()`, and
 `docs/guide/02-configuration.md:492-503` documents them as *"only configurable via environment
 variables"*. Fix: call `cfg.ApplyEnvOverrides()` (which walks nested structs including `Site`).
+
+**Fixed.** `NewFromServeArgs` now calls `cfg.ApplyEnvOverrides()` — but **before** the serve args,
+not after, which is where this review's suggested fix would have put it. Kong already folds `env:`
+tags into every flag it owns, so the args arrive carrying the resolved flag > env > default answer;
+a whole-Config env walk placed *after* them re-reads the environment and lets
+`GOMDDOC_SERVER_PORT` beat an explicit `--port`, inverting the documented precedence.
+`TestNewFromServeArgs_ArgsBeatEnv` guards that ordering (it fails if the call is moved down).
+
+`DevMode` is then OR'd rather than assigned, because it is the one field with no flag on any
+command: `args.DevMode` is false for `serve` even when the env var asked for dev mode. The first
+draft OR'd `Pprof` and `DirIndex` too; both were wrong. `GOMDDOC_SERVER_PPROF` *is* Kong-owned, so
+OR-ing it made `GOMDDOC_SERVER_PPROF=true gomddoc serve --no-pprof` enable pprof — the same
+precedence inversion the surrounding comment exists to prevent. `Site.DirIndex` was a provable
+no-op, since step 5 re-reads `GOMDDOC_SITE_DIR_INDEX` after the args and owns the field either way.
+`TestNewFromServeArgs_ArgsBeatEnv` now covers the `--no-pprof` case.
+
+Doc updates: `02-configuration.md` gained a `GOMDDOC_SERVER_DEV_MODE` row (it was advertised by
+`info` and referenced in the README, but the guide never documented it) and its loading-sequence
+line now shows the leading env pass with the reason.
+
+##### Follow-up surfaced while fixing this (not addressed here)
+
+- **`--dir-index` answers to two different env vars.** The Kong tag on `preview.DirIndex` is
+  `GOMDDOC_DIR_INDEX` (`cmd/gomddoc/preview.go:21`), while the struct tag on `SiteConfig.DirIndex`
+  makes it `GOMDDOC_SITE_DIR_INDEX`. Both now work, and `info` lists only the second. Same class as
+  `GOMDDOC_DOMAIN` vs `GOMDDOC_SITE_META_DOMAIN`. Pick one naming scheme per setting.
 
 #### MEDIUM: `findRelatedDocs` bypasses the documented single source of truth for tag normalization
 
@@ -1286,7 +1312,7 @@ regressed*: the theme-count correction was applied to `05-theming-and-assets.md`
 | --- | ---------------------------------------- | ------------------------------------------------- |
 | D1 | `README.md:118,377` documents `serve --dev` | ✅ verified: `unknown flag --dev`. Dev mode is reachable only via `preview` |
 | D2 | `README.md:118` uses `-d ./testsite` as the directory | ✅ verified: `-d` is `--domain` (`serve.go:20`); fails with *"domain should not include path"*. Same bug in the k8s manifest at `09-deployment.md:229`, which also omits the subcommand — the pod crash-loops |
-| D3 | `02-configuration.md:492-503` documents 5 `GOMDDOC_SERVER_HTTP_*` vars + `DEV_MODE` | ✅ verified inert — see §10.3 |
+| D3 | `02-configuration.md:492-503` documents 5 `GOMDDOC_SERVER_HTTP_*` vars + `DEV_MODE` | ~~✅ verified inert~~ — **FIXED**, they now take effect; see §10.3 |
 | D4 | `05-theming-and-assets.md:128,261,397` + website + themes docs document a `navigation` template function | The FuncMap (`renderer.go:528-550`) has 13 entries and no `navigation`. A theme calling it fails to parse |
 | D5 | `08-observability.md:26-27` — `--admin-port` removes health *"from the main port entirely"* | ✅ verified: `/health/live` returns 200 on **both** ports. Only `/metrics` and pprof are gated (`server.go:93-97` vs `:116-120`) |
 | D6 | `docs/custom-renderers.md` teaches `Renderer` with a dead interface | All 9 examples are non-compiling. The real contract is `InputMimeTypes`/`OutputMimeTypes`/`Render(ctx, content, *enricher.EnrichmentData)`. `docs/guide/` has **zero** replacement coverage |
@@ -1561,8 +1587,10 @@ three `"text/markdown; charset=utf-8"`).
    `Languages`/`Features` on tag pages, the `tagURL`/`contentURL` prefix disagreement, the missing
    theme-contract test, and the undocumented raw paths in `/api/tags/{tag}`).
 6. **§10.1 admin port to loopback; `install.sh` fail-closed; pin actions to SHAs.**
-7. **§10.3 inert env vars** — either wire `cfg.ApplyEnvOverrides()` or delete them from `info.go` and
-   the docs. Advertising inert configuration is worse than having none.
+7. ~~**§10.3 inert env vars**~~ — **DONE.** `NewFromServeArgs` runs the whole-Config env walk, placed
+   *before* the serve args so Kong-resolved flags still win, with the three opt-in booleans OR'd
+   instead of assigned. Surfaced the `GOMDDOC_DIR_INDEX` vs `GOMDDOC_SITE_DIR_INDEX` dual-naming
+   drift (see §10.3).
 8. **§10.5 D1/D2/D7** — the README quickstart and the deployment guide's Docker/k8s examples cannot
    work as written; these are the first commands a new user runs.
 9. **§10.6 unfalsifiable assertions** — cheapest, highest-signal fixes in the pass (`<loc>`

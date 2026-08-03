@@ -133,37 +133,46 @@ type ServeArgs struct {
 
 // NewFromServeArgs creates a fully initialized Config from serve command arguments.
 // Kong has already resolved flags > env vars > defaults for server-level settings.
-// This function handles: build Config -> ComputeDynamicDefaults -> LoadFromFile -> ApplyEnvOverrides (site) -> Validate.
 func NewFromServeArgs(args ServeArgs) (*Config, error) {
 	cfg := New()
 
-	// 1. Apply serve command args (already resolved by Kong: flags > env > defaults)
+	// 1. Env overrides for the whole Config, before the args below so Kong-resolved
+	//    flags still beat env: re-reading the environment afterwards would let
+	//    GOMDDOC_SERVER_PORT override an explicit --port. The fields that survive this
+	//    pass are the ones no flag owns — GOMDDOC_SERVER_HTTP_* and SERVER_DEV_MODE.
+	//    The Site half is redundant with step 5, which is the one that matters because
+	//    it runs after LoadFromFile; don't delete step 5 in favour of this call.
+	cfg.ApplyEnvOverrides()
+
+	// 2. Apply serve command args (already resolved by Kong: flags > env > defaults)
 	cfg.Server.Dir = args.Dir
 	cfg.Server.Port = args.Port
 	cfg.Server.AdminPort = args.AdminPort
-	cfg.Server.DevMode = args.DevMode
 	cfg.Server.Pprof = args.Pprof
 	cfg.Site.DirIndex = args.DirIndex
+	// DevMode is OR'd, not assigned: it is the one field with no flag on any command,
+	// so args.DevMode is false for `serve` even when the env var asked for dev mode.
+	cfg.Server.DevMode = cfg.Server.DevMode || args.DevMode
 
-	// 2. Compute derived defaults (like Title from Dir)
+	// 3. Compute derived defaults (like Title from Dir)
 	cfg.ComputeDynamicDefaults()
 
-	// 3. Load from File (.gomddoc/config.yml)
+	// 4. Load from File (.gomddoc/config.yml)
 	if err := cfg.Site.LoadFromFile(cfg.Server.Dir); err != nil {
 		return nil, fmt.Errorf("load config file: %w", err)
 	}
 
-	// 4. Re-apply environment overrides for site-level settings (env > file)
+	// 5. Re-apply environment overrides for site-level settings (env > file)
 	cfg.Site.ApplyEnvOverrides()
 
 	slog.Info("Loaded site configuration",
 		slog.String("title", cfg.Site.Meta.Title),
 		slog.String("theme", cfg.Site.Theme.Name))
 
-	// 5. Normalize (fix up invalid values with sensible defaults)
+	// 6. Normalize (fix up invalid values with sensible defaults)
 	cfg.Normalize()
 
-	// 6. Validate (pure checks, no mutations)
+	// 7. Validate (pure checks, no mutations)
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -172,7 +181,9 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 }
 
 // NewFromDir creates a Config from a content directory without server-specific
-// settings. Used by the build command and other non-server contexts.
+// settings. Used by the build command and other non-server contexts. Server-shaped
+// env vars (GOMDDOC_SERVER_*) are still read into the returned Config; no non-server
+// caller reads those fields.
 func NewFromDir(dir string) (*Config, error) {
 	return NewFromServeArgs(ServeArgs{Dir: dir, Port: ":8080"})
 }
@@ -248,7 +259,9 @@ func (c *Config) ApplyEnvOverrides() {
 }
 
 // ApplyEnvOverrides applies environment variable overrides to SiteConfig using the
-// correct prefix GOMDDOC_SITE (useful for standalone usage or testing).
+// correct prefix GOMDDOC_SITE. NewFromServeArgs calls this after LoadFromFile, which
+// is what puts env above the config file; the whole-Config pass runs before the CLI
+// args and cannot serve that role.
 func (sc *SiteConfig) ApplyEnvOverrides() {
 	applyEnvOverridesWithPrefix(sc, "GOMDDOC_SITE")
 }
