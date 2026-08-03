@@ -33,8 +33,13 @@ docker run --rm -p 8080:8080 -v "$PWD:/site" ghcr.io/monolithiclab/gomddoc serve
 ```
 
 The install script downloads the matching release archive, verifies it against the release
-`SHA256SUMS`, and installs to `/usr/local/bin` (falling back to `~/.local/bin`). Override the
-target with `GOMDDOC_INSTALL_DIR`, or pin a version with `GOMDDOC_VERSION`:
+`SHA256SUMS`, and installs to `/usr/local/bin` (falling back to `~/.local/bin`). If
+[cosign](https://github.com/sigstore/cosign) is on your `PATH` it also verifies the signature over
+`SHA256SUMS` first — install cosign before running the script to get a provenance-checked install,
+since `SHA256SUMS` is otherwise served from the same origin as the archive it vouches for. Set
+`GOMDDOC_REQUIRE_COSIGN=1` to abort rather than continue when the signature cannot be checked.
+
+Override the target with `GOMDDOC_INSTALL_DIR`, or pin a version with `GOMDDOC_VERSION`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/monolithiclab/gomddoc/main/scripts/install.sh \

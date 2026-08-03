@@ -7,8 +7,16 @@
 #   GOMDDOC_VERSION      version to install, with or without the leading "v" (default: latest)
 #   GOMDDOC_INSTALL_DIR  target directory (default: /usr/local/bin, falling back to ~/.local/bin)
 #
-# The downloaded archive is verified against the release's SHA256SUMS before install.
-# Checksums are also cosign-signed; see the README for signature verification.
+# The downloaded archive is verified against the release's SHA256SUMS before install;
+# the install aborts if no SHA-256 tool is available.
+#
+# SHA256SUMS comes from the same origin as the archive, so it only proves the download
+# was not corrupted — not that it is authentic. When cosign is on PATH this script also
+# verifies the keyless signature over SHA256SUMS, which is the check that establishes
+# the file was produced by this repository's release workflow. Install cosign first for
+# a trustworthy install:
+#
+#   GOMDDOC_REQUIRE_COSIGN=1  abort unless the signature can be verified
 
 set -eu
 
@@ -35,9 +43,9 @@ need() {
 # fetch <url> <dest>
 fetch() {
 	if need curl; then
-		curl -fsSL "$1" -o "$2"
+		curl --proto '=https' --tlsv1.2 -fsSL "$1" -o "$2"
 	elif need wget; then
-		wget -qO "$2" "$1"
+		wget --https-only -qO "$2" "$1"
 	else
 		die "neither curl nor wget is available"
 	fi
@@ -46,9 +54,9 @@ fetch() {
 # fetch_stdout <url>
 fetch_stdout() {
 	if need curl; then
-		curl -fsSL "$1"
+		curl --proto '=https' --tlsv1.2 -fsSL "$1"
 	elif need wget; then
-		wget -qO- "$1"
+		wget --https-only -qO- "$1"
 	else
 		die "neither curl nor wget is available"
 	fi
@@ -93,13 +101,46 @@ verify_checksum() {
 	elif need shasum; then
 		actual=$(shasum -a 256 "$1" | awk '{print $1}')
 	else
-		warn "no sha256sum or shasum found; skipping checksum verification"
-		return 0
+		die "neither sha256sum nor shasum is available; refusing to install an unverified binary"
 	fi
 
 	[ "$actual" = "$expected" ] ||
 		die "checksum mismatch for $2 (expected $expected, got $actual)"
 	info "Checksum verified."
+}
+
+# verify_signature <sums_path> <base_url> <tag>
+#
+# Verifies the keyless cosign signature over SHA256SUMS. This is the only check
+# that proves provenance: SHA256SUMS is served from the same origin as the
+# archive, so whoever can serve a malicious tarball can serve matching sums.
+# The certificate identity pins the signature to this repository's release
+# workflow at this exact tag, so a signature lifted from another project — or
+# from another tag of this one — does not verify.
+verify_signature() {
+	if ! need cosign; then
+		if [ -n "${GOMDDOC_REQUIRE_COSIGN:-}" ]; then
+			die "GOMDDOC_REQUIRE_COSIGN is set but cosign is not installed"
+		fi
+		warn "cosign not found; SHA256SUMS is unverified (it shares an origin with the archive)."
+		warn "Install cosign and re-run for a provenance-checked install."
+		return 0
+	fi
+
+	if ! fetch "${2}/SHA256SUMS.sig" "${1}.sig" ||
+		! fetch "${2}/SHA256SUMS.pem" "${1}.pem"; then
+		die "cosign is installed but the signature for ${3} could not be downloaded"
+	fi
+
+	cosign verify-blob \
+		--certificate "${1}.pem" \
+		--signature "${1}.sig" \
+		--certificate-identity "https://github.com/${REPO}/.github/workflows/release.yml@refs/tags/${3}" \
+		--certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+		"$1" >/dev/null 2>&1 ||
+		die "cosign could not verify SHA256SUMS for ${3}; refusing to install"
+
+	info "Signature verified."
 }
 
 # Pick an install directory and echo it, along with whether sudo is needed.
@@ -165,6 +206,7 @@ main() {
 	fetch "${base}/SHA256SUMS" "${tmp}/SHA256SUMS" ||
 		die "could not download SHA256SUMS from ${base}"
 
+	verify_signature "${tmp}/SHA256SUMS" "$base" "$tag"
 	verify_checksum "${tmp}/${archive}" "$archive" "${tmp}/SHA256SUMS"
 
 	tar -xzf "${tmp}/${archive}" -C "$tmp" ||

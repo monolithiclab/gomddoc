@@ -24,6 +24,12 @@ release `SHA256SUMS`, and installs to `/usr/local/bin` (falling back to `~/.loca
 is not writable). Set `GOMDDOC_INSTALL_DIR` to choose a different target, or `GOMDDOC_VERSION`
 to pin a release instead of taking the latest.
 
+When [cosign](https://github.com/sigstore/cosign) is installed, the script verifies the keyless
+signature over `SHA256SUMS` before trusting it — worth doing, because that file is served from the
+same origin as the archive. `GOMDDOC_REQUIRE_COSIGN=1` turns the missing-cosign warning into an
+abort. The install also fails closed if no SHA-256 tool is available, rather than skipping the
+checksum.
+
 Building from source:
 
 ```bash

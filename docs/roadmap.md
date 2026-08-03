@@ -344,7 +344,9 @@ GoReleaser's `{{ .Version }}` strips the `v`.
       tar. Detects OS/arch (linux/darwin × amd64/arm64), resolves the latest tag via the GitHub API
       (or honours `GOMDDOC_VERSION`), verifies the archive against the release `SHA256SUMS` before
       installing, and targets `/usr/local/bin` with a `~/.local/bin` fallback (`GOMDDOC_INSTALL_DIR`
-      overrides). Warns when the install dir is off `PATH`. Served via
+      overrides). Fails closed when no SHA-256 tool is present, and verifies the cosign signature
+      over `SHA256SUMS` when cosign is on `PATH` (`GOMDDOC_REQUIRE_COSIGN=1` makes it mandatory).
+      Warns when the install dir is off `PATH`. Served via
       `curl -fsSL .../scripts/install.sh | sh`.
 - [x] **Release preflight for the Homebrew tap token**: `.github/workflows/release.yml` validates
       that `HOMEBREW_TAP_TOKEN` has push access to `monolithiclab/homebrew-tap` **before** building,

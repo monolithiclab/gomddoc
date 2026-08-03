@@ -718,7 +718,7 @@ to `127.0.0.1`; gate `--pprof` behind the credential store. Secondary: the admin
   immutable after parse so no TTL) makes the second and later requests ~200ns. Not pprof-relevant
   (one request per profile), but it caps the whole site.
 
-#### MEDIUM: `install.sh` fails open on checksum verification, never verifies the cosign signature
+#### ~~MEDIUM: `install.sh` fails open on checksum verification, never verifies the cosign signature~~ ✅ FIXED
 
 `scripts/install.sh:91` — when neither `sha256sum` nor `shasum` is present it `warn`s and
 `return 0`s. A `curl | sh` installer should `die`. An attacker who can influence the environment
@@ -734,6 +734,17 @@ redirect to plain HTTP.
 
 Positives: `set -eu`, `mktemp -d` with `trap ... EXIT INT TERM`, strict OS/arch allowlists,
 shellcheck gating in CI.
+
+- **Fixed:** the missing-tool branch now `die`s. `verify_signature` downloads `SHA256SUMS.sig`/`.pem`
+  and runs `cosign verify-blob` with `--certificate-identity` pinned to this repo's release workflow
+  *at the tag being installed*, so a signature lifted from another project or another tag does not
+  verify. cosign is opportunistic — absent, the script warns that `SHA256SUMS` shares an origin with
+  the archive and continues; `GOMDDOC_REQUIRE_COSIGN=1` makes it mandatory. Present but unverifiable
+  is always fatal, since that is the interesting failure. `curl` calls carry
+  `--proto '=https' --tlsv1.2` and `wget` carries `--https-only`.
+- **Deliberately not fail-closed by default:** requiring cosign unconditionally would break
+  `curl | sh` on every machine without it, which is most of them. The header comment and README now
+  state plainly that a cosign-less install verifies integrity but not provenance.
 
 #### MEDIUM: release workflow actions pinned to mutable tags while holding `id-token: write`
 
