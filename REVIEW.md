@@ -668,7 +668,7 @@ still real exposure for git-backed deployments. All four are plain `go get` bump
 landed in `1ac1169`, so this is a one-time catch-up. `.github/workflows/ci.yml:34` runs only
 `make lint test` — add a `govulncheck` step or this recurs silently.
 
-#### MEDIUM: admin port serves `/metrics` and `/debug/pprof/*` unauthenticated ✅ reproduced
+#### ~~MEDIUM: admin port serves `/metrics` and `/debug/pprof/*` unauthenticated~~ ✅ FIXED
 
 `internal/server/admin.go:28` — no auth middleware in the constructor, and `--admin-port :18101`
 binds all interfaces, not loopback. Running with `--basic-auth-file` does **not** protect it:
@@ -680,6 +680,43 @@ Real exposure rather than a nicety because the admin port is *documented* as the
 metrics, so operators will expose it to a metrics network. Minimum fix: default the admin listener
 to `127.0.0.1`; gate `--pprof` behind the credential store. Secondary: the admin server sets only
 `ReadHeaderTimeout` — no `WriteTimeout`/`IdleTimeout`.
+
+- **Fixed:** all three. `Config.Normalize` rewrites a host-less `--admin-port` to `127.0.0.1:PORT`
+  (an explicit host, including `0.0.0.0`, is honoured as the opt-in it is; `AdminPort == Port` is
+  left alone, since `server.go` compares the two strings to decide whether admin lives on the main
+  listener). `AdminServerConfig` gained `AuthStore`, so `/debug/pprof/*` sits behind the same
+  credential store the main port already puts it behind — `/metrics` and `/health/*` stay open,
+  because scrapers carry no credentials and loopback is what protects them. Without a credential
+  file, `--pprof` now warns about what it is exposing. `AdminServerConfig.HTTP` carries the main
+  server's timeouts, so `WriteTimeout`/`IdleTimeout`/`MaxHeaderBytes` are no longer unset.
+- **Both listeners now share one mount.** The two ports kept separate copies of the five-route pprof
+  block and this fix made them diverge (only one gained the gate). `server.mountPprof` owns the
+  routes, the auth gate, and the warning; `ServerConfig.AdminOnMain()` replaces the three hand-copied
+  `AdminPort == "" || AdminPort == Port` comparisons that had to agree.
+- **Not a problem, verified:** `WriteTimeout` does not truncate `/debug/pprof/profile`. `net/http/pprof`
+  extends its own deadline to `WriteTimeout + seconds` (`configureWriteDeadline`, called from
+  `Profile`, `Trace`, and the delta path). Measured: `WriteTimeout=30s` + `?seconds=30` returns a
+  complete 200 at 30.01s. A `clearWriteDeadline` middleware was written for this and deleted — it ran
+  *before* the handler, so the stdlib overwrote it microseconds later, and on the three endpoints
+  where the cleared deadline did survive it removed a bound rather than adding one.
+
+##### Follow-ups surfaced while fixing this (not addressed here)
+
+- **LOW — admin shutdown ignores `ShutdownTimeout`.** `HTTPServer.Shutdown` applies
+  `cfg.Server.HTTP.ShutdownTimeout`; `AdminServer.Shutdown` does not, and `AdminServer.Start` calls it
+  with a bare `context.Background()`. Admin shutdown can block the errgroup indefinitely after the
+  main server has already given up.
+- **LOW — the admin mux skips `RequestID` and `SecurityHeaders`,** which `server.go` wraps around the
+  main mux. A shared listener constructor would settle this along with the timeout copying.
+- **LOW — `--port :8080 --admin-port 0.0.0.0:8080` is not string-equal,** so `AdminOnMain` is false and
+  a second listener is built on a port already in use. The `bind: address already in use` surfaces only
+  after the provider and every index have been built. Comparing canonicalized addresses would fix it.
+- **MEDIUM (perf) — bcrypt runs on every authenticated request.** `NewBasicAuthMiddleware` sits on the
+  main port's root group, and `CredentialStore.Validate` is 73ms at htpasswd's default cost 10 —
+  roughly 13 req/s per core with `--basic-auth-file` set. A verified-credential cache in
+  `CredentialStore` (SHA-256 of user:pass for already-proven pairs, `subtle.ConstantTimeCompare`,
+  immutable after parse so no TTL) makes the second and later requests ~200ns. Not pprof-relevant
+  (one request per profile), but it caps the whole site.
 
 #### MEDIUM: `install.sh` fails open on checksum verification, never verifies the cosign signature
 

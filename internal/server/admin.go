@@ -17,6 +17,16 @@ type AdminServerConfig struct {
 	Addr     string
 	Provider provider.Provider
 	Pprof    bool
+
+	// AuthStore gates /debug/pprof/* — see mountPprof.
+	AuthStore *CredentialStore
+
+	// HTTP carries the same listener timeouts as the main server; previously
+	// only ReadHeaderTimeout was set, so a slow reader held a connection
+	// indefinitely and keep-alives were never reaped. WriteTimeout is safe for
+	// the long-sampling pprof routes: net/http/pprof extends the deadline to
+	// WriteTimeout+seconds itself (configureWriteDeadline).
+	HTTP config.HTTPConfig
 }
 
 // AdminServer serves admin endpoints (metrics, health, pprof) on a dedicated port.
@@ -40,22 +50,49 @@ func NewAdminServer(cfg AdminServerConfig) *AdminServer {
 
 	// Pprof
 	if cfg.Pprof {
-		slog.Warn("pprof profiling enabled on admin port — do not expose publicly")
-		debug := admin.Subgroup("/debug/pprof")
-		debug.HandleFunc("GET /", pprof.Index)
-		debug.HandleFunc("GET /cmdline", pprof.Cmdline)
-		debug.HandleFunc("GET /profile", pprof.Profile)
-		debug.HandleFunc("GET /symbol", pprof.Symbol)
-		debug.HandleFunc("GET /trace", pprof.Trace)
+		mountPprof(admin, cfg.AuthStore)
 	}
 
 	return &AdminServer{
 		server: &http.Server{
 			Addr:              cfg.Addr,
 			Handler:           mux,
-			ReadHeaderTimeout: config.DefaultReadHeaderTimeout,
+			ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout,
+			WriteTimeout:      cfg.HTTP.WriteTimeout,
+			IdleTimeout:       cfg.HTTP.IdleTimeout,
+			MaxHeaderBytes:    cfg.HTTP.MaxHeaderBytes(),
 		},
 	}
+}
+
+// mountPprof registers the pprof routes on g, gated by store when credentials
+// are configured. Both listeners mount through here — the main server when
+// admin endpoints share its port, the admin server when they do not — because
+// the two previously kept separate copies of this block and drifted apart:
+// /debug/pprof/cmdline returns the full command line (including the path to the
+// credential file) and /debug/pprof/heap dumps in-memory content, so "who may
+// reach pprof" must not depend on which listener happens to carry it.
+//
+// g must not already apply auth, or credentials are demanded twice.
+//
+// WriteTimeout needs no special handling: net/http/pprof extends its own write
+// deadline to WriteTimeout+seconds for the sampling endpoints.
+func mountPprof(g *RouteGroup, store *CredentialStore) {
+	var mw []func(http.Handler) http.Handler
+	if store != nil {
+		mw = append(mw, NewBasicAuthMiddleware(store, basicAuthRealm))
+		slog.Warn("pprof profiling enabled — do not use in production")
+	} else {
+		slog.Warn("pprof profiling enabled without --basic-auth-file — do not use in production; " +
+			"anyone who can reach this port can dump the heap and the command line")
+	}
+
+	debug := g.Subgroup("/debug/pprof", mw...)
+	debug.HandleFunc("GET /", pprof.Index)
+	debug.HandleFunc("GET /cmdline", pprof.Cmdline)
+	debug.HandleFunc("GET /profile", pprof.Profile)
+	debug.HandleFunc("GET /symbol", pprof.Symbol)
+	debug.HandleFunc("GET /trace", pprof.Trace)
 }
 
 // Handler returns the admin server's HTTP handler for testing.

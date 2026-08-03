@@ -442,11 +442,13 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 	httpServer := server.NewHTTPServer(serverConfig)
 
 	var adminServer *server.AdminServer
-	if cfg.Server.AdminPort != "" && cfg.Server.AdminPort != cfg.Server.Port {
+	if !cfg.Server.AdminOnMain() {
 		adminServer = server.NewAdminServer(server.AdminServerConfig{
-			Addr:     cfg.Server.AdminPort,
-			Provider: prov,
-			Pprof:    cfg.Server.Pprof,
+			Addr:      cfg.Server.AdminPort,
+			Provider:  prov,
+			Pprof:     cfg.Server.Pprof,
+			AuthStore: opts.AuthStore,
+			HTTP:      cfg.Server.HTTP,
 		})
 	}
 

@@ -11,6 +11,11 @@ import (
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// basicAuthRealm is the realm advertised in WWW-Authenticate. Browsers cache
+// credentials per realm, so the main and admin listeners must send the same
+// string or one htpasswd file prompts twice.
+const basicAuthRealm = "gomddoc"
+
 // NewBasicAuthMiddleware returns a middleware that enforces HTTP Basic
 // Authentication using a CredentialStore for credential validation. The
 // realm is used in the WWW-Authenticate header.

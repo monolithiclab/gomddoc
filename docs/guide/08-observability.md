@@ -30,8 +30,32 @@ are served exclusively on the admin port. They are removed from the main port en
 - Keep the main port clean for user traffic
 - Apply different firewall rules or network policies per port
 
-The admin port bypasses authentication — it does not require Basic Auth credentials even when `--basic-auth-file` is
-configured on the main port.
+### Bind address
+
+A bare port (`:9090`) binds **loopback only** — `127.0.0.1:9090`. The admin port carries heap dumps and the process
+command line when `--pprof` is on, so "every interface" is the wrong default for someone who wrote just a port number.
+To reach it from another host, give an explicit address:
+
+```bash
+gomddoc serve --admin-port 0.0.0.0:9090 ./docs   # all interfaces
+gomddoc serve --admin-port 10.0.0.5:9090 ./docs  # one interface
+```
+
+The startup log prints the address actually bound.
+
+### Authentication
+
+Health and metrics are unauthenticated — scrapers do not carry credentials, and the loopback default is what limits
+who can reach them.
+
+`/debug/pprof/*` is the exception: when `--basic-auth-file` is configured, it requires those credentials on whichever
+listener carries it — both ports mount pprof through the same gate. Without a credential file, `--pprof` logs a warning
+and serves the endpoints open: `/debug/pprof/cmdline` returns the full command line and `/debug/pprof/heap` dumps
+in-memory content.
+
+Note that the loopback default applies to `--admin-port` only. `gomddoc serve --pprof` with no `--admin-port` keeps
+pprof on the main listener, which binds every interface — so always pair `--pprof` with `--basic-auth-file`, an
+`--admin-port`, or both.
 
 ---
 

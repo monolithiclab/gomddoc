@@ -1352,3 +1352,35 @@ func TestSiteConfig_Validate_StripExtensions(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalize_AdminAddrBindsLoopback — ":9090" means every interface to
+// net.Listen, which is not what an operator writing a bare port expects for a
+// listener carrying /metrics and /debug/pprof/*. An explicit host is an opt-in.
+func TestNormalize_AdminAddrBindsLoopback(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"bare port binds loopback", ":9090", "127.0.0.1:9090"},
+		{"explicit wildcard is honoured", "0.0.0.0:9090", "0.0.0.0:9090"},
+		{"explicit host is honoured", "10.0.0.5:9090", "10.0.0.5:9090"},
+		{"loopback is idempotent", "127.0.0.1:9090", "127.0.0.1:9090"},
+		{"unset stays unset", "", ""},
+		{"same as main port stays paired", DefaultPort, DefaultPort},
+		{"malformed is left for Validate", "9090", "9090"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := New()
+			cfg.Server.AdminPort = tt.in
+			cfg.Normalize()
+			if cfg.Server.AdminPort != tt.want {
+				t.Errorf("AdminPort = %q, want %q", cfg.Server.AdminPort, tt.want)
+			}
+		})
+	}
+}

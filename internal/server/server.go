@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/pprof"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -116,11 +115,11 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	// All other endpoints require auth when configured
 	auth := NewGroup(mux, "")
 	if opts.AuthStore != nil {
-		auth = NewGroup(mux, "", NewBasicAuthMiddleware(opts.AuthStore, "gomddoc"))
+		auth = NewGroup(mux, "", NewBasicAuthMiddleware(opts.AuthStore, basicAuthRealm))
 	}
 
 	// Determine if admin endpoints should be on main mux or separate admin server
-	adminOnMain := cfg.Server.AdminPort == "" || cfg.Server.AdminPort == cfg.Server.Port
+	adminOnMain := cfg.Server.AdminOnMain()
 
 	if adminOnMain {
 		auth.Handle("/metrics", promhttp.Handler())
@@ -189,13 +188,9 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	}
 
 	if cfg.Server.Pprof && adminOnMain {
-		slog.Warn("pprof profiling enabled — do not use in production")
-		debug := auth.Subgroup("/debug/pprof")
-		debug.HandleFunc("GET /", pprof.Index)
-		debug.HandleFunc("GET /cmdline", pprof.Cmdline)
-		debug.HandleFunc("GET /profile", pprof.Profile)
-		debug.HandleFunc("GET /symbol", pprof.Symbol)
-		debug.HandleFunc("GET /trace", pprof.Trace)
+		// Mounted on the base group, not auth: mountPprof applies the gate
+		// itself so both listeners enforce the same rule.
+		mountPprof(NewGroup(mux, ""), opts.AuthStore)
 	}
 
 	// Build language info for the language switcher (only when multiple languages exist)

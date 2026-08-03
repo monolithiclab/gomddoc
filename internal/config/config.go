@@ -32,6 +32,9 @@ const (
 	DefaultHighlightTheme    = "github"
 	DefaultAutoPortStart     = 8080
 
+	// adminLoopbackHost is the host a host-less --admin-port is bound to.
+	adminLoopbackHost = "127.0.0.1"
+
 	// Configurable upper bounds
 	MaxReadHeaderTimeout = 1 * time.Minute
 	MaxWriteTimeout      = 5 * time.Minute
@@ -57,6 +60,16 @@ type ServerConfig struct {
 	Dir       string     `env:"DIR"`
 	Pprof     bool       `env:"PPROF"`
 	HTTP      HTTPConfig `env:"HTTP"`
+}
+
+// AdminOnMain reports whether the admin endpoints (health, metrics, pprof)
+// live on the main listener rather than a dedicated one. Three call sites need
+// this answer — route registration, listener construction, and admin-address
+// normalization — and they must agree: if one splits the pair while another
+// folds it, the process either binds the same address twice or serves nothing
+// on the admin port.
+func (s ServerConfig) AdminOnMain() bool {
+	return s.AdminPort == "" || s.AdminPort == s.Port
 }
 
 // HTTPConfig holds HTTP server tuning parameters
@@ -266,6 +279,32 @@ func (c *Config) ComputeDynamicDefaults() {
 func (c *Config) Normalize() {
 	c.Site.Normalize()
 	c.normalizeHTTP()
+	c.normalizeAdminAddr()
+}
+
+// normalizeAdminAddr binds a host-less admin address to loopback. The admin
+// port carries /metrics and, with --pprof, /debug/pprof/* — heap dumps of
+// excluded content and parsed credentials, and a free 30s-CPU-burn in
+// /debug/pprof/profile. ":9090" means "every interface" to net.Listen, which is
+// not what an operator writing a port number expects. An explicit host
+// ("0.0.0.0:9090") is honoured as the deliberate opt-in it is.
+//
+// Server.Port is deliberately NOT normalized this way: a container publishing
+// :8080 must bind the wildcard, so defaulting the content listener to loopback
+// would break every containerized deployment.
+func (c *Config) normalizeAdminAddr() {
+	// Rewriting an address that equals Port would split the pair and start a
+	// second listener on an address already in use.
+	if c.Server.AdminOnMain() {
+		return
+	}
+	host, port, err := net.SplitHostPort(c.Server.AdminPort)
+	if err != nil || host != "" {
+		return // malformed: Validate's job. Explicit host: respect it.
+	}
+	c.Server.AdminPort = net.JoinHostPort(adminLoopbackHost, port)
+	slog.Info("Admin port bound to loopback; set an explicit host to widen",
+		slog.String("addr", c.Server.AdminPort))
 }
 
 // Normalize fixes up site config values that can be auto-corrected.
@@ -435,8 +474,13 @@ func (c *Config) validateServer() error {
 }
 
 // MaxHeaderBytes returns the maximum header size in bytes.
+func (h HTTPConfig) MaxHeaderBytes() int {
+	return h.MaxHeaderMB << 20
+}
+
+// MaxHeaderBytes returns the maximum header size in bytes.
 func (c *Config) MaxHeaderBytes() int {
-	return c.Server.HTTP.MaxHeaderMB << 20
+	return c.Server.HTTP.MaxHeaderBytes()
 }
 
 // EnvVar describes an available environment variable.
