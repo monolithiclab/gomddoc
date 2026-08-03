@@ -149,16 +149,21 @@ func TestServer_ContentRoutes_PerLanguage(t *testing.T) {
 	}
 }
 
-// TestServer_ContentRoutes_PerLanguage_ExtensionRedirect proves that extension
-// stripping works for language pages: "/fr/guide.md" 301-redirects to the
-// language-prefixed clean URL "/fr/guide" (not the unprefixed "/guide"), and the
-// clean URL resolves against the per-language resolver. Regression test for
-// REVIEW.md §9.1 (ExtensionRedirect basePath + per-language resolver).
-func TestServer_ContentRoutes_PerLanguage_ExtensionRedirect(t *testing.T) {
+// TestServer_ContentRoutes_PerLanguage_Redirects proves both redirect kinds work
+// inside a language subtree and target the language's own pages:
+//
+//   - extension stripping — "/fr/guide.md" 301s to the language-prefixed clean URL
+//     "/fr/guide" (not the unprefixed "/guide"), which then resolves against the
+//     per-language resolver. Regression test for REVIEW.md §9.1.
+//   - redirect_from — only the default handler received URLRedirects before, so a
+//     French page's redirect_from was honoured only because the default pipeline
+//     indexed the fr/ directory, and it then pointed at the wrong language's page.
+func TestServer_ContentRoutes_PerLanguage_Redirects(t *testing.T) {
 	t.Parallel()
 
 	enFiles := fstest.MapFS{"guide.md": {Data: []byte("# Guide\n\nenglish\n")}}
-	frFiles := fstest.MapFS{"guide.md": {Data: []byte("# Guide\n\nfrench-only-marker-3b2\n")}}
+	frFiles := fstest.MapFS{"guide.md": {Data: []byte(
+		"---\ntitle: Guide\nredirect_from:\n  - /ancien-guide\n---\n# Guide\n\nfrench-only-marker-3b2\n")}}
 
 	enIdx, err := metadata.BuildIndex(context.Background(), enFiles, nil)
 	if err != nil {
@@ -202,6 +207,7 @@ func TestServer_ContentRoutes_PerLanguage_ExtensionRedirect(t *testing.T) {
 				Provider:         newMemoryProvider(frFiles, "README.md", false),
 				Resolver:         frResolver,
 				EnricherRegistry: setupTestEnricherRegistry(),
+				URLRedirects:     BuildRedirectMap(frIdx, frResolver, "/fr"),
 			},
 		},
 	})
@@ -227,5 +233,16 @@ func TestServer_ContentRoutes_PerLanguage_ExtensionRedirect(t *testing.T) {
 	}
 	if body := w.Body.String(); !strings.Contains(body, "french-only-marker-3b2") {
 		t.Errorf("/fr/guide: body missing French marker\nbody: %s", body)
+	}
+
+	// redirect_from on the French page must resolve to the French page.
+	req = httptest.NewRequest(http.MethodGet, "/fr/ancien-guide", nil)
+	w = httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("/fr/ancien-guide: status = %d, want 301", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/fr/guide" {
+		t.Errorf("/fr/ancien-guide: Location = %q, want %q", loc, "/fr/guide")
 	}
 }

@@ -59,6 +59,11 @@ type LangPipelineConfig struct {
 	RedirectFinder   RedirectFinder
 	EnricherRegistry enricher.EnricherRegistry
 
+	// URLRedirects maps this language's redirect_from sources to its own pages.
+	// Sources are content-root-relative (the /{lang} prefix is stripped before
+	// the handler runs); targets already carry it.
+	URLRedirects URLRedirectMap
+
 	// TemplateRenderer carries the language's own resolver, which is what the
 	// contentURL template func consults. The default-language renderer cannot
 	// resolve a path that exists only in this language's tree, so it would fall
@@ -214,6 +219,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 			TemplateRenderer: lp.TemplateRenderer,
 			SiteConfig:       &cfg.Site,
 			RedirectFinder:   lp.RedirectFinder,
+			URLRedirects:     lp.URLRedirects,
 			Resolver:         lp.Resolver,
 			Lang:             lang,
 			TFunc:            langTFunc,

@@ -523,6 +523,24 @@ Each non-default language lives under a BCP 47 directory at the content root (e.
 | `metadata.Index` | Independent frontmatter index |
 | `search.Index` | Independent full-text index |
 | Navigation | Independent nav tree |
+| `URLRedirects` | `redirect_from` sources for that language, targets prefixed `/{lang}` |
+
+Because each language owns a pipeline, the **default** pipeline must not index the
+language directories as well. `setupLanguagePipelines` detects them first and passes
+`{lang}/` directory-prefix patterns as `PipelineOptions.ExtraExclude`, which merges
+into the single `Pipeline.Exclude` list that every index of that pipeline is built
+with (`resolve.Build`, `metadata.BuildIndex`, `navigation.NewGenerator`,
+`search.BuildIndex`) and that build's static walk reads. Without it every translated
+page appears twice — once under `/{lang}/…` and once under `/…` — in the default
+sitemap, feed, tag pages, and sidebar, and build renders it twice into the same
+output file.
+
+`PipelineOptions.Lang` names the subtree a pipeline serves. It drives everything the
+pipeline emits as an absolute site path: the renderer's `WithLangPrefix` and the
+`basePath` handed to `server.BuildRedirectMap`. Redirect *sources* stay
+content-root-relative — `stripPathPrefix` removes `/{lang}` before the handler runs —
+while redirect *targets* carry the prefix, or the browser lands on the default
+language's page.
 
 **Language Detection:**
 
@@ -540,7 +558,7 @@ Per-language `/{lang}/sitemap.xml` and `/{lang}/feed.xml` routes are also regist
 
 **Build Output:**
 
-`gomddoc build` detects language directories at the content root and runs `walkAndBuildToDir` per language with an `outputPrefix` of `{lang}/`. Generates a `sitemap-index.xml` referencing per-language sitemaps when multiple languages are present.
+`gomddoc build` detects language directories at the content root and runs `walkAndBuildToDir` per language with an `outputPrefix` of `{lang}/`. The default walk skips those directories (it uses `Pipeline.Exclude`), so each page is rendered exactly once. Per language it also emits `redirect_from` pages, extension redirects, a 404, a sitemap, a feed, and tag pages. Generates a `sitemap-index.xml` referencing per-language sitemaps when multiple languages are present.
 
 **Theme Support:**
 

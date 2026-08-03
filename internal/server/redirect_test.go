@@ -1,6 +1,7 @@
 package server
 
 import (
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +19,7 @@ func TestBuildRedirectMap_RedirectFrom(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx, nil)
+	redirects := BuildRedirectMap(idx, nil, "")
 
 	if redirects == nil {
 		t.Fatal("expected non-nil redirect map")
@@ -53,7 +54,7 @@ func TestBuildRedirectMap_MultiplePages(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx, nil)
+	redirects := BuildRedirectMap(idx, nil, "")
 
 	if redirects == nil {
 		t.Fatal("expected non-nil redirect map")
@@ -70,6 +71,26 @@ func TestBuildRedirectMap_MultiplePages(t *testing.T) {
 	}
 }
 
+func TestBuildRedirectMap_BasePath(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md": {Data: []byte("---\ntitle: Guide\nredirect_from:\n  - /old-guide\n---\n# Guide\n")},
+	}
+	idx := buildTestIndex(t, files)
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(string) bool { return true }})
+
+	redirects := BuildRedirectMap(idx, resolver, "/fr-FR")
+
+	// The source stays content-root-relative — stripPathPrefix removes /fr-FR
+	// before the handler looks the request path up — while the target must be an
+	// absolute site path, or the browser lands on the default language's page.
+	want := URLRedirectMap{"/old-guide": "/fr-FR/guide"}
+	if !maps.Equal(redirects, want) {
+		t.Errorf("redirects = %v, want %v", redirects, want)
+	}
+}
+
 func TestBuildRedirectMap_Empty(t *testing.T) {
 	t.Parallel()
 
@@ -78,7 +99,7 @@ func TestBuildRedirectMap_Empty(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx, nil)
+	redirects := BuildRedirectMap(idx, nil, "")
 
 	if redirects != nil {
 		t.Errorf("expected nil redirect map, got %v", redirects)
@@ -88,7 +109,7 @@ func TestBuildRedirectMap_Empty(t *testing.T) {
 func TestBuildRedirectMap_NilIndex(t *testing.T) {
 	t.Parallel()
 
-	redirects := BuildRedirectMap(nil, nil)
+	redirects := BuildRedirectMap(nil, nil, "")
 	if redirects != nil {
 		t.Errorf("expected nil redirect map for nil index")
 	}

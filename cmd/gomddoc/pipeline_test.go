@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -378,6 +380,68 @@ func TestPrevNextBuilderAdapter(t *testing.T) {
 	prev, next = builder("/missing.md")
 	if prev != nil || next != nil {
 		t.Errorf("prev=%+v next=%+v, want both nil for missing path", prev, next)
+	}
+}
+
+// TestSetupLanguagePipelines_DefaultPipelineExcludesLanguages proves the default
+// pipeline's indexes stop at the language directories. Each language gets its own
+// pipeline; indexing them twice duplicated every translated page in the default
+// sitemap, feed, tag pages and sidebar, and made build render it twice.
+func TestSetupLanguagePipelines_DefaultPipelineExcludesLanguages(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "---\ntitle: Home\n---\n# Home")
+	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "guide.md",
+		"---\ntitle: Guide\nredirect_from:\n  - /ancien-guide\n---\n# Guide")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatalf("config error: %v", err)
+	}
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatalf("provider error: %v", err)
+	}
+	defer prov.Close()
+
+	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{
+		EnableNavigation: true,
+		EnableMetadata:   true,
+		EnableSearch:     true,
+	})
+	if err != nil {
+		t.Fatalf("setupLanguagePipelines error: %v", err)
+	}
+
+	// The metadata index is the one every downstream consumer reads (sitemap,
+	// feed, tag pages), so assert on it exhaustively rather than on a symptom.
+	var defaultPaths []string
+	for _, page := range lp.Default.MetaIndex.AllPages() {
+		defaultPaths = append(defaultPaths, page.Path)
+	}
+	if want := []string{"/README.md"}; !slices.Equal(defaultPaths, want) {
+		t.Errorf("default metadata index = %v, want %v", defaultPaths, want)
+	}
+	if lp.Default.Resolver.IsEmpty() {
+		t.Error("default resolver is empty; strip_extensions should still map root content")
+	}
+	if _, found := lp.Default.Resolver.CleanPath("fr-FR/guide.md"); found {
+		t.Error("default resolver maps a language page; that URL belongs to the fr-FR pipeline")
+	}
+
+	// The language pipeline owns that content — and its redirect targets are
+	// language-prefixed, since redirect targets are absolute site paths.
+	frPipe := lp.ByLang["fr-FR"]
+	if frPipe == nil {
+		t.Fatalf("no fr-FR pipeline built; languages = %v", lp.Languages)
+	}
+	wantRedirects := server.URLRedirectMap{"/ancien-guide": "/fr-FR/guide"}
+	if !maps.Equal(frPipe.URLRedirects, wantRedirects) {
+		t.Errorf("fr-FR URLRedirects = %v, want %v", frPipe.URLRedirects, wantRedirects)
+	}
+	if len(lp.Default.URLRedirects) != 0 {
+		t.Errorf("default URLRedirects = %v, want none (the only redirect_from is French)", lp.Default.URLRedirects)
 	}
 }
 

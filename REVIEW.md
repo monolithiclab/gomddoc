@@ -1019,7 +1019,7 @@ MCP and the metadata API are path-oriented — but nothing says so, and the tag 
 for the same data. One sentence in `docs/guide/` stating that API paths are file paths, not URLs, and
 that consumers wanting a link must resolve them.
 
-#### HIGH: language directories are indexed into the *default* pipeline
+#### ~~HIGH: language directories are indexed into the *default* pipeline~~ ✅ reproduced — **FIXED**
 
 `metadata.BuildIndex` and `navigation.buildTree` filter only via `SkipWalkEntry`/`IsRestrictedPath`;
 neither skips BCP 47 dirs. With one `fr-FR/page.md`, identically on serve and build:
@@ -1034,6 +1034,25 @@ Two behaviours presently *depend* on this leak and will break when it is fixed: 
 `redirect_from` (only the default pipeline gets `URLRedirects` — `server.go:250` vs the per-language
 handler at `:208-219`; `generateRedirectFiles` likewise default-only, `build.go:178`) and
 per-language extension redirects in build. Fix the leak and wire those per-language in the same change.
+
+**Fixed.** Routed through the *existing* generic exclude mechanism rather than teaching four indexes
+about BCP 47: `setupLanguagePipelines` now detects languages **before** building the default pipeline
+and passes them down as `PipelineOptions.ExtraExclude` in `provider.IsExcludedPath`'s directory-prefix
+form (`"fr-FR/"`). `setupPipeline` merges that with `cfg.Site.Exclude` into one `Pipeline.Exclude`
+consumed by all four indexes *and* by build's static walk (`buildContext.exclude`) — the walk
+previously read `cfg.Site.Exclude` directly, which is what produced the double render. Build now
+reports `markdown_files=3` for 3 source files.
+
+Both free-riding behaviours were wired per language in the same commit. `BuildRedirectMap` gained a
+`basePath` parameter, matching the convention `ExtensionRedirect` already used: it prefixes the
+**targets** only, because `stripPathPrefix` removes `/{lang}` before the handler runs, so the
+**sources** must stay content-root-relative. `PipelineOptions.Lang` is the single input driving both
+that prefix and `template.WithLangPrefix` (previously a post-hoc `Configure` call in
+`setupLanguagePipelines`). `LangPipelineConfig.URLRedirects` carries the map to the per-language
+handler; build calls `generateRedirectFiles` and `generateExtensionRedirects` per language.
+
+MCP was deliberately left on `cfg.Site.Exclude` — an agent querying the site should see translations.
+See `docs/decisions.md` § *One Effective Exclude List per Pipeline*.
 
 #### HIGH: two declared-and-documented parameters are silently ignored ✅ verified
 
@@ -1424,10 +1443,10 @@ per-language sitemap full of English URLs is invisible. `feed.xml` content is ne
 > Verified by mutation: `pagesPerTag[tag]` → `AllPages()`, `"/"+lang` → `""` for the per-language
 > sitemap/feed, and `fp` → `filePaths[0]` in the render errgroup each turn the suite red.
 >
-> The multi-language test's root-sitemap assertion also pins the **§10.5 language-directory leak**
-> as it stands today: `sitemap.xml` lists `/fr-FR` and `/fr-FR/guide` alongside the default-language
-> pages. Recorded as-is, not as the desired state — fixing the leak will require updating that
-> `wantRootLocs`.
+> The multi-language test's root-sitemap assertion originally pinned the **language-directory leak**
+> as it stood: `sitemap.xml` listed `/fr-FR` and `/fr-FR/guide` alongside the default-language pages.
+> That leak is now fixed (see the §10.3 finding below), and `wantRootLocs` asserts the corrected
+> behaviour — the root sitemap holds default-language URLs only.
 
 #### HIGH: silent-degradation branches untested
 
@@ -1647,8 +1666,12 @@ three `"text/markdown; charset=utf-8"`).
    against a fixture larger than the cap, and the four static-build tests read their outputs with
    sibling-content denials. Surfaced a real Atom bug (`<Link>` instead of `<link>`), the
    `/docs` vs `/docs/` index-URL split (§10.2), and tag pages nothing had ever asserted.
-10. **§10.3 language-directory leak** — do it together with wiring `URLRedirects` and
-    `generateExtensionRedirects` per language, which currently free-ride on the leak.
+10. ~~**§10.3 language-directory leak**~~ — **DONE.** The default pipeline now excludes every
+    detected BCP 47 directory via one `Pipeline.Exclude` list shared by all four indexes and build's
+    walk; `URLRedirects` and `generateExtensionRedirects` are wired per language in the same commit,
+    with redirect *targets* language-prefixed and *sources* left content-root-relative. Build stopped
+    rendering translated pages twice. A language whose pipeline failed to build is now skipped
+    outright instead of rendered with the default resolver (which emitted raw `.md` links).
 11. **§10.4 performance** — `findRelatedDocs` top-N, search merge-intersection, compression pool nil,
     double breadcrumb generation, compression/metrics route coverage.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.

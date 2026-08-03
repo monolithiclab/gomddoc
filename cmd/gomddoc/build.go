@@ -71,6 +71,7 @@ type buildContext struct {
 	enricherRegistry enricher.EnricherRegistry
 	templateRenderer *tmpl.HTMLRenderer
 	siteConfig       *config.SiteConfig
+	exclude          []string              // this walk's pipeline exclude list; see Pipeline.Exclude
 	resolver         *resolve.PathResolver // derives each file's URL path; see buildFile
 	bundle           *locale.Bundle
 	languageInfos    []tmpl.LanguageInfo // shared across all pages (Active set per-walk)
@@ -152,6 +153,7 @@ func (b *BuildCmd) Run() error {
 		enricherRegistry: pipeline.EnricherRegistry,
 		templateRenderer: pipeline.TemplateRenderer,
 		siteConfig:       &cfg.Site,
+		exclude:          pipeline.Exclude,
 		resolver:         pipeline.Resolver,
 		bundle:           bundle,
 		languageInfos:    tmpl.WithActiveLang(languageInfos, cfg.Site.Language),
@@ -177,12 +179,12 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate redirect HTML files for redirect_from frontmatter
-	if err := b.generateRedirectFiles(pipeline.MetaIndex, &cfg.Site, pipeline.Resolver); err != nil {
+	if err := b.generateRedirectFiles(pipeline.URLRedirects, ""); err != nil {
 		return fmt.Errorf("generate redirect files: %w", err)
 	}
 
 	// Generate extension redirect files (e.g. guide.html -> guide/)
-	if err := b.generateExtensionRedirects(pipeline.Resolver, cfg.Site.DefaultIndex); err != nil {
+	if err := b.generateExtensionRedirects(pipeline.Resolver, cfg.Site.DefaultIndex, ""); err != nil {
 		return fmt.Errorf("generate extension redirects: %w", err)
 	}
 
@@ -203,18 +205,22 @@ func (b *BuildCmd) Run() error {
 	// Build non-default languages into subdirectories
 	for _, lang := range detectedLangs {
 		langPipe := lp.ByLang[lang]
+		if langPipe == nil {
+			// Rendering the subtree with the default pipeline's resolver and
+			// exclude list is worse than skipping it: the default resolver is
+			// keyed on root-relative paths, so every link would silently point
+			// at a root-level namesake or degrade to a raw .md path, and the
+			// default exclude list skips lang/ outright.
+			slog.Warn("Skipping language with no pipeline", slog.String("lang", lang))
+			continue
+		}
 
 		// The language walk runs over the language sub-FS, so its file paths are
-		// language-relative and only that language's resolver can map them. The
-		// default resolver is keyed on root-relative paths, so falling back to
-		// it would silently hit root-level namesakes; leave it nil instead and
-		// let PageURLPath degrade to the real path.
+		// language-relative: only that language's own resolver and exclude list
+		// apply.
 		langBC := *bc
-		if langPipe != nil {
-			langBC.resolver = langPipe.Resolver
-		} else {
-			langBC.resolver = nil
-		}
+		langBC.exclude = langPipe.Exclude
+		langBC.resolver = langPipe.Resolver
 		langBC.languageInfos = tmpl.WithActiveLang(languageInfos, lang)
 		langBC.lang = lang
 		langBC.tFunc = bundle.TFunc(lang)
@@ -238,8 +244,17 @@ func (b *BuildCmd) Run() error {
 			slog.Warn("Failed to write 404 page for language", slog.String("lang", lang), slog.Any("error", langWriteErr))
 		}
 
+		// Redirects for this language. The default pipeline no longer indexes
+		// language directories, so nothing else emits these.
+		if rErr := b.generateRedirectFiles(langPipe.URLRedirects, lang); rErr != nil {
+			slog.Warn("Failed to generate redirect files for language", slog.String("lang", lang), slog.Any("error", rErr))
+		}
+		if rErr := b.generateExtensionRedirects(langPipe.Resolver, cfg.Site.DefaultIndex, lang); rErr != nil {
+			slog.Warn("Failed to generate extension redirects for language", slog.String("lang", lang), slog.Any("error", rErr))
+		}
+
 		// Generate per-language sitemap and feed
-		if langPipe != nil && langPipe.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
+		if langPipe.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
 			langSitemapData, sErr := server.GenerateSitemap(context.Background(), langPipe.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, langPipe.Provider, langPipe.Resolver, "/"+lang)
 			if sErr != nil {
 				slog.Warn("Failed to generate sitemap for language", slog.String("lang", lang), slog.Any("error", sErr))
@@ -359,7 +374,7 @@ func (b *BuildCmd) walkAndBuildToDir(contentRoot fs.FS, bc *buildContext, output
 			return fmt.Errorf("walk %s: %w", filePath, err)
 		}
 
-		if skip, skipErr := provider.SkipWalkEntry(filePath, d.Name(), d.IsDir(), bc.siteConfig.Exclude); skip {
+		if skip, skipErr := provider.SkipWalkEntry(filePath, d.Name(), d.IsDir(), bc.exclude); skip {
 			if !d.IsDir() {
 				stats.skippedFiles.Add(1)
 			}
@@ -574,13 +589,11 @@ func (b *BuildCmd) generateSEOFiles(idx *metadata.Index, siteConfig *config.Site
 	return nil
 }
 
-// generateRedirectFiles builds redirect HTML files from redirect_from frontmatter.
-func (b *BuildCmd) generateRedirectFiles(idx *metadata.Index, siteConfig *config.SiteConfig, resolver *resolve.PathResolver) error {
-	redirects := server.BuildRedirectMap(idx, resolver)
-	if len(redirects) == 0 {
-		return nil
-	}
-
+// generateRedirectFiles writes redirect HTML files for a pipeline's redirect_from
+// frontmatter. The sources are relative to that pipeline's content root, so for a
+// language pipeline they are written under lang/ (the targets already carry the
+// /{lang} prefix, courtesy of BuildRedirectMap).
+func (b *BuildCmd) generateRedirectFiles(redirects server.URLRedirectMap, lang string) error {
 	for source, target := range redirects {
 		html := server.GenerateRedirectHTML(target)
 		// Write as source/index.html so the URL matches without extension
@@ -591,7 +604,7 @@ func (b *BuildCmd) generateRedirectFiles(idx *metadata.Index, siteConfig *config
 		if !strings.Contains(path.Base(outPath), ".") {
 			outPath = path.Join(outPath, "index.html")
 		}
-		if err := b.writeOutputFile(outPath, html); err != nil {
+		if err := b.writeOutputFile(path.Join(lang, outPath), html); err != nil {
 			return fmt.Errorf("write redirect %s: %w", source, err)
 		}
 		slog.Debug("Generated redirect", slog.String("from", source), slog.String("to", target))
@@ -626,7 +639,11 @@ func prettyOutputPath(filePath, defaultIndex string, dirsWithIndexMD map[string]
 // URLs still work on static hosts (e.g. guide.html -> guide/).
 // Default index files (e.g., README.md) are skipped — their URL is the
 // directory path, not the extensionless form.
-func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, defaultIndex string) error {
+//
+// The resolver's paths are relative to its own pipeline's content root, so both
+// the output path and the redirect target are prefixed with lang (empty for the
+// default language).
+func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, defaultIndex, lang string) error {
 	if resolver == nil || resolver.IsEmpty() {
 		return nil
 	}
@@ -635,13 +652,15 @@ func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, de
 		if resolve.IsDefaultIndex(realPath, defaultIndex) {
 			continue
 		}
-		html := server.GenerateRedirectHTML("/" + cleanPath)
-		if err := b.writeOutputFile(realPath, html); err != nil {
-			return fmt.Errorf("write extension redirect %s: %w", realPath, err)
+		target := "/" + path.Join(lang, cleanPath)
+		html := server.GenerateRedirectHTML(target)
+		outPath := path.Join(lang, realPath)
+		if err := b.writeOutputFile(outPath, html); err != nil {
+			return fmt.Errorf("write extension redirect %s: %w", outPath, err)
 		}
 		slog.Debug("Generated extension redirect",
-			slog.String("from", "/"+realPath),
-			slog.String("to", "/"+cleanPath),
+			slog.String("from", "/"+outPath),
+			slog.String("to", target),
 		)
 	}
 

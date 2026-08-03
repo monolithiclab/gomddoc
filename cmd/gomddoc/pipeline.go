@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"slices"
 
 	"golang.org/x/sync/errgroup"
 
@@ -34,6 +35,16 @@ type PipelineOptions struct {
 	EnableNavigation bool // enable navigation tree and redirect finder
 	EnableMetadata   bool // enable metadata index for tag API
 	EnableSearch     bool // enable full-text search index
+
+	// ExtraExclude holds exclude patterns merged with cfg.Site.Exclude for this
+	// pipeline only. The default pipeline uses it to keep BCP 47 language
+	// directories out of its indexes; each language has its own pipeline.
+	ExtraExclude []string
+
+	// Lang is the BCP 47 code of the language subtree this pipeline serves, or
+	// "" for the default language. Everything the pipeline emits as an absolute
+	// site path — template content URLs, redirect targets — carries it.
+	Lang string
 }
 
 // Pipeline holds the assembled rendering pipeline components.
@@ -48,6 +59,12 @@ type Pipeline struct {
 	Resolver         *resolve.PathResolver
 	StaticFS         fs.FS
 	Provider         provider.Provider
+
+	// Exclude is the effective exclude list every index of this pipeline was
+	// built with (cfg.Site.Exclude plus PipelineOptions.ExtraExclude). Callers
+	// that walk the same content — build's static walk — must use it, or they
+	// emit pages the pipeline's resolver and metadata index know nothing about.
+	Exclude []string
 }
 
 // LanguagePipeline holds per-language pipeline instances.
@@ -82,17 +99,26 @@ func warnTagsContentCollision(contentRoot fs.FS, lang string) {
 // for each BCP 47 directory found in the content root. It also loads the locale
 // bundle from embedded assets and merges site-level overrides from .gomddoc/locales/.
 func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts PipelineOptions) (*LanguagePipeline, error) {
+	contentRoot, err := prov.RootFS(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("content root: %w", err)
+	}
+
+	// Detect BCP 47 directories before building the default pipeline: each one
+	// gets its own pipeline below, so the default pipeline must not index them
+	// too. Otherwise every translated page appears a second time in the default
+	// sitemap, feed, tag pages and sidebar — and build renders it twice.
+	langs := locale.DetectLanguages(contentRoot)
+
 	// Build default pipeline.
-	defaultPipeline, err := setupPipeline(cfg, prov, opts)
+	defaultOpts := opts
+	defaultOpts.ExtraExclude = langExcludePatterns(langs)
+	defaultPipeline, err := setupPipeline(cfg, prov, defaultOpts)
 	if err != nil {
 		return nil, fmt.Errorf("default pipeline: %w", err)
 	}
 
 	// Load locale bundle from embedded assets.
-	contentRoot, err := prov.RootFS(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("content root: %w", err)
-	}
 	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
 
 	// Warn if user content shadows auto-generated /tags routes.
@@ -111,9 +137,6 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 	if err := bundle.MergeFrom(contentRoot, config.ConfigDirName+"/locales"); err != nil {
 		slog.Warn("Failed to merge site locale overrides", slog.Any("error", err))
 	}
-
-	// Detect BCP 47 directories in the content root.
-	langs := locale.DetectLanguages(contentRoot)
 
 	lp := &LanguagePipeline{
 		Default:   defaultPipeline,
@@ -136,14 +159,14 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 			continue
 		}
 
-		langPipeline, err := setupPipeline(cfg, langProv, opts)
+		langOpts := opts
+		langOpts.Lang = lang
+		langPipeline, err := setupPipeline(cfg, langProv, langOpts)
 		if err != nil {
 			_ = langProv.Close()
 			slog.Warn("Failed to build pipeline for language", slog.String("lang", lang), slog.Any("error", err))
 			continue
 		}
-
-		langPipeline.TemplateRenderer.Configure(template.WithLangPrefix(lang))
 
 		// Warn if user content in this language directory shadows auto-generated /tags routes.
 		warnTagsContentCollision(subFS, lang)
@@ -153,6 +176,17 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 	}
 
 	return lp, nil
+}
+
+// langExcludePatterns turns detected BCP 47 directory names into directory-prefix
+// exclude patterns ("fr-FR" -> "fr-FR/"), the form provider.IsExcludedPath treats
+// as "this directory and everything under it".
+func langExcludePatterns(langs []string) []string {
+	patterns := make([]string, len(langs))
+	for i, lang := range langs {
+		patterns[i] = lang + "/"
+	}
+	return patterns
 }
 
 // setupPipeline assembles the shared rendering pipeline from config and provider.
@@ -190,16 +224,28 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 
 	staticFS := assets.BuildStaticFS(assetsFS, cfg.Site.Theme.Name)
 
+	// One effective exclude list for every index this pipeline builds — a
+	// content index that ignores it makes excluded content reachable, because
+	// strip_extensions means the served URL never matches the pattern.
+	exclude := slices.Concat(cfg.Site.Exclude, opts.ExtraExclude)
+
 	resolver := resolve.Build(contentRoot, resolve.BuildOptions{
 		StripExtensions: cfg.Site.StripExtensions,
-		Exclude:         cfg.Site.Exclude,
+		Exclude:         exclude,
 		HasRenderer: func(mimeType string) bool {
 			_, _, err := registry.Get(mimeType, []negotiate.MediaType{{Type: "text", Subtype: "html", Q: 1.0}})
 			return err == nil
 		},
 	})
 
+	// Every absolute site path this pipeline emits carries the language prefix:
+	// template content URLs and redirect targets alike.
+	langPrefix := ""
 	templateRenderer.Configure(template.WithResolver(resolver))
+	if opts.Lang != "" {
+		langPrefix = "/" + opts.Lang
+		templateRenderer.Configure(template.WithLangPrefix(opts.Lang))
+	}
 
 	p := &Pipeline{
 		Registry:         registry,
@@ -207,6 +253,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		Resolver:         resolver,
 		StaticFS:         staticFS,
 		Provider:         provider.NewOverlayProvider(prov, staticFS),
+		Exclude:          exclude,
 	}
 
 	// Enricher options — navigation is optional (build doesn't use it).
@@ -215,17 +262,17 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	// Build the metadata index before navigation so the nav generator can label
 	// leaf pages from indexed titles instead of opening every file.
 	if opts.EnableMetadata {
-		metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot, cfg.Site.Exclude)
+		metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot, exclude)
 		if err != nil {
 			slog.Warn("Failed to build metadata index", slog.Any("error", err))
 		}
 		enricherOpts.MetaIndex = metaIndex
 		p.MetaIndex = metaIndex
-		p.URLRedirects = server.BuildRedirectMap(metaIndex, p.Resolver)
+		p.URLRedirects = server.BuildRedirectMap(metaIndex, p.Resolver, langPrefix)
 	}
 
 	if opts.EnableNavigation {
-		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, cfg.Site.Exclude, resolver)
+		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, exclude, resolver)
 		if p.MetaIndex != nil {
 			metaIndex := p.MetaIndex
 			navGen.SetTitleLookup(func(filePath string) string {
@@ -241,7 +288,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	}
 
 	if opts.EnableSearch && cfg.Site.Search.Index {
-		searchIdx, searchErr := search.BuildIndex(context.Background(), contentRoot, p.MetaIndex, cfg.Site.Exclude)
+		searchIdx, searchErr := search.BuildIndex(context.Background(), contentRoot, p.MetaIndex, exclude)
 		if searchErr != nil {
 			slog.Warn("Failed to build search index", slog.Any("error", searchErr))
 		} else {
@@ -414,6 +461,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 			Provider:         langPipe.Provider,
 			Resolver:         langPipe.Resolver,
 			RedirectFinder:   langPipe.RedirectFinder,
+			URLRedirects:     langPipe.URLRedirects,
 			EnricherRegistry: langPipe.EnricherRegistry,
 			TemplateRenderer: langPipe.TemplateRenderer,
 		}

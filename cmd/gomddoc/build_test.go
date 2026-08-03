@@ -1087,7 +1087,8 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 	// Non-default language directory (BCP 47), with a tagged page so the
 	// per-language tag pages get exercised too.
 	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "README.md", "---\ntitle: Accueil\n---\n# Accueil")
-	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "guide.md", "---\ntitle: Guide\ntags: [docs]\n---\n# Guide")
+	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "guide.md",
+		"---\ntitle: Guide\ntags: [docs]\nredirect_from:\n  - /ancien-guide\n---\n# Guide")
 
 	cmd := &BuildCmd{Dir: srcDir, Output: outDir, Domain: "build.example.com"}
 	if err := cmd.Run(); err != nil {
@@ -1139,18 +1140,29 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 		t.Errorf("fr-FR/feed.xml entry IDs = %v, want %v", got, wantFrIDs)
 	}
 
-	// The default-language sitemap still indexes the fr-FR pages — the language
-	// directory is walked by both pipelines. Asserted as-is rather than as the
-	// desired state; tracked in REVIEW.md §10.5.
+	// redirect_from and extension redirects are generated per language. Neither
+	// existed before the default pipeline stopped indexing fr-FR: the default
+	// pipeline owned both, and it emitted default-language targets.
+	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "ancien-guide"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide"`) {
+		t.Errorf("fr-FR/ancien-guide/index.html should redirect to /fr-FR/guide, got:\n%s", got)
+	}
+	if got := readTestFile(t, filepath.Join(outDir, "fr-FR"), "guide.md"); !strings.Contains(got, `url=/fr-FR/guide"`) {
+		t.Errorf("fr-FR/guide.md should redirect to /fr-FR/guide, got:\n%s", got)
+	}
+
+	// The default-language sitemap must not index the fr-FR pages: they already
+	// appear in fr-FR/sitemap.xml, and listing them twice under two URLs is a
+	// duplicate-content signal to crawlers. The default tag index likewise holds
+	// only default-language tags — "docs" belongs to the French guide alone.
 	wantRootLocs := []string{
 		"https://build.example.com/",
-		"https://build.example.com/fr-FR",
-		"https://build.example.com/fr-FR/guide",
-		"https://build.example.com/tags/",
-		"https://build.example.com/tags/docs",
+		"https://build.example.com/tags/", // the tag index is emitted even when empty
 	}
 	if got := sitemapLocs(t, outDir, "sitemap.xml"); !slices.Equal(got, wantRootLocs) {
 		t.Errorf("root sitemap.xml locs = %v, want %v", got, wantRootLocs)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "tags", "docs", "index.html")); !os.IsNotExist(err) {
+		t.Errorf("tags/docs/index.html should not exist: the only page tagged docs is French (err = %v)", err)
 	}
 
 	// sitemap-index.xml stitches the languages together and references fr-FR.

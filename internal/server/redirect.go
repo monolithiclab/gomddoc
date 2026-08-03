@@ -18,7 +18,12 @@ type URLRedirectMap map[string]string
 // frontmatter and builds a reverse mapping from old URLs to current page paths.
 // When a resolver is provided, redirect targets use clean (extensionless) paths
 // to avoid double redirects (old-url → /page.md → /page).
-func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver) URLRedirectMap {
+//
+// basePath is prepended to the targets only. Per-language handlers are mounted
+// under /{lang} with the prefix already stripped, so the sources stay
+// content-root-relative while the targets must be absolute site paths. Pass ""
+// for the default language.
+func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver, basePath string) URLRedirectMap {
 	if index == nil {
 		return nil
 	}
@@ -43,6 +48,7 @@ func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver) URL
 				target = "/" + clean
 			}
 		}
+		target = basePath + target
 
 		for _, src := range sources {
 			if s, ok := src.(string); ok && s != "" {

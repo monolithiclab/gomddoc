@@ -302,6 +302,13 @@ Each language gets its own independent:
 - **Navigation tree** — sidebar navigation is built from each language's content independently.
 - **Metadata index** — tags, related documents, and page metadata are indexed per language.
 - **404 page** — each language gets its own `404.html` in build mode.
+- **Redirects** — `redirect_from` on a page under `fr-FR/` redirects `/fr-FR/{source}` to that page's
+  language-prefixed URL, and never leaks into the default language's redirect table.
+
+The default language indexes **only** the content outside the language directories. A page under
+`fr-FR/` appears in `/fr-FR/sitemap.xml`, `/fr-FR/feed.xml`, `/fr-FR/tags/…` and the French sidebar —
+never in their default-language counterparts. A tag used only by translated pages therefore has no
+default-language tag page.
 
 ## Static Site Generation
 
@@ -325,7 +332,8 @@ build/site/
 │   │       └── index.html
 │   ├── sitemap.xml         ← French sitemap
 │   ├── feed.xml            ← French feed
-│   └── 404.html            ← French 404
+│   ├── 404.html            ← French 404
+│   └── tags/               ← French tag pages
 └── es-ES/
     ├── index.html
     ├── sitemap.xml         ← Spanish sitemap

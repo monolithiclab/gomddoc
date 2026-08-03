@@ -486,3 +486,39 @@ URLs cannot match serve's), which is a larger question than `Page.Path`. Tracked
 §10.2.
 
 **Deliberately not fixed here**: serve canonicalises a directory index to `/guides/` when requested that way and `/guides` when requested without the slash — `Page.Path` in serve is the request, not a stable page identity. Both forms return 200, so a directory index has two canonical URLs. That is a serve-side bug present before and after this change, tracked separately in `REVIEW.md`; build now consistently emits the no-slash form, matching the sitemap and every internal link.
+
+## One Effective Exclude List per Pipeline
+
+**Chosen**: `Pipeline.Exclude` — a single list, `cfg.Site.Exclude` plus
+`PipelineOptions.ExtraExclude` — that every index of that pipeline is built with and that
+every walker over the same content reads. Language directories are kept out of the default
+pipeline by adding `{lang}/` directory-prefix patterns to it, not by teaching any index what
+a BCP 47 directory is.
+
+**Why**: the four content indexes (`resolve.Build`, `metadata.BuildIndex`,
+`navigation.NewGenerator`, `search.BuildIndex`) already took an exclude list; only build's
+static walk and the request-path middleware were separate. `locale.DetectLanguages` had to
+move above the default pipeline's construction — it ran after — but nothing else changed
+shape. The alternative, a `skipLanguageDirs bool` threaded into each index, would have put
+the same knowledge in four places and left build's walk out, which is where the double-render
+came from.
+
+**What the leak was hiding**: with `fr-FR/page.md` present, the default pipeline indexed it
+too, so it appeared in the default sitemap, feed, and tag pages under a second URL, showed as
+a directory labelled `Fr-Fr` in the default sidebar, and build rendered it twice into the same
+output file — correctness depended on walk ordering. Two behaviours *depended* on the leak:
+per-language `redirect_from` (only the default handler was given `URLRedirects`) and
+per-language extension redirects in build (`generateExtensionRedirects` was default-only).
+Both are now wired per language, so fixing the leak does not regress them.
+
+**Why sources and targets are prefixed differently**: `stripPathPrefix` removes `/{lang}` before
+a language handler runs, so `URLRedirects` keys must stay content-root-relative — but the
+`Location` they produce is an absolute site path and must carry the prefix.
+`BuildRedirectMap(index, resolver, basePath)` therefore prefixes targets only, matching the
+`basePath` convention `ExtensionRedirect` already used. `PipelineOptions.Lang` is the single
+input that drives both it and `template.WithLangPrefix`.
+
+**Deliberately unchanged**: the MCP server still receives `cfg.Site.Exclude`, not the default
+pipeline's effective list. Its index now covers default-language content only — translations
+are duplicates and indexing them once is right — while `fr-FR/page.md` stays readable by
+explicit path.

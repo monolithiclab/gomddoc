@@ -104,10 +104,19 @@ testsite/              # Lorem ipsum test site for quick testing
   CSS sanitization) is not needed — treat these as false positives in reviews.
 - **Minimal dependencies** across all repos
 - **Prevent duplicated code** — extract shared helpers
-- **Every content index takes `cfg.Site.Exclude`** — `resolve.Build`, `metadata.BuildIndex`,
-  `navigation.NewGenerator`, `search.BuildIndex`. Access control cannot live in the request-path
+- **Every content index takes `Pipeline.Exclude`, never `cfg.Site.Exclude` directly** —
+  `resolve.Build`, `metadata.BuildIndex`, `navigation.NewGenerator`, `search.BuildIndex`, *and*
+  build's static walk (`buildContext.exclude`). Access control cannot live in the request-path
   middleware alone: `strip_extensions` means the served URL (`/TODO`) does not match the pattern
-  (`TODO.md`), so an index that ignores exclusions makes excluded content reachable
+  (`TODO.md`), so an index that ignores exclusions makes excluded content reachable. `Pipeline.Exclude`
+  is `cfg.Site.Exclude` plus that pipeline's own additions (the default pipeline excludes every
+  detected BCP 47 directory — each language has its own pipeline). A consumer that reads
+  `cfg.Site.Exclude` instead walks content the pipeline's own resolver and indexes know nothing about:
+  that is how build rendered every translated page twice.
+- **Per-language redirect maps: sources unprefixed, targets prefixed** — `stripPathPrefix` removes
+  `/{lang}` before the language handler runs, so `URLRedirectMap` **keys** stay content-root-relative
+  while **values** must be absolute site paths. `BuildRedirectMap`'s and `ExtensionRedirect`'s
+  `basePath` parameter applies to targets only.
 - **Manual testing**: Use Chrome DevTools MCP, target `testsite/`
 - **Options struct pattern** or **functional options**, depending on the case
 - **`path` not `filepath`** for `fs.FS` operations (forward slashes per `io/fs` spec)
