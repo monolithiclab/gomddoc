@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/xml"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -433,10 +435,20 @@ func TestBuildCmd_Run_WithDomain(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Verify sitemap.xml was generated with the domain
-	sitemapContent := readTestFile(t, outDir, "sitemap.xml")
-	if !strings.Contains(sitemapContent, "build.example.com") {
-		t.Errorf("sitemap.xml should contain the domain, got:\n%s", sitemapContent)
+	// Exhaustive, not a domain-substring sweep: every URL in a sitemap contains the
+	// domain, so Contains("build.example.com") holds for any non-empty document.
+	wantLocs := []string{
+		"https://build.example.com/",
+		"https://build.example.com/tags/",
+	}
+	if got := sitemapLocs(t, outDir, "sitemap.xml"); !slices.Equal(got, wantLocs) {
+		t.Errorf("sitemap locs = %v, want %v", got, wantLocs)
+	}
+
+	// feed.xml content was asserted nowhere before this.
+	wantIDs := []string{"https://build.example.com/"}
+	if got := feedEntryIDs(t, outDir, "feed.xml"); !slices.Equal(got, wantIDs) {
+		t.Errorf("feed entry IDs = %v, want %v", got, wantIDs)
 	}
 
 	// Verify robots.txt references the domain
@@ -663,22 +675,35 @@ func TestBuildCmd_Run_WithSubdirectories(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Verify README.md produced only index.html
-	if _, err := os.Stat(filepath.Join(outDir, "index.html")); err != nil {
-		t.Error("Expected index.html to exist")
+	// Read the outputs rather than Stat them: pages are rendered and written from
+	// an errgroup, and the canonical failure of a parallel per-file write path —
+	// one page's HTML landing in another page's index.html — passes an existence
+	// check. Each assertion below therefore also denies the sibling's heading.
+	if root := readTestFile(t, outDir, "index.html"); !strings.Contains(root, `<h1 id="root">Root`) {
+		t.Errorf("index.html should render the root page, got:\n%s", root)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "README.html")); !os.IsNotExist(err) {
 		t.Error("README.html should not exist")
 	}
-	// With default StripExtensions, pretty URLs are used
-	for _, f := range []string{"endpoints", "types"} {
-		if _, err := os.Stat(filepath.Join(outDir, "api", f, "index.html")); err != nil {
-			t.Errorf("Expected api/%s/index.html to exist", f)
+
+	// With default StripExtensions, pretty URLs are used.
+	endpointsH1, typesH1 := `<h1 id="api-endpoints">API Endpoints`, `<h1 id="types">Types`
+	for _, tc := range []struct{ dir, want, deny string }{
+		{"endpoints", endpointsH1, typesH1},
+		{"types", typesH1, endpointsH1},
+	} {
+		page := readTestFile(t, filepath.Join(outDir, "api", tc.dir), "index.html")
+		if !strings.Contains(page, tc.want) {
+			t.Errorf("api/%s/index.html missing %q, got:\n%s", tc.dir, tc.want, page)
+		}
+		if strings.Contains(page, tc.deny) {
+			t.Errorf("api/%s/index.html rendered a sibling page's heading %q", tc.dir, tc.deny)
 		}
 	}
-	// Non-markdown file copied
-	if _, err := os.Stat(filepath.Join(outDir, "assets", "logo.txt")); err != nil {
-		t.Error("Expected assets/logo.txt to exist")
+
+	// Non-markdown file copied byte for byte.
+	if got := readTestFile(t, filepath.Join(outDir, "assets"), "logo.txt"); got != "logo" {
+		t.Errorf("assets/logo.txt = %q, want %q", got, "logo")
 	}
 }
 
@@ -930,6 +955,47 @@ func readTestFile(t *testing.T, dir, name string) string {
 	return string(content)
 }
 
+// sitemapLocs parses a generated sitemap and returns its <loc> values in document
+// order. Substring checks cannot distinguish a per-language sitemap from one full
+// of default-language URLs, because every URL shares the domain prefix.
+func sitemapLocs(t *testing.T, dir, name string) []string {
+	t.Helper()
+
+	var doc struct {
+		URLs []struct {
+			Loc string `xml:"loc"`
+		} `xml:"url"`
+	}
+	if err := xml.Unmarshal([]byte(readTestFile(t, dir, name)), &doc); err != nil {
+		t.Fatalf("%s/%s is not valid XML: %v", dir, name, err)
+	}
+	locs := make([]string, len(doc.URLs))
+	for i, u := range doc.URLs {
+		locs[i] = u.Loc
+	}
+	return locs
+}
+
+// feedEntryIDs parses a generated Atom feed and returns its entry <id> values in
+// document order.
+func feedEntryIDs(t *testing.T, dir, name string) []string {
+	t.Helper()
+
+	var doc struct {
+		Entries []struct {
+			ID string `xml:"id"`
+		} `xml:"entry"`
+	}
+	if err := xml.Unmarshal([]byte(readTestFile(t, dir, name)), &doc); err != nil {
+		t.Fatalf("%s/%s is not valid XML: %v", dir, name, err)
+	}
+	ids := make([]string, len(doc.Entries))
+	for i, e := range doc.Entries {
+		ids[i] = e.ID
+	}
+	return ids
+}
+
 func TestPrettyOutputPath(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -979,13 +1045,33 @@ func TestBuildCmd_EmitsTagPages(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
+	// Read the pages, not just their inodes: an existence check cannot see a tag
+	// page that lists the wrong members, which is the failure a parallel render
+	// path actually produces.
+	goPage := readTestFile(t, filepath.Join(outDir, "tags", "go"), "index.html")
+	for _, want := range []string{`href="/a">A<`, `href="/b">B<`} {
+		if !strings.Contains(goPage, want) {
+			t.Errorf("tags/go/index.html missing %s, got:\n%s", want, goPage)
+		}
+	}
+
+	mlPage := readTestFile(t, filepath.Join(outDir, "tags", "machine%20learning"), "index.html")
+	if !strings.Contains(mlPage, `href="/a">A<`) {
+		t.Errorf("tags/machine%%20learning/index.html missing A, got:\n%s", mlPage)
+	}
+	if strings.Contains(mlPage, `href="/b">B<`) {
+		t.Error(`tags/machine%20learning/index.html lists B, which carries only the "go" tag`)
+	}
+
+	tagIndex := readTestFile(t, filepath.Join(outDir, "tags"), "index.html")
 	for _, want := range []string{
-		"tags/index.html",
-		"tags/go/index.html",
-		"tags/machine%20learning/index.html",
+		`href="/tags/go">go</a>`,
+		`href="/tags/machine%20learning">machine learning</a>`,
+		`<span class="tag-index-count">(2)</span>`, // go
+		`<span class="tag-index-count">(1)</span>`, // machine learning
 	} {
-		if _, err := os.Stat(filepath.Join(outDir, want)); err != nil {
-			t.Errorf("expected output %s: %v", want, err)
+		if !strings.Contains(tagIndex, want) {
+			t.Errorf("tags/index.html missing %s, got:\n%s", want, tagIndex)
 		}
 	}
 }
@@ -1022,17 +1108,49 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 		t.Errorf("expected fr-FR/guide/index.html: %v", err)
 	}
 
-	// Per-language 404, sitemap, feed, and tag pages.
+	// Per-language 404 and tag pages.
 	for _, want := range []string{
 		filepath.Join("fr-FR", "404.html"),
-		filepath.Join("fr-FR", "sitemap.xml"),
-		filepath.Join("fr-FR", "feed.xml"),
 		filepath.Join("fr-FR", "tags", "index.html"),
 		filepath.Join("fr-FR", "tags", "docs", "index.html"),
 	} {
 		if _, err := os.Stat(filepath.Join(outDir, want)); err != nil {
 			t.Errorf("expected per-language output %s: %v", want, err)
 		}
+	}
+
+	// The per-language sitemap and feed must carry fr-FR URLs. Stat'ing them says
+	// nothing: a per-language sitemap full of default-language URLs is the exact
+	// bug the pathPrefix plumbing exists to prevent.
+	wantFrLocs := []string{
+		"https://build.example.com/fr-FR/",
+		"https://build.example.com/fr-FR/guide",
+		"https://build.example.com/fr-FR/tags/",
+		"https://build.example.com/fr-FR/tags/docs",
+	}
+	if got := sitemapLocs(t, filepath.Join(outDir, "fr-FR"), "sitemap.xml"); !slices.Equal(got, wantFrLocs) {
+		t.Errorf("fr-FR/sitemap.xml locs = %v, want %v", got, wantFrLocs)
+	}
+	wantFrIDs := []string{
+		"https://build.example.com/fr-FR/guide",
+		"https://build.example.com/fr-FR/",
+	}
+	if got := feedEntryIDs(t, filepath.Join(outDir, "fr-FR"), "feed.xml"); !slices.Equal(got, wantFrIDs) {
+		t.Errorf("fr-FR/feed.xml entry IDs = %v, want %v", got, wantFrIDs)
+	}
+
+	// The default-language sitemap still indexes the fr-FR pages — the language
+	// directory is walked by both pipelines. Asserted as-is rather than as the
+	// desired state; tracked in REVIEW.md §10.5.
+	wantRootLocs := []string{
+		"https://build.example.com/",
+		"https://build.example.com/fr-FR",
+		"https://build.example.com/fr-FR/guide",
+		"https://build.example.com/tags/",
+		"https://build.example.com/tags/docs",
+	}
+	if got := sitemapLocs(t, outDir, "sitemap.xml"); !slices.Equal(got, wantRootLocs) {
+		t.Errorf("root sitemap.xml locs = %v, want %v", got, wantRootLocs)
 	}
 
 	// sitemap-index.xml stitches the languages together and references fr-FR.

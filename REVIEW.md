@@ -1358,29 +1358,76 @@ local `make test` and CI compute permanently different totals. It also carries a
 outside the module root, or commit it and add `docs/` to `.covignore` (which currently lists only
 `testutil/`).
 
-#### HIGH: unfalsifiable assertions ✅ verified
+#### ~~HIGH: unfalsifiable assertions~~ ✅ FIXED
 
-- `internal/server/sitemap_test.go:57,61` assert `Contains(body, "https://docs.example.com/")` and
+- ~~`internal/server/sitemap_test.go:57,61` assert `Contains(body, "https://docs.example.com/")` and
   `".../docs/"`, labelled *"README.md stripped"*. Both are **prefixes** of
   `https://docs.example.com/docs/guide.md`, which line `:53` already proved is present. **Neither
-  assertion can ever fail.** Same defect at `:215` and `feed_test.go:46`.
-- `internal/server/feed_test.go:103` — `TestGenerateFeed_LimitsEntries` asserts
-  `if count > feedMaxEntries`. **One-sided:** a feed emitting *zero* entries passes. Should be `!=`.
-- `feed_test.go` never asserts entry **ordering** despite staggering ModTimes; reversing the sort is
+  assertion can ever fail.** Same defect at `:215` and `feed_test.go:46`.~~
+- ~~`internal/server/feed_test.go:103` — `TestGenerateFeed_LimitsEntries` asserts
+  `if count > feedMaxEntries`. **One-sided:** a feed emitting *zero* entries passes. Should be `!=`.~~
+- ~~`feed_test.go` never asserts entry **ordering** despite staggering ModTimes; reversing the sort is
   invisible. Neither `TestGenerateSitemap` nor `TestGenerateFeed` `xml.Unmarshal`s its output, unlike
-  `TestGenerateSitemapIndex` (`:238`), which does it correctly.
-- `internal/metadata/index_test.go:340` — `TestBuildIndex_CancelledContext` asserts
-  `if err != nil && !errors.Is(err, context.Canceled)`, so it **passes when `err == nil`**.
+  `TestGenerateSitemapIndex` (`:238`), which does it correctly.~~
+- ~~`internal/metadata/index_test.go:340` — `TestBuildIndex_CancelledContext` asserts
+  `if err != nil && !errors.Is(err, context.Canceled)`, so it **passes when `err == nil`**.~~
 
-#### HIGH: static-build tests are existence-only, over a parallel write path
+> **Fixed.** `TestGenerateSitemap` and `TestGenerateFeed` now `xml.Unmarshal` into the production
+> `urlSet`/`atomFeed` and compare exhaustively — `maps.Equal` over loc→lastmod for the sitemap,
+> `slices.Equal` over ordered entry IDs for the feed. Every remaining raw-string check is delimited
+> (`<loc>…</loc>`, `<id>…</id>`). The finding named three sites; `grep` found five — `:140` and `:205`
+> carried the same dead root-URL assertion and were fixed too. Each fix was verified by mutation
+> (reverse the feed sort, `candidates = nil`, append to `tagURL`, drop the search cap).
+>
+> Three things the exact comparisons surfaced that the substring sweeps had hidden:
+> 1. `GenerateSitemap` also emits tag pages — `/tags/` and `/tags/<tag>`, no `<lastmod>`. Never
+>    mentioned by any assertion before.
+> 2. A folded index URL is `/docs`, **no trailing slash**, while the tag index is `/tags/` **with**
+>    one. The old comment claimed `/docs/` and was in fact matching the `/docs/guide.md` entry.
+>    Build mode writes `docs/index.html`, so its real URL is `/docs/` — see §10.2.
+> 3. `atomEntry.Link` had **no `xml` tag**, so `encoding/xml` fell back to the field name and every
+>    entry shipped `<Link rel="alternate">`. RFC 4287 requires `<link>`; feed readers would not find
+>    the alternate link. Unmarshalling through the production struct round-trips this happily, which
+>    is why the raw-string `<Link` guard stays alongside the structural assertions. Fixed in
+>    `feed.go` with `xml:"link"`.
+>
+> Also folded in from the same class: `search_test.go`'s `TestSearchEndpoint_LimitCapped` asserted
+> `len(results) > maxSearchLimit` against a **three-document** fixture, so deleting
+> `min(parsed, maxSearchLimit)` left it green. It now indexes `maxSearchLimit+10` matching pages and
+> asserts `!= maxSearchLimit`.
+>
+> Still open, same class, lower value: `tags_html_test.go:158` orders bare tag names
+> (`strings.Index(body, "go")`) rather than the delimited `go(1)` forms four lines above.
 
-`cmd/gomddoc/build.go:376,510` write output from an errgroup; the tests never read what was written.
+#### ~~HIGH: static-build tests are existence-only, over a parallel write path~~ ✅ FIXED
+
+~~`cmd/gomddoc/build.go:376,510` write output from an errgroup; the tests never read what was written.
 `TestBuildCmd_EmitsTagPages` (`build_test.go:960`) makes three `os.Stat` calls and **zero byte reads**;
 `TestBuildCmd_Run_WithSubdirectories` (`:650`) five. If the errgroup raced and wrote one page's
 content into another's `index.html` — the canonical bug for parallel per-file rendering — green.
 `TestBuildCmd_Run_MultiLanguage` (`:990`) `os.Stat`s `fr-FR/sitemap.xml` but never inspects it, so a
 per-language sitemap full of English URLs is invisible. `feed.xml` content is never asserted anywhere.
-**This is precisely the failure class that shipped as a real bug in §9.5/§9.7.**
+**This is precisely the failure class that shipped as a real bug in §9.5/§9.7.**~~
+
+> **Fixed.** All four tests now read their outputs, and each asserts the *sibling's* content is
+> absent so cross-contamination fails rather than passes:
+> - `TestBuildCmd_Run_WithSubdirectories` — each `api/*/index.html` must carry its own `<h1>` and not
+>   the other's; `assets/logo.txt` compared byte for byte.
+> - `TestBuildCmd_EmitsTagPages` — `tags/go/` lists A and B, `tags/machine%20learning/` lists A and
+>   **not** B, `tags/index.html` carries both links with counts `(2)`/`(1)`.
+> - `TestBuildCmd_Run_MultiLanguage` — `fr-FR/sitemap.xml` and `fr-FR/feed.xml` are parsed and their
+>   full URL sets compared, so a per-language document full of default-language URLs now fails.
+> - `TestBuildCmd_Run_WithDomain` — replaced `Contains(sitemap, "build.example.com")` (true of any
+>   non-empty sitemap) with exhaustive loc and feed-entry-ID comparisons. This is where `feed.xml`
+>   content gets asserted at all for the first time.
+>
+> Verified by mutation: `pagesPerTag[tag]` → `AllPages()`, `"/"+lang` → `""` for the per-language
+> sitemap/feed, and `fp` → `filePaths[0]` in the render errgroup each turn the suite red.
+>
+> The multi-language test's root-sitemap assertion also pins the **§10.5 language-directory leak**
+> as it stands today: `sitemap.xml` lists `/fr-FR` and `/fr-FR/guide` alongside the default-language
+> pages. Recorded as-is, not as the desired state — fixing the leak will require updating that
+> `wantRootLocs`.
 
 #### HIGH: silent-degradation branches untested
 
@@ -1595,8 +1642,11 @@ three `"text/markdown; charset=utf-8"`).
    (it listed a non-existent `-d, --dir` and `--dev`, and omitted `--admin-port`, `--pprof`,
    `--basic-auth-file`, `--git-storage-dir`); `GOMDDOC_SERVER_DIR_INDEX` in the usage block was
    corrected to `GOMDDOC_SITE_DIR_INDEX`; the Docker section no longer claims a multi-stage build.
-9. **§10.6 unfalsifiable assertions** — cheapest, highest-signal fixes in the pass (`<loc>`
-   delimiters, `>` → `!=`), plus making build tests read their outputs.
+9. ~~**§10.6 unfalsifiable assertions**~~ — **DONE.** Sitemap/feed tests unmarshal and compare
+   exhaustively, the remaining raw-string checks are delimited, the search-limit cap is tested
+   against a fixture larger than the cap, and the four static-build tests read their outputs with
+   sibling-content denials. Surfaced a real Atom bug (`<Link>` instead of `<link>`), the
+   `/docs` vs `/docs/` index-URL split (§10.2), and tag pages nothing had ever asserted.
 10. **§10.3 language-directory leak** — do it together with wiring `URLRedirects` and
     `generateExtensionRedirects` per language, which currently free-ride on the leak.
 11. **§10.4 performance** — `findRelatedDocs` top-N, search merge-intersection, compression pool nil,

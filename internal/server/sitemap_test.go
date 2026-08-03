@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/xml"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,22 +48,16 @@ func TestSitemapHandler(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/xml", ct)
 	}
 
+	// The handler is a lazyBytes wrapper over GenerateSitemap, whose output
+	// TestGenerateSitemap pins exhaustively; assert only that this response is that
+	// document, for this site. Delimited with <loc></loc> because every URL in the
+	// fixture is a prefix of another.
 	body := w.Body.String()
 	if !strings.Contains(body, "<urlset") {
 		t.Error("response should contain <urlset>")
 	}
-	if !strings.Contains(body, "https://docs.example.com/docs/guide.md") {
-		t.Error("response should contain guide.md URL")
-	}
-	// README.md paths should be normalized (stripped)
-	if !strings.Contains(body, "https://docs.example.com/") {
-		t.Error("response should contain root URL (README.md stripped)")
-	}
-	if !strings.Contains(body, "https://docs.example.com/docs/") {
-		t.Error("response should contain docs/ URL (README.md stripped)")
-	}
-	if !strings.Contains(body, "<lastmod>2025-06-15</lastmod>") {
-		t.Error("response should contain <lastmod> dates")
+	if !strings.Contains(body, "<loc>https://docs.example.com/</loc>") {
+		t.Errorf("response missing the root URL\n%s", body)
 	}
 }
 
@@ -76,17 +71,33 @@ func TestGenerateSitemap(t *testing.T) {
 	}
 
 	body := string(data)
-	if !strings.Contains(body, "<?xml version=") {
-		t.Error("should contain XML declaration")
+	if !strings.HasPrefix(body, xml.Header) {
+		t.Error("should start with the XML declaration")
 	}
-	if !strings.Contains(body, "http://www.sitemaps.org/schemas/sitemap/0.9") {
-		t.Error("should contain sitemap namespace")
+
+	var parsed urlSet
+	if err := xml.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("output is not valid XML: %v\n%s", err, body)
 	}
-	if !strings.Contains(body, "https://docs.example.com/docs/guide.md") {
-		t.Error("should contain guide.md URL")
+	if parsed.XMLNS != sitemapNS {
+		t.Errorf("xmlns = %q, want %q", parsed.XMLNS, sitemapNS)
 	}
-	if !strings.Contains(body, "<lastmod>2025-06-15</lastmod>") {
-		t.Error("should contain <lastmod> with file modification date")
+	got := make(map[string]string, len(parsed.URLs))
+	for _, u := range parsed.URLs {
+		got[u.Loc] = u.LastMod
+	}
+	// Exhaustive rather than a Contains sweep. Note "/docs" has no trailing slash
+	// while the tag index "/tags/" does — build mode writes docs/index.html and so
+	// serves the former at "/docs/". Tracked in REVIEW.md §10.2.
+	want := map[string]string{
+		"https://docs.example.com/":              "2025-06-15",
+		"https://docs.example.com/docs":          "2025-06-15",
+		"https://docs.example.com/docs/guide.md": "2025-06-15",
+		"https://docs.example.com/tags/":         "", // tag index, no lastmod
+		"https://docs.example.com/tags/tutorial": "",
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("urls = %v, want %v", got, want)
 	}
 }
 
@@ -99,9 +110,12 @@ func TestGenerateSitemap_EmptyDomain(t *testing.T) {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
 
-	body := string(data)
-	if strings.Contains(body, "<loc>") {
-		t.Error("should not contain any <loc> entries when domain is empty")
+	var parsed urlSet
+	if err := xml.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("output is not valid XML: %v", err)
+	}
+	if len(parsed.URLs) != 0 {
+		t.Errorf("urls = %v, want none when domain is empty", parsed.URLs)
 	}
 }
 
@@ -116,12 +130,13 @@ func TestGenerateSitemap_ExcludesNoindex(t *testing.T) {
 
 	body := string(data)
 
-	// Pages without noindex should be present
-	if !strings.Contains(body, "https://docs.example.com/docs/guide.md") {
-		t.Error("should contain guide.md (no robots directive)")
+	// Pages without noindex should be present. Delimited: the root URL is a prefix
+	// of every other entry, so an undelimited Contains can never fail.
+	if !strings.Contains(body, "<loc>https://docs.example.com/docs/guide.md</loc>") {
+		t.Errorf("should contain guide.md (no robots directive)\n%s", body)
 	}
-	if !strings.Contains(body, "https://docs.example.com/") {
-		t.Error("should contain root URL (no robots directive)")
+	if !strings.Contains(body, "<loc>https://docs.example.com/</loc>") {
+		t.Errorf("should contain root URL (no robots directive)\n%s", body)
 	}
 
 	// Pages with noindex should be excluded
@@ -168,25 +183,24 @@ func TestGenerateSitemap_WithResolver(t *testing.T) {
 
 	body := string(data)
 
-	// Should contain extensionless URL for guide.md
-	if !strings.Contains(body, "https://docs.example.com/docs/guide") {
-		t.Error("should contain extensionless URL docs/guide")
+	// Delimited: the extensionless URL is a prefix of the .md one, and the root URL
+	// is a prefix of both, so undelimited Contains checks here cannot fail.
+	if !strings.Contains(body, "<loc>https://docs.example.com/docs/guide</loc>") {
+		t.Errorf("should contain extensionless URL docs/guide\n%s", body)
 	}
-
-	// Should NOT contain .md URL
 	if strings.Contains(body, "https://docs.example.com/docs/guide.md") {
 		t.Error("should not contain .md URL when resolver provides clean path")
 	}
+	if !strings.Contains(body, "<loc>https://docs.example.com/</loc>") {
+		t.Errorf("should contain root URL from README.md\n%s", body)
+	}
 
-	// Default index files should resolve to directory URL, not extensionless
+	// Default index files fold to their directory URL, not the extensionless name.
 	if strings.Contains(body, "https://docs.example.com/README") {
 		t.Error("root README.md should map to / not /README")
 	}
 	if strings.Contains(body, "https://docs.example.com/docs/README") {
-		t.Error("docs/README.md should map to /docs/ not /docs/README")
-	}
-	if !strings.Contains(body, "https://docs.example.com/") {
-		t.Error("should contain root URL from README.md")
+		t.Error("docs/README.md should map to /docs not /docs/README")
 	}
 }
 
@@ -205,16 +219,16 @@ func TestGenerateSitemap_IncludesTagPages(t *testing.T) {
 	}
 	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: hasRenderer})
 
-	xml, err := GenerateSitemap(context.Background(), idx, "https://example.com", "README.md", prov, resolver, "")
+	xmlData, err := GenerateSitemap(context.Background(), idx, "https://example.com", "README.md", prov, resolver, "")
 	if err != nil {
 		t.Fatalf("GenerateSitemap: %v", err)
 	}
 
-	body := string(xml)
+	body := string(xmlData)
 	for _, want := range []string{
-		"https://example.com/tags/",
-		"https://example.com/tags/go",
-		"https://example.com/tags/docs",
+		"<loc>https://example.com/tags/</loc>",
+		"<loc>https://example.com/tags/go</loc>",
+		"<loc>https://example.com/tags/docs</loc>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("sitemap missing %q\n%s", want, body)

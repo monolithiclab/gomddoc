@@ -15,7 +15,12 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/seo"
 )
 
-const feedMaxEntries = 20
+const (
+	feedMaxEntries = 20
+
+	// atomNS is the Atom 1.0 namespace URI.
+	atomNS = "http://www.w3.org/2005/Atom"
+)
 
 // FeedHandler serves an Atom feed from the metadata index.
 // The feed is generated once on first request and cached, since
@@ -67,11 +72,11 @@ type atomLink struct {
 
 // atomEntry represents a single entry in the Atom feed.
 type atomEntry struct {
-	Title   string `xml:"title"`
-	ID      string `xml:"id"`
-	Updated string `xml:"updated"`
-	Link    atomLink
-	Summary string `xml:"summary,omitempty"`
+	Title   string   `xml:"title"`
+	ID      string   `xml:"id"`
+	Updated string   `xml:"updated"`
+	Link    atomLink `xml:"link"`
+	Summary string   `xml:"summary,omitempty"`
 }
 
 // GenerateFeed produces the Atom feed XML bytes.
@@ -160,7 +165,7 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 	altURL := seo.PageURL(domain, pathPrefix+"/", "")
 
 	feed := atomFeed{
-		XMLNS:   "http://www.w3.org/2005/Atom",
+		XMLNS:   atomNS,
 		Title:   siteTitle,
 		ID:      altURL,
 		Updated: feedUpdated,

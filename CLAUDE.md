@@ -125,6 +125,9 @@ testsite/              # Lorem ipsum test site for quick testing
 - **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains
 - **`yaml.Marshal`** for YAML output — never construct YAML with `fmt.Sprintf`/`fmt.Fprintf`
   (special characters like colons, brackets produce malformed output)
+- **Every field of a marshalled XML struct needs an explicit `xml:` tag** — `encoding/xml` silently
+  falls back to the Go field name, so an untagged `Link atomLink` emits `<Link>`, which is not the
+  Atom element. A round-trip test through the same struct reads it back happily and cannot see it.
 - **Consistent behavior across code paths** — error/fallback paths must behave identically to happy
   paths (e.g., if the fast path lowercases, the error path must too)
 - **Counters over string-length comparisons** — detect "nothing written" with a counter, not by
@@ -172,6 +175,14 @@ testsite/              # Lorem ipsum test site for quick testing
   timeouts + `time.Sleep` (deterministic, no flakiness, no unnecessary delays)
 - **One canonical test helper per pattern** — don't duplicate helpers across test files; place the
   shared helper in a `testhelpers_test.go` file
+- **Assertions must be falsifiable** — before adding one, ask what production change would turn it
+  red. `strings.Contains(body, "https://x.com/")` is dead when every URL in the fixture starts with
+  that prefix; `len(r) > max` is dead when the fixture is smaller than `max`. Parse generated
+  documents (`xml.Unmarshal` into the production struct) and compare exhaustively with
+  `slices.Equal`/`maps.Equal`, or delimit the substring (`<loc>…</loc>`). Keep a few raw-string
+  checks for wire format — a round-trip through the production struct is blind to element names.
+- **Tests over parallel write paths must read what was written, and deny the sibling's content** —
+  `os.Stat` cannot see one page's HTML landing in another page's `index.html`
 
 ### After implementing changes
 

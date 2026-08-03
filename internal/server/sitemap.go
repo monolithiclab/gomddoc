@@ -31,6 +31,9 @@ func NewSitemapHandler(index *metadata.Index, domain, defaultIndex string, prov 
 	}
 }
 
+// sitemapNS is the sitemap protocol 0.9 namespace URI.
+const sitemapNS = "http://www.sitemaps.org/schemas/sitemap/0.9"
+
 // urlSet is the root element of a sitemap XML document.
 type urlSet struct {
 	XMLName xml.Name     `xml:"urlset"`
@@ -69,7 +72,7 @@ func GenerateSitemapIndex(domain string, langs []string) ([]byte, error) {
 	}
 
 	doc := sitemapIndex{
-		XMLNS:    "http://www.sitemaps.org/schemas/sitemap/0.9",
+		XMLNS:    sitemapNS,
 		Sitemaps: entries,
 	}
 
@@ -147,7 +150,7 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 	}
 
 	sitemap := urlSet{
-		XMLNS: "http://www.sitemaps.org/schemas/sitemap/0.9",
+		XMLNS: sitemapNS,
 		URLs:  urls,
 	}
 

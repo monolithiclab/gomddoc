@@ -348,12 +348,13 @@ func TestBuildIndex_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
+	// Deterministic, not best-effort: the context is cancelled before BuildIndex is
+	// called, so every parse goroutine sees a non-nil gctx.Err() on entry and returns
+	// it. The previous form (`err != nil && !errors.Is(...)`) also passed on err ==
+	// nil, i.e. when cancellation was ignored entirely.
 	_, err := BuildIndex(ctx, testFS, nil)
-	// A cancelled context may or may not produce an error depending on
-	// timing; the goroutines may complete before checking ctx.Err().
-	// When an error is returned, it must wrap context.Canceled.
-	if err != nil && !errors.Is(err, context.Canceled) {
-		t.Errorf("expected context.Canceled, got: %v", err)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("BuildIndex with a cancelled context: err = %v, want context.Canceled", err)
 	}
 }
 

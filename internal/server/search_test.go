@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -140,7 +141,18 @@ func TestSearchEndpoint_QueryLengthCapped(t *testing.T) {
 func TestSearchEndpoint_LimitCapped(t *testing.T) {
 	t.Parallel()
 
-	idx := buildTestSearchIndex(t)
+	// The shared fixture holds three documents, so `<= maxSearchLimit` would hold
+	// with the cap deleted. Index more matches than the cap so the assertion can be
+	// exact and can only pass because the cap applied.
+	contentRoot := make(fstest.MapFS, maxSearchLimit+10)
+	for i := range maxSearchLimit + 10 {
+		name := fmt.Sprintf("page%03d.md", i)
+		contentRoot[name] = &fstest.MapFile{Data: []byte("# Page\n\nthe quick brown fox")}
+	}
+	idx, err := search.BuildIndex(context.Background(), contentRoot, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex failed: %v", err)
+	}
 	handler := NewSearchHandler(idx)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/search?q=the&limit=999", nil)
@@ -153,9 +165,8 @@ func TestSearchEndpoint_LimitCapped(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	// Should not exceed maxSearchLimit (100) even though 999 was requested
-	if len(results) > maxSearchLimit {
-		t.Errorf("results (%d) exceeded max limit (%d)", len(results), maxSearchLimit)
+	if len(results) != maxSearchLimit {
+		t.Errorf("results = %d, want %d (limit=999 must be capped)", len(results), maxSearchLimit)
 	}
 }
 
