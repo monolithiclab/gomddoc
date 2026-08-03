@@ -75,17 +75,17 @@ make run
 # Serve current directory on default port 8080
 ./build/gomddoc serve
 
-# Serve specific directory
-./build/gomddoc serve -d /path/to/docs
+# Serve specific directory (positional argument)
+./build/gomddoc serve /path/to/docs
 
 # Use custom port
 ./build/gomddoc serve -p :9000
 
 # Enable directory listing (disabled by default for security)
-GOMDDOC_SERVER_DIR_INDEX=true ./build/gomddoc serve
+GOMDDOC_SITE_DIR_INDEX=true ./build/gomddoc serve
 
 # Combine options
-./build/gomddoc serve -d ./docs -p :3000
+./build/gomddoc serve ./docs -p :3000
 
 # Show version
 ./build/gomddoc --version
@@ -135,17 +135,25 @@ Gomddoc serves all content types with intelligent rendering:
 gomddoc serve [flags]
 ```
 
-| Flag               | Default | Env Var                    | Description                          |
-| ------------------ | ------- | -------------------------- | ------------------------------------ |
-| `-d`, `--dir`      | `.`     | `GOMDDOC_SERVER_DIR`       | Markdown directory or Git URL        |
-| `-p`, `--port`     | `:8080` | `GOMDDOC_SERVER_PORT`      | HTTP listen address (host:port)      |
-| `--dev`            | `false` | `GOMDDOC_SERVER_DEV_MODE`  | Enable development mode              |
-| `--git-key-file`   |         | `GOMDDOC_SERVER_GIT_SSH_KEY` | Path to SSH private key file       |
-| `--version`        |         |                            | Show version and exit                |
+| Flag                | Default | Env Var                           | Description                                       |
+| ------------------- | ------- | --------------------------------- | ------------------------------------------------- |
+| `DIR` (positional)  | `.`     | `GOMDDOC_SERVER_DIR`              | Markdown directory or Git URL                     |
+| `-p`, `--port`      | `:8080` | `GOMDDOC_SERVER_PORT`             | HTTP listen address (`:auto` to auto-assign)      |
+| `--admin-port`      |         | `GOMDDOC_SERVER_ADMIN_PORT`       | Separate address for health, metrics, and pprof   |
+| `-d`, `--domain`    |         | `GOMDDOC_DOMAIN`                  | Override site domain for canonical URLs and SEO   |
+| `--git-key-file`    |         | `GOMDDOC_SERVER_GIT_SSH_KEY`      | Path to SSH private key file                      |
+| `--git-storage-dir` |         | `GOMDDOC_SERVER_GIT_STORAGE_DIR`  | Disk-based Git clone directory (default: memory)  |
+| `--pprof`           | `false` | `GOMDDOC_SERVER_PPROF`            | Enable pprof endpoints at `/debug/pprof/`         |
+| `--basic-auth-file` |         | `GOMDDOC_SERVER_BASIC_AUTH_FILE`  | Path to htpasswd file (bcrypt hashes only)        |
+| `--version`         |         |                                   | Show version and exit                             |
+
+There is no `--dev` flag. Dev mode comes from `gomddoc preview`, which enables it unconditionally,
+or from `GOMDDOC_SERVER_DEV_MODE=true`.
 
 ### Environment Variables
 
-All environment variables can be listed with `gomddoc serve --help`.
+All environment variables can be listed with `gomddoc info`, which prints each one with its type and
+default. `gomddoc serve --help` shows only the vars that have a matching flag.
 
 **Server settings:**
 
@@ -154,7 +162,11 @@ All environment variables can be listed with `gomddoc serve --help`.
 | `GOMDDOC_SERVER_DIR`                      | string   | `.`         | Markdown directory or Git URL          |
 | `GOMDDOC_SERVER_PORT`                     | string   | `:8080`     | HTTP listen address (host:port)        |
 | `GOMDDOC_SERVER_DEV_MODE`                 | bool     | `false`     | Enable development mode                |
+| `GOMDDOC_SERVER_ADMIN_PORT`               | string   |             | Separate address for admin endpoints   |
+| `GOMDDOC_SERVER_PPROF`                    | bool     | `false`     | Enable pprof endpoints                 |
+| `GOMDDOC_SERVER_BASIC_AUTH_FILE`          | string   |             | htpasswd file (bcrypt hashes only)     |
 | `GOMDDOC_SERVER_GIT_SSH_KEY`              | string   |             | Path to SSH private key file           |
+| `GOMDDOC_SERVER_GIT_STORAGE_DIR`          | string   |             | Disk-based Git clone directory         |
 | `GOMDDOC_SERVER_HTTP_SHUTDOWN_TIMEOUT`    | duration | `1s`        | Graceful shutdown timeout              |
 | `GOMDDOC_SERVER_HTTP_READ_HEADER_TIMEOUT` | duration | `5s`        | HTTP read header timeout               |
 | `GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT`       | duration | `30s`       | HTTP write timeout                     |
@@ -463,7 +475,8 @@ chmod 755 $(find . -type d)
 **Template errors in dev mode:**
 
 ```bash
-./build/gomddoc serve --dev  # Disables template caching
+./build/gomddoc preview        # Dev mode: templates re-parsed on every request
+GOMDDOC_SERVER_DEV_MODE=true ./build/gomddoc serve
 ```
 
 ## Contributing

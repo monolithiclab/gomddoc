@@ -1310,13 +1310,13 @@ regressed*: the theme-count correction was applied to `05-theming-and-assets.md`
 
 | # | Doc | Reality |
 | --- | ---------------------------------------- | ------------------------------------------------- |
-| D1 | `README.md:118,377` documents `serve --dev` | ✅ verified: `unknown flag --dev`. Dev mode is reachable only via `preview` |
-| D2 | `README.md:118` uses `-d ./testsite` as the directory | ✅ verified: `-d` is `--domain` (`serve.go:20`); fails with *"domain should not include path"*. Same bug in the k8s manifest at `09-deployment.md:229`, which also omits the subcommand — the pod crash-loops |
+| D1 | `README.md:118,377` documents `serve --dev` | ~~✅ verified: `unknown flag --dev`~~ — **FIXED**. The flag table now matches `serve --help`, and both `--dev` call sites point at `preview` / `GOMDDOC_SERVER_DEV_MODE` |
+| D2 | `README.md:118` uses `-d ./testsite` as the directory | ~~✅ verified: `-d` is `--domain`~~ — **FIXED**. README uses the positional arg; the k8s manifest now passes `args: ["serve", "/content"]` |
 | D3 | `02-configuration.md:492-503` documents 5 `GOMDDOC_SERVER_HTTP_*` vars + `DEV_MODE` | ~~✅ verified inert~~ — **FIXED**, they now take effect; see §10.3 |
 | D4 | `05-theming-and-assets.md:128,261,397` + website + themes docs document a `navigation` template function | The FuncMap (`renderer.go:528-550`) has 13 entries and no `navigation`. A theme calling it fails to parse |
 | D5 | `08-observability.md:26-27` — `--admin-port` removes health *"from the main port entirely"* | ✅ verified: `/health/live` returns 200 on **both** ports. Only `/metrics` and pprof are gated (`server.go:93-97` vs `:116-120`) |
 | D6 | `docs/custom-renderers.md` teaches `Renderer` with a dead interface | All 9 examples are non-compiling. The real contract is `InputMimeTypes`/`OutputMimeTypes`/`Render(ctx, content, *enricher.EnrichmentData)`. `docs/guide/` has **zero** replacement coverage |
-| D7 | `09-deployment.md:105-118` — *"multi-stage Dockerfile"*, `docker build -t gomddoc .` | The Dockerfile is 11 lines, single-stage, and `COPY gomddoc /gomddoc` expects a GoReleaser-built binary. A fresh clone cannot build it. The `docker run` example also ends in a bare `gomddoc`, which exits non-zero (no default command) |
+| D7 | `09-deployment.md:105-118` — *"multi-stage Dockerfile"* | ~~verified~~ — **FIXED**. The section now leads with `docker pull ghcr.io/...`, states that the Dockerfile is not self-contained, and gives a `GOOS=linux` cross-compile before `docker build`. The bare-`gomddoc` run example gained the `serve` subcommand |
 | D8 | `02-configuration.md:88` — README.md generates *"both `README.html` and `index.html`"* | `prettyOutputPath` (`build.go:600-604`) emits only `<dir>/index.html`; `:616-622` explicitly skips the redirect stub |
 | D9 | `03-api-reference.md:161-164` lists `GET /sitemap-index.xml` as a live endpoint | Build-only — see §10.2 |
 | D10 | *"8 built-in themes"* in `architecture.md`, `decisions.md`, `roadmap.md`, `guide/README.md:14`, `10-search.md`, `11-seo.md` + 6 website files | ✅ verified: `cmd/gomddoc/assets/themes/` contains only `default`. Only `05-theming-and-assets.md:28` says this correctly |
@@ -1591,8 +1591,10 @@ three `"text/markdown; charset=utf-8"`).
    *before* the serve args so Kong-resolved flags still win, with the three opt-in booleans OR'd
    instead of assigned. Surfaced the `GOMDDOC_DIR_INDEX` vs `GOMDDOC_SITE_DIR_INDEX` dual-naming
    drift (see §10.3).
-8. **§10.5 D1/D2/D7** — the README quickstart and the deployment guide's Docker/k8s examples cannot
-   work as written; these are the first commands a new user runs.
+8. ~~**§10.5 D1/D2/D7**~~ — **DONE.** README's `serve` flag table was rebuilt from `serve --help`
+   (it listed a non-existent `-d, --dir` and `--dev`, and omitted `--admin-port`, `--pprof`,
+   `--basic-auth-file`, `--git-storage-dir`); `GOMDDOC_SERVER_DIR_INDEX` in the usage block was
+   corrected to `GOMDDOC_SITE_DIR_INDEX`; the Docker section no longer claims a multi-stage build.
 9. **§10.6 unfalsifiable assertions** — cheapest, highest-signal fixes in the pass (`<loc>`
    delimiters, `>` → `!=`), plus making build tests read their outputs.
 10. **§10.3 language-directory leak** — do it together with wiring `URLRedirects` and

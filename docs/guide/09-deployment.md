@@ -103,22 +103,33 @@ The `sitemap-index.xml` is only generated when more than one language is detecte
 
 ## Container Deployment
 
-gomddoc ships with a multi-stage Dockerfile that produces a minimal, secure container image suitable for production deployment.
+Official images are published to GitHub Container Registry by the release workflow:
+
+```bash
+docker pull ghcr.io/monolithiclab/gomddoc:latest
+```
 
 ## Docker Image
 
 ### Building the Image
 
+The repository's `Dockerfile` is **not** self-contained: GoReleaser cross-compiles the binary per
+target platform and drops it into the build context, so the Dockerfile only copies it in. Building
+straight from a fresh clone fails, because there is no `gomddoc` binary in the context yet.
+
+To build locally, cross-compile a Linux binary into the context first — a macOS binary will not run
+in the Linux runtime image:
+
 ```bash
+GOOS=linux GOARCH=amd64 go build -o gomddoc ./cmd/gomddoc
 docker build -t gomddoc .
+rm gomddoc
 ```
 
-The multi-stage build:
-
-1. Compiles a statically-linked Go binary with stripped debug symbols (`-ldflags="-s -w"`)
-2. Copies the binary into a [distroless](https://github.com/GoogleContainerTools/distroless) runtime image running as a non-root user
-
-The final image contains only the gomddoc binary -- no shell, no package manager, no unnecessary system libraries.
+The runtime image is [distroless](https://github.com/GoogleContainerTools/distroless)
+(`gcr.io/distroless/static-debian12:nonroot`) and runs as a non-root user. It contains only the
+gomddoc binary -- no shell, no package manager, no unnecessary system libraries. Theme assets are
+embedded in the binary via `//go:embed`, so nothing else is copied in.
 
 ### Running the Container
 
@@ -149,8 +160,11 @@ docker run -p 8080:8080 \
   -e GOMDDOC_SITE_META_TITLE="My Documentation" \
   -e GOMDDOC_SITE_DIR_INDEX=true \
   -v ./docs:/content:ro \
-  gomddoc
+  gomddoc serve
 ```
+
+The subcommand is still required: the image's entrypoint is the bare binary, and `gomddoc` with no
+subcommand prints help and exits 1. `GOMDDOC_SERVER_DIR` supplies the directory argument.
 
 See [Configuration](02-configuration.md) for the full list of environment variables and flags.
 
@@ -226,7 +240,7 @@ spec:
           image: gomddoc:latest
           ports:
             - containerPort: 8080
-          args: ["-d", "/content"]
+          args: ["serve", "/content"]
           volumeMounts:
             - name: content
               mountPath: /content
