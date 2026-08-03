@@ -746,7 +746,7 @@ shellcheck gating in CI.
   `curl | sh` on every machine without it, which is most of them. The header comment and README now
   state plainly that a cosign-less install verifies integrity but not provenance.
 
-#### MEDIUM: release workflow actions pinned to mutable tags while holding `id-token: write`
+#### ~~MEDIUM: release workflow actions pinned to mutable tags while holding `id-token: write`~~ ✅ FIXED
 
 `.github/workflows/release.yml:9` scopes `contents/packages/id-token` exactly right. But every action
 is a mutable ref (`actions/checkout@v6`, `setup-go@v6`, `docker/*@v4`, `sigstore/cosign-installer@v3`,
@@ -755,6 +755,14 @@ job holding an OIDC token capable of producing **valid Sigstore signatures over 
 artifacts**, plus write access to releases, GHCR, and `HOMEBREW_TAP_TOKEN`. Downstream signature
 verification would then succeed on a backdoored binary. Pin to full commit SHAs; pin goreleaser to an
 exact version.
+
+- **Fixed:** all 8 action refs across `release.yml` **and** `ci.yml` are full commit SHAs with a
+  `# vX.Y.Z` trailing comment. `ci.yml` was not in the finding but shares the mechanism, and leaving
+  half the repo on mutable tags makes it unreadable which half is deliberate. `goreleaser-action`'s
+  `version: latest` became `"~> v2.17"`, so a goreleaser major cannot land unreviewed in the job that
+  holds the OIDC token.
+- **Pins will not rot:** `.github/dependabot.yml` already runs the `github-actions` ecosystem weekly,
+  and Dependabot rewrites both the SHA and the version comment.
 
 #### MEDIUM: unauthenticated bcrypt CPU amplification
 

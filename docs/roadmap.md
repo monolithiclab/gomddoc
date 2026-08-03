@@ -319,8 +319,12 @@ GoReleaser's `{{ .Version }}` strips the `v`.
 - [x] **GitHub Releases with GoReleaser**: `.goreleaser.yaml` produces cross-platform binaries
       (linux/darwin × amd64/arm64) as tar.gz archives with `SHA256SUMS`, a grouped changelog from
       conventional commits, and a GitHub Release on tagged builds. Checksums are cosign-signed (keyless
-      via OIDC). _Note:_ windows builds were omitted (gomddoc is primarily a server) — add a `windows`
-      goos entry if a Windows binary is wanted.
+      via OIDC). Every action in both workflows is pinned to a full commit SHA with a `# vX.Y.Z`
+      comment, and goreleaser to `~> v2.17` — the release job holds `id-token: write`, so an upstream
+      tag repoint would otherwise be able to mint valid Sigstore signatures over arbitrary artifacts.
+      Dependabot's `github-actions` ecosystem keeps the pins current. _Note:_ windows builds were
+      omitted (gomddoc is primarily a server) — add a `windows` goos entry if a Windows binary is
+      wanted.
 - [x] **`go install` support**: module path is public, assets are embedded in-module via `//go:embed`,
       and `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest` works. `-ldflags -X main.version`
       injection is wired for GoReleaser and `make build`, but `go install` applies no ldflags — v0.1.1
