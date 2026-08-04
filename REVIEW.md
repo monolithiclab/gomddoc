@@ -1296,7 +1296,56 @@ Measured follow-ups left on the table, in descending value:
   (`int32` fields) does not move query latency — 3.990µs vs 3.993µs on a 2000-element scan. These
   loops are branch-bound, not bandwidth-bound. Consider it for index memory, never for latency.
 
-#### MEDIUM: the compression buffer pool is poisoned after the first request ✅ verified
+#### ~~MEDIUM: the compression buffer pool is poisoned after the first request~~ ✅ FIXED
+
+Fixed at the root: `Write` now **decides before it copies**. It buffers only while
+`len(buf)+len(b) < minCompressionSize` and otherwise commits, flushes whatever prefix was buffered,
+and hands the write straight to the encoder. The buffer therefore can never reach
+`minCompressionSize`, so `bufPool` allocates exactly that (was 4096) and the slice is never
+reallocated — which in turn kills the poisoning: `returnBuf` no longer writes `cw.buf` back over the
+pool's slice header at all, it just hands the pointer back. A slice that somehow *did* grow is now
+dropped for free, so `maxPoolBufferSize` and its branch are gone rather than merely revived.
+
+Four collapses fell out of it: `decide()` + `flushBuffer`'s header-writing head became one
+`commit()`; the `compress bool` field went away (`gzw != nil` already carries the decision);
+`Close`'s two `!cw.decided` branches became one that calls `flushBuffer` instead of open-coding it;
+and `Write` now has a single return contract (the encoder's `n`) instead of two.
+
+Measured (`BenchmarkCompression`, median of 5, before → after):
+
+| Case | ns/op | B/op | allocs/op |
+|------|-------|------|-----------|
+| BelowThreshold_TextHTML (~500B) | 375 → 237 | 689 → 112 | 4 → 3 |
+| AboveThreshold_TextHTML_Gzip (~5KB) | 26061 → 25161 | 6001 → 291 | 5 → 4 |
+| AboveThreshold_PrefixThenBody_Gzip | 26584 → 25627 | 5852 → 291 | 6 → 4 |
+| AboveThreshold_ImagePNG_Skipped (~5KB) | 1384 → 234 | 6647 → 112 | 4 → 3 |
+| HEAD_LargeTextHTML | 93 → 96 | 32 → 32 | 2 → 2 |
+
+The benchmark itself had to be fixed first: it wrote into an `httptest` recorder and converted its
+payload from `string` per request, both of which cost more than the middleware and hid the change
+entirely (the same run against the *old* code reported 19KB/op either way). It now writes to a
+discarding `ResponseWriter` and reuses `[]byte` payloads, and covers the prefix-then-body case.
+
+Tests: `TestCompressionWriter_BufferHandback` is one table over the six ways a response ends, each
+asserting `cap(cw.buf)` — the response body is byte-identical whether the buffer survives or not, so
+capacity is the only observable. Both defects show up there: niling drops it to zero, appending a
+body reallocates it away from the pooled array. It replaces three tests, one of which
+(`ReturnBuf_OversizedDiscarded`) sent a request *without* `Accept-Encoding`, so the middleware
+returned before allocating a buffer and it asserted nothing at all.
+
+Measured follow-ups left on the table (from the efficiency pass, numbers pre-date this fix):
+
+- `&compressionWriter{}` heap-allocates 80 B per gzip-eligible request, including 304s with no body.
+  Pooling the struct with the buffer inline (`[minCompressionSize]byte`) removes that allocation
+  *and* the second pool round-trip, since the buffer is now a fixed size with no growth path. Only
+  safe because no handler here retains `w` past `ServeHTTP` — verify that before doing it.
+- `gzw.Reset` clears flate's ~640 KB of hash tables per request at `DefaultCompression`; levels 1–3
+  use the much smaller `deflateFast` tables. Unmeasured: sweep levels 1/4/5/6 for ns/op *and* output
+  size before touching it.
+- `shouldSkipContentType` lowercases before stripping `;` parameters, so `charset=UTF-8` allocates a
+  copy of the whole string. Nothing in-tree spells a content type with uppercase, so this is latent.
+
+Original finding:
 
 `internal/server/compression.go` — `flushBuffer` sets `cw.buf = nil` on both branches, and `Close`
 does the same, so by the time the deferred `returnBuf` runs `cw.buf` is **always** `nil`:
@@ -1759,7 +1808,7 @@ three `"text/markdown; charset=utf-8"`).
     rendering translated pages twice. A language whose pipeline failed to build is now skipped
     outright instead of rendered with the default resolver (which emitted raw `.md` links).
 11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
-    compression pool nil, double breadcrumb generation, compression/metrics route coverage,
+    ~~compression pool nil~~ (DONE), double breadcrumb generation, compression/metrics route coverage,
     `findBestWindow` re-lowercasing, MCP TOC nav rebuild, git-read blob decompression.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.

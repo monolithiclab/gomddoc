@@ -31,6 +31,23 @@ func largeBody() string {
 	return strings.Repeat("Hello, World! This is compressible content. ", 100)
 }
 
+// assertBody checks whether the response was gzipped and that the body the client
+// ends up with is the one the handler wrote.
+func assertBody(t *testing.T, rec *httptest.ResponseRecorder, wantGzip bool, want string) {
+	t.Helper()
+	ce := rec.Header().Get("Content-Encoding")
+	if gz := ce == "gzip"; gz != wantGzip {
+		t.Fatalf("gzipped = %v (Content-Encoding %q), want %v", gz, ce, wantGzip)
+	}
+	got := rec.Body.String()
+	if wantGzip {
+		got = decompressGzip(t, rec.Body.Bytes())
+	}
+	if got != want {
+		t.Errorf("body = %.40q… (%d bytes), want %.40q… (%d bytes)", got, len(got), want, len(want))
+	}
+}
+
 func TestCompression_GzipWhenAccepted(t *testing.T) {
 	t.Parallel()
 	body := largeBody()
@@ -50,14 +67,7 @@ func TestCompression_GzipWhenAccepted(t *testing.T) {
 		t.Fatalf("Status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	if ce := w.Header().Get("Content-Encoding"); ce != "gzip" {
-		t.Errorf("Content-Encoding = %q, want %q", ce, "gzip")
-	}
-
-	decompressed := decompressGzip(t, w.Body.Bytes())
-	if decompressed != body {
-		t.Errorf("Decompressed body length = %d, want %d", len(decompressed), len(body))
-	}
+	assertBody(t, w, true, body)
 }
 
 func TestCompression_NoGzipWithoutAcceptEncoding(t *testing.T) {
@@ -75,13 +85,7 @@ func TestCompression_NoGzipWithoutAcceptEncoding(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	if ce := w.Header().Get("Content-Encoding"); ce != "" {
-		t.Errorf("Content-Encoding = %q, want empty", ce)
-	}
-
-	if w.Body.String() != body {
-		t.Error("Body should not be compressed")
-	}
+	assertBody(t, w, false, body)
 }
 
 func TestCompression_SkipSmallResponses(t *testing.T) {
@@ -99,13 +103,7 @@ func TestCompression_SkipSmallResponses(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	if ce := w.Header().Get("Content-Encoding"); ce != "" {
-		t.Errorf("Content-Encoding = %q, want empty for small response", ce)
-	}
-
-	if w.Body.String() != smallBody {
-		t.Errorf("Body = %q, want %q", w.Body.String(), smallBody)
-	}
+	assertBody(t, w, false, smallBody)
 }
 
 func TestCompression_VaryHeaderAlwaysSet(t *testing.T) {
@@ -274,14 +272,7 @@ func TestCompression_Flusher(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	// Should still produce valid gzip output after flush
-	if ce := w.Header().Get("Content-Encoding"); ce != "gzip" {
-		t.Fatalf("Content-Encoding = %q, want gzip", ce)
-	}
-
-	decompressed := decompressGzip(t, w.Body.Bytes())
-	if decompressed != body {
-		t.Errorf("Decompressed body mismatch after flush")
-	}
+	assertBody(t, w, true, body)
 }
 
 func TestCompression_PreservesStatusCode(t *testing.T) {
@@ -357,8 +348,8 @@ func TestCompressionWriter_WriteDecided_Compress(t *testing.T) {
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte(firstChunk))
-		// After the first write exceeds threshold, decided=true and compress=true.
-		// This second write goes through writeDecided with gzip.
+		// The first write already exceeds the threshold, so it commits without
+		// being buffered; this one goes through the decided path with gzip.
 		_, _ = w.Write([]byte(secondChunk))
 	}))
 
@@ -368,15 +359,7 @@ func TestCompressionWriter_WriteDecided_Compress(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	if ce := w.Header().Get("Content-Encoding"); ce != "gzip" {
-		t.Fatalf("Content-Encoding = %q, want gzip", ce)
-	}
-
-	decompressed := decompressGzip(t, w.Body.Bytes())
-	want := firstChunk + secondChunk
-	if decompressed != want {
-		t.Errorf("decompressed body length = %d, want %d", len(decompressed), len(want))
-	}
+	assertBody(t, w, true, firstChunk+secondChunk)
 }
 
 func TestCompressionWriter_WriteDecided_Passthrough(t *testing.T) {
@@ -389,8 +372,8 @@ func TestCompressionWriter_WriteDecided_Passthrough(t *testing.T) {
 	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write([]byte(firstChunk))
-		// After the first write exceeds threshold, decided=true and compress=false.
-		// This second write goes through writeDecided raw (passthrough).
+		// The first write already exceeds the threshold, so it commits without
+		// being buffered; this one goes through the decided path raw.
 		_, _ = w.Write([]byte(secondChunk))
 	}))
 
@@ -400,14 +383,7 @@ func TestCompressionWriter_WriteDecided_Passthrough(t *testing.T) {
 
 	handler.ServeHTTP(w, req)
 
-	if ce := w.Header().Get("Content-Encoding"); ce == "gzip" {
-		t.Error("image/png should not be gzip-compressed")
-	}
-
-	want := firstChunk + secondChunk
-	if w.Body.String() != want {
-		t.Errorf("body length = %d, want %d", w.Body.Len(), len(want))
-	}
+	assertBody(t, w, false, firstChunk+secondChunk)
 }
 
 func TestCompression_HeadRequest(t *testing.T) {
@@ -436,31 +412,94 @@ func TestCompression_HeadRequest(t *testing.T) {
 	}
 }
 
-func TestCompressionWriter_ReturnBuf_OversizedDiscarded(t *testing.T) {
+// newPooledWriter returns a compressionWriter over a buffer exactly as bufPool
+// supplies one. bufPtr is deliberately left nil so the writer never touches the
+// global pool: returnBuf then leaves cw.buf alone and the test can inspect the
+// very slice returnBuf would have handed back.
+func newPooledWriter(rec *httptest.ResponseRecorder, contentType string) *compressionWriter {
+	cw := &compressionWriter{ResponseWriter: rec, buf: make([]byte, 0, minCompressionSize)}
+	cw.Header().Set("Content-Type", contentType)
+	return cw
+}
+
+// TestCompressionWriter_BufferHandback covers the state of the buffer when it
+// goes back to the pool, which the response body cannot show: it is identical
+// whether the buffer survives or not. Both defects it guards against show up as
+// a changed capacity — niling the buffer drops it to zero, and appending a body
+// instead of committing first reallocates it away from the pooled array.
+func TestCompressionWriter_BufferHandback(t *testing.T) {
 	t.Parallel()
+	small := strings.Repeat("s", 64)
+	half := strings.Repeat("h", minCompressionSize/2+1)
+	large := largeBody() // one write, already past the threshold and the buffer
 
-	// Create a response large enough to exceed maxPoolBufferSize (64KB)
-	largeData := make([]byte, maxPoolBufferSize+1)
-	for i := range largeData {
-		largeData[i] = 'A'
+	tests := []struct {
+		name        string
+		contentType string
+		writes      []string
+		wantBody    string
+		wantGzip    bool
+	}{
+		{
+			name:        "below threshold, flushed raw by Close",
+			contentType: "text/plain",
+			writes:      []string{small},
+			wantBody:    small,
+		},
+		{
+			name:        "threshold crossed by a second write, gzipped",
+			contentType: "text/plain",
+			writes:      []string{half, half},
+			wantBody:    half + half,
+			wantGzip:    true,
+		},
+		{
+			name:        "threshold crossed by a second write, passthrough",
+			contentType: "image/png",
+			writes:      []string{half, half},
+			wantBody:    half + half,
+		},
+		{
+			name:        "single write past the threshold, gzipped",
+			contentType: "text/html",
+			writes:      []string{large},
+			wantBody:    large,
+			wantGzip:    true,
+		},
+		{
+			name:        "single write past the threshold, passthrough",
+			contentType: "image/png",
+			writes:      []string{large},
+			wantBody:    large,
+		},
+		{
+			// Close returns early without committing a status line.
+			name:        "nothing written at all",
+			contentType: "text/plain",
+		},
 	}
 
-	handler := Compression(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		// Write without gzip to exercise the passthrough buffer path
-		_, _ = w.Write(largeData)
-	}))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rec := httptest.NewRecorder()
+			cw := newPooledWriter(rec, tt.contentType)
+			for _, w := range tt.writes {
+				n, err := cw.Write([]byte(w))
+				if err != nil || n != len(w) {
+					t.Fatalf("Write = (%d, %v), want (%d, nil)", n, err, len(w))
+				}
+			}
+			cw.Close()
 
-	// Request without Accept-Encoding so compression is skipped but buffer is used
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", w.Code)
-	}
-	if w.Body.Len() != len(largeData) {
-		t.Errorf("body length = %d, want %d", w.Body.Len(), len(largeData))
+			if got := len(cw.buf); got != 0 {
+				t.Errorf("len(buf) after Close = %d, want 0", got)
+			}
+			if got := cap(cw.buf); got != minCompressionSize {
+				t.Errorf("cap(buf) after Close = %d, want %d", got, minCompressionSize)
+			}
+			assertBody(t, rec, tt.wantGzip, tt.wantBody)
+		})
 	}
 }
 

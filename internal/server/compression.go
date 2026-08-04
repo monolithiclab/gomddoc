@@ -11,10 +11,6 @@ import (
 // minCompressionSize is the minimum response size in bytes before compression kicks in.
 const minCompressionSize = 1024
 
-// maxPoolBufferSize is the maximum buffer size to return to the pool.
-// Buffers larger than this are left for GC to avoid retaining oversized allocations.
-const maxPoolBufferSize = 64 * 1024
-
 // gzipWriterPool reuses gzip writers to reduce allocations.
 var gzipWriterPool = sync.Pool{
 	New: func() any {
@@ -24,10 +20,13 @@ var gzipWriterPool = sync.Pool{
 }
 
 // bufPool reuses byte buffers for compression buffering, avoiding
-// per-request allocation of the compressionWriter.buf slice.
+// per-request allocation of the compressionWriter.buf slice. Write commits
+// before it appends, so a buffer never holds minCompressionSize bytes: one
+// allocated at that size is never re-grown, and every buffer in the pool has
+// exactly that capacity.
 var bufPool = sync.Pool{
 	New: func() any {
-		b := make([]byte, 0, 4096)
+		b := make([]byte, 0, minCompressionSize)
 		return &b
 	},
 }
@@ -140,8 +139,7 @@ type compressionWriter struct {
 	bufPtr     *[]byte // pool pointer for returning the buffer
 	gzw        *gzip.Writer
 	statusCode int
-	decided    bool // whether we have committed to compress or not
-	compress   bool // the decision: true = gzip, false = passthrough
+	decided    bool // whether the compress/passthrough decision has been committed
 }
 
 // WriteHeader captures the status code but defers writing it until we know
@@ -161,38 +159,41 @@ func (cw *compressionWriter) Write(b []byte) (int, error) {
 		return cw.writeDecided(b)
 	}
 
-	// Buffer data
-	cw.buf = append(cw.buf, b...)
-
-	// If we have enough data, make the decision
-	if len(cw.buf) >= minCompressionSize {
-		cw.decide()
-		return len(b), cw.flushBuffer()
+	// Still short of the threshold: keep buffering.
+	if len(cw.buf)+len(b) < minCompressionSize {
+		cw.buf = append(cw.buf, b...)
+		return len(b), nil
 	}
 
-	return len(b), nil
+	// This write settles the question, so it goes straight to the encoder — only
+	// what was buffered before it is copied. Handlers deliver a whole document in
+	// one Write, so appending here would copy the entire body just to flush it on
+	// the next line, and would grow the pooled buffer to match it.
+	cw.commit()
+	if len(cw.buf) > 0 {
+		if err := cw.flushBuffer(); err != nil {
+			return 0, err
+		}
+	}
+	return cw.writeDecided(b)
 }
 
-// decide determines whether compression should be used based on content type.
-func (cw *compressionWriter) decide() {
+// commit settles the compress/passthrough decision from the content type,
+// acquires the gzip writer if compressing, and writes the status line.
+// Everything written afterwards goes through writeDecided.
+func (cw *compressionWriter) commit() {
 	cw.decided = true
-	ct := cw.ResponseWriter.Header().Get("Content-Type")
-	cw.compress = !shouldSkipContentType(ct)
-}
-
-// flushBuffer writes the buffered data either compressed or raw.
-func (cw *compressionWriter) flushBuffer() error {
-	if cw.compress {
+	if !shouldSkipContentType(cw.ResponseWriter.Header().Get("Content-Type")) {
 		cw.initGzip()
 	}
 	cw.ResponseWriter.WriteHeader(cw.statusCode)
-	if cw.gzw != nil {
-		_, err := cw.gzw.Write(cw.buf)
-		cw.buf = nil
-		return err
-	}
-	_, err := cw.ResponseWriter.Write(cw.buf) // #nosec G705 -- buffered content forwarded with original Content-Type and nosniff header
-	cw.buf = nil
+}
+
+// flushBuffer writes the buffered data through the committed writer and empties
+// the buffer by length — never by niling it, which would drop the pooled array.
+func (cw *compressionWriter) flushBuffer() error {
+	_, err := cw.writeDecided(cw.buf)
+	cw.buf = cw.buf[:0]
 	return err
 }
 
@@ -211,7 +212,7 @@ func (cw *compressionWriter) writeDecided(b []byte) (int, error) {
 	if cw.gzw != nil {
 		return cw.gzw.Write(b)
 	}
-	return cw.ResponseWriter.Write(b)
+	return cw.ResponseWriter.Write(b) // #nosec G705 -- handler content forwarded with its original Content-Type and nosniff header
 }
 
 // Close finalizes the response. If data was buffered but never reached the
@@ -221,20 +222,16 @@ func (cw *compressionWriter) writeDecided(b []byte) (int, error) {
 func (cw *compressionWriter) Close() {
 	defer cw.returnBuf()
 
-	// If we never decided (small response), flush raw
-	if !cw.decided && len(cw.buf) > 0 {
+	// Never decided: the response stayed under the threshold, so it goes out
+	// raw — no gzip writer was ever acquired, so flushBuffer passes it through.
+	// statusCode is zero only when the handler wrote nothing at all, in which
+	// case there is no response to commit.
+	if !cw.decided {
 		if cw.statusCode == 0 {
-			cw.statusCode = http.StatusOK
+			return
 		}
 		cw.ResponseWriter.WriteHeader(cw.statusCode)
-		_, _ = cw.ResponseWriter.Write(cw.buf)
-		cw.buf = nil
-		return
-	}
-
-	// If we decided but nothing was written yet (empty body after decision), write header
-	if !cw.decided && cw.statusCode != 0 {
-		cw.ResponseWriter.WriteHeader(cw.statusCode)
+		_ = cw.flushBuffer()
 		return
 	}
 
@@ -246,14 +243,15 @@ func (cw *compressionWriter) Close() {
 	}
 }
 
-// returnBuf returns the buffer to the pool for reuse.
-// Oversized buffers (>64KB) are discarded to avoid retaining large allocations.
+// returnBuf hands the pooled buffer back. Only the pointer travels: cw.buf is a
+// slice of the pooled array and never outgrows it (see bufPool), so the pool's
+// own slice header stays untouched and keeps its capacity for the next request.
+// Writing cw.buf back over it is what let a niled buf refill the pool with
+// zero-capacity slices; should the buffer ever be reallocated after all, the
+// oversized copy is simply dropped here instead of parked in the pool.
 func (cw *compressionWriter) returnBuf() {
 	if cw.bufPtr != nil {
-		if cap(cw.buf) <= maxPoolBufferSize {
-			*cw.bufPtr = cw.buf[:0]
-			bufPool.Put(cw.bufPtr)
-		}
+		bufPool.Put(cw.bufPtr)
 		cw.bufPtr = nil
 		cw.buf = nil
 	}
@@ -264,7 +262,7 @@ func (cw *compressionWriter) returnBuf() {
 func (cw *compressionWriter) Flush() {
 	// If we have not decided yet, force a decision so data gets written
 	if !cw.decided && len(cw.buf) > 0 {
-		cw.decide()
+		cw.commit()
 		_ = cw.flushBuffer()
 	}
 

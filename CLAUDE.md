@@ -158,6 +158,16 @@ testsite/              # Lorem ipsum test site for quick testing
   comparing buffer length against a magic string constant (breaks silently if format changes)
 - **One mutable object, one lock** — never guard the same value with two independent mutexes. If two
   types need it, give one type ownership and let the other borrow through it.
+- **A pooled buffer's slice header belongs to the pool, not the request** — `compressionWriter` wrote
+  its working slice back over the pooled header on return (`*bufPtr = cw.buf[:0]`), and every exit
+  path had niled that slice first, so the pool was refilled with zero-capacity slices and its
+  `cap(buf) <= maxPoolBufferSize` guard was dead code (`cap(nil)` passes any bound). Hand back the
+  pointer you got and leave `*bufPtr` alone; then size the pooled buffer so the working slice cannot
+  outgrow it (here: commit the compress/passthrough decision *before* appending, so the buffer never
+  reaches `minCompressionSize`). A slice that grows anyway is then dropped for free instead of parked.
+  Corollary: don't buffer what you can forward — when a write already answers the question the buffer
+  exists to answer, commit and write through. Test it by asserting `cap()`: `len()` and the response
+  body are identical whether the buffer survives or not.
 - **go-git reads are writes** — `object.Tree` memoises lookups into unsynchronised maps and go-git's
   storers mutate on read. Tree/blob access needs an *exclusive* mutex; an `RWMutex` lets two
   "readers" hit a concurrent map write (an unrecoverable runtime throw). See `gitTreeState`.

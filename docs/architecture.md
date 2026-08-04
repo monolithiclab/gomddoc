@@ -419,7 +419,7 @@ Middleware is applied in two layers using `RouteGroup` for structured route regi
 
 **Content-specific middleware (applied to content handler via Subgroup):**
 
-4. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception)
+4. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception). The decision precedes the copy: a write that takes the response past 1KB is committed and encoded straight through, and only the sub-threshold prefix before it was ever buffered. The pooled buffer is therefore fixed at 1KB and never re-grown, so `returnBuf` hands the pointer back untouched.
 5. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
 6. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsHiddenPath()` — the same check applied by MCP tools to ensure consistent path restrictions across all entry points.
 7. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/docs/guide.md` → `/docs/guide`) via 301.
