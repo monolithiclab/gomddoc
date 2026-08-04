@@ -132,6 +132,14 @@ testsite/              # Lorem ipsum test site for quick testing
 - Path joining: `path.Join("assets", "themes", cfg.Theme)` (each segment separate)
 - **`for i := range N`** over `for i := 0; i < N; i++` (Go 1.22+ range-over-int)
 - **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains
+- **Bounded results keep a sorted top-N window** — never collect-all, sort, then truncate on a path
+  that runs per request or per file. Drop a candidate ordered after the window's worst on sight; sort
+  only the window, only on admission. It also shrinks the dedup set: with a window, a duplicate can
+  only land *in* the window (an evicted entry is worse than the current worst and gets rejected), so
+  `slices.ContainsFunc` over N replaces a set over the whole corpus. See `findRelatedDocs`.
+- **Return an `iter.Seq` accessor next to any slice-returning one** — `Index.ByTag` copies a
+  `PageInfo` per page; `Index.PagesByTag` yields pointers and allocates nothing. Callers that read a
+  field or two, or discard most of what they see, take the iterator.
 - **`yaml.Marshal`** for YAML output — never construct YAML with `fmt.Sprintf`/`fmt.Fprintf`
   (special characters like colons, brackets produce malformed output)
 - **Every field of a marshalled XML struct needs an explicit `xml:` tag** — `encoding/xml` silently

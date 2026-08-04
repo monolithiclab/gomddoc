@@ -1182,7 +1182,7 @@ flows into the search corpus, the markdown passthrough response, and every MCP r
 
 ### 10.4 MEDIUM/LOW — Performance
 
-#### HIGH: `findRelatedDocs` is O(co-tagged pages) per request with a full `PageInfo` copy per tag
+#### ~~HIGH: `findRelatedDocs` is O(co-tagged pages) per request with a full `PageInfo` copy per tag~~ ✅ reproduced — **FIXED**
 
 `internal/enricher/markdown.go:133-184` + `internal/metadata/index.go:243-253`. `ByTag` materializes a
 full `[]PageInfo` (~104 B each) per tag; `findRelatedDocs` then builds a `seen` map over all of them,
@@ -1199,6 +1199,37 @@ markdown request and for **every file** in a static build (making builds O(n²) 
 At 2000 pages related-docs alone is ~40× the enrichment baseline and dominates request latency.
 **Fix:** add an allocation-free accessor mirroring the existing `CountByTag`, and keep a top-N heap
 instead of collect-all-then-sort-then-truncate.
+
+**Fixed.** Three changes, each removing one term of the growth:
+
+- `Index.PagesByTag` — an `iter.Seq[*PageInfo]` mirroring `CountByTag`, so a caller that reads two
+  fields no longer forces a `[]PageInfo` copy of the tag's whole page set.
+- `findRelatedDocs` keeps a sorted window of `maxRelatedDocs` instead of collecting every candidate.
+  A candidate ordered after the window's worst is dropped on sight, so the sort is bounded to ten
+  elements and only runs when a candidate actually improves the result. No heap: at N=10 a
+  `slices.SortFunc` on admission is smaller and cheaper than `container/heap`.
+- The `seen` set over the whole corpus is gone. A page carrying two of the current page's tags is
+  visited twice, but a page evicted from the window is by definition worse than the current worst
+  and gets rejected — so the *window itself* is the only place a duplicate can land, and dedup is a
+  scan of ten entries.
+
+`text.CompareTitles` was the last per-candidate allocation: `strings.Compare(ToLower(a), ToLower(b))`
+copies both strings whenever a title has an uppercase rune, which titles do. It now compares lowered
+runes in place. UTF-8 is order-preserving, so that is byte-identical to the old result; a differential
+test pins it against the old definition over every pair from a 38-string corpus. This is the shared
+title comparator, so the metadata index and search sorts get it too. (Previously 0% covered.)
+
+`BenchmarkMarkdownEnricher_RelatedDocs` now pins the scaling — allocations are flat across corpus
+sizes, which is the property that was broken:
+
+| corpus | ns/op | B/op | allocs/op |
+| ------ | ------- | ------- | --------- |
+| baseline (no metaIndex) | 11,420 | 16,064 | 167 |
+| 100 pages | 16,913 | 16,384 | 168 |
+| 500 pages | 29,502 | 16,384 | 168 |
+| 2000 pages | 71,281 (was 550,190) | 16,384 (was 885,934) | 168 (was 4,245) |
+
+The residual ns/op growth is the unavoidable single pass over the tag's page list.
 
 #### HIGH: search builds a `map[int][]posting` over the entire posting list, per query token
 

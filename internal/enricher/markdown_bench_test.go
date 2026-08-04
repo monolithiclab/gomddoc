@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 )
 
 // buildSmallDoc returns a minimal markdown document (~50 bytes) with frontmatter and a heading.
@@ -185,6 +188,52 @@ func BenchmarkMarkdownEnricher_Enrich(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				_, _ = e.Enrich(context.Background(), tt.content, "test.md")
+			}
+		})
+	}
+}
+
+// buildTaggedIndex returns a metadata index of n pages that all carry the
+// "common" tag, plus one page-local tag each. It models the corpus shape that
+// makes related-docs expensive: a tag shared by the whole site.
+func buildTaggedIndex(tb testing.TB, n int) *metadata.Index {
+	tb.Helper()
+	fsys := fstest.MapFS{}
+	for i := range n {
+		fsys[fmt.Sprintf("page%04d.md", i)] = &fstest.MapFile{
+			Data: fmt.Appendf(nil, "---\ntitle: Page %04d\ntags: [common, t%04d]\n---\n# Page\n", i, i),
+		}
+	}
+	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
+	if err != nil {
+		tb.Fatalf("BuildIndex() error = %v", err)
+	}
+	return idx
+}
+
+// BenchmarkMarkdownEnricher_RelatedDocs measures enrichment against corpora
+// where every page shares one tag. Before REVIEW §10.4, cost grew linearly with
+// the corpus: ByTag materialized a full []PageInfo per tag and the candidate
+// list was sorted whole, then truncated to ten. The scaling here is the point —
+// the 2000-page run should not be far off the 100-page one.
+func BenchmarkMarkdownEnricher_RelatedDocs(b *testing.B) {
+	doc := []byte("---\ntitle: Current\ntags: [common]\n---\n# Current\n\nBody text.\n")
+
+	sizes := []int{0, 100, 500, 2000}
+	for _, n := range sizes {
+		name := fmt.Sprintf("%d-pages", n)
+		var idx *metadata.Index
+		if n > 0 {
+			idx = buildTaggedIndex(b, n)
+		} else {
+			name = "baseline-no-index"
+		}
+
+		b.Run(name, func(b *testing.B) {
+			e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = e.Enrich(context.Background(), doc, "/current.md")
 			}
 		})
 	}

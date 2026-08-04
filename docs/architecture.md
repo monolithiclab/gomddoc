@@ -94,8 +94,8 @@ and rendering a link needs it: `buildFile`'s `Page.Path`, the `contentURL` templ
 *producer* of the clean paths `Page.Path` is later matched against for prev/next and sidebar state.
 Deriving it ad hoc is what let static builds advertise a `.md` canonical URL while the same build's
 sitemap advertised the clean one. Default-index files fold to their directory (`guides/README.md` →
-`/guides`, root → `/`); a nil receiver degrades to the real path, which is what a language walk with
-no per-language pipeline gets. It describes the **serve** URL scheme: build's `prettyOutputPath`
+`/guides`, root → `/`); a nil receiver degrades to the real path. It describes the **serve** URL
+scheme: build's `prettyOutputPath`
 independently decides where HTML is *written*, and the two are not yet reconciled for
 `strip_extensions: []` or directories holding both `README.md` and `index.md`.
 
@@ -203,6 +203,13 @@ type EnrichmentData struct {
 The enricher runs before rendering to extract metadata, TOC, navigation, and related documents from
 content. This decouples structured data extraction from output format — both HTML and markdown
 renderers receive the same enrichment data.
+
+`RelatedDocs` is the one part of enrichment whose cost scales with the *site*, not the page: it runs
+on every markdown request and once per file in a static build, and a tag applied site-wide makes
+every other page a candidate. `findRelatedDocs` therefore streams candidates through
+`Index.PagesByTag` (an `iter.Seq[*PageInfo]`, no copy) into a sorted window of ten, dropping anything
+ordered after the window's worst without recording it. Allocation is flat in corpus size; see
+`BenchmarkMarkdownEnricher_RelatedDocs`.
 
 **Built-in Enrichers:**
 

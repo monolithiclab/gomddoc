@@ -255,26 +255,114 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_SortedStable(t *testing.T) {
 }
 
 // TestMarkdownEnricher_Enrich_RelatedDocs_Capped asserts the see-also list is
-// bounded so a very common tag cannot bloat every page (REVIEW §9.4).
+// bounded so a very common tag cannot bloat every page (REVIEW §9.4), and that
+// the retained ten are the ten the full sort would have kept.
+//
+// The descending case is the one that matters: candidates are visited in index
+// order, so titles that get worse as the walk proceeds fill the window and are
+// never displaced, while titles that get better must displace every incumbent.
+// A window that admits or evicts the wrong end passes the length check and
+// fails here.
 func TestMarkdownEnricher_Enrich_RelatedDocs_Capped(t *testing.T) {
 	t.Parallel()
-	fsys := fstest.MapFS{}
-	for i := range 25 {
-		name := fmt.Sprintf("p%02d.md", i)
-		fsys[name] = &fstest.MapFile{Data: []byte("---\ntitle: P" + fmt.Sprintf("%02d", i) + "\ntags: [common]\n---\n# p")}
-	}
-	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
-	if err != nil {
-		t.Fatalf("BuildIndex() error = %v", err)
-	}
-	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
 
-	result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [common]\n---\n# c"), "/current.md")
-	if err != nil {
-		t.Fatalf("Enrich() error = %v", err)
+	const total = 25
+	tests := []struct {
+		name string
+		// title maps a file's index in walk order to its title.
+		title func(i int) string
+	}{
+		{"titles ascend with walk order", func(i int) string { return fmt.Sprintf("T%02d", i) }},
+		{"titles descend against walk order", func(i int) string { return fmt.Sprintf("T%02d", total-1-i) }},
 	}
-	if len(result.RelatedDocs) != maxRelatedDocs {
-		t.Errorf("RelatedDocs len = %d, want capped at %d", len(result.RelatedDocs), maxRelatedDocs)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := fstest.MapFS{}
+			for i := range total {
+				fsys[fmt.Sprintf("p%02d.md", i)] = &fstest.MapFile{
+					Data: []byte("---\ntitle: " + tt.title(i) + "\ntags: [common]\n---\n# p"),
+				}
+			}
+			idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
+			if err != nil {
+				t.Fatalf("BuildIndex() error = %v", err)
+			}
+			e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
+
+			result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [common]\n---\n# c"), "/current.md")
+			if err != nil {
+				t.Fatalf("Enrich() error = %v", err)
+			}
+
+			gotTitles := make([]string, len(result.RelatedDocs))
+			for i, d := range result.RelatedDocs {
+				gotTitles[i] = d.Title
+			}
+			wantTitles := make([]string, maxRelatedDocs)
+			for i := range wantTitles {
+				wantTitles[i] = fmt.Sprintf("T%02d", i)
+			}
+			if !slices.Equal(gotTitles, wantTitles) {
+				t.Errorf("related titles = %v, want %v", gotTitles, wantTitles)
+			}
+		})
+	}
+}
+
+// TestMarkdownEnricher_Enrich_RelatedDocs_DedupsAcrossTags asserts a page that
+// shares more than one tag with the current page is listed once. Dedup used to
+// be a set over every candidate; it is now a scan of the ten-entry result
+// window, which is only equivalent because a page evicted from the window can
+// never be readmitted. Both the not-yet-full and full cases are covered: they
+// take different branches.
+func TestMarkdownEnricher_Enrich_RelatedDocs_DedupsAcrossTags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		filler  int // extra pages tagged "alpha" only, to fill the window
+		wantDup string
+	}{
+		{"window not full", 0, "/both.md"},
+		{"window full", maxRelatedDocs * 2, "/both.md"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fsys := fstest.MapFS{
+				// Sorts first, so it stays in the window even when full.
+				"both.md": {Data: []byte("---\ntitle: AAA Both\ntags: [alpha, beta]\n---\n# both")},
+			}
+			for i := range tt.filler {
+				fsys[fmt.Sprintf("f%02d.md", i)] = &fstest.MapFile{
+					Data: fmt.Appendf(nil, "---\ntitle: Filler %02d\ntags: [alpha]\n---\n# f", i),
+				}
+			}
+			idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
+			if err != nil {
+				t.Fatalf("BuildIndex() error = %v", err)
+			}
+			e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
+
+			result, err := e.Enrich(context.Background(),
+				[]byte("---\ntitle: Cur\ntags: [alpha, beta]\n---\n# c"), "/current.md")
+			if err != nil {
+				t.Fatalf("Enrich() error = %v", err)
+			}
+
+			var count int
+			for _, d := range result.RelatedDocs {
+				if d.Path == tt.wantDup {
+					count++
+				}
+			}
+			if count != 1 {
+				t.Errorf("%s listed %d times in %v, want exactly 1", tt.wantDup, count, result.RelatedDocs)
+			}
+		})
 	}
 }
 

@@ -141,12 +141,18 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 		return nil
 	}
 
-	// Collect unique related docs by path. Normalize the .md suffix so a
-	// request whose URL has been extension-stripped (/foo) still matches
-	// the metadata index's raw path (/foo.md) for self-exclusion and dedup.
+	// Normalize the .md suffix so a request whose URL has been
+	// extension-stripped (/foo) still matches the metadata index's raw path
+	// (/foo.md) for self-exclusion.
 	currentKey := strings.TrimSuffix(currentPath, ".md")
-	seen := map[string]bool{currentKey: true}
-	var related []RelatedDoc
+
+	// related is kept sorted and never grows past maxRelatedDocs, so its last
+	// element is the worst candidate admitted so far. Anything ordered after it
+	// would be truncated anyway, so it is dropped on sight rather than
+	// collected: this runs on every markdown request and once per file in a
+	// static build, and one site-wide tag gives every page the whole corpus as
+	// candidates.
+	related := make([]RelatedDoc, 0, maxRelatedDocs)
 
 	for _, tagRaw := range tags {
 		tag, ok := tagRaw.(string)
@@ -154,32 +160,43 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 			continue
 		}
 
-		pages := m.metaIndex.ByTag(tag)
-		for _, page := range pages {
-			key := strings.TrimSuffix(page.Path, ".md")
-			if seen[key] {
+		for page := range m.metaIndex.PagesByTag(tag) {
+			if strings.TrimSuffix(page.Path, ".md") == currentKey {
 				continue
 			}
-			seen[key] = true
-			related = append(related, RelatedDoc{
-				Path:  page.Path,
-				Title: page.Title,
-			})
+
+			doc := RelatedDoc{Path: page.Path, Title: page.Title}
+			full := len(related) == maxRelatedDocs
+			if full && compareRelatedDocs(doc, related[maxRelatedDocs-1]) >= 0 {
+				continue
+			}
+			// A page carrying two of this page's tags is visited twice. The
+			// window is the only place a duplicate can land — a page evicted
+			// from it is, by definition, worse than the current worst and gets
+			// rejected above — so dedup costs a scan of ten entries rather than
+			// a set over the whole corpus.
+			if slices.ContainsFunc(related, func(d RelatedDoc) bool { return d.Path == doc.Path }) {
+				continue
+			}
+
+			if full {
+				related[maxRelatedDocs-1] = doc
+			} else {
+				related = append(related, doc)
+			}
+
+			// Sort deterministically so both serve and build render the
+			// see-also section in the same, stable order (tag-iteration order
+			// is otherwise an implementation detail). Title first, path as a
+			// stable tiebreaker. Bounded to maxRelatedDocs elements, and only
+			// reached by a candidate that improves the window.
+			slices.SortFunc(related, compareRelatedDocs)
 		}
 	}
 
-	// Sort deterministically here so both serve and build render the see-also
-	// section in the same, stable order (tag-iteration order is otherwise an
-	// implementation detail). Title first, path as a stable tiebreaker.
-	slices.SortFunc(related, compareRelatedDocs)
-
-	// Defensive cap: a page sharing a very common tag could otherwise pull in
-	// hundreds of related docs and bloat every rendered page. Keep the first
-	// maxRelatedDocs after sorting.
-	if len(related) > maxRelatedDocs {
-		related = related[:maxRelatedDocs]
+	if len(related) == 0 {
+		return nil
 	}
-
 	return related
 }
 

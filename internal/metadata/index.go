@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"iter"
 	"log/slog"
 	"maps"
 	stdpath "path"
@@ -250,6 +251,21 @@ func (idx *Index) ByTag(tag string) []PageInfo {
 		result[i] = idx.pages[pageIdx]
 	}
 	return result
+}
+
+// PagesByTag iterates the pages carrying the given tag, matched
+// case-insensitively. Unlike ByTag it copies nothing — the index owns the
+// PageInfo and the caller must not retain or mutate the pointer past the
+// iteration. Prefer it when the caller only reads a few fields, or discards
+// most of what it sees.
+func (idx *Index) PagesByTag(tag string) iter.Seq[*PageInfo] {
+	return func(yield func(*PageInfo) bool) {
+		for _, pageIdx := range idx.byTag[strings.ToLower(tag)] {
+			if !yield(&idx.pages[pageIdx]) {
+				return
+			}
+		}
+	}
 }
 
 // normalizeTag lowercases and trims a single tag, returning "" if the result is
