@@ -2,6 +2,9 @@ package search
 
 import (
 	"context"
+	"fmt"
+	"maps"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -411,15 +414,15 @@ func TestParseQuery(t *testing.T) {
 
 // buildTaggedIndex builds a search index (with its backing metadata index)
 // from the given files. Shared setup for the tag: search tests.
-func buildTaggedIndex(t *testing.T, files fstest.MapFS) *Index {
-	t.Helper()
+func buildTaggedIndex(tb testing.TB, files fstest.MapFS) *Index {
+	tb.Helper()
 	metaIndex, err := metadata.BuildIndex(context.Background(), files, nil)
 	if err != nil {
-		t.Fatalf("metadata.BuildIndex failed: %v", err)
+		tb.Fatalf("metadata.BuildIndex failed: %v", err)
 	}
 	idx, err := BuildIndex(context.Background(), files, metaIndex, nil)
 	if err != nil {
-		t.Fatalf("BuildIndex failed: %v", err)
+		tb.Fatalf("BuildIndex failed: %v", err)
 	}
 	return idx
 }
@@ -431,6 +434,248 @@ func taggedSite() fstest.MapFS {
 		"deploy.md": &fstest.MapFile{Data: []byte("---\ntitle: Deploy\ntags:\n  - shared\n  - deployment\n---\n# Deploy\n\nDeploying with kubernetes clusters.")},
 		"config.md": &fstest.MapFile{Data: []byte("---\ntitle: Config\ntags:\n  - shared\n---\n# Config\n\nConfiguration settings and options.")},
 		"other.md":  &fstest.MapFile{Data: []byte("---\ntitle: Other\ntags:\n  - other\n---\n# Other\n\nSome entirely unrelated content here.")},
+	}
+}
+
+// mergeCorpus builds a deterministic n-document corpus whose vocabulary is
+// spread unevenly: "common" is in every body, the eight base words each land in
+// roughly a third of the bodies, and every document repeats one of them in its
+// title and two more in its description. That mix is what exercises the posting
+// merge — long lists next to short ones, and documents carrying body, title and
+// description postings for the same term.
+func mergeCorpus(tb testing.TB, n int) *Index {
+	tb.Helper()
+
+	words := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"}
+	files := make(fstest.MapFS, n)
+	for i := range n {
+		var b strings.Builder
+		fmt.Fprintf(&b, "---\ntitle: %s Document %d\ndescription: About %s and %s\ntags:\n  - t%d\n  - every\n---\n",
+			words[i%len(words)], i, words[(i+1)%len(words)], words[(i+3)%len(words)], i%5)
+		b.WriteString("# Heading\n\ncommon prose ")
+		for j, w := range words {
+			if (i+j)%3 == 0 {
+				fmt.Fprintf(&b, "%s %s ", w, w)
+			}
+		}
+		fmt.Fprintf(&b, "\n\nBody number %d with searchable text.\n", i)
+		files[fmt.Sprintf("doc%04d.md", i)] = &fstest.MapFile{Data: []byte(b.String())}
+	}
+	return buildTaggedIndex(tb, files)
+}
+
+// referenceSearch reproduces the pre-merge candidate selection and scoring: a
+// map[int][]posting built per query token, candidates collected into a set, and
+// every candidate scored by looking its postings back up. It is the oracle the
+// linear merge in Search is checked against.
+//
+// It shares Search's tag preamble and result materialization deliberately —
+// this diff did not change those, and a hand-copy would drift. What it does not
+// share is the part under test: candidate selection and score accumulation.
+func referenceSearch(idx *Index, query string, limit int) []SearchResult {
+	tagFilters, freeText := parseQuery(query)
+
+	var tagged []metadata.PageInfo
+	if len(tagFilters) > 0 {
+		if tagged = idx.taggedPages(tagFilters); len(tagged) == 0 {
+			return []SearchResult{}
+		}
+	}
+
+	queryTokens := tokenize(freeText)
+	if len(queryTokens) == 0 {
+		if len(tagFilters) > 0 {
+			return idx.tagOnlyResults(tagged, limit)
+		}
+		return []SearchResult{}
+	}
+
+	var tagSet map[int]struct{}
+	if len(tagFilters) > 0 {
+		if tagSet = idx.tagDocSet(tagged); len(tagSet) == 0 {
+			return []SearchResult{}
+		}
+	}
+
+	idfs := make([]float64, len(queryTokens))
+	byDoc := make([]map[int][]posting, len(queryTokens))
+	candidates := map[int]struct{}{}
+	for i, token := range queryTokens {
+		posts, ok := idx.inverted[token]
+		if !ok {
+			return []SearchResult{}
+		}
+		byDoc[i] = map[int][]posting{}
+		for _, p := range posts {
+			byDoc[i][p.docIdx] = append(byDoc[i][p.docIdx], p)
+		}
+		idfs[i] = math.Log(float64(idx.docCount) / float64(len(byDoc[i])))
+
+		if i == 0 {
+			for docIdx := range byDoc[i] {
+				if tagSet != nil {
+					if _, ok := tagSet[docIdx]; !ok {
+						continue
+					}
+				}
+				candidates[docIdx] = struct{}{}
+			}
+		} else {
+			for docIdx := range candidates {
+				if _, ok := byDoc[i][docIdx]; !ok {
+					delete(candidates, docIdx)
+				}
+			}
+		}
+		if len(candidates) == 0 {
+			return []SearchResult{}
+		}
+	}
+
+	scored := make([]scoredDoc, 0, len(candidates))
+	for _, docIdx := range slices.Sorted(maps.Keys(candidates)) {
+		s := scoredDoc{docIdx: docIdx}
+		for i := range queryTokens {
+			for _, p := range byDoc[i][docIdx] {
+				switch p.field {
+				case fieldBody:
+					s.score += float64(p.freq) / float64(idx.docTermCounts[docIdx]) * idfs[i]
+				case fieldTitle:
+					s.score += 3.0 * idfs[i]
+				case fieldDesc:
+					s.score += 1.5 * idfs[i]
+				}
+			}
+		}
+		scored = append(scored, s)
+	}
+
+	// Rank by sorting everything and truncating — the shape rankTopN's window
+	// replaces. Result materialization is shared: this diff did not change it.
+	slices.SortFunc(scored, compareScored)
+	return idx.buildResults(scored[:min(limit, len(scored))], queryTokens)
+}
+
+func TestSearch_MergeMatchesReference(t *testing.T) {
+	t.Parallel()
+	idx := mergeCorpus(t, 60)
+
+	// Every shape the merge has to handle: a token matching the whole corpus,
+	// tokens matching a subset, multi-token AND down to an empty intersection,
+	// unknown tokens, and both mixed and tag-only queries.
+	queries := []string{
+		"common",
+		"alpha",
+		"common alpha",
+		"alpha beta",
+		"alpha beta gamma",
+		"common alpha beta gamma delta epsilon zeta eta theta",
+		"document",
+		"nonexistent",
+		"common nonexistent",
+		"tag:t1 alpha",
+		"tag:every common",
+		"tag:t1 tag:t2 common",
+		"tag:nope common",
+		"tag:t1",
+		"",
+	}
+
+	// limit=3 exercises the top-N window with evictions, limit=1000 the
+	// fill-only path where every candidate is kept.
+	for _, limit := range []int{3, 1000} {
+		for _, q := range queries {
+			t.Run(fmt.Sprintf("%s/limit=%d", q, limit), func(t *testing.T) {
+				t.Parallel()
+				got, want := idx.Search(q, limit), referenceSearch(idx, q, limit)
+				if !slices.Equal(got, want) {
+					t.Errorf("Search(%q, %d):\n got %+v\nwant %+v", q, limit, got, want)
+				}
+			})
+		}
+	}
+}
+
+// The merge walks each posting list once against an ascending candidate list;
+// a token whose postings all sort before (or all after) the surviving
+// candidates must neither match nor run off the end of either slice.
+func TestSearch_MergeDisjointPostings(t *testing.T) {
+	t.Parallel()
+	idx := buildTaggedIndex(t, fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("---\ntitle: A\n---\nonly-in-first shared-token\n")},
+		"b.md": &fstest.MapFile{Data: []byte("---\ntitle: B\n---\nshared-token\n")},
+		"c.md": &fstest.MapFile{Data: []byte("---\ntitle: C\n---\nshared-token only-in-last\n")},
+	})
+
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{"shared-token only-in-first", []string{"/a.md"}},
+		{"only-in-first shared-token", []string{"/a.md"}},
+		{"shared-token only-in-last", []string{"/c.md"}},
+		{"only-in-last shared-token", []string{"/c.md"}},
+		{"only-in-first only-in-last", nil},
+		{"shared-token", []string{"/a.md", "/b.md", "/c.md"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			t.Parallel()
+			// Not sorted: the docIdx tiebreaker makes the order deterministic,
+			// and every doc here scores identically on "shared-token".
+			if got := resultPaths(idx.Search(tt.query, 10)); !slices.Equal(got, tt.want) {
+				t.Errorf("Search(%q) = %v, want %v", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
+// BuildIndex's ordering guarantee, asserted where it is established rather than
+// inferred from query results: Search's linear merges are wrong without it.
+func TestBuildIndex_PostingsSorted(t *testing.T) {
+	t.Parallel()
+	idx := mergeCorpus(t, 30)
+
+	if len(idx.inverted) == 0 {
+		t.Fatal("empty index")
+	}
+	for term, posts := range idx.inverted {
+		seen := make(map[int]bool, len(posts))
+		for j, p := range posts {
+			if j > 0 && p.docIdx < posts[j-1].docIdx {
+				t.Fatalf("%q posting %d: docIdx %d after %d — not ascending", term, j, p.docIdx, posts[j-1].docIdx)
+			}
+			// A document's postings must also be consecutive: distinctDocs and
+			// seekDoc both stop at the first docIdx change.
+			if j > 0 && p.docIdx != posts[j-1].docIdx && seen[p.docIdx] {
+				t.Fatalf("%q posting %d: docIdx %d recurs after a gap", term, j, p.docIdx)
+			}
+			seen[p.docIdx] = true
+		}
+	}
+}
+
+// Equally-scored hits must order by docIdx, not by whatever the unstable sort
+// leaves behind: serve and build would otherwise disagree on the same query.
+func TestSearch_EqualScoresOrderByDocIndex(t *testing.T) {
+	t.Parallel()
+	// Identical bodies and titles, so all three score identically. Doc indices
+	// follow the walk order, which is alphabetical.
+	body := "---\ntitle: Same Title\n---\n# Same Title\n\nidentical body text here.\n"
+	idx := buildTaggedIndex(t, fstest.MapFS{
+		"c.md": &fstest.MapFile{Data: []byte(body)},
+		"a.md": &fstest.MapFile{Data: []byte(body)},
+		"b.md": &fstest.MapFile{Data: []byte(body)},
+	})
+
+	results := idx.Search("identical", 10)
+	if got := resultPaths(results); !slices.Equal(got, []string{"/a.md", "/b.md", "/c.md"}) {
+		t.Errorf("tied results = %v, want ascending doc order", got)
+	}
+	for _, r := range results[1:] {
+		if r.Score != results[0].Score {
+			t.Fatalf("fixture is not tied: %v", results)
+		}
 	}
 }
 

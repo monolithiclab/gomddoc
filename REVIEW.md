@@ -1231,7 +1231,7 @@ sizes, which is the property that was broken:
 
 The residual ns/op growth is the unavoidable single pass over the tag's page list.
 
-#### HIGH: search builds a `map[int][]posting` over the entire posting list, per query token
+#### ~~HIGH: search builds a `map[int][]posting` over the entire posting list, per query token~~ ✅ reproduced — **FIXED**
 
 `internal/search/index.go:278-322`. Rebuilt from scratch on every query, for every token, over the
 **whole** posting list — including documents the AND-intersection immediately discards. pprof:
@@ -1240,6 +1240,61 @@ The residual ns/op growth is the unavoidable single pass over the tag's page lis
 The key fact: phase 3 of `BuildIndex` (`:194-211`) appends postings in ascending `docIdx` order, so
 posting lists are **already sorted** — intersection is a linear merge needing zero maps. Compute `df`
 by counting distinct `docIdx` transitions during the scan.
+
+**Fixed.** No map is built at query time, and no pass touches more than it has to:
+
+- `distinctDocs(posts)` walks a posting list's distinct documents — a `docIdx` change is a new
+  document. It gives both `df` and, for the seed token, the candidate set.
+- Candidates are seeded from the first token with the `tag:` restriction applied up front, so later
+  tokens intersect against the tag-filtered set rather than the corpus, and the seed slice is sized
+  `min(df, len(tagSet))`.
+- Intersection and scoring are both linear merges over the same `seekDoc` cursor primitive: a
+  posting for a document the intersection dropped is skipped, not looked up. Scores live in a
+  `[]float64` parallel to the candidates rather than a slice of pairs.
+- Ranking is a sorted top-N window (`rankTopN`), not sort-all-then-truncate — `limit` is 20 by
+  default and capped at 100, while a common term makes every document a candidate. This was the
+  largest remaining cost once the maps were gone.
+- `compareScored` breaks score ties by `docIdx`. Candidates used to come out of Go map iteration, so
+  equally-scored hits were ordered arbitrarily and could differ between serve and build.
+
+The ordering invariant `Search` depends on is documented on the `Index.inverted` field, where a
+reader of the data structure lands, and `TestBuildIndex_PostingsSorted` asserts it at the producer.
+`TestSearch_MergeMatchesReference` pins candidate selection and scoring against `referenceSearch`, a
+test-only map-based oracle, over 15 query shapes × 2 limits on a 60-document corpus — same paths,
+same order, same scores, same snippets. The oracle deliberately shares the tag preamble and result
+materialization (unchanged by this work) but ranks by sorting everything, so a broken window fails it.
+
+`BenchmarkSearch` (2000 docs, limit 10):
+
+| query | ns/op | B/op | allocs/op |
+| ---------------------------- | ------------------- | -------------------- | -------------- |
+| `common` (every doc; idf 0) | 24,160 (was 139,036) | 36,464 (was 264,786) | 57 (was 2,066) |
+| `alpha` (⅓ of docs, varied scores) | 19,192 (was 137,064) | 25,280 (was 156,776) | 87 (was 1,509) |
+| `common alpha` | 32,157 (was 278,856) | 35,888 (was 379,368) | 128 (was 3,559) |
+| `tag:t1 common` | 60,029 (was 180,312) | 68,760 (was 297,233) | 62 (was 2,071) |
+
+Allocation counts are flat across corpus sizes (identical at 50, 500 and 2000 docs); the residual
+byte growth is the candidate and score slices, both O(matching docs). Note `common` has
+`df == docCount`, so `idf == 0` and every score ties — it measures the posting-list scan, not the
+ranking. `alpha` is the one to watch for ranking changes.
+
+Measured follow-ups left on the table, in descending value:
+
+- **`df` is recomputed per query although it is static.** A full scan of the token's posting list per
+  token per query, ~4µs per 2000-posting list. Storing it beside the slice (`map[string]termEntry`)
+  computes it once in phase 3. Also unlocks intersecting tokens in ascending-`df` order, which is
+  result-neutral and shortens every merge.
+- **`taggedPages` copies `[]metadata.PageInfo` for the mixed path.** ~41.6 KB of the 68.8 KB in
+  `tag:t1 common` at 2000 docs, to read `p.Path` and discard the rest. `PagesByTag` fixes it, but
+  `tagOnlyResults` *writes* to the pages it is given, so the tag-only path must keep the copies —
+  it needs a separate `tagDocSet(tags)` entry point, not a swap.
+- **Three passes over the seed token's posting list** (df, candidates, scoring) where one would do,
+  once `df` is precomputed.
+- **Linear cursor advance in both merges.** Galloping or a binary search pays off past ~10⁴ docs,
+  when a one-candidate set is intersected against a whole-corpus token.
+- Measured and rejected, so nobody re-litigates it: shrinking `posting` from 24 to 12 bytes
+  (`int32` fields) does not move query latency — 3.990µs vs 3.993µs on a 2000-element scan. These
+  loops are branch-bound, not bandwidth-bound. Consider it for index memory, never for latency.
 
 #### MEDIUM: the compression buffer pool is poisoned after the first request ✅ verified
 
@@ -1703,7 +1758,8 @@ three `"text/markdown; charset=utf-8"`).
     with redirect *targets* language-prefixed and *sources* left content-root-relative. Build stopped
     rendering translated pages twice. A language whose pipeline failed to build is now skipped
     outright instead of rendered with the default resolver (which emitted raw `.md` links).
-11. **§10.4 performance** — `findRelatedDocs` top-N, search merge-intersection, compression pool nil,
-    double breadcrumb generation, compression/metrics route coverage.
+11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
+    compression pool nil, double breadcrumb generation, compression/metrics route coverage,
+    `findBestWindow` re-lowercasing, MCP TOC nav rebuild, git-read blob decompression.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"iter"
 	"log/slog"
 	"math"
 	stdpath "path"
@@ -59,8 +60,16 @@ type posting struct {
 
 // Index is an immutable full-text search index. Thread-safe after construction.
 type Index struct {
-	docs          []document
-	inverted      map[string][]posting
+	docs []document
+
+	// inverted maps a token to its posting list. Every posting list is sorted
+	// ascending by docIdx, with one document's body/title/desc postings
+	// consecutive — BuildIndex phase 3 appends documents one at a time. Search
+	// depends on it: document frequency, the AND intersection and scoring are
+	// all linear merges over these lists, with no per-query map. Preserve the
+	// ordering if that loop is ever reordered or parallelised.
+	inverted map[string][]posting
+
 	docTermCounts []int // body token count per doc, for TF normalization
 	docCount      int
 
@@ -187,6 +196,12 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, metaIndex *metadata.Index, ex
 	}
 
 	// Phase 3: Merge into inverted index.
+	//
+	// Documents are appended one at a time with a monotonically increasing
+	// docIdx, so every posting list comes out sorted ascending by docIdx, with
+	// one document's body/title/desc postings consecutive. Search relies on
+	// that: it intersects and scores by linear merge instead of building a
+	// per-query map. Keep it if this loop is ever reordered or parallelised.
 	idx := &Index{
 		inverted: make(map[string][]posting),
 	}
@@ -249,31 +264,27 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 		return []SearchResult{}
 	}
 
-	// Mixed query: restrict the free-text scan to docs carrying the tags. Map
-	// the tagged pages to corpus doc indices; bodyless tagged pages are absent
-	// from the corpus and cannot match free text, so they drop out here.
+	// Mixed query: restrict the free-text scan to docs carrying the tags.
 	var tagSet map[int]struct{}
 	if len(tagFilters) > 0 {
-		tagSet = make(map[int]struct{}, len(tagged))
-		for _, p := range tagged {
-			if docIdx, ok := idx.pathToDoc[p.Path]; ok {
-				tagSet[docIdx] = struct{}{}
-			}
-		}
-		if len(tagSet) == 0 {
+		if tagSet = idx.tagDocSet(tagged); len(tagSet) == 0 {
 			return []SearchResult{}
 		}
 	}
 
-	// Per-token info: precomputed IDF and per-doc postings.
+	// Per-token IDF and posting list. Everything below is a linear merge over
+	// the (ascending, see Index.inverted) posting lists: no per-query map is
+	// built, so a token matching the whole corpus costs one pass rather than a
+	// fresh map of every document it appears in.
 	type tokenInfo struct {
 		idf   float64
-		byDoc map[int][]posting
+		posts []posting
 	}
-
 	perToken := make([]tokenInfo, len(queryTokens))
 
-	// Find documents containing ALL query tokens (AND semantics).
+	// Find documents containing ALL query tokens (AND semantics). candidates is
+	// kept strictly ascending and duplicate-free — both the intersection and the
+	// scoring pass advance a single cursor through it and never rewind.
 	var candidates []int
 	for i, token := range queryTokens {
 		posts, ok := idx.inverted[token]
@@ -281,36 +292,43 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 			return []SearchResult{} // AND: if any token has no matches, no results
 		}
 
-		byDoc := make(map[int][]posting, len(posts))
-		for _, p := range posts {
-			byDoc[p.docIdx] = append(byDoc[p.docIdx], p)
+		// df = number of distinct documents containing this token, in any field.
+		df := 0
+		for range distinctDocs(posts) {
+			df++
 		}
-
-		// df = number of distinct documents containing this token (across all fields).
-		df := len(byDoc)
 		perToken[i] = tokenInfo{
 			idf:   math.Log(float64(idx.docCount) / float64(df)),
-			byDoc: byDoc,
+			posts: posts,
 		}
 
 		if i == 0 {
-			candidates = make([]int, 0, len(byDoc))
-			for d := range byDoc {
+			// At most len(tagSet) candidates survive the filter below.
+			seedCap := df
+			if tagSet != nil {
+				seedCap = min(df, len(tagSet))
+			}
+			candidates = make([]int, 0, seedCap)
+			for docIdx := range distinctDocs(posts) {
 				// Apply the tag restriction up front so later tokens intersect
 				// against the smaller tag-filtered set, not the whole corpus.
 				if tagSet != nil {
-					if _, ok := tagSet[d]; !ok {
+					if _, ok := tagSet[docIdx]; !ok {
 						continue
 					}
 				}
-				candidates = append(candidates, d)
+				candidates = append(candidates, docIdx)
 			}
 		} else {
-			// Intersect
+			// Intersect two ascending lists by merging. Writing into
+			// candidates[:0] is safe: the write index never overtakes the read
+			// index of the range below.
 			filtered := candidates[:0]
-			for _, d := range candidates {
-				if _, ok := byDoc[d]; ok {
-					filtered = append(filtered, d)
+			pi := 0
+			for _, docIdx := range candidates {
+				pi = seekDoc(posts, pi, docIdx)
+				if pi < len(posts) && posts[pi].docIdx == docIdx {
+					filtered = append(filtered, docIdx)
 				}
 			}
 			candidates = filtered
@@ -321,46 +339,111 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 		}
 	}
 
-	// Score candidates using field-specific boosts.
-	type scored struct {
-		docIdx int
-		score  float64
-	}
-	scoredResults := make([]scored, len(candidates))
+	// Score candidates using field-specific boosts. Same merge: seek each
+	// token's postings forward to the candidate, so postings for documents the
+	// intersection dropped are skipped, not looked up. scores runs parallel to
+	// candidates rather than holding docIdx again.
+	scores := make([]float64, len(candidates))
 
-	for i, docIdx := range candidates {
-		score := 0.0
-		for _, ti := range perToken {
-			for _, p := range ti.byDoc[docIdx] {
-				switch p.field {
+	for _, ti := range perToken {
+		pi := 0
+		for ci, docIdx := range candidates {
+			// A document's postings are consecutive, so score the whole run.
+			for pi = seekDoc(ti.posts, pi, docIdx); pi < len(ti.posts) && ti.posts[pi].docIdx == docIdx; pi++ {
+				switch ti.posts[pi].field {
 				case fieldBody:
 					// Safe: bodyTotal == 0 docs are excluded during indexing.
-					tf := float64(p.freq) / float64(idx.docTermCounts[docIdx])
-					score += tf * ti.idf
+					tf := float64(ti.posts[pi].freq) / float64(idx.docTermCounts[docIdx])
+					scores[ci] += tf * ti.idf
 				case fieldTitle:
-					score += 3.0 * ti.idf
+					scores[ci] += 3.0 * ti.idf
 				case fieldDesc:
-					score += 1.5 * ti.idf
+					scores[ci] += 1.5 * ti.idf
 				}
 			}
 		}
-		scoredResults[i] = scored{docIdx: docIdx, score: score}
 	}
 
-	// Sort by score descending.
-	slices.SortFunc(scoredResults, func(a, b scored) int {
-		return cmp.Compare(b.score, a.score)
-	})
+	return idx.buildResults(rankTopN(candidates, scores, limit), queryTokens)
+}
 
-	// Take top limit.
-	if limit > len(scoredResults) {
-		limit = len(scoredResults)
+// distinctDocs iterates the distinct docIdx values in a posting list, in
+// ascending order. A document's postings are consecutive (see Index.inverted),
+// so a change of docIdx is a new document.
+func distinctDocs(posts []posting) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		prev := -1
+		for _, p := range posts {
+			if p.docIdx == prev {
+				continue
+			}
+			prev = p.docIdx
+			if !yield(p.docIdx) {
+				return
+			}
+		}
 	}
-	scoredResults = scoredResults[:limit]
+}
 
-	// Build results with snippets.
-	results := make([]SearchResult, len(scoredResults))
-	for i, s := range scoredResults {
+// seekDoc advances a cursor into an ascending posting list to the first entry
+// at or after from whose docIdx is >= target, returning len(posts) if there is
+// none. Callers walk targets in ascending order too, so the cursor only ever
+// moves forward: one pass over the list, not one search per target.
+func seekDoc(posts []posting, from, target int) int {
+	for from < len(posts) && posts[from].docIdx < target {
+		from++
+	}
+	return from
+}
+
+// scoredDoc is a candidate document and its accumulated relevance score.
+type scoredDoc struct {
+	docIdx int
+	score  float64
+}
+
+// compareScored ranks by score descending, docIdx ascending as a tiebreaker.
+// The tiebreaker makes ties resolve by index order rather than by whatever order
+// the (unstable) sort happened to leave them in, so equally-scored hits list
+// identically on every run and between serve and build.
+func compareScored(a, b scoredDoc) int {
+	if c := cmp.Compare(b.score, a.score); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.docIdx, b.docIdx)
+}
+
+// rankTopN returns the best limit candidates, ranked, given their parallel
+// scores. It keeps a sorted window rather than sorting every candidate: a single
+// common term makes every document a candidate, while limit is capped at 100 by
+// the API and defaults to 20. A candidate ordered after the window's worst is
+// dropped on sight; admissions splice into an already-sorted slice of at most
+// limit entries.
+func rankTopN(candidates []int, scores []float64, limit int) []scoredDoc {
+	limit = min(limit, len(candidates))
+	if limit <= 0 {
+		return nil
+	}
+
+	top := make([]scoredDoc, 0, limit)
+	for i, docIdx := range candidates {
+		s := scoredDoc{docIdx: docIdx, score: scores[i]}
+		if len(top) == limit {
+			if compareScored(s, top[limit-1]) >= 0 {
+				continue
+			}
+			top = top[:limit-1] // evict the worst; the insert below refills
+		}
+		pos, _ := slices.BinarySearchFunc(top, s, compareScored)
+		top = slices.Insert(top, pos, s)
+	}
+	return top
+}
+
+// buildResults materializes ranked candidates into results with snippets.
+func (idx *Index) buildResults(top []scoredDoc, queryTokens []string) []SearchResult {
+	results := make([]SearchResult, len(top))
+	for i, s := range top {
 		doc := idx.docs[s.docIdx]
 		results[i] = SearchResult{
 			Path:        doc.path,
@@ -370,8 +453,19 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 			Score:       math.Round(s.score*1000) / 1000,
 		}
 	}
-
 	return results
+}
+
+// tagDocSet maps tag-filtered pages to corpus doc indices. Bodyless tagged pages
+// are absent from the corpus and cannot match free text, so they drop out here.
+func (idx *Index) tagDocSet(tagged []metadata.PageInfo) map[int]struct{} {
+	set := make(map[int]struct{}, len(tagged))
+	for _, p := range tagged {
+		if docIdx, ok := idx.pathToDoc[p.Path]; ok {
+			set[docIdx] = struct{}{}
+		}
+	}
+	return set
 }
 
 // taggedPages returns the metadata pages carrying every given tag (AND

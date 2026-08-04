@@ -31,26 +31,29 @@ func BenchmarkBuildIndex(b *testing.B) {
 	}
 }
 
+// BenchmarkSearch measures how a query scales with the corpus, which is what
+// the posting-list merge is about. The queries differ in the shape they hand the
+// merge and the ranking:
+//
+//   - "common" is in every document, so its posting list is the whole corpus —
+//     the case a per-token map made quadratic. It also has df == docCount, hence
+//     idf == 0 and no score spread, so it does not exercise ranking.
+//   - "alpha" matches a third of the corpus with varied scores: the honest
+//     measure of the top-N window.
+//   - "common alpha" and "tag:t1 common" add a second token and the tag
+//     pre-filter.
 func BenchmarkSearch(b *testing.B) {
-	contentRoot := fstest.MapFS{}
-	for i := range 50 {
-		contentRoot[fmt.Sprintf("doc%d.md", i)] = &fstest.MapFile{
-			Data: fmt.Appendf(nil, "# Document %d\n\nThis is document number %d with searchable content about Go programming, web servers, and markdown rendering.", i, i),
-		}
-	}
-
-	metaIndex, err := metadata.BuildIndex(context.Background(), contentRoot, nil)
-	if err != nil {
-		b.Fatalf("metadata.BuildIndex failed: %v", err)
-	}
-
-	idx, err := BuildIndex(context.Background(), contentRoot, metaIndex, nil)
-	if err != nil {
-		b.Fatalf("BuildIndex failed: %v", err)
-	}
-
-	b.ResetTimer()
-	for b.Loop() {
-		idx.Search("programming", 10)
+	for _, size := range []int{50, 500, 2000} {
+		b.Run(fmt.Sprintf("docs=%d", size), func(b *testing.B) {
+			idx := mergeCorpus(b, size)
+			for _, query := range []string{"common", "alpha", "common alpha", "tag:t1 common"} {
+				b.Run(query, func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						idx.Search(query, 10)
+					}
+				})
+			}
+		})
 	}
 }

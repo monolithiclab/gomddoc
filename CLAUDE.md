@@ -140,6 +140,13 @@ testsite/              # Lorem ipsum test site for quick testing
 - **Return an `iter.Seq` accessor next to any slice-returning one** — `Index.ByTag` copies a
   `PageInfo` per page; `Index.PagesByTag` yields pointers and allocates nothing. Callers that read a
   field or two, or discard most of what they see, take the iterator.
+- **Never build a map at query time over data an index already ordered** — a build phase that appends
+  one document at a time leaves its lists sorted, so lookups become linear merges. `search.Search`
+  rebuilt a `map[int][]posting` per query token over the whole posting list; the postings were already
+  ascending by `docIdx`. Where a query relies on such an ordering, say so in a comment at the loop that
+  produces it (`BuildIndex` phase 3), not only at the loop that consumes it. Corollary: results derived
+  from map iteration are unordered — give the final sort a deterministic tiebreaker, or serve and build
+  disagree on equally-ranked hits.
 - **`yaml.Marshal`** for YAML output — never construct YAML with `fmt.Sprintf`/`fmt.Fprintf`
   (special characters like colons, brackets produce malformed output)
 - **Every field of a marshalled XML struct needs an explicit `xml:` tag** — `encoding/xml` silently

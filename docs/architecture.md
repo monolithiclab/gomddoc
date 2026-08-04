@@ -334,6 +334,14 @@ per-field TF-IDF: body uses standard TF*IDF, title gets a 3x IDF boost, and desc
 boost. IDF is precomputed once per query token. Queries use AND semantics — a document qualifies if
 the token appears in any field. Snippet generation highlights matched terms with `<mark>` tags.
 
+Phase 3 appends documents one at a time, so every posting list ends up sorted ascending by `docIdx`
+with a document's body/title/desc postings consecutive. Querying depends on that: document frequency,
+the AND intersection, and scoring are all linear merges over the posting lists and the (ascending)
+candidate list, so no per-query map is built and a token matching the whole corpus costs one pass.
+Ranking keeps a sorted top-`limit` window rather than sorting every candidate (`limit` defaults to 20
+and is capped at 100). Results are ordered by score descending with `docIdx` ascending as a
+tiebreaker, so equally-scored hits list identically on every run.
+
 Exposed via JSON API:
 - `GET /api/search?q=<query>&limit=<n>` — Full-text search with ranked results
 
