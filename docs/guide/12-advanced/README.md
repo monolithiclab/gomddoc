@@ -11,3 +11,4 @@ These guides cover gomddoc's internals and extension points in detail.
 - [HTTP Behavior](01-http-behavior.md) — Caching, compression, and content negotiation
 - [Markdown Extensions](02-markdown-extensions.md) — GFM, frontmatter fields, admonitions, KaTeX, Mermaid, color chips
 - [API Reference](03-api-reference.md) — All HTTP endpoints, MCP tools, and system routes
+- [Custom Renderers](04-custom-renderers.md) — The `ContentRenderer` contract, two-dimensional negotiation, registration, testing

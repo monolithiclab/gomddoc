@@ -52,6 +52,7 @@ It is designed for:
 - [HTTP Behavior](12-advanced/01-http-behavior.md) — Caching, compression, content negotiation
 - [Markdown Extensions](12-advanced/02-markdown-extensions.md) — GFM, frontmatter, admonitions, KaTeX, Mermaid, color chips
 - [API Reference](12-advanced/03-api-reference.md) — All HTTP endpoints, MCP tools, and system routes
+- [Custom Renderers](12-advanced/04-custom-renderers.md) — The `ContentRenderer` contract, negotiation, registration, testing
 
 ## Core Features
 

@@ -839,7 +839,8 @@ that don't count toward Go's coverage instrumentation). Internal packages averag
 
 ### Adding Custom Renderers
 
-See [Custom Renderers Guide](custom-renderers.md) for complete examples. In brief:
+See the [Custom Renderers guide](guide/12-advanced/04-custom-renderers.md) for the negotiation rules
+and a worked example. In brief:
 
 ```go
 type MyRenderer struct{}
@@ -850,9 +851,13 @@ func (r *MyRenderer) Render(ctx context.Context, content []byte, enrichment *enr
     return &renderer.RenderResult{Content: output, MimeType: "text/html; charset=utf-8"}, nil
 }
 
-// Register in main.go:
+// Register in setupPipeline (cmd/gomddoc/pipeline.go):
 registry.Register(&MyRenderer{})
 ```
+
+Registration order is the tie-break between two renderers claiming the same input type: the later
+one wins, which is why `MarkdownRenderer` is registered after `MarkdownPassthroughRenderer` and
+`Accept: */*` therefore yields HTML.
 
 ### Adding Custom Providers
 

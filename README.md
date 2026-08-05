@@ -319,41 +319,39 @@ See [docs/architecture.md](docs/architecture.md) for detailed architecture docum
 
 ## Custom Renderers
 
-Create custom renderers for specialized content types:
+A renderer turns the bytes of one MIME type into the bytes of another. Adding one is a change to
+the gomddoc source tree, not a plugin — `internal/renderer` is an internal package and registration
+happens in `cmd/gomddoc/pipeline.go`:
 
 ```go
-package main
-
-import (
-    "context"
-    "github.com/monolithiclab/gomddoc/internal/renderer"
-)
-
-// JSONRenderer converts JSON to formatted HTML
+// JSONRenderer converts JSON to a formatted HTML block.
 type JSONRenderer struct{}
 
-func (j *JSONRenderer) SupportedMimeTypes() []string {
-    return []string{"application/json"}
-}
+func (j *JSONRenderer) InputMimeTypes() []string  { return []string{"application/json"} }
+func (j *JSONRenderer) OutputMimeTypes() []string { return []string{"text/html"} }
 
-func (j *JSONRenderer) Render(ctx context.Context, content []byte) ([]byte, string, error) {
-    // Check context
+func (j *JSONRenderer) Render(ctx context.Context, content []byte, _ *enricher.EnrichmentData) (*renderer.RenderResult, error) {
     if err := ctx.Err(); err != nil {
-        return nil, "", err
+        return nil, err
     }
 
-    // Format JSON with syntax highlighting
-    formatted := formatJSON(content)
-    html := []byte("<pre class=\"json\">" + formatted + "</pre>")
+    var buf bytes.Buffer
+    if err := json.Indent(&buf, content, "", "  "); err != nil {
+        return nil, fmt.Errorf("indent json: %w", err)
+    }
 
-    return html, "text/html; charset=utf-8", nil
+    return &renderer.RenderResult{
+        Content:  []byte("<pre class=\"json\">" + html.EscapeString(buf.String()) + "</pre>"),
+        MimeType: "text/html; charset=utf-8",
+    }, nil
 }
 
-// Register in main.go
+// In setupPipeline (cmd/gomddoc/pipeline.go):
 registry.Register(&JSONRenderer{})
 ```
 
-See [docs/custom-renderers.md](docs/custom-renderers.md) for more examples.
+See the [Custom Renderers guide](docs/guide/12-advanced/04-custom-renderers.md) for the negotiation
+rules, MIME registration, and testing.
 
 ## API Reference
 

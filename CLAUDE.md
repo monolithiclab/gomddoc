@@ -34,8 +34,7 @@ docs/
 ├── roadmap.md              # Phased roadmap, deferred ideas
 ├── guide/                  # Feature documentation (agent + human audience)
 ├── specs/                  # Feature specifications (written before implementation)
-├── skills/                 # Agent skills (SKILL.md + scripts/) — excluded from coverage
-└── custom-renderers.md     # (legacy — should be folded into guide/)
+└── skills/                 # Agent skills (SKILL.md + scripts/) — excluded from coverage
 ```
 
 **Purpose of each:**
