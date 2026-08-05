@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"gopkg.in/yaml.v3"
 )
 
 func TestInitCmd_Run(t *testing.T) {
@@ -85,15 +84,14 @@ func TestInitCmd_ConfigRoundTrips(t *testing.T) {
 		t.Fatalf("Init.Run() error: %v", err)
 	}
 
-	configPath := filepath.Join(dir, config.ConfigDirName, config.ConfigFileName)
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("read config: %v", err)
-	}
-
-	var sc config.SiteConfig
-	if err := yaml.Unmarshal(data, &sc); err != nil {
-		t.Fatalf("unmarshal config: %v", err)
+	// Load through the production path, not yaml.Unmarshal: initConfig
+	// (init.go) hand-mirrors SiteConfig's yaml tags with no compile-time link,
+	// and LoadFromFile now rejects keys SiteConfig does not define. Decoding
+	// leniently here would let the scaffold drift into generating a config
+	// that `gomddoc serve` refuses to load, with this test still green.
+	sc := config.NewSiteConfig(dir)
+	if err := sc.LoadFromFile(dir); err != nil {
+		t.Fatalf("LoadFromFile on a freshly scaffolded site: %v", err)
 	}
 
 	if sc.DefaultIndex != config.DefaultIndex {

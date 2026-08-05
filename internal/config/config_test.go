@@ -1,8 +1,8 @@
 package config
 
 import (
+	"maps"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -639,7 +639,7 @@ func TestSiteConfig_LoadFromFile(t *testing.T) {
 		wantDomain   string
 		wantDesc     string
 		wantTheme    string
-		wantErr      bool
+		wantErr      string // substring the error must name; non-empty implies wantErr
 		missingFile  bool
 		expectDefaut bool
 	}{
@@ -664,12 +664,50 @@ theme:
 			expectDefaut: true,
 		},
 		{
+			// Empty and comment-only files reach Decode as io.EOF; both mean
+			// "defaults", not "parse error".
+			name:         "comment-only config file - uses defaults",
+			configYAML:   "# nothing to see here\n",
+			expectDefaut: true,
+		},
+		{
 			name: "invalid YAML",
 			configYAML: `meta:
   title: "Unclosed quote
   domain: example.com
 `,
-			wantErr: true,
+			wantErr: "found unexpected end of stream",
+		},
+		// Every row below parsed successfully and applied nothing before
+		// KnownFields(true). The first two are configs written in the wild:
+		// the `site:` wrapper silently dropped meta.domain, and testsite's own
+		// config.yml carried a top-level color_chips that never reached
+		// theme.features.
+		{
+			name:       "everything under a site wrapper",
+			configYAML: "site:\n  meta:\n    domain: example.com\n",
+			wantErr:    "site",
+		},
+		{
+			name:       "top-level color_chips",
+			configYAML: "color_chips: true\n",
+			wantErr:    "color_chips",
+		},
+		{
+			name:       "top-level features instead of theme.features",
+			configYAML: "features:\n  color_chips: false\n",
+			wantErr:    "features",
+		},
+		{
+			name:       "misspelled key",
+			configYAML: "default_indx: HOME.md\n",
+			wantErr:    "default_indx",
+		},
+		{
+			// Decode reads one document; the rest of the file would vanish.
+			name:       "second YAML document",
+			configYAML: "default_index: A.md\n---\nmeta:\n  domain: example.com\n",
+			wantErr:    "only the first YAML document is read",
 		},
 	}
 
@@ -683,21 +721,17 @@ theme:
 
 			// Create config file if needed
 			if !tt.missingFile {
-				gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-				if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-					t.Fatalf("Failed to create .gomddoc dir: %v", err)
-				}
-
-				configPath := filepath.Join(gomddocDir, "config.yml")
-				if err := os.WriteFile(configPath, []byte(tt.configYAML), 0644); err != nil {
-					t.Fatalf("Failed to write config file: %v", err)
-				}
+				writeSiteConfig(t, tmpDir, tt.configYAML)
 			}
 
 			err := sc.LoadFromFile(tmpDir)
-			if tt.wantErr {
+			if tt.wantErr != "" {
 				if err == nil {
-					t.Error("LoadFromFile() error = nil, want error")
+					t.Fatalf("LoadFromFile() error = nil, want an error naming %q", tt.wantErr)
+				}
+				// The offending key must appear, or the error cannot be acted on.
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("error = %q, want it to name %q", err, tt.wantErr)
 				}
 				return
 			}
@@ -1073,26 +1107,35 @@ func TestSiteConfig_Validate(t *testing.T) {
 	}
 }
 
+// The one shape that cannot fold into TestSiteConfig_LoadFromFile's table:
+// that table asserts Meta/Theme.Name against fixed strings, and a
+// features-only config leaves Meta.Title at its tmpdir-derived default.
+func TestSiteConfig_LoadFromFile_ThemeFeatures(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	writeSiteConfig(t, tmpDir, "theme:\n  features:\n    color_chips: false\n")
+
+	sc := NewSiteConfig(tmpDir)
+	if err := sc.LoadFromFile(tmpDir); err != nil {
+		t.Fatalf("LoadFromFile() error = %v", err)
+	}
+	if want := map[string]bool{"color_chips": false}; !maps.Equal(sc.Theme.Features, want) {
+		t.Errorf("Theme.Features = %v, want %v", sc.Theme.Features, want)
+	}
+}
+
 func TestSiteConfig_LoadFromFile_ThemeVars(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
-	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-		t.Fatalf("Failed to create .gomddoc dir: %v", err)
-	}
-
-	configYAML := `theme:
+	writeSiteConfig(t, tmpDir, `theme:
   name: "default"
   vars:
     primary: "#e63946"
     background: "#fafafa"
     dark-primary: "#ff6b6b"
-`
-	configPath := filepath.Join(gomddocDir, "config.yml")
-	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
-		t.Fatalf("Failed to write config file: %v", err)
-	}
+`)
 
 	sc := NewSiteConfig(tmpDir)
 	if err := sc.LoadFromFile(tmpDir); err != nil {
@@ -1119,18 +1162,9 @@ func TestSiteConfig_LoadFromFile_ThemeVarsNil(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
-	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-		t.Fatalf("Failed to create .gomddoc dir: %v", err)
-	}
-
-	configYAML := `theme:
+	writeSiteConfig(t, tmpDir, `theme:
   name: "default"
-`
-	configPath := filepath.Join(gomddocDir, "config.yml")
-	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
-		t.Fatalf("Failed to write config file: %v", err)
-	}
+`)
 
 	sc := NewSiteConfig(tmpDir)
 	if err := sc.LoadFromFile(tmpDir); err != nil {
@@ -1158,13 +1192,7 @@ func TestSiteConfig_Language(t *testing.T) {
 		tmpDir := t.TempDir()
 		sc := NewSiteConfig(tmpDir)
 
-		gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-		if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(gomddocDir, "config.yml"), []byte("language: fr\n"), 0644); err != nil {
-			t.Fatalf("write config: %v", err)
-		}
+		writeSiteConfig(t, tmpDir, "language: fr\n")
 
 		if err := sc.LoadFromFile(tmpDir); err != nil {
 			t.Fatalf("LoadFromFile: %v", err)
@@ -1191,13 +1219,7 @@ func TestMetaConfig_Robots(t *testing.T) {
 		tmpDir := t.TempDir()
 		sc := NewSiteConfig(tmpDir)
 
-		gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-		if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(gomddocDir, "config.yml"), []byte("meta:\n  robots: \"noindex, nofollow\"\n"), 0644); err != nil {
-			t.Fatalf("write config: %v", err)
-		}
+		writeSiteConfig(t, tmpDir, "meta:\n  robots: \"noindex, nofollow\"\n")
 
 		if err := sc.LoadFromFile(tmpDir); err != nil {
 			t.Fatalf("LoadFromFile: %v", err)
@@ -1258,19 +1280,10 @@ func TestSiteConfig_LoadFromFile_StripExtensions(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
-	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-		t.Fatalf("Failed to create .gomddoc dir: %v", err)
-	}
-
-	configYAML := `strip_extensions:
+	writeSiteConfig(t, tmpDir, `strip_extensions:
   - ".md"
   - ".html"
-`
-	configPath := filepath.Join(gomddocDir, "config.yml")
-	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
-		t.Fatalf("Failed to write config file: %v", err)
-	}
+`)
 
 	sc := NewSiteConfig(tmpDir)
 	if err := sc.LoadFromFile(tmpDir); err != nil {

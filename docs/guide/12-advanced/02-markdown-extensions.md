@@ -202,11 +202,13 @@ Both 3-digit (`#fff`) and 6-digit (`#ffffff`) hex codes are supported. The color
 
 ### Controlling Color Chips
 
-Color chips are enabled by default. You can disable them globally in `.gomddoc/config.yml`:
+Color chips are enabled by default. You can disable them globally in `.gomddoc/config.yml`, under
+`theme.features` — a top-level `features:` key is not a config field and is rejected at startup:
 
 ```yaml
-features:
-  color_chips: false
+theme:
+  features:
+    color_chips: false
 ```
 
 Or per-page via frontmatter:

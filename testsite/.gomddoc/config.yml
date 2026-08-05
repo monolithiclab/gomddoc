@@ -3,11 +3,12 @@
 
 default_index: README.md
 dir_index: false
-color_chips: true
 meta:
   title: Testsite
   description: ""
 theme:
   name: default
+  features:
+    color_chips: true
 highlighting:
   theme: github

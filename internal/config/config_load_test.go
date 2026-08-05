@@ -1,8 +1,6 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -12,20 +10,11 @@ func TestNewFromServeArgs(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	// Create a config file in the temp dir
-	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-		t.Fatalf("Failed to create .gomddoc dir: %v", err)
-	}
-
-	configContent := `
+	writeSiteConfig(t, tmpDir, `
 default_index: "HOME.md"
 meta:
   title: "Loaded Title"
-`
-	if err := os.WriteFile(filepath.Join(gomddocDir, "config.yml"), []byte(configContent), 0644); err != nil {
-		t.Fatalf("Failed to write config file: %v", err)
-	}
+`)
 
 	cfg, err := NewFromServeArgs(ServeArgs{Dir: tmpDir, Port: ":8080"})
 	if err != nil {
@@ -67,14 +56,8 @@ func TestNewFromServeArgs_DynamicDefaults(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	// Create minimal config without title
-	gomddocDir := filepath.Join(tmpDir, ".gomddoc")
-	if err := os.MkdirAll(gomddocDir, 0755); err != nil {
-		t.Fatalf("Cannot create directory in temporary test folder: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(gomddocDir, "config.yml"), []byte("default_index: README.md"), 0644); err != nil {
-		t.Fatalf("Cannot write into temporary test folder: %v", err)
-	}
+	// Minimal config without title
+	writeSiteConfig(t, tmpDir, "default_index: README.md")
 
 	cfg, err := NewFromServeArgs(ServeArgs{Dir: tmpDir, Port: ":8080"})
 	if err != nil {

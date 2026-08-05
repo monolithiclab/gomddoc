@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -233,7 +234,7 @@ func NewSiteConfig(dir string) SiteConfig {
 func (sc *SiteConfig) LoadFromFile(rootDir string) error {
 	path := filepath.Join(rootDir, ConfigDirName, ConfigFileName)
 
-	data, err := os.ReadFile(path) // #nosec G304
+	f, err := os.Open(path) // #nosec G304
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			slog.Debug("No site config file found, using defaults", slog.String("path", path))
@@ -241,12 +242,32 @@ func (sc *SiteConfig) LoadFromFile(rootDir string) error {
 		}
 		return fmt.Errorf("read config file: %w", err)
 	}
+	defer func() { _ = f.Close() }()
 
-	// Unmarshal directly into struct.
-	// yaml.Unmarshal will match fields with `yaml` tags.
-	// Fields without matching keys in YAML will retain their existing values (defaults).
-	if err := yaml.Unmarshal(data, sc); err != nil {
-		return fmt.Errorf("parse config.yml: %w", err)
+	// Fields with no matching key keep their existing values (defaults), but a
+	// key the struct does not define is an error: without KnownFields(true) a
+	// misplaced key parses fine and applies nothing. A `site:` wrapper silently
+	// discarded meta.domain (no Sitemap: line, no sitemap.xml), and a top-level
+	// `features:` or `color_chips:` never reached theme.features.
+	dec := yaml.NewDecoder(f)
+	dec.KnownFields(true)
+	if err := dec.Decode(sc); err != nil {
+		if errors.Is(err, io.EOF) {
+			// Empty or comment-only: a valid way to say "defaults".
+			return nil
+		}
+		return fmt.Errorf("%s: %w", path, err)
+	}
+
+	// Decode reads one document. A stray `---` would park the rest of the file
+	// in a second one and drop it — the same invisible failure KnownFields is
+	// here to prevent, through a different door.
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		return fmt.Errorf("%s: only the first YAML document is read; remove the `---` separator at line %d", path, extra.Line)
 	}
 
 	return nil

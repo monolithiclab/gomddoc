@@ -1165,14 +1165,39 @@ becomes `/`. But build writes `docs/index.html`, i.e. the real URL is `/docs/`. 
 page gets a canonical and a sitemap `<loc>` that redirect-hop. The slash should be added whenever
 `defaultIndex` was stripped, not only at the root.
 
-#### MEDIUM: config loading is silently permissive
+#### ~~MEDIUM: config loading is silently permissive~~ — **FIXED**
 
-`internal/config/config.go:209-228` `yaml.Unmarshal`s the whole file into `SiteConfig` with no
-`KnownFields`. A `config.yml` written with a `site:` wrapper — or with top-level `features:` instead
-of `theme.features` — parses successfully and applies **nothing**: no warning, no error. Confirmed:
-`meta.domain` under a `site:` key produced a `robots.txt` with no `Sitemap:` line and no
-`sitemap.xml`. `yaml.Decoder` + `KnownFields(true)` turns a silent no-op into an actionable error.
-(This also cost time during this review pass.)
+`LoadFromFile` now decodes with `yaml.Decoder` + `KnownFields(true)`, so a `site:` wrapper, a
+top-level `features:`/`color_chips:`, or any misspelled key fails at startup with the offending
+line instead of applying nothing. Three things the fix had to get right beyond flipping the flag:
+
+- **`io.EOF` is not an error here.** yaml.v3 returns it from `Decode` for an empty *and* a
+  comment-only file; without the branch every `# …`-only config.yml became a hard failure.
+- **`Decode` reads one document.** A stray `---` parks the rest of the file in a second document
+  and drops it — the identical invisible failure through another door, so a second `Decode` must
+  see `io.EOF` or the load fails with the separator's line number.
+- **`testsite/.gomddoc/config.yml` was itself a victim**: it carried a top-level `color_chips: true`
+  that never reached `theme.features`. The project's own fixture would not have loaded under the
+  new rules. `docs/` and the website config were clean.
+
+Also `cmd/gomddoc/init_test.go`'s round-trip test decoded with a bare `yaml.Unmarshal`, which is
+exactly the leniency production dropped. `initConfig` hand-mirrors `SiteConfig`'s yaml tags with no
+compile-time link, so the test would have stayed green while `gomddoc init && gomddoc serve` started
+failing on a freshly scaffolded site. It now loads through `LoadFromFile`.
+
+Left open (same class, lower severity, deliberately *not* rolled into that commit):
+
+- `internal/locale/bundle.go:114` — site `.gomddoc/locales/*.yml` overrides decode into
+  `map[string]string` and `maps.Copy` over the base, so a typo'd key adds a dead entry and the
+  built-in string keeps winning. Themes contribute their own keys, so this wants a `slog.Warn`
+  against the known set, not an error.
+- `internal/config/features.go` — `ValidateFeatureKeys` checks the *shape* (`^[a-z][a-z0-9_]*$`),
+  not membership. `color_chip: true` (singular) passes and does nothing. Feature names are open by
+  design (`{{ .Feature "x" }}` works for names no Go code knows), so again: warn, don't reject.
+- The yaml.v3 error leaks the Go type name — `field x not found in type config.ThemeConfig` gives
+  no path back to the `theme:` key the user typed. Tolerable at the top level, worse when nested.
+- `filepath.Join(root, ConfigDirName, ConfigFileName)` is spelled out at seven sites with no
+  `ConfigFilePath` helper. Cosmetic until the filename gains a `.yaml` variant.
 
 #### MEDIUM: divergent frontmatter parsers
 
@@ -1680,7 +1705,7 @@ regressed*: the theme-count correction was applied to `05-theming-and-assets.md`
 | D9 | `03-api-reference.md:161-164` lists `GET /sitemap-index.xml` as a live endpoint | Build-only — see §10.2 |
 | ~~D10~~ | ~~*"8 built-in themes"* across the repo and 6 website files~~ | ✅ FIXED. `cmd/gomddoc/assets/themes/` contains only `default`; the other seven are a directory drop from `gomddoc-themes`. The guide's theme table gained a **Bundled** column, and `05-theming-and-assets.md`'s correct-but-buried footnote was promoted above the table. Where the count was incidental (*"works across all eight built-in themes"*) the phrasing now says *every theme*, which stays true if the count changes |
 | D11 | `gomddoc-website/docs/distribution.md:75-97` — wrong archive filenames; advertises Windows binaries | `.goreleaser.yaml:14,23-24` builds linux/darwin × amd64/arm64 only; `install.sh:62` hard-`die`s on any other OS |
-| D12 | Top-level `features:` documented in `02-markdown-extensions.md:205-210` + website | Features live at `theme.features`; the top-level key is silently dropped (see the `KnownFields` finding in §10.3) |
+| ~~D12~~ | ~~Top-level `features:` documented in `02-markdown-extensions.md:205-210` + website~~ | ✅ FIXED, at both altitudes. The docs now nest under `theme.features` (the top-level `features:` blocks elsewhere in the guide are *frontmatter*, where it is correct — only the `config.yml` example was wrong), and `LoadFromFile` no longer accepts the misplaced key silently: see the `KnownFields` entry in §10.3. The website's inert `GOMDDOC_SITE_COLOR_CHIPS` is replaced by the real `GOMDDOC_SITE_THEME_FEATURES_COLOR_CHIPS`, which is what `applyEnvOverridesWithPrefix`'s `map[string]bool` branch actually reads |
 | D13 | `docs/seo-competitive-analysis.md:18-32` claims canonical URLs, OG, robots and sitemap are **absent**; `:605` recommends skipping hreflang | All shipped. ~14 of its 18 recommendations are implemented. Reads as a current gap analysis with no "superseded" marker |
 | D14 | `gomddoc-website/docs/distribution.md:36-38` shows plain `https://…git` as a Git source | Only `git://`, `git+ssh://`, `git+https://` are accepted (`config.go:379-383`) |
 | D15 | `gomddoc-themes/themes/CLAUDE.md:94,150,167` reference `color-chip.mjs` | The file is `gmd-color-chip.mjs`. Copy-paste produces 404s |
