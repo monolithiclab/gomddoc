@@ -13,6 +13,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
@@ -193,6 +194,40 @@ func TestHandlerErrorResponses(t *testing.T) {
 
 	if !strings.Contains(w.Body.String(), "404 Not Found") {
 		t.Error("response should contain '404 Not Found'")
+	}
+}
+
+// TestHandlerServeHTML_Breadcrumbs covers the handler's half of the breadcrumb
+// wiring. The trail is generated once, by the caller of BuildPageContext, so
+// dropping that input leaves every layout's breadcrumb bar empty with nothing
+// else to notice it.
+func TestHandlerServeHTML_Breadcrumbs(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide/setup.md": &fstest.MapFile{Data: []byte("# Setup")},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	rend := setupTestRenderer(
+		tmpl.WithBreadcrumbGenerator(breadcrumb.NewGenerator(func(string) bool { return false })))
+
+	handler := NewHandler(HandlerConfig{
+		Provider:         newMemoryProvider(files, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+	})
+
+	req := httptest.NewRequest("GET", "/guide/setup.md", nil)
+	req.Header.Set("Accept", "text/html")
+	w := httptest.NewRecorder()
+
+	handler.ServeContent(w, req)
+
+	if want := "[Home][Guide][Setup]"; !strings.Contains(w.Body.String(), want) {
+		t.Errorf("breadcrumb bar = %q, want it to contain %q", w.Body.String(), want)
 	}
 }
 

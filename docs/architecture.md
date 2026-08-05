@@ -255,7 +255,6 @@ type Renderer interface {
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|
-| `breadcrumbs` | `breadcrumbs(path) → []Breadcrumb` | Path-based breadcrumb navigation |
 | `toc` | `toc(tocTree, [min, max]) → []*TOCNode` | Returns filtered TOC nodes for template rendering (default: h1-h2) |
 | `navigation` | `navigation(navTree) → HTML` | Sidebar from enrichment `NavTree` |
 | `editURL` | `editURL(pagePath) → string` | Combines `edit_url` config with page path |
@@ -268,6 +267,14 @@ type Renderer interface {
 | `assetURL` | `assetURL(name) → string` | Resolves static file to `/_assets/{name}` URL (validates existence) |
 
 All functions are nil-safe — they return empty values when their backing generator is not configured.
+
+Breadcrumbs are deliberately *not* a template function. The trail is page data, like the TOC and the
+navigation tree: `BuildPageContext` calls `Renderer.Breadcrumbs(in.Path)` once and stores the result
+on `PageContext.Breadcrumbs`, which both the layout's breadcrumb bar and the JSON-LD `BreadcrumbList`
+read. As a function it ran twice per request — once per consumer — each time costing a provider
+`Stat` for the trailing segment plus a title-cased segment list. Callers pass the renderer
+(`PageContextInput.Renderer`) rather than a precomputed trail, so the trail and `Path` cannot
+disagree. Error pages have no trail: `BuildErrorContext` leaves the field nil.
 
 ### 7. Navigation Layer
 

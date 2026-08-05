@@ -14,6 +14,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 	registryutil "github.com/monolithiclab/gomddoc/internal/testutil/registry"
 )
 
@@ -80,18 +81,23 @@ func TestCopyFile(t *testing.T) {
 
 // newTestTemplateRenderer creates a minimal HTMLRenderer backed by an in-memory
 // template filesystem, suitable for unit tests that need to render markdown.
-func newTestTemplateRenderer(t *testing.T) (*tmpl.HTMLRenderer, *config.SiteConfig) {
+// The layout carries a breadcrumb bar so tests can assert on it by passing
+// tmpl.WithBreadcrumbGenerator; without a generator the trail is nil and the
+// bar renders nothing, so callers that ignore it see unchanged output.
+func newTestTemplateRenderer(t *testing.T, opts ...tmpl.RendererOption) (*tmpl.HTMLRenderer, *config.SiteConfig) {
 	t.Helper()
 
 	siteConfig := config.NewSiteConfig(".")
 
 	templateFS := fstest.MapFS{
 		"assets/themes/default/layouts/default.html.tmpl": &fstest.MapFile{
-			Data: []byte(`<!DOCTYPE html><html><body>{{.Page.Content}}</body></html>`),
+			Data: []byte(`<!DOCTYPE html><html><body>` +
+				`{{ range .Page.Breadcrumbs }}[{{ .Label }}]{{ end }}` +
+				`{{.Page.Content}}</body></html>`),
 		},
 	}
 
-	templateRenderer := tmpl.NewHTMLRenderer(&siteConfig, templateFS)
+	templateRenderer := tmpl.NewHTMLRenderer(&siteConfig, templateFS, opts...)
 	return templateRenderer, &siteConfig
 }
 
@@ -127,6 +133,37 @@ func TestBuildFile(t *testing.T) {
 	}
 	if stats.totalBytes.Load() == 0 {
 		t.Error("totalBytes should be > 0 after rendering markdown")
+	}
+}
+
+// TestBuildFile_Breadcrumbs covers the build's half of the breadcrumb wiring.
+// The trail is generated once per page by the caller of BuildPageContext, so
+// forgetting it here silently ships static pages with an empty breadcrumb bar.
+func TestBuildFile_Breadcrumbs(t *testing.T) {
+	outDir := t.TempDir()
+	b := &BuildCmd{Output: outDir}
+	stats := &buildStats{}
+
+	contentRoot := fstest.MapFS{
+		"guide/setup.md": &fstest.MapFile{Data: []byte("# Setup")},
+	}
+
+	templateRenderer, siteConfig := newTestTemplateRenderer(t,
+		tmpl.WithBreadcrumbGenerator(breadcrumb.NewGenerator(func(string) bool { return false })))
+	bc := newTestBuildContext(t, siteConfig, templateRenderer)
+
+	mdRenderer := renderer.NewMarkdownRenderer(renderer.MarkdownOptions{})
+	err := b.buildFile(context.Background(), contentRoot, "guide/setup.md", mdRenderer, "text/markdown", bc, nil, "", stats)
+	if err != nil {
+		t.Fatalf("buildFile failed: %v", err)
+	}
+
+	htmlContent, err := os.ReadFile(filepath.Join(outDir, "guide", "setup", "index.html"))
+	if err != nil {
+		t.Fatalf("Expected guide/setup/index.html to exist: %v", err)
+	}
+	if want := "[Home][Guide][Setup]"; !strings.Contains(string(htmlContent), want) {
+		t.Errorf("Expected %q in output HTML, got:\n%s", want, htmlContent)
 	}
 }
 

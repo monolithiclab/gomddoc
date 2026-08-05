@@ -6,6 +6,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -17,6 +18,11 @@ type PageContextInput struct {
 	Path       string                   // Request path (serve) or "/"+filePath (build)
 	Content    template.HTML            // Rendered HTML body
 	Enrichment *enricher.EnrichmentData // Metadata, TOC, navigation, related docs
+
+	// Renderer supplies the page data derived from Path — currently the
+	// breadcrumb trail. Passing the renderer rather than the trail keeps the two
+	// in agreement by construction. May be nil, in which case Breadcrumbs is nil.
+	Renderer Renderer
 
 	// i18n
 	Lang      string
@@ -37,6 +43,13 @@ func BuildPageContext(in PageContextInput) *TemplateContext {
 		meta["title"] = text.DeriveTitle(in.Path)
 	}
 
+	// Generated here, once, because both the layout's breadcrumb bar and the
+	// JSON-LD partial read PageContext.Breadcrumbs.
+	var breadcrumbs []breadcrumb.Breadcrumb
+	if in.Renderer != nil {
+		breadcrumbs = in.Renderer.Breadcrumbs(in.Path)
+	}
+
 	ctx := &TemplateContext{
 		Site: in.Site,
 		Page: PageContext{
@@ -49,6 +62,7 @@ func BuildPageContext(in PageContextInput) *TemplateContext {
 			PrevPage:    in.Enrichment.PrevPage,
 			NextPage:    in.Enrichment.NextPage,
 			RelatedDocs: in.Enrichment.RelatedDocs,
+			Breadcrumbs: breadcrumbs,
 		},
 	}
 	ctx.WithI18n(in.Lang, in.TFunc, in.Languages)
@@ -72,7 +86,8 @@ type ErrorContextInput struct {
 
 // BuildErrorContext assembles the TemplateContext for an error page. The status
 // title is derived from the code via http.StatusText so both callers produce
-// identical metadata.
+// identical metadata. Breadcrumbs are deliberately left nil: error pages carry
+// no breadcrumb bar, and a noindex page has no use for a JSON-LD BreadcrumbList.
 func BuildErrorContext(in ErrorContextInput) *TemplateContext {
 	statusTitle := http.StatusText(in.StatusCode)
 

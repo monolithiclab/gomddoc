@@ -106,17 +106,11 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
     - `.Page.TOC`: Table of Contents tree (use the `toc` template function to render).
     - `.Page.RelatedDocs`: Pages sharing frontmatter tags with this page, rendered by the `see-also` partial.
     - `.Page.PrevPage` / `.Page.NextPage`: Adjacent pages in navigation order (each has `.Path` and `.Title`).
+    - `.Page.Breadcrumbs`: Trail from the site root to this page (each has `.Path` and `.Label`). Generated once per page, not on demand — there is no `breadcrumbs` template function.
 
 ### Template Functions
 
 Custom functions available in templates:
-
-- **`breadcrumbs`**: Generates breadcrumb navigation from a path.
-  ```html
-  {{ range breadcrumbs .Page.Path }}
-      <a href="{{ .Path }}">{{ .Label }}</a> /
-  {{ end }}
-  ```
 
 - **`toc`**: Returns a filtered list of `TOCNode` items for template rendering. Accepts optional min/max heading levels. Used with the recursive `toc-item` partial defined in `toc.html.tmpl`.
   ```html
@@ -262,7 +256,7 @@ These functions are available when multi-language support is active. See
     </nav>
 
     <nav aria-label="{{ .T "aria_breadcrumb" }}">
-        {{ range breadcrumbs .Page.Path }}
+        {{ range .Page.Breadcrumbs }}
             <a href="{{ .Path }}">{{ .Label }}</a> /
         {{ end }}
     </nav>
@@ -397,7 +391,7 @@ When creating a custom theme, ensure it supports these features for parity with 
 - **Navigation sidebar** via `{{ navigation .Page.Path }}`
 - **Table of contents** — guarded by `{{ .Feature "toc" }}`. Uses `{{ template "toc" . }}` partial with `toc-item` recursive template.
 - **TOC scroll highlighting** — guarded by `{{ .Feature "toc" }}`. Uses `{{ inlineJSAsset "toc-highlight.mjs" }}` to track scroll position and set `.active` class on matching TOC link.
-- **Breadcrumbs** via `{{ breadcrumbs .Page.Path }}`
+- **Breadcrumbs** via `{{ range .Page.Breadcrumbs }}`
 - **Search button** — guarded by `{{ .Feature "search" }}`. Button with `id="search-toggle"` in the header.
 - **Search modal** — guarded by `{{ .Feature "search" }}`. Uses `{{ inlineJSAsset "search.mjs" }}` with CSS custom properties for styling.
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`, `.admonition-caution`

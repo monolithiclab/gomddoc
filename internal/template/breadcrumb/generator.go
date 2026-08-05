@@ -67,8 +67,12 @@ func (g *DefaultGenerator) Generate(filepath string) []Breadcrumb {
 	segments := strings.Split(filepath, "/")
 
 	// Build cumulative paths efficiently with strings.Builder
+	// The loop writes one '/' per segment plus every segment, and filepath
+	// already holds len(segments)-1 separators: len(filepath)+1 bytes in total.
+	// Growing to len(filepath) leaves the last byte to a realloc whenever the
+	// size class does not happen to round up far enough.
 	var pathBuilder strings.Builder
-	pathBuilder.Grow(len(filepath)) // Pre-allocate capacity
+	pathBuilder.Grow(len(filepath) + 1)
 
 	for i, segment := range segments {
 		pathBuilder.WriteByte('/')

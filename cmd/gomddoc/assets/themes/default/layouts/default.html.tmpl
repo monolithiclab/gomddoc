@@ -17,7 +17,7 @@
     <div class="page-layout">
       {{ template "nav" . }}
       <div class="content-area">
-        {{- $crumbs := breadcrumbs .Page.Path }}
+        {{- $crumbs := .Page.Breadcrumbs }}
         {{- if gt (len $crumbs) 1 }}
         <nav aria-label="{{ .T "aria_breadcrumb" }}" class="breadcrumb-bar">
           <ul>

@@ -182,6 +182,14 @@ testsite/              # Lorem ipsum test site for quick testing
   per-language pipeline its **own** `TemplateRenderer` (`LangPipelineConfig.TemplateRenderer`), never
   the default one — the default resolver cannot map a page that exists only in that language, so the
   link silently degrades to a raw `.md` path pointing at the wrong tree.
+- **Anything more than one consumer reads is a `PageContext` field, never a template function** —
+  `funcMap` is bound at parse time and parsed templates are cached and shared across concurrent
+  `Render` calls, so there is no per-render seam where a memo could live: a function with two callers
+  in a layout does its work twice per request, every request. Breadcrumbs cost a provider `Stat` and
+  were computed once by the breadcrumb bar and again by the JSON-LD partial. Derive it in
+  `BuildPageContext` instead, next to `TOC`/`Navigation`/`PrevPage`/`RelatedDocs`. Corollary: pass
+  `PageContextInput` the *producer* (`Renderer`), not the produced value — a caller can hand a
+  precomputed trail that disagrees with `Path`, but it cannot hand a renderer that does.
 
 ### `io/fs` Spec Compliance
 

@@ -460,6 +460,7 @@ func (b *BuildCmd) buildFile(
 		Path:       pagePath,
 		Content:    template.HTML(renderResult.Content), // #nosec G203
 		Enrichment: enrichment,
+		Renderer:   bc.templateRenderer,
 		Lang:       bc.lang,
 		TFunc:      bc.tFunc,
 		Languages:  bc.languageInfos,

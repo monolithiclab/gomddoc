@@ -44,6 +44,10 @@ type Renderer interface {
 	// RenderTagsIndex renders a synthetic /tags/ page with all tags and their counts.
 	// Tags should already be sorted alphabetically by the caller.
 	RenderTagsIndex(ctx context.Context, lang string, tFunc func(string) string, tags []TagCount) ([]byte, error)
+
+	// Breadcrumbs returns the trail from the site root down to path.
+	// BuildPageContext calls it; templates read PageContext.Breadcrumbs.
+	Breadcrumbs(path string) []breadcrumb.Breadcrumb
 }
 
 // LanguageInfo holds display information for a language.
@@ -108,14 +112,15 @@ type TemplateContext struct {
 
 type PageContext struct {
 	Content     template.HTML
-	Path        string                // Current request path
-	Meta        map[string]any        // Extracted metadata (e.g., front matter)
-	Features    map[string]bool       // Pre-merged feature toggles (site defaults + page overrides)
-	TOC         *enricher.TOCNode     // Table of Contents
-	Navigation  *enricher.NavTree     // Navigation tree (populated by enricher)
-	PrevPage    *enricher.PageLink    // Previous page in navigation order
-	NextPage    *enricher.PageLink    // Next page in navigation order
-	RelatedDocs []enricher.RelatedDoc // Pages sharing frontmatter tags with this page
+	Path        string                  // Current request path
+	Meta        map[string]any          // Extracted metadata (e.g., front matter)
+	Features    map[string]bool         // Pre-merged feature toggles (site defaults + page overrides)
+	TOC         *enricher.TOCNode       // Table of Contents
+	Navigation  *enricher.NavTree       // Navigation tree (populated by enricher)
+	PrevPage    *enricher.PageLink      // Previous page in navigation order
+	NextPage    *enricher.PageLink      // Next page in navigation order
+	RelatedDocs []enricher.RelatedDoc   // Pages sharing frontmatter tags with this page
+	Breadcrumbs []breadcrumb.Breadcrumb // Trail from the site root to this page
 }
 
 // Feature returns whether a named feature is enabled for this page.
@@ -341,10 +346,12 @@ func (h *HTMLRenderer) RenderTagPage(ctx context.Context, lang string, tFunc fun
 		return nil, fmt.Errorf("render tags-list: %w", err)
 	}
 
+	pagePath := tagURL(h.siteConfig.Language, lang, tag)
 	page := PageContext{
-		Path:    tagURL(h.siteConfig.Language, lang, tag),
-		Content: template.HTML(body), // #nosec G203 -- partial output is trusted
-		Meta:    map[string]any{"title": tag},
+		Path:        pagePath,
+		Content:     template.HTML(body), // #nosec G203 -- partial output is trusted
+		Meta:        map[string]any{"title": tag},
+		Breadcrumbs: h.Breadcrumbs(pagePath),
 	}
 	tc := &TemplateContext{Site: h.siteConfig, Page: page}
 	tc.WithI18n(lang, tFunc, nil)
@@ -385,8 +392,9 @@ func (h *HTMLRenderer) RenderTagsIndex(ctx context.Context, lang string, tFunc f
 		pagePath = "/" + lang + "/tags/"
 	}
 	page := PageContext{
-		Path:    pagePath,
-		Content: template.HTML(body), // #nosec G203 -- partial output is trusted
+		Path:        pagePath,
+		Content:     template.HTML(body), // #nosec G203 -- partial output is trusted
+		Breadcrumbs: h.Breadcrumbs(pagePath),
 	}
 	tc := &TemplateContext{Site: h.siteConfig, Page: page}
 	tc.WithI18n(lang, tFunc, nil)
@@ -537,7 +545,6 @@ func (h *HTMLRenderer) parseGlob(tmpl *template.Template, glob string) (bool, er
 // funcMap returns the map of functions available in templates
 func (h *HTMLRenderer) funcMap() template.FuncMap {
 	return template.FuncMap{
-		"breadcrumbs":  h.generateBreadcrumbs,
 		"toc":          filterTOC,
 		"editURL":      h.generateEditURL,
 		"themeVarsCSS": h.generateThemeVarsCSS,
@@ -570,15 +577,13 @@ func (h *HTMLRenderer) generateJSONLD(page PageContext) template.JS {
 		HasSearch:    h.hasSearchIndex,
 	}
 
-	// Build breadcrumbs with full URLs
-	var breadcrumbs []seo.BreadcrumbItem
-	if h.breadcrumbGen != nil {
-		for _, bc := range h.breadcrumbGen.Generate(page.Path) {
-			breadcrumbs = append(breadcrumbs, seo.BreadcrumbItem{
-				Name: bc.Label,
-				URL:  seo.PageURL(cfg.Domain, bc.Path, cfg.DefaultIndex),
-			})
-		}
+	// Reuse the trail BuildPageContext already produced; only the URLs are new.
+	breadcrumbs := make([]seo.BreadcrumbItem, 0, len(page.Breadcrumbs))
+	for _, bc := range page.Breadcrumbs {
+		breadcrumbs = append(breadcrumbs, seo.BreadcrumbItem{
+			Name: bc.Label,
+			URL:  seo.PageURL(cfg.Domain, bc.Path, cfg.DefaultIndex),
+		})
 	}
 
 	// Detect index page
@@ -622,8 +627,10 @@ func (h *HTMLRenderer) generateEditURL(pagePath string) string {
 	return base + pagePath
 }
 
-// generateBreadcrumbs generates breadcrumbs for the given path
-func (h *HTMLRenderer) generateBreadcrumbs(path string) []breadcrumb.Breadcrumb {
+// Breadcrumbs generates the breadcrumb trail for the given path. Generating it
+// costs a provider Stat plus a title-cased segment list, so it is page data
+// built once at context-build time, not a template function each consumer calls.
+func (h *HTMLRenderer) Breadcrumbs(path string) []breadcrumb.Breadcrumb {
 	if h.breadcrumbGen == nil {
 		return nil
 	}

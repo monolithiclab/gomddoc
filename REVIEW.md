@@ -1363,15 +1363,67 @@ The pool is refilled with zero-capacity slices forever — every request re-grow
 the entire body via `append` even though `serveWithETag` delivers it in a single call — skip
 buffering when the first `Write` already exceeds `minCompressionSize`.
 
-#### MEDIUM: breadcrumbs generated twice per request ✅ verified
+#### MEDIUM: breadcrumbs generated twice per request ✅ FIXED
 
-`cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl:20` calls `breadcrumbs .Page.Path`, and
+`cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl:20` called `breadcrumbs .Page.Path`, and
 `partials/head.html.tmpl:1018` → `{{ template "jsonld" . }}` → `jsonLD .Page` →
-`internal/template/renderer.go:565 generateJSONLD` calls `breadcrumbGen.Generate(page.Path)` again.
-`Generate` calls `g.isDir()` **per path segment**, and that closure is a real provider `Stat` syscall
-(`cmd/gomddoc/pipeline.go:166-169`), plus `text.TitleCase` per segment. Measured: 2,158 ns / 2,184 B /
-23 allocs per `Generate` *excluding* the syscalls. Compute once per render and share. (This also
-subsumes the `cases.Title` `sync.Pool` idea already marked Won't-Fix in §5 — that decision stands.)
+`internal/template/renderer.go generateJSONLD` called `breadcrumbGen.Generate(page.Path)` again.
+That closure is a real provider `Stat` syscall (`cmd/gomddoc/pipeline.go:166-169`), plus
+`text.TitleCase` per segment. Measured: 2,158 ns / 2,184 B / 23 allocs per `Generate` *excluding* the
+syscall. (This also subsumes the `cases.Title` `sync.Pool` idea already marked Won't-Fix in §5 — that
+decision stands.)
+
+> **Correction to the original finding:** it claimed `Generate` calls `g.isDir()` **per path
+> segment**. It does not — `internal/template/breadcrumb/generator.go:64` calls it exactly once per
+> `Generate`, for the trailing segment only. Intermediate segments are known to be directories. The
+> per-request *doubling* was real; the per-segment syscall count was not.
+
+**Fix:** memoising inside the template function is structurally impossible — `funcMap` is bound at
+parse time and parsed templates are cached and shared across concurrent `Render` calls, so there is
+no per-render seam. Breadcrumbs moved instead to precomputed page data, where every other derived
+page value already lives (`TOC`, `Navigation`, `PrevPage`, `RelatedDocs`):
+
+- The `breadcrumbs` template function was **deleted** from `funcMap` (12 functions remain).
+- `Renderer` gained `Breadcrumbs(path) []breadcrumb.Breadcrumb`; `PageContext` gained a
+  `Breadcrumbs` field.
+- `BuildPageContext` is the single generation site. Callers pass `PageContextInput.Renderer`, not a
+  precomputed trail, so the trail and `Path` cannot disagree.
+- `generateJSONLD` maps `page.Breadcrumbs` to `[]seo.BreadcrumbItem` instead of regenerating.
+- All 8 theme layouts (default + the 7 in `gomddoc-themes`) now use `{{ range .Page.Breadcrumbs }}`.
+
+`BenchmarkPageWithBreadcrumbs` (context build + render of a layout with both the breadcrumb bar and
+JSON-LD), median of 5 at `-benchtime 2000x` on an Apple M1 Max:
+
+| | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| before | 21548 | 15023 | 258 |
+| after | 19789 | 13140 | 236 |
+| | **−8.2%** | **−12.5%** | **−8.5%** |
+
+Plus one provider `Stat` per page that the benchmark's in-memory `isDir` closure does not model.
+
+**Behaviour change:** error pages no longer emit a JSON-LD `BreadcrumbList`. `BuildErrorContext`
+leaves the field nil; `error.html.tmpl` has no breadcrumb bar, so nothing visible changes, and error
+pages are `robots: noindex` anyway. Documented at the function and in `architecture.md`.
+
+Also fixed in passing: `breadcrumb.Generator` sized its `strings.Builder` with
+`Grow(len(filepath))`, one byte short of what the loop writes (`len(filepath)+1` — one `/` per
+segment, and `filepath` already holds `len(segments)-1` of them).
+
+**Left for later** (recorded here so they are not lost):
+
+- `RenderTagPage`/`RenderTagsIndex` (`internal/template/renderer.go`) hand-assemble a `PageContext`
+  literal instead of going through `BuildPageContext`, so they now assign `Breadcrumbs` by hand and
+  still skip `config.MergeFeatures` — a site that disables `toc` or `search` in `theme.features`
+  still gets them on `/tags/` and `/tags/{tag}` (this is the §10.3 "nil `Features` on tag pages"
+  finding, same root cause). Their trail is also fully static, so the generator's `Stat` for a
+  synthetic path is a guaranteed miss on every tag page — worst case under `GitProvider`, which
+  takes the exclusive tree mutex for both the failed file and failed directory lookup.
+- `Breadcrumbs` re-derives, with a second provider round trip, the directory-vs-file bit the
+  provider already knew when `ServeContent` read the page. Surfacing the resolved kind from the read
+  would remove the round trip on the hot path; it also uses `context.Background()`
+  (`cmd/gomddoc/pipeline.go:166-169`), so it is not cancellable with the request — see the
+  `request-scoped context.Background()` entry below.
 
 #### MEDIUM: `findBestWindow` lowercases ~50 substrings per search result
 
@@ -1467,7 +1519,7 @@ regressed*: the theme-count correction was applied to `05-theming-and-assets.md`
 | D1 | `README.md:118,377` documents `serve --dev` | ~~✅ verified: `unknown flag --dev`~~ — **FIXED**. The flag table now matches `serve --help`, and both `--dev` call sites point at `preview` / `GOMDDOC_SERVER_DEV_MODE` |
 | D2 | `README.md:118` uses `-d ./testsite` as the directory | ~~✅ verified: `-d` is `--domain`~~ — **FIXED**. README uses the positional arg; the k8s manifest now passes `args: ["serve", "/content"]` |
 | D3 | `02-configuration.md:492-503` documents 5 `GOMDDOC_SERVER_HTTP_*` vars + `DEV_MODE` | ~~✅ verified inert~~ — **FIXED**, they now take effect; see §10.3 |
-| D4 | `05-theming-and-assets.md:128,261,397` + website + themes docs document a `navigation` template function | The FuncMap (`renderer.go:528-550`) has 13 entries and no `navigation`. A theme calling it fails to parse |
+| D4 | `architecture.md:259,299`, `decisions.md:130`, `05-theming-and-assets.md:124,255,391`, `gomddoc-website/docs/configuration.md:270`, `gomddoc-themes/themes/CLAUDE.md:75,89` document a `navigation` template function | The FuncMap (`renderer.go:547-568`) has **12** entries and no `navigation`. A theme copying the documented example fails to parse. The sidebar renders from `.Page.Navigation` through the `nav` partial — the pattern breadcrumbs adopted in §10.4. The `architecture.md` table also omits `canonicalURL`, `jsonLD`, `tagURL` and `pageTags`; it needs one sweep, not per-diff row edits. The guide's example needs real replacement markup (a recursive partial over `.Page.Navigation.Items`), so this is not a one-line delete |
 | D5 | `08-observability.md:26-27` — `--admin-port` removes health *"from the main port entirely"* | ✅ verified: `/health/live` returns 200 on **both** ports. Only `/metrics` and pprof are gated (`server.go:93-97` vs `:116-120`) |
 | D6 | `docs/custom-renderers.md` teaches `Renderer` with a dead interface | All 9 examples are non-compiling. The real contract is `InputMimeTypes`/`OutputMimeTypes`/`Render(ctx, content, *enricher.EnrichmentData)`. `docs/guide/` has **zero** replacement coverage |
 | D7 | `09-deployment.md:105-118` — *"multi-stage Dockerfile"* | ~~verified~~ — **FIXED**. The section now leads with `docker pull ghcr.io/...`, states that the Dockerfile is not self-contained, and gives a `GOOS=linux` cross-compile before `docker build`. The bare-`gomddoc` run example gained the `serve` subcommand |
@@ -1487,8 +1539,9 @@ compression as universal (all three are scoped — see §10.4); `13-internationa
 `:auto`); `07-security.md:54` names a `BlockHiddenPaths` middleware and `provider.IsHiddenPath` — the
 real names are `ContentExclusion` and `provider.IsRestrictedPath`; the website has **no CLI reference
 page** (6 subcommands, 20+ flags) and omits `language`, `exclude`, `strip_extensions`, `search.index`,
-`theme.vars`, `theme.features`, `meta.robots`, `server.admin_port`; the website says 11 template
-functions (13) and omits the `.gomddoc/partials/` override layer; `gomddoc-themes` has no root README;
+`theme.vars`, `theme.features`, `meta.robots`, `server.admin_port`; ~~the website says 11 template
+functions~~ (corrected to 12 in §10.4's breadcrumb commit) but still omits the `.gomddoc/partials/`
+override layer; `gomddoc-themes` has no root README;
 stale "Go 1.25" references (go.mod says 1.26); `CLAUDE.md:29-36` omits `docs/plans/`, and four plan
 documents are misfiled under `docs/specs/`.
 
@@ -1808,7 +1861,8 @@ three `"text/markdown; charset=utf-8"`).
     rendering translated pages twice. A language whose pipeline failed to build is now skipped
     outright instead of rendered with the default resolver (which emitted raw `.md` links).
 11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
-    ~~compression pool nil~~ (DONE), double breadcrumb generation, compression/metrics route coverage,
-    `findBestWindow` re-lowercasing, MCP TOC nav rebuild, git-read blob decompression.
+    ~~compression pool nil~~ (DONE), ~~double breadcrumb generation~~ (DONE),
+    compression/metrics route coverage, `findBestWindow` re-lowercasing, MCP TOC nav rebuild,
+    git-read blob decompression.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.

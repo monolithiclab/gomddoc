@@ -167,6 +167,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		Path:       r.URL.Path,
 		Content:    template.HTML(htmlContent), // #nosec G203
 		Enrichment: enrichment,
+		Renderer:   h.templateRenderer,
 		Lang:       h.lang,
 		TFunc:      h.tFunc,
 		Languages:  h.languages,

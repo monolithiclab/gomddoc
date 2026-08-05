@@ -119,6 +119,58 @@ func benchFS() fstest.MapFS {
 	}
 }
 
+// BenchmarkPageWithBreadcrumbs measures the whole per-page path a theme
+// actually exercises: build the context, render a breadcrumb bar, and emit
+// JSON-LD. Both consumers read PageContext.Breadcrumbs, so the trail is
+// generated once. The isDir closure here is free; a real provider answers it
+// with a Stat, so the syscall this change saves is not in the numbers below.
+func BenchmarkPageWithBreadcrumbs(b *testing.B) {
+	layout := `<!DOCTYPE html><html><body>` +
+		`<nav>{{ range .Page.Breadcrumbs }}<a href="{{ .Path }}">{{ .Label }}</a>{{ end }}</nav>` +
+		`{{ .Page.Content }}` +
+		`<script type="application/ld+json">{{ jsonLD .Page }}</script>` +
+		`</body></html>`
+	fs := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layout)},
+	}
+
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Benchmark Site"
+	siteConfig.Meta.Domain = "docs.example.com"
+
+	gen := breadcrumb.NewGenerator(func(string) bool { return false })
+	renderer := NewHTMLRenderer(&siteConfig, fs,
+		WithBreadcrumbGenerator(gen), WithCache(&CachedTemplateStore{}))
+
+	const pagePath = "/guides/getting-started/installation.md"
+	content := template.HTML("<h1>Installation</h1><p>Lorem ipsum dolor sit amet.</p>") // #nosec G203
+	enrichment := &enricher.EnrichmentData{}
+
+	render := func() {
+		ctx := BuildPageContext(PageContextInput{
+			Site:       &siteConfig,
+			Path:       pagePath,
+			Content:    content,
+			Enrichment: enrichment,
+			Renderer:   renderer,
+		})
+		result, err := renderer.Render(context.Background(), "default.html.tmpl", ctx)
+		if err != nil {
+			b.Fatalf("Render failed: %v", err)
+		}
+		if len(result) == 0 {
+			b.Fatal("Render returned empty result")
+		}
+	}
+
+	render() // warm the template cache so this measures execution, not parsing
+
+	b.ReportAllocs()
+	for b.Loop() {
+		render()
+	}
+}
+
 func BenchmarkHTMLRendererRender(b *testing.B) {
 	fs := benchFS()
 	siteConfig := config.NewSiteConfig(".")

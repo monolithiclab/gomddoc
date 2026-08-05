@@ -121,10 +121,11 @@ func TestHTMLRendererRender(t *testing.T) {
 	}
 }
 
-func TestBreadcrumbsFunction(t *testing.T) {
-	// Template that uses the breadcrumbs function
+func TestBreadcrumbsField(t *testing.T) {
+	// Layouts read the trail the caller precomputed; no template function
+	// regenerates it.
 	templateContent := `
-{{- $crumbs := breadcrumbs .Page.Path -}}
+{{- $crumbs := .Page.Breadcrumbs -}}
 Count: {{ len $crumbs }}
 {{- range $crumbs -}}
 Path: {{ .Path }}, Label: {{ .Label }}|
@@ -147,7 +148,8 @@ Path: {{ .Path }}, Label: {{ .Label }}|
 	ctx := &TemplateContext{
 		Site: &siteConfig,
 		Page: PageContext{
-			Path: "/foo/bar",
+			Path:        "/foo/bar",
+			Breadcrumbs: renderer.Breadcrumbs("/foo/bar"),
 		},
 	}
 
@@ -158,18 +160,8 @@ Path: {{ .Path }}, Label: {{ .Label }}|
 
 	resultStr := string(result)
 
-	// Expected: Home (/) -> Foo (/foo/) -> Bar (/foo/bar)
-	// MockInfoProvider says only / is dir, so /foo/ is NOT dir -> no trailing slash?
-	// Wait, Generator logic: intermediate segments are assumed dirs if I recall correctly, OR it checks.
-	// Let's check generator.go again.
-	// "All intermediate segments are directories - add trailing slash"
-	// "For the last segment... check IsDir"
-
-	// So:
-	// 1. Home: Path: /, Label: Home
-	// 2. Foo: Path: /foo/, Label: Foo (Intermediate)
-	// 3. Bar: Path: /foo/bar, Label: Bar (Last, IsDir("/foo/bar") -> false -> no trailing slash)
-
+	// Intermediate segments are directories and get a trailing slash; the last
+	// one asks isDir, which reports false for /foo/bar here.
 	expected := "Count: 3"
 	if !strings.Contains(resultStr, expected) {
 		t.Errorf("Expected %q, got %q", expected, resultStr)
@@ -1462,8 +1454,9 @@ func TestJSONLDFunction(t *testing.T) {
 		ctx := &TemplateContext{
 			Site: &siteConfig,
 			Page: PageContext{
-				Path: "/guide/setup.md",
-				Meta: map[string]any{"title": "Setup"},
+				Path:        "/guide/setup.md",
+				Meta:        map[string]any{"title": "Setup"},
+				Breadcrumbs: r.Breadcrumbs("/guide/setup.md"),
 			},
 		}
 
@@ -1476,6 +1469,11 @@ func TestJSONLDFunction(t *testing.T) {
 		if !strings.Contains(output, `"BreadcrumbList"`) {
 			t.Error("Expected BreadcrumbList schema with breadcrumbs")
 		}
+		// The trail the caller supplied, absolutised — not something the
+		// JSON-LD builder invented from the path.
+		if !strings.Contains(output, `https://docs.example.com/guide/`) {
+			t.Errorf("Expected the supplied trail in the item URLs, got %q", output)
+		}
 	})
 }
 
@@ -1487,33 +1485,75 @@ func (s *stubBreadcrumbGen) Generate(_ string) []breadcrumb.Breadcrumb {
 	return s.crumbs
 }
 
-func TestGenerateBreadcrumbs_NilGenerator(t *testing.T) {
-	templateContent := `{{ len (breadcrumbs .Page.Path) }}`
+func TestBreadcrumbs_NilGenerator(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	rendererObj := NewHTMLRenderer(&siteConfig, fstest.MapFS{})
+
+	if got := rendererObj.Breadcrumbs("/foo/bar"); got != nil {
+		t.Errorf("Breadcrumbs without a generator = %v, want nil", got)
+	}
+}
+
+// countingBreadcrumbGen records how many trails a render asks for.
+type countingBreadcrumbGen struct {
+	inner breadcrumb.Generator
+	calls atomic.Int64
+}
+
+func (c *countingBreadcrumbGen) Generate(p string) []breadcrumb.Breadcrumb {
+	c.calls.Add(1)
+	return c.inner.Generate(p)
+}
+
+// TestBreadcrumbs_GeneratedOncePerPage pins down why the trail is a PageContext
+// field rather than a template function: the visible breadcrumb bar and the
+// JSON-LD partial both need it, and each generation costs a provider Stat.
+// BuildPageContext is the single generation site; reintroducing a generator
+// call in either consumer takes the count to 2.
+func TestBreadcrumbs_GeneratedOncePerPage(t *testing.T) {
+	t.Parallel()
+
+	layout := `{{ range .Page.Breadcrumbs }}[{{ .Label }}]{{ end }}` +
+		`<script type="application/ld+json">{{ jsonLD .Page }}</script>`
 	testFS := fstest.MapFS{
-		"assets/themes/default/layouts/bc.html.tmpl": {
-			Data: []byte(templateContent),
-		},
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layout)},
 	}
 
 	siteConfig := config.NewSiteConfig(".")
-	// Don't provide a breadcrumb generator
-	rendererObj := NewHTMLRenderer(&siteConfig, testFS)
+	siteConfig.Meta.Domain = "docs.example.com"
 
-	ctx := &TemplateContext{
-		Site: &siteConfig,
-		Page: PageContext{
-			Path: "/foo/bar",
-		},
-	}
+	gen := &countingBreadcrumbGen{inner: breadcrumb.NewGenerator(func(string) bool { return false })}
+	r := NewHTMLRenderer(&siteConfig, testFS, WithBreadcrumbGenerator(gen))
 
-	result, err := rendererObj.Render(context.Background(), "bc.html.tmpl", ctx)
+	const pagePath = "/guide/setup.md"
+	ctx := BuildPageContext(PageContextInput{
+		Site:       &siteConfig,
+		Path:       pagePath,
+		Enrichment: &enricher.EnrichmentData{},
+		Renderer:   r,
+	})
+
+	out, err := r.Render(context.Background(), "default.html.tmpl", ctx)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	// Should return empty slice (length 0)
-	if string(result) != "0" {
-		t.Errorf("Expected 0 breadcrumbs without generator, got %q", string(result))
+	if got := gen.calls.Load(); got != 1 {
+		t.Errorf("breadcrumb generations = %d, want 1", got)
+	}
+
+	body := string(out)
+	// Both consumers must show the same trail: the bar, and the JSON-LD items.
+	for _, want := range []string{
+		"[Home][Guide][Setup]",
+		`"BreadcrumbList"`,
+		`https://docs.example.com/guide/`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rendered page missing %q:\n%s", want, body)
+		}
 	}
 }
 

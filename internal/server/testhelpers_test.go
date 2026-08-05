@@ -35,11 +35,15 @@ func newTestAuthStore(t *testing.T) *CredentialStore {
 	return store
 }
 
-func setupTestRenderer() *tmpl.HTMLRenderer {
+// setupTestRenderer builds the canonical in-memory renderer for this package.
+// The layout carries a breadcrumb bar so tests can assert on it by passing
+// tmpl.WithBreadcrumbGenerator; without a generator the trail is nil and the
+// bar renders nothing, so callers that ignore it see unchanged output.
+func setupTestRenderer(opts ...tmpl.RendererOption) *tmpl.HTMLRenderer {
 	templateContent := `<!DOCTYPE html>
 <html>
 <head><title>{{.Site.Meta.Title}}</title></head>
-<body>{{.Page.Content}}</body>
+<body>{{ range .Page.Breadcrumbs }}[{{ .Label }}]{{ end }}{{.Page.Content}}</body>
 </html>`
 
 	testFS := fstest.MapFS{
@@ -51,7 +55,7 @@ func setupTestRenderer() *tmpl.HTMLRenderer {
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test Site"
 
-	return tmpl.NewHTMLRenderer(&siteConfig, testFS)
+	return tmpl.NewHTMLRenderer(&siteConfig, testFS, opts...)
 }
 
 func setupTestRegistry() renderer.RendererRegistry {
