@@ -186,7 +186,7 @@ the metadata index — these items surface them in the UI and search engine._
 - [x] **Clickable tag chips in page rendering**: Render frontmatter `tags` as clickable chips
       (styled inline elements) on each page. Each chip links to a tag listing page. Position
       configurable via theme template (typically below the page title or in a sidebar metadata
-      section). All 8 built-in themes must include the tag chips. Low-medium complexity.
+      section). All 8 themes (`default` plus the 7 in `gomddoc-themes`) must include the tag chips. Low-medium complexity.
 - [x] **Tag listing page (`/tags/{tag}`)**: Server-rendered HTML page listing all pages tagged
       with a given tag. Reuses the existing `MetaIndex.ByTag()` lookup. Each result shows title,
       description, and path as a clickable link. Shares the site's theme and navigation chrome.
@@ -211,7 +211,7 @@ the metadata index — these items surface them in the UI and search engine._
       of each page for sequential reading. By default, derive order from the navigation tree
       (depth-first traversal matches sidebar order). Allow frontmatter overrides via `prev` and
       `next` fields pointing to relative paths (e.g., `next: 02-configuration.md`). A frontmatter
-      value of `false` suppresses the link for that direction. Render in all 8 built-in themes as
+      value of `false` suppresses the link for that direction. Render in all 8 themes (`default` plus the 7 in `gomddoc-themes`) as
       a two-column footer with page titles. Works in both `serve` and `build` modes. Medium
       complexity (navigation flattening + template integration).
 

@@ -231,4 +231,4 @@ gomddoc automatically generates a table of contents from headings (h1-h3) in Mar
 
 ### TOC Scroll Highlighting
 
-As you scroll through a page, the TOC sidebar automatically highlights the currently visible section. The active heading is tracked and the TOC auto-scrolls to keep the active item centered. This works across all built-in themes.
+As you scroll through a page, the TOC sidebar automatically highlights the currently visible section. The active heading is tracked and the TOC auto-scrolls to keep the active item centered. This works across every theme.

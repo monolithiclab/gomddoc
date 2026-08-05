@@ -288,7 +288,7 @@ When configured, a page at `/docs/guide.md` will produce an edit link pointing t
 ### Theme (`SITE.THEME`)
 
 **Theme Name**
-Selects the visual theme to apply. gomddoc ships with 8 built-in themes: `default`, `academic`, `gitbook`, `material`, `midnight`, `minimal`, `nord`, `ocean`.
+Selects the visual theme to apply. The binary bundles one theme, `default`. Seven more — `academic`, `gitbook`, `material`, `midnight`, `minimal`, `nord`, `ocean` — are distributed separately and must be copied into `.gomddoc/assets/themes/<name>/` before they can be selected; naming one that is not installed falls back to `default`. See [Theming & Assets](05-theming-and-assets.md#themes).
 *   **YAML:** `theme.name`
 *   **Env Var:** `GOMDDOC_SITE_THEME_NAME`
 *   **Default:** `default`

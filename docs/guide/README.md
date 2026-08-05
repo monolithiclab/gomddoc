@@ -11,7 +11,7 @@ author: "nicolasm"
 **gomddoc** is a documentation server and static site generator that turns a folder of Markdown files
 into a fully styled, searchable documentation site. Point it at a local directory or a remote Git
 repository, and it renders your content as HTML on the fly — complete with navigation sidebar, table
-of contents, full-text search, and eight built-in themes. When you are ready to deploy, `gomddoc build`
+of contents, full-text search, and a theme system. When you are ready to deploy, `gomddoc build`
 produces static HTML files you can host anywhere.
 
 gomddoc requires no databases, no CMS, and no build pipelines. Your Markdown files are the source of
@@ -39,7 +39,7 @@ It is designed for:
 2. [Configuration](02-configuration.md) — CLI flags, environment variables, and config file reference
 3. [Content Sources (Git & Local)](03-content-sources.md) — Filesystem, Git URLs, SSH auth, disk storage
 4. [MCP Server](04-mcp.md) — AI-native documentation access via the Model Context Protocol
-5. [Theming & Assets](05-theming-and-assets.md) — Eight built-in themes, custom themes, template functions
+5. [Theming & Assets](05-theming-and-assets.md) — The bundled theme, seven downloadable ones, custom themes, template functions
 6. [Writing Workflow](06-writing-workflow.md) — Preview, dev mode, auto-port, authoring tips
 7. [Security](07-security.md) — Authentication, path traversal, hidden files, security headers
 8. [Observability](08-observability.md) — Health checks, Prometheus metrics, pprof profiling

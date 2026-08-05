@@ -220,7 +220,7 @@ your documentation appears when shared on social media, in chat applications, an
 ```
 
 These tags are rendered in the `<head>` of every page by the default theme's `head.html.tmpl`
-partial, which is inherited by all eight built-in themes.
+partial, which every other theme inherits — a theme only overrides the partials it changes.
 
 ### Customizing Open Graph per Page
 

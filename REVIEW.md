@@ -1678,7 +1678,7 @@ regressed*: the theme-count correction was applied to `05-theming-and-assets.md`
 | D7 | `09-deployment.md:105-118` — *"multi-stage Dockerfile"* | ~~verified~~ — **FIXED**. The section now leads with `docker pull ghcr.io/...`, states that the Dockerfile is not self-contained, and gives a `GOOS=linux` cross-compile before `docker build`. The bare-`gomddoc` run example gained the `serve` subcommand |
 | D8 | `02-configuration.md:88` — README.md generates *"both `README.html` and `index.html`"* | `prettyOutputPath` (`build.go:600-604`) emits only `<dir>/index.html`; `:616-622` explicitly skips the redirect stub |
 | D9 | `03-api-reference.md:161-164` lists `GET /sitemap-index.xml` as a live endpoint | Build-only — see §10.2 |
-| D10 | *"8 built-in themes"* in `architecture.md`, `decisions.md`, `roadmap.md`, `guide/README.md:14`, `10-search.md`, `11-seo.md` + 6 website files | ✅ verified: `cmd/gomddoc/assets/themes/` contains only `default`. Only `05-theming-and-assets.md:28` says this correctly |
+| ~~D10~~ | ~~*"8 built-in themes"* across the repo and 6 website files~~ | ✅ FIXED. `cmd/gomddoc/assets/themes/` contains only `default`; the other seven are a directory drop from `gomddoc-themes`. The guide's theme table gained a **Bundled** column, and `05-theming-and-assets.md`'s correct-but-buried footnote was promoted above the table. Where the count was incidental (*"works across all eight built-in themes"*) the phrasing now says *every theme*, which stays true if the count changes |
 | D11 | `gomddoc-website/docs/distribution.md:75-97` — wrong archive filenames; advertises Windows binaries | `.goreleaser.yaml:14,23-24` builds linux/darwin × amd64/arm64 only; `install.sh:62` hard-`die`s on any other OS |
 | D12 | Top-level `features:` documented in `02-markdown-extensions.md:205-210` + website | Features live at `theme.features`; the top-level key is silently dropped (see the `KnownFields` finding in §10.3) |
 | D13 | `docs/seo-competitive-analysis.md:18-32` claims canonical URLs, OG, robots and sitemap are **absent**; `:605` recommends skipping hreflang | All shipped. ~14 of its 18 recommendations are implemented. Reads as a current gap analysis with no "superseded" marker |
@@ -1957,10 +1957,10 @@ three `"text/markdown; charset=utf-8"`).
 | ---- | -------------------------------------------- | ------------------------------------------- |
 | ~~230, 264~~ | ~~`navigation` template func~~ | ✅ FIXED with D4 |
 | ~~238~~ | ~~`assetURL` *"(validates existence)"*~~ | ✅ FIXED — the whole FuncMap table was rewritten from `renderer.go:funcMap` |
-| 386 | ContentExclusion *"uses `provider.IsHiddenPath()`"* | Uses `IsRestrictedPath()`; both exist, the doc names the wrong one |
-| 391-398 | Route table | Omits `/feed.xml`, `/tags/`, `/tags/{tag}`, all `/{lang}/*` variants, and the per-language content subgroups |
-| 404 | *"8 bundled themes"* | One (see D10) |
-| 505 | sitemap-index | Should note serve does not expose it |
+| ~~386~~ | ~~ContentExclusion *"uses `provider.IsHiddenPath()`"*~~ | ✅ FIXED — names `IsRestrictedPath()`, and notes why the middleware alone cannot enforce exclusion |
+| ~~391-398~~ | ~~Route table~~ | ✅ FIXED. Also removed a phantom `auth → mcp` subgroup — `/_mcp/` is a plain handler on `auth` — and recorded that the per-language sitemap/feed/tag routes hang off `auth`, not the language subgroup |
+| ~~404~~ | ~~*"8 bundled themes"*~~ | ✅ FIXED with D10 — split into a one-row bundled table and a seven-row downloadable one |
+| ~~505~~ | ~~sitemap-index~~ | ✅ FIXED — the SEO list now states it is build-only, so a multi-language site behind `serve` has per-language sitemaps and nothing indexing them |
 
 ### 10.9 Verified clean
 

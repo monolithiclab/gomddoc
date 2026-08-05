@@ -33,7 +33,7 @@ memory, which keeps query latency low — typically under a millisecond for most
 ### Keyboard Shortcut
 
 Press **Ctrl+K** (or **Cmd+K** on macOS) from any page to open the search modal. This is the fastest
-way to find content and works across all eight built-in themes.
+way to find content and works across every theme.
 
 ### Search Button
 
@@ -177,7 +177,7 @@ For static site search, consider running [Pagefind](https://pagefind.app/) as a 
 
 ## Adding Search to Custom Themes
 
-All eight built-in themes include the search button and modal. If you are building a custom theme,
+Every theme includes the search button and modal. If you are building a custom theme,
 add search support with two additions:
 
 1. Add a button with `id="search-toggle"` to your header — the search module binds to this element:

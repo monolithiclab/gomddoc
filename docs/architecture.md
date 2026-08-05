@@ -468,7 +468,7 @@ wants it — attaching it to a leaf means every sibling added later silently opt
 **Content-specific middleware (applied to content handlers via Subgroup):**
 
 6. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
-7. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsHiddenPath()` — the same check applied by MCP tools to ensure consistent path restrictions across all entry points.
+7. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsRestrictedPath()` — `IsHiddenPath() || IsExcludedPath()` — which is also what every MCP tool, resource and prompt calls, so both entry points restrict the same set of paths. Note this middleware matches the *request* path: with `strip_extensions` on, `/TODO` does not match the `TODO.md` pattern, which is why exclusion also has to be enforced in each content index rather than here alone.
 8. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/docs/guide.md` → `/docs/guide`) via 301.
 
 Metrics wrapping these three means their 405/403/301 responses are counted too, not just handler hits.
@@ -480,10 +480,13 @@ Metrics wrapping these three means their 405/403/301 responses are counted too, 
 | health | `/health` | _(none)_ | `/live`, `/ready` |
 | _(mux direct)_ | | BasicAuth (if configured) | `/metrics`, `/debug/pprof/*` |
 | base | | Compression, Metrics | `/robots.txt`, `/_assets/*` |
-| base → auth | | BasicAuth (if configured) | `/sitemap.xml`, `/feed.xml`, `/tags/*`, `/_mcp/*` |
+| base → auth | | BasicAuth (if configured) | `/sitemap.xml`, `/feed.xml`, `/tags/`, `/tags/{tag}`, `/_mcp/` |
 | auth → api | `/api` | _(inherits auth)_ | `/tags`, `/tags/{tag}`, `/search` |
-| auth → mcp | `/_mcp` | _(inherits auth)_ | MCP Streamable HTTP endpoint |
 | auth → content | | MethodFilter, ContentExclusion, ExtensionRedirect | `/` (catch-all) |
+
+`/_mcp/` is a plain handler on `auth`, not a subgroup: it is `http.StripPrefix` wrapping the MCP
+Streamable HTTP handler behind a `maxBodySize` cap, the one route on the server that accepts a
+request body.
 
 Three groups stay deliberately off `base`. Health probes would swamp the request counters and their
 bodies are far below the 1KB threshold. `/metrics` negotiates its own content encoding through
@@ -492,13 +495,22 @@ pprof profiles are already compressed and are not user-facing traffic.
 
 ### 13. Theme System
 
-**Responsibility:** Visual presentation with 8 bundled themes and user customization
+**Responsibility:** Visual presentation with one bundled theme, seven downloadable ones, and user
+customization
 
-**Bundled Themes:**
+**Bundled Theme** — `cmd/gomddoc/assets/themes/` contains **only `default`**, and it is the only
+theme the binary can resolve without a download:
 
 | Theme | Style | Key Features |
 |-------|-------|-------------|
 | **default** | General purpose | Three-column layout (nav + content + TOC), Inter/JetBrains Mono |
+
+**Additional themes** live in the separate [gomddoc-themes](https://github.com/monolithiclab/gomddoc-themes)
+repository and must be copied into the site's `.gomddoc/assets/themes/<name>/`, where the resolution
+order below picks them up:
+
+| Theme | Style | Key Features |
+|-------|-------|-------------|
 | **academic** | Scholarly | Serif typography (Merriweather), justified text, warm parchment palette |
 | **gitbook** | Documentation | Book-style reading (1.8 line height), tinted nav sidebar |
 | **material** | Design system | Material Design 3, rounded corners, tonal elevation |
@@ -507,7 +519,7 @@ pprof profiles are already compressed and are not user-facing traffic.
 | **nord** | Color palette | Nord 16-color palette, frosted glass aesthetic, glassmorphism |
 | **ocean** | Colorful | Teal/navy gradients, sine-wave header clip-path |
 
-**Common Features (all themes):**
+**Common Features (default and downloadable themes alike):**
 
 All optional features are gated by the feature toggle system (`{{ .Feature "name" }}` template guards)
 and can be disabled per-site or per-page:
@@ -622,7 +634,9 @@ language's page.
 |-------|--------|-----------|--------|
 | auth → lang content | `/{lang}` | stripPathPrefix, MethodFilter, ContentExclusion, ExtensionRedirect | `/{lang}/` (catch-all per language) |
 
-Per-language `/{lang}/sitemap.xml` and `/{lang}/feed.xml` routes are also registered.
+Per-language `/{lang}/sitemap.xml`, `/{lang}/feed.xml`, `/{lang}/tags/` and `/{lang}/tags/{tag}`
+routes are registered directly on `auth`, not on the language subgroup — they are handled by that
+language's own pipeline (its `MetaIndex` and `TemplateRenderer`) rather than by prefix stripping.
 
 **Build Output:**
 
@@ -757,7 +771,7 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 - **Canonical URLs**: `<link rel="canonical">` on every page via `canonicalURL` template function. Requires `meta.domain` config.
 - **Open Graph**: `og:title`, `og:description`, `og:url`, `og:type`, `og:site_name` meta tags. `og:type` overridable via frontmatter `og_type`.
 - **Twitter Cards**: `twitter:card` summary tags with title and description.
-- **XML Sitemap**: `/sitemap.xml` served dynamically (serve) and generated as static file (build). Uses metadata index. `<lastmod>` dates from `fs.Stat()` file mtime.
+- **XML Sitemap**: `/sitemap.xml` served dynamically (serve) and generated as static file (build). Uses metadata index. `<lastmod>` dates from `fs.Stat()` file mtime. A `sitemap-index.xml` referencing the per-language sitemaps is emitted by **build only** when more than one language is present — `serve` registers no route for it, so a multi-language site behind `gomddoc serve` has per-language sitemaps but nothing indexing them.
 - **robots.txt**: `/robots.txt` served dynamically (serve) and generated as static file (build). Blocks `/_assets/`, `/api/`, `/debug/`.
 - **JSON-LD**: `<script type="application/ld+json">` with Schema.org `TechArticle` (every page), `BreadcrumbList` (deep pages), `WebSite` with `SearchAction` (index page). Generated by `internal/seo.GenerateJSONLD()`, exposed via `jsonLD` template function and overridable `jsonld` partial.
 - **URL construction**: Shared `internal/seo.PageURL()` normalizes domain + path using `net/url`. Strips default index files.

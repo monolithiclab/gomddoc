@@ -239,7 +239,7 @@ The default language is always listed first. The list is only populated when mul
 
 ## Theme Support
 
-All built-in themes include i18n support out of the box:
+Every theme includes i18n support out of the box:
 
 ### Language Switcher
 

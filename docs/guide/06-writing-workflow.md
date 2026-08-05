@@ -106,5 +106,5 @@ tags: [deployment, docker]
 
 Tags are normalized (lowercased, trimmed, deduplicated) for indexing, and they are also queryable via
 the `tag:` syntax in [full-text search](10-search.md#tag-filters) and the JSON `/api/tags` endpoints.
-Both `tag_chips` and `see_also` are enabled by default in the built-in themes and can be toggled per
+Both `tag_chips` and `see_also` are enabled by default in every theme and can be toggled per
 site or per page via [feature flags](02-configuration.md).

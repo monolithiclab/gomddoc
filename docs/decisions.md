@@ -189,7 +189,7 @@ Extracted from completed spec files before deletion.
 
 ## Theme System
 
-**Chosen**: 8 bundled themes with full feature parity, single-file `default.html.tmpl` architecture
+**Chosen**: eight themes with full feature parity — `default` embedded in the binary, seven shipped separately in `gomddoc-themes` — on a single-file `default.html.tmpl` architecture
 
 **Key decisions**:
 - **Single-file themes**: Each theme is one `default.html.tmpl` with inline CSS/JS. Simpler than multi-file setups; entire theme is self-contained and easy to copy/customize.

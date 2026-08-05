@@ -8,24 +8,29 @@ author: "nicolasm"
 
 gomddoc uses an **Overlay Filesystem** to handle assets. This means you can "overlay" your own custom files on top of the built-in defaults without replacing everything.
 
-## Built-in Themes
+## Themes
 
-gomddoc offers 8 themes. Set the theme in `.gomddoc/config.yml` or via `GOMDDOC_SITE_THEME_NAME`:
+Eight themes exist, but **only `default` is bundled with the binary** — it is the only one you can
+select without first installing it. The other seven live in the separate
+[`gomddoc-themes`](https://github.com/monolithiclab/gomddoc-themes) repository; copy the one you want
+into your site's `.gomddoc/assets/themes/<name>/` overlay (see [Static Asset
+Overlay](#static-asset-overlay)), which takes precedence over the embedded assets. Setting
+`theme.name` to a theme you have not installed falls back to `default`.
 
-| Theme | Style | Description |
-|-------|-------|-------------|
-| `default` | General purpose | Three-column layout (nav + content + TOC), Inter font |
-| `academic` | Scholarly | Serif typography (Merriweather), justified text, warm parchment palette |
-| `gitbook` | Documentation | Book-style reading (1.8 line height), tinted nav sidebar |
-| `material` | Design system | Material Design 3, rounded corners, tonal elevation |
-| `midnight` | Dark-first | Neon purple/cyan gradients, glowing code blocks |
-| `minimal` | Brutalist | System fonts only, zero border-radius, heavy typographic hierarchy |
-| `nord` | Color palette | Nord 16-color palette, frosted glass aesthetic |
-| `ocean` | Colorful | Teal/navy gradients, sine-wave header clip-path |
+Set the theme in `.gomddoc/config.yml` or via `GOMDDOC_SITE_THEME_NAME`:
+
+| Theme | Bundled | Style | Description |
+|-------|---------|-------|-------------|
+| `default` | ✅ | General purpose | Three-column layout (nav + content + TOC), Inter font |
+| `academic` | download | Scholarly | Serif typography (Merriweather), justified text, warm parchment palette |
+| `gitbook` | download | Documentation | Book-style reading (1.8 line height), tinted nav sidebar |
+| `material` | download | Design system | Material Design 3, rounded corners, tonal elevation |
+| `midnight` | download | Dark-first | Neon purple/cyan gradients, glowing code blocks |
+| `minimal` | download | Brutalist | System fonts only, zero border-radius, heavy typographic hierarchy |
+| `nord` | download | Color palette | Nord 16-color palette, frosted glass aesthetic |
+| `ocean` | download | Colorful | Teal/navy gradients, sine-wave header clip-path |
 
 All themes include: light/dark mode, TOC sidebar, navigation sidebar, breadcrumbs, admonitions, color chips, copy-to-clipboard code blocks, heading anchors, KaTeX math, Mermaid diagrams, and touch device accessibility.
-
-> **Theme bundling:** only the `default` theme is embedded in the gomddoc source tree (`cmd/gomddoc/assets/themes/`). The other 7 themes are maintained in the separate [`gomddoc-themes`](https://github.com/monolithiclab/gomddoc-themes) repository. To use one when building from source, copy its directory into your site's `.gomddoc/assets/themes/<name>/` overlay (see [Static Asset Overlay](#static-asset-overlay)), which takes precedence over the embedded assets.
 
 ### Switching Themes
 
@@ -398,7 +403,7 @@ variables so they adapt to any theme's color scheme automatically:
 | `--color-border` | color chip and swatch border | `rgba(46,52,64,0.1)` |
 | `--font-family-mono` | color chip label | system monospace stack |
 
-Themes that define these properties (all built-in themes do) get consistent component styling with no additional
+Themes that define these properties (every shipped theme does) get consistent component styling with no additional
 work.
 
 ### CSS Parts
@@ -418,7 +423,7 @@ gmd-color-chip::part(swatch) {
 
 ## Theme Features Checklist
 
-When creating a custom theme, ensure it supports these features for parity with built-in themes. All optional features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggled per-site and per-page:
+When creating a custom theme, ensure it supports these features for parity with the shipped themes. All optional features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggled per-site and per-page:
 
 - **Light/dark mode toggle** — guarded by `{{ .Feature "dark_mode" }}`. Uses `{{ inlineJSAsset "theme-toggle.mjs" }}` to manage `data-theme` attribute, localStorage, and `prefers-color-scheme` fallback. Customize button content with `data-light`/`data-dark` text attributes or `[data-show-theme]` children for SVG icons.
 - **Navigation sidebar** — range over `.Page.Navigation.Items` with a recursive `nav-item` template (see [Rendering the Navigation Sidebar](#rendering-the-navigation-sidebar)).
