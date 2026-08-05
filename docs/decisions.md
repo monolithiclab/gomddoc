@@ -120,14 +120,16 @@ Extracted from completed spec files before deletion.
 
 ## Auto-Navigation Sidebar
 
-**Chosen**: FS-walking navigation generator with template function rendering
+**Chosen**: FS-walking navigation generator, rendered by the theme from a `PageContext` field
 
 **Alternatives considered**:
 - **Config-driven navigation** (manual YAML sidebar definition): Precise control but high maintenance burden, doesn't scale with directory changes
 - **Handler-level generation** (generate in handler, pass via PageContext): Works but couples handler to navigation package
 - **Client-side JS navigation** (fetch navigation JSON, render in browser): Extra HTTP request, flicker on load
 
-**Why FS-walking + template function**: Navigation generator walks `Provider.RootFS()` to build a `NavNode` tree, marks active path, and renders via `{{ navigation .Page.Path }}` template function. Same pattern as breadcrumbs — no handler changes needed. Uses `<details>/<summary>` for collapsible directories. Title extracted from first `# heading` in each `.md` file (skipping frontmatter). Directories without renderable children are pruned.
+**Why FS-walking**: The navigation generator walks `Provider.RootFS()` once to build a cached `NavNode` tree, then projects a per-request `[]enricher.NavItem` with the active path marked. No handler changes needed. Title extracted from the first `# heading` in each `.md` file (skipping frontmatter). Directories without renderable children are pruned.
+
+**Why not a template function**: the tree reaches templates as `PageContext.Navigation`, and the theme walks it with a recursive `nav-item` template. A function would have to re-project on every call, and `funcMap` is bound at parse time on templates that are cached and shared across concurrent renders, so there is nowhere to memoize. Breadcrumbs originally *were* a function and were moved to a field for exactly this reason — they cost a provider `Stat` twice per request, once for the breadcrumb bar and once for the JSON-LD partial. Markup ownership also belongs with the theme: a function fixes the `<details>/<summary>` structure for every theme at once.
 
 ## Metadata Indexing
 

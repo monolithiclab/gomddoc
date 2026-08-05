@@ -254,20 +254,33 @@ type Renderer interface {
 
 **Template Functions:**
 
+The FuncMap (`renderer.go:funcMap`) has exactly these twelve entries:
+
 | Function | Signature | Purpose |
 |----------|-----------|---------|
 | `toc` | `toc(tocTree, [min, max]) → []*TOCNode` | Returns filtered TOC nodes for template rendering (default: h1-h2) |
-| `navigation` | `navigation(navTree) → HTML` | Sidebar from enrichment `NavTree` |
 | `editURL` | `editURL(pagePath) → string` | Combines `edit_url` config with page path |
-| `.Feature` | `.Feature(name) → bool` | Checks if a named feature is enabled (pre-merged site + page overrides) |
+| `themeVarsCSS` | `themeVarsCSS() → CSS` | Generates `<style>` with `--theme-*` CSS custom properties from config |
+| `canonicalURL` | `canonicalURL(pagePath) → string` | Absolute URL for `<link rel="canonical">` / OG tags (`seo.PageURL`) |
+| `jsonLD` | `jsonLD(page) → JS` | Structured-data payload for the page (`Article` + `BreadcrumbList`) |
+| `assetURL` | `assetURL(name) → string` | Prefixes a static file name with `/_assets/` |
+| `contentURL` | `contentURL(filePath) → string` | Absolute URL path for a content file — applies `PageURLPath` *and* the renderer's language prefix |
 | `inlineJSAsset` | `inlineJSAsset(name) → JS` | Loads asset as `template.JS` for `<script>` embedding |
 | `inlineCSSAsset` | `inlineCSSAsset(name) → CSS` | Loads asset as `template.CSS` for `<style>` embedding |
 | `inlineHTMLAsset` | `inlineHTMLAsset(name) → HTML` | Loads asset as `template.HTML` for HTML context (e.g. SVGs) |
-| `contentURL` | `contentURL(filePath) → string` | Returns absolute URL path for a content file (extensionless when stripping is active) |
-| `themeVarsCSS` | `themeVarsCSS() → CSS` | Generates `<style>` with `--theme-*` CSS custom properties from config |
-| `assetURL` | `assetURL(name) → string` | Resolves static file to `/_assets/{name}` URL (validates existence) |
+| `tagURL` | `tagURL(lang, tag) → string` | URL of a tag page, language-prefixed unless `lang` is the site default |
+| `pageTags` | `pageTags(page) → []string` | Sorted tag list from a page's frontmatter |
 
 All functions are nil-safe — they return empty values when their backing generator is not configured.
+
+`.Feature name` is **not** in this table: it is a method on `PageContext`, not a FuncMap entry, so it
+is called on the dot rather than as a bare function.
+
+Neither breadcrumbs nor navigation is a template function either — both are `PageContext` fields. The
+rule is that anything more than one consumer reads must be a field: `funcMap` is bound at parse time
+and parsed templates are cached and shared across concurrent `Render` calls, so there is no
+per-render seam where a memo could live, and a function with two callers in a layout does its work
+twice per request.
 
 Breadcrumbs are deliberately *not* a template function. The trail is page data, like the TOC and the
 navigation tree: `BuildPageContext` calls `Renderer.Breadcrumbs(in.Path)` once and stores the result
@@ -281,14 +294,31 @@ disagree. Error pages have no trail: `BuildErrorContext` leaves the field nil.
 
 **Responsibility:** Auto-generated sidebar navigation from content structure
 
+Two types, one per side of the cache boundary. The generator's `NavNode` is the *shared* tree, built
+once and reused across requests, so it carries nothing request-specific:
+
 ```go
 type NavNode struct {
     Label    string
     Path     string
     IsDir    bool
-    IsActive bool
-    IsOpen   bool
     Children []*NavNode
+
+    cleanPath string // normalized Path, pre-computed for active-path comparison
+}
+```
+
+`enricher.NavItem` is the per-request projection templates actually range over — the same tree with
+the current page marked:
+
+```go
+type NavItem struct {
+    Title    string
+    Path     string
+    IsDir    bool
+    Active   bool // on the current page's path
+    Open     bool // this node or a descendant is active
+    Children []NavItem
 }
 ```
 
@@ -298,9 +328,9 @@ The default index file (e.g., `README.md`) is excluded from the tree. Empty dire
 
 Navigation data flows through the enricher pipeline: the `MarkdownEnricher` calls a `NavBuilder` function
 (injected at startup to avoid import cycles) that builds the navigation tree. The tree is stored in
-`EnrichmentData.Navigation` and passed to the template layer via `PageContext.Navigation`. The
-`{{ navigation .Page.Navigation }}` template function renders it as nested `<details>/<summary>` elements
-for collapsible directories with `<a>` links for files.
+`EnrichmentData.Navigation` and passed to the template layer via `PageContext.Navigation`. Themes
+render it themselves: the default theme's `partials/nav.html.tmpl` defines a `nav-item` template that
+recurses over `.Children`, emitting `<details>/<summary>` for directories and `<a>` for files.
 
 ### 8. Metadata Index
 

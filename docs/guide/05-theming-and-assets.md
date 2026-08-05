@@ -107,6 +107,7 @@ The template engine (Go `html/template`) receives a `TemplateContext` with:
     - `.Page.RelatedDocs`: Pages sharing frontmatter tags with this page, rendered by the `see-also` partial.
     - `.Page.PrevPage` / `.Page.NextPage`: Adjacent pages in navigation order (each has `.Path` and `.Title`).
     - `.Page.Breadcrumbs`: Trail from the site root to this page (each has `.Path` and `.Label`). Generated once per page, not on demand — there is no `breadcrumbs` template function.
+    - `.Page.Navigation`: Sidebar tree, or nil when navigation is disabled. `.Page.Navigation.Items` is a `[]NavItem`, each with `.Title`, `.Path`, `.IsDir`, `.Children`, plus `.Active` (this node is the current page) and `.Open` (this node or a descendant is). Like breadcrumbs, this is page data — there is no `navigation` template function; the theme owns the markup and walks the tree itself (see below).
 
 ### Template Functions
 
@@ -117,11 +118,6 @@ Custom functions available in templates:
   {{ $items := toc .Page.TOC }}           {{/* Default: h1-h2 */}}
   {{ $items := toc .Page.TOC 2 3 }}       {{/* Only h2-h3 */}}
   {{ range $items }}{{ template "toc-item" . }}{{ end }}
-  ```
-
-- **`navigation`**: Generates the sidebar navigation tree with active state highlighting.
-  ```html
-  <nav>{{ navigation .Page.Path }}</nav>
   ```
 
 - **`editURL`**: Combines the configured `edit_url` base with the current page path. Returns empty string if `edit_url` is not configured.
@@ -231,6 +227,41 @@ These functions are available when multi-language support is active. See
   {{- end }}
   ```
 
+### Rendering the Navigation Sidebar
+
+The tree arrives as data, so the theme owns the markup. Define a template that recurses on
+`.Children` and invoke it once per top-level item — this is what the default theme's
+`partials/nav.html.tmpl` does:
+
+```html
+{{ define "nav-item" -}}
+<li>
+  {{- if .IsDir -}}
+  <details{{ if .Open }} open{{ end }}>
+    <summary>{{ .Title }}</summary>
+    {{- if .Children }}
+    <ul>{{ range .Children }}{{ template "nav-item" . }}{{ end }}</ul>
+    {{- end }}
+  </details>
+  {{- else -}}
+  <a href="{{ .Path }}"{{ if .Active }} class="active"{{ end }}>{{ .Title }}</a>
+  {{- end }}
+</li>
+{{- end }}
+```
+
+```html
+{{- if and .Page.Navigation .Page.Navigation.Items }}
+<nav aria-label="{{ .T "aria_site_nav" }}">
+  <ul>{{ range .Page.Navigation.Items }}{{ template "nav-item" . }}{{ end }}</ul>
+</nav>
+{{- end }}
+```
+
+Guard on `.Page.Navigation` before `.Items`: the field is nil when navigation is disabled, and on
+error pages. `.Open` is already set on every ancestor of the current page, so no theme-side path
+comparison is needed to expand the right branches.
+
 ### Example Layout
 
 ```html
@@ -251,9 +282,11 @@ These functions are available when multi-language support is active. See
         {{- end }}
     </header>
 
+    {{- if and .Page.Navigation .Page.Navigation.Items }}
     <nav id="nav-sidebar" aria-label="{{ .T "aria_site_nav" }}">
-        {{ navigation .Page.Path }}
+        <ul>{{ range .Page.Navigation.Items }}{{ template "nav-item" . }}{{ end }}</ul>
     </nav>
+    {{- end }}
 
     <nav aria-label="{{ .T "aria_breadcrumb" }}">
         {{ range .Page.Breadcrumbs }}
@@ -388,7 +421,7 @@ gmd-color-chip::part(swatch) {
 When creating a custom theme, ensure it supports these features for parity with built-in themes. All optional features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggled per-site and per-page:
 
 - **Light/dark mode toggle** — guarded by `{{ .Feature "dark_mode" }}`. Uses `{{ inlineJSAsset "theme-toggle.mjs" }}` to manage `data-theme` attribute, localStorage, and `prefers-color-scheme` fallback. Customize button content with `data-light`/`data-dark` text attributes or `[data-show-theme]` children for SVG icons.
-- **Navigation sidebar** via `{{ navigation .Page.Path }}`
+- **Navigation sidebar** — range over `.Page.Navigation.Items` with a recursive `nav-item` template (see [Rendering the Navigation Sidebar](#rendering-the-navigation-sidebar)).
 - **Table of contents** — guarded by `{{ .Feature "toc" }}`. Uses `{{ template "toc" . }}` partial with `toc-item` recursive template.
 - **TOC scroll highlighting** — guarded by `{{ .Feature "toc" }}`. Uses `{{ inlineJSAsset "toc-highlight.mjs" }}` to track scroll position and set `.active` class on matching TOC link.
 - **Breadcrumbs** via `{{ range .Page.Breadcrumbs }}`
