@@ -156,6 +156,14 @@ testsite/              # Lorem ipsum test site for quick testing
   paths (e.g., if the fast path lowercases, the error path must too)
 - **Counters over string-length comparisons** — detect "nothing written" with a counter, not by
   comparing buffer length against a magic string constant (breaks silently if format changes)
+- **`strings.ToLower` is not positionally aligned with its input, and can return something
+  *shorter*** — Go applies simple case mapping, so `İ` (U+0130, 2 bytes) becomes `i` (1 byte). Any
+  code that indexes the original with an offset found in the lowered copy — or the reverse, as
+  `findBestWindow` does with `lower[pos:end]` — needs a `len(lower) == len(s)` guard, and the guard
+  must come *before* the slice, not after: past enough lost bytes the slice is out of range and
+  panics. Fold once and reuse it (`strings.ToLower` returns its argument when there is nothing to
+  fold, so the common case is free); do not fold the same string once per loop iteration or once per
+  token. `findTokenSpansRunewise` is the aligned-offset path when you actually need the positions.
 - **One mutable object, one lock** — never guard the same value with two independent mutexes. If two
   types need it, give one type ownership and let the other borrow through it.
 - **A pooled buffer's slice header belongs to the pool, not the request** — `compressionWriter` wrote

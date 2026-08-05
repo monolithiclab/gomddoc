@@ -1425,11 +1425,42 @@ segment, and `filepath` already holds `len(segments)-1` of them).
   (`cmd/gomddoc/pipeline.go:166-169`), so it is not cancellable with the request — see the
   `request-scoped context.Background()` entry below.
 
-#### MEDIUM: `findBestWindow` lowercases ~50 substrings per search result
+#### MEDIUM: `findBestWindow` lowercases ~50 substrings per search result ✅ FIXED
 
 `internal/search/snippet.go:112` — `strings.ToLower(content[pos:end])` inside a ~50-iteration sampling
 loop, allocating a fresh copy each time. **13.9%** of all search-query allocations. Fix: lower the
 document body once per doc, or store a pre-lowered snippet body in the index at build time.
+
+**Fix.** Lowered once per document and sliced per window — not stored in the index, which would
+double the 8 KB `maxSnippetBody` per document for a fold that only the queried results need.
+`strings.ToLower` returns its argument unchanged when there is nothing to fold, so an all-lowercase
+body now costs zero allocations instead of ~50.
+
+`highlightTerms` had the same shape one level down: it called `findTokenSpans` per query token, and
+each call re-lowered the same ~160-byte snippet. It now folds once and passes the copy down —
+`findTokenSpans` takes `lower` as a parameter, matching `findTokenSpansRunewise`'s existing signature.
+
+> **Sharp edge found while fixing.** Go's `strings.ToLower` uses *simple* case mapping: `İ` (U+0130,
+> 2 bytes) maps to `i` (1 byte), so the lowered copy can be **shorter** than the original, not longer.
+> `lower[pos:end]` then slices a region that is not `content[pos:end]` — and panics outright once
+> enough bytes have been lost. `findBestWindow` keeps the per-window lowering for those bodies,
+> guarded by a `len(lower) == len(content)` check, the same guard `findTokenSpans` already used.
+> The first draft evaluated `lower[pos:end]` before the guard; the new
+> `TestFindBestWindow/case_folding_changes_byte_length` case caught it as a panic.
+
+Measured (`BenchmarkGenerateSnippet`, new — `mergeCorpus`'s bodies are shorter than the 160-byte
+window, so `findBestWindow` returned 0 without ever entering the sampling loop and the existing
+benchmarks could not see this at all):
+
+| | before | after | |
+|---|---|---|---|
+| ns/op | 22450 | 19970 | −11.0% |
+| B/op | 10016 | 10048 | +0.3% |
+| allocs/op | 67 | 17 | **−74.6%** |
+
+Bytes are flat because one 8 KB fold replaces ~50 × 176 B ones; the win is allocation count and the
+GC pressure behind it. `BenchmarkSearch/docs=2000/common_alpha` picks up the `highlightTerms` half:
+128 → 118 allocs/op, 32230 → 30300 ns/op.
 
 #### MEDIUM: MCP TOC rebuilds the nav tree per call and re-opens every markdown file ✅ verified
 
@@ -1894,7 +1925,7 @@ three `"text/markdown; charset=utf-8"`).
     outright instead of rendered with the default resolver (which emitted raw `.md` links).
 11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
     ~~compression pool nil~~ (DONE), ~~double breadcrumb generation~~ (DONE),
-    ~~compression/metrics route coverage~~ (DONE), `findBestWindow` re-lowercasing,
+    ~~compression/metrics route coverage~~ (DONE), ~~`findBestWindow` re-lowercasing~~ (DONE),
     MCP TOC nav rebuild, git-read blob decompression.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.

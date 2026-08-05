@@ -98,6 +98,25 @@ func TestFindBestWindow(t *testing.T) {
 			tokens:     []string{"検索"},
 			windowSize: 60,
 		},
+		{
+			// The body is lowered once and sliced per window, so an uppercase
+			// match must still score. Counting against the raw body finds nothing
+			// and the loop settles on pos 0.
+			name:       "uppercase match scores",
+			content:    strings.Repeat("padding ", 40) + "TARGET WORD TARGET" + strings.Repeat(" padding", 40),
+			tokens:     []string{"target"},
+			windowSize: 50,
+		},
+		{
+			// U+0130 is 2 bytes and folds to 'i', 1 byte, so ToLower(content) is
+			// 80 bytes shorter here and lower[pos:end] is not the window at pos
+			// — it is out of range entirely near the end. Takes the per-window
+			// fallback.
+			name:       "case folding changes byte length",
+			content:    strings.Repeat("İstanbul ", 40) + "TARGET WORD TARGET" + strings.Repeat(" İstanbul", 40),
+			tokens:     []string{"target"},
+			windowSize: 50,
+		},
 	}
 
 	for _, tt := range tests {

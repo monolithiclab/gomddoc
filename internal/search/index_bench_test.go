@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -28,6 +29,23 @@ func BenchmarkBuildIndex(b *testing.B) {
 		if err != nil {
 			b.Fatalf("BuildIndex failed: %v", err)
 		}
+	}
+}
+
+// BenchmarkGenerateSnippet exercises the part of snippet generation that
+// mergeCorpus cannot: its bodies are shorter than the 160-byte window, so
+// findBestWindow returns 0 without ever entering its ~50-iteration sampling
+// loop. Real bodies run to maxSnippetBody, where lowering per window instead of
+// per document was 13.9% of all search-query allocations.
+func BenchmarkGenerateSnippet(b *testing.B) {
+	// Mixed case throughout: an all-lowercase body would let strings.ToLower
+	// return its argument and hide the allocation this benchmark is about.
+	body := strings.Repeat("Lorem Ipsum dolor sit Amet, consectetur adipiscing ELIT. ", maxSnippetBody/57)
+	tokens := []string{"consectetur", "adipiscing"}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		generateSnippet(body, tokens, defaultSnippetLen)
 	}
 }
 

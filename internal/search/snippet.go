@@ -83,12 +83,23 @@ func generateSnippet(content string, queryTokens []string, maxLen int) string {
 }
 
 // findBestWindow finds the starting byte position of the window with the
-// highest density of query term occurrences. Each candidate window is
-// lowercased individually to keep byte positions aligned with the original.
+// highest density of query term occurrences.
 func findBestWindow(content string, queryTokens []string, windowSize int) int {
 	if len(content) <= windowSize {
 		return 0
 	}
+
+	// Lowered once for the whole body, then sliced per window: the sampling
+	// loop below runs ~50 times, and lowering each window separately allocated
+	// a copy every iteration. strings.ToLower returns content itself when there
+	// is nothing to fold, so an all-lowercase body costs nothing at all.
+	//
+	// Case folding that changes byte length (İ is 2 bytes, folds to 'i') shifts
+	// every position after it, so lower[pos:end] would score a region that is
+	// not content[pos:end] while we return pos — and runs past the end of lower
+	// once enough has been lost. Those bodies keep the per-window lowering.
+	lower := strings.ToLower(content)
+	aligned := len(lower) == len(content)
 
 	bestPos := 0
 	bestScore := -1
@@ -109,7 +120,12 @@ func findBestWindow(content string, queryTokens []string, windowSize int) int {
 		for end < len(content) && !utf8.RuneStart(content[end]) {
 			end++
 		}
-		window := strings.ToLower(content[pos:end])
+		window := content[pos:end]
+		if aligned {
+			window = lower[pos:end]
+		} else {
+			window = strings.ToLower(window)
+		}
 		score := 0
 		for _, token := range queryTokens {
 			score += strings.Count(window, token)
@@ -129,8 +145,10 @@ func findBestWindow(content string, queryTokens []string, windowSize int) int {
 func highlightTerms(text string, queryTokens []string) string {
 	var spans []span
 
+	// Lowered once, not once per token: the fold does not depend on the token.
+	lower := strings.ToLower(text)
 	for _, token := range queryTokens {
-		spans = findTokenSpans(text, token, spans)
+		spans = findTokenSpans(text, lower, token, spans)
 	}
 
 	if len(spans) == 0 {
@@ -157,11 +175,11 @@ func highlightTerms(text string, queryTokens []string) string {
 }
 
 // findTokenSpans finds all case-insensitive occurrences of token in text at
-// word boundaries, appending to spans. Positions refer to bytes in text
-// (not a lowered copy), avoiding byte-length mismatches from case folding.
-func findTokenSpans(text, token string, spans []span) []span {
-	lower := strings.ToLower(text)
-
+// word boundaries, appending to spans. lower must be strings.ToLower(text);
+// the caller folds once and reuses it across tokens. Positions refer to bytes
+// in text (not the lowered copy), avoiding byte-length mismatches from case
+// folding.
+func findTokenSpans(text, lower, token string, spans []span) []span {
 	// If lowering changed byte length, fall back to rune-mapped search.
 	if len(lower) != len(text) {
 		return findTokenSpansRunewise(text, lower, token, spans)
