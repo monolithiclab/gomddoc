@@ -45,6 +45,12 @@ type PageEntry struct {
 }
 
 // Generator builds and caches a navigation tree from an fs.FS.
+//
+// One per content tree, shared by every consumer. The tree is built once behind
+// a sync.Once (safe for concurrent Tree/PrevNext), so a consumer that
+// constructs its own walks the content a second time and — lacking the title
+// lookup its owner installed — opens and line-scans every file for a heading.
+// Under the CLI the shared instance is Pipeline.NavGenerator.
 type Generator struct {
 	rootFS          fs.FS
 	defaultIndex    string

@@ -272,6 +272,45 @@ func TestByPath(t *testing.T) {
 	})
 }
 
+func TestIndex_TitleForPath(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		"readme.md":      &fstest.MapFile{Data: []byte("---\ntitle: Home\n---\n# Home")},
+		"guide/intro.md": &fstest.MapFile{Data: []byte("---\ntitle: Intro\n---\n# Intro")},
+		"guide/bare.md":  &fstest.MapFile{Data: []byte("---\ntags: [x]\n---\n# Heading Only")},
+		"no-frontmatter": &fstest.MapFile{Data: []byte("# Nothing")},
+	}
+
+	idx, err := BuildIndex(context.Background(), testFS, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex failed: %v", err)
+	}
+
+	// Keys are fs-relative (no leading slash) — that is the whole point of the
+	// helper: navigation.Generator hands it "guide/intro.md", not "/guide/intro.md".
+	tests := []struct {
+		name     string
+		filePath string
+		want     string
+	}{
+		{"root page", "readme.md", "Home"},
+		{"nested page", "guide/intro.md", "Intro"},
+		{"indexed but no frontmatter title", "guide/bare.md", ""},
+		{"not indexed", "no-frontmatter", ""},
+		{"leading slash is not the key", "/readme.md", ""},
+		{"nonexistent", "missing.md", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := idx.TitleForPath(tt.filePath); got != tt.want {
+				t.Errorf("TitleForPath(%q) = %q, want %q", tt.filePath, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildIndex_EmptyFS(t *testing.T) {
 	t.Parallel()
 

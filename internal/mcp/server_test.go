@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 
@@ -12,11 +13,12 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/search"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // testProvider is a minimal Provider backed by fstest.MapFS for testing.
 type testProvider struct {
-	fsys         fstest.MapFS
+	fsys         fs.FS
 	defaultIndex string
 }
 
@@ -84,12 +86,17 @@ func setupTest(t *testing.T) *testFixture {
 
 	prov := &testProvider{fsys: testFS, defaultIndex: "README.md"}
 
-	mcpServer := NewServer(ServerDeps{
-		Provider:    prov,
-		MetaIndex:   metaIdx,
-		SearchIndex: searchIdx,
+	// Wired the way the pipeline wires it: one generator, titles from the
+	// metadata index. TestTools_GetTOC asserts on those titles, so a nil lookup
+	// (or a second generator) shows up as headings instead of frontmatter.
+	navGen := navigation.NewGenerator(testFS, "README.md", nil, nil)
+	navGen.SetTitleLookup(metaIdx.TitleForPath)
 
-		DefaultIndex: "README.md",
+	mcpServer := NewServer(ServerDeps{
+		Provider:     prov,
+		MetaIndex:    metaIdx,
+		SearchIndex:  searchIdx,
+		NavGenerator: navGen,
 		SiteName:     "Test Docs",
 		Version:      "test",
 	})
@@ -117,9 +124,8 @@ func TestNewServer(t *testing.T) {
 	t.Parallel()
 	prov := &testProvider{fsys: fstest.MapFS{}, defaultIndex: "README.md"}
 	s := NewServer(ServerDeps{
-		Provider:     prov,
-		DefaultIndex: "README.md",
-		SiteName:     "Test",
+		Provider: prov,
+		SiteName: "Test",
 	})
 	if s.server == nil {
 		t.Fatal("server should not be nil")
@@ -380,6 +386,87 @@ func TestTools_GetTOC(t *testing.T) {
 	text := result.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "Table of Contents") {
 		t.Errorf("expected 'Table of Contents', got: %s", text)
+	}
+	// A nil tree also renders the header, so assert the pages are actually in it.
+	for _, want := range []string{"Getting Started", "Configuration", "API Reference"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected %q in TOC, got: %s", want, text)
+		}
+	}
+}
+
+// countingFS counts Open calls, which is how a cached navigation tree is told
+// apart from one rebuilt per request.
+//
+// The embedded field must stay fs.FS, not the concrete fstest.MapFS: promoting
+// ReadDir would satisfy fs.ReadDirFS, and fs.ReadDir would then bypass Open
+// entirely — a per-request rebuild would walk the tree without touching the
+// counter and the assertion below would go permanently green.
+type countingFS struct {
+	fs.FS
+	opens atomic.Int64
+}
+
+func (c *countingFS) Open(name string) (fs.File, error) {
+	c.opens.Add(1)
+	return c.FS.Open(name)
+}
+
+// TestTools_GetTOC_SharedGenerator pins both halves of the fix for "MCP TOC
+// rebuilds the nav tree per call": the generator is the pipeline's, so its
+// sync.Once survives across calls, and its title lookup keeps buildTree from
+// opening each file to find a heading.
+//
+// Constructing a generator inside the handler instead turns both red: the
+// second call re-walks the tree, and every leaf label falls back to the H1.
+func TestTools_GetTOC_SharedGenerator(t *testing.T) {
+	t.Parallel()
+
+	testFS := fstest.MapFS{
+		// Frontmatter title deliberately unlike the H1: extractTitle returns the
+		// heading, the metadata index returns the frontmatter title.
+		"guide/setup.md": &fstest.MapFile{Data: []byte("---\ntitle: Frontmatter Title\n---\n# Heading Title\n\nBody.\n")},
+	}
+	metaIdx, err := metadata.BuildIndex(context.Background(), testFS, nil)
+	if err != nil {
+		t.Fatalf("building metadata index: %v", err)
+	}
+
+	cfs := &countingFS{FS: testFS}
+	navGen := navigation.NewGenerator(cfs, "README.md", nil, nil)
+	navGen.SetTitleLookup(metaIdx.TitleForPath)
+
+	// The provider serves the same counting FS: a handler that builds its own
+	// generator would reach the content through here, so the counter sees that
+	// walk too rather than silently missing it.
+	s := NewServer(ServerDeps{
+		Provider:     &testProvider{fsys: cfs, defaultIndex: "README.md"},
+		MetaIndex:    metaIdx,
+		NavGenerator: navGen,
+	})
+
+	callTOC := func() string {
+		t.Helper()
+		result, _, callErr := s.handleGetTOC(context.Background(), nil, GetTOCInput{})
+		if callErr != nil {
+			t.Fatalf("handleGetTOC: %v", callErr)
+		}
+		return result.Content[0].(*mcp.TextContent).Text
+	}
+
+	text := callTOC()
+	if !strings.Contains(text, "Frontmatter Title") {
+		t.Errorf("TOC label = %q, want the metadata-index title; the title lookup is not installed", text)
+	}
+	if strings.Contains(text, "Heading Title") {
+		t.Errorf("TOC label came from extractTitle (file scan), not the index: %s", text)
+	}
+
+	afterFirst := cfs.opens.Load()
+	callTOC()
+	if afterSecond := cfs.opens.Load(); afterSecond != afterFirst {
+		t.Errorf("opens went %d → %d across two calls; the tree is being rebuilt per call",
+			afterFirst, afterSecond)
 	}
 }
 

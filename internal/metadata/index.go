@@ -239,6 +239,20 @@ func (idx *Index) ByPath(path string) *PageInfo {
 	return &p
 }
 
+// TitleForPath returns the indexed title for an fs-relative path
+// ("guide/setup.md"), or "" when the page is not indexed or has no frontmatter
+// title. It is the title lookup navigation.Generator wants — pass it as a
+// method value (navGen.SetTitleLookup(idx.TitleForPath)) rather than restating
+// the leading-slash key convention at each call site. Unlike ByPath it reads
+// the title in place, so labelling a tree does not copy a PageInfo per leaf.
+func (idx *Index) TitleForPath(filePath string) string {
+	i, ok := idx.byPath["/"+filePath]
+	if !ok {
+		return ""
+	}
+	return idx.pages[i].Title
+}
+
 // ByTag returns all pages with the given tag. The tag is matched
 // case-insensitively. Returns nil if no pages match.
 func (idx *Index) ByTag(tag string) []PageInfo {

@@ -60,6 +60,15 @@ type Pipeline struct {
 	StaticFS         fs.FS
 	Provider         provider.Provider
 
+	// NavGenerator is set when PipelineOptions.EnableNavigation is on, and is
+	// this pipeline's only generator: every consumer must share it. Its tree is
+	// cached behind a sync.Once, so a second generator over the same content
+	// re-walks it — and, having no title lookup, labels each leaf by opening the
+	// file and scanning for its first heading. The lookup is installed only when
+	// EnableMetadata is on too, and only answers for pages carrying a
+	// frontmatter title; the rest fall back to that scan on the single build.
+	NavGenerator *navigation.Generator
+
 	// Exclude is the effective exclude list every index of this pipeline was
 	// built with (cfg.Site.Exclude plus PipelineOptions.ExtraExclude). Callers
 	// that walk the same content — build's static walk — must use it, or they
@@ -256,7 +265,9 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		Exclude:          exclude,
 	}
 
-	// Enricher options — navigation is optional (build doesn't use it).
+	// Enricher options — navigation is optional in shape only: every production
+	// caller enables it (serve for the nav tree, build for prev/next, mcp for
+	// get_table_of_contents).
 	enricherOpts := enricher.MarkdownEnricherOptions{}
 
 	// Build the metadata index before navigation so the nav generator can label
@@ -274,17 +285,12 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	if opts.EnableNavigation {
 		navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, exclude, resolver)
 		if p.MetaIndex != nil {
-			metaIndex := p.MetaIndex
-			navGen.SetTitleLookup(func(filePath string) string {
-				if pg := metaIndex.ByPath("/" + filePath); pg != nil {
-					return pg.Title
-				}
-				return ""
-			})
+			navGen.SetTitleLookup(p.MetaIndex.TitleForPath)
 		}
 		enricherOpts.NavBuilder = navBuilderAdapter(navGen)
 		enricherOpts.PrevNextBuilder = prevNextBuilderAdapter(navGen)
 		p.RedirectFinder = redirectFinderAdapter(navGen)
+		p.NavGenerator = navGen
 	}
 
 	if opts.EnableSearch && cfg.Site.Search.Index {
@@ -445,9 +451,8 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		Provider:        prov,
 		MetaIndex:       pipeline.MetaIndex,
 		SearchIndex:     pipeline.SearchIndex,
-		DefaultIndex:    cfg.Site.DefaultIndex,
+		NavGenerator:    pipeline.NavGenerator,
 		ExcludePatterns: cfg.Site.Exclude,
-		Resolver:        pipeline.Resolver,
 		SiteName:        cfg.Site.Meta.Title,
 		Version:         version,
 	})

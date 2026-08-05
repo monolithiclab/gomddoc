@@ -224,14 +224,13 @@ func (s *MCPServer) handleListPages(_ context.Context, _ *mcp.CallToolRequest, i
 	return textResult(b.String()), nil, nil
 }
 
-func (s *MCPServer) handleGetTOC(ctx context.Context, _ *mcp.CallToolRequest, input GetTOCInput) (*mcp.CallToolResult, any, error) {
-	contentRoot, err := s.deps.Provider.RootFS(ctx)
-	if err != nil {
-		return textResult("Content root is not available."), nil, nil
+func (s *MCPServer) handleGetTOC(_ context.Context, _ *mcp.CallToolRequest, input GetTOCInput) (*mcp.CallToolResult, any, error) {
+	if s.deps.NavGenerator == nil {
+		return textResult("No navigation tree available."), nil, nil
 	}
 
-	navGen := navigation.NewGenerator(contentRoot, s.deps.DefaultIndex, s.deps.ExcludePatterns, s.deps.Resolver)
-	root := navGen.Tree()
+	// Shared, never constructed here: see navigation.Generator.
+	root := s.deps.NavGenerator.Tree()
 	if root == nil {
 		return textResult("No navigation tree available."), nil, nil
 	}

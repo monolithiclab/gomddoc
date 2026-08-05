@@ -38,9 +38,12 @@ func (m *MCPCmd) Run() error {
 		}
 	}()
 
+	// Navigation is on because get_table_of_contents needs it, and it must be
+	// the pipeline's generator: built after the metadata index so titles come
+	// from there rather than from opening every file.
 	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{
 		EnableCache:      true,
-		EnableNavigation: false,
+		EnableNavigation: true,
 		EnableMetadata:   true,
 		EnableSearch:     true,
 	})
@@ -52,7 +55,7 @@ func (m *MCPCmd) Run() error {
 		Provider:        prov,
 		MetaIndex:       pipeline.MetaIndex,
 		SearchIndex:     pipeline.SearchIndex,
-		DefaultIndex:    cfg.Site.DefaultIndex,
+		NavGenerator:    pipeline.NavGenerator,
 		ExcludePatterns: cfg.Site.Exclude,
 		SiteName:        cfg.Site.Meta.Title,
 		Version:         version,

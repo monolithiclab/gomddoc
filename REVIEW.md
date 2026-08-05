@@ -1462,7 +1462,7 @@ Bytes are flat because one 8 KB fold replaces ~50 × 176 B ones; the win is allo
 GC pressure behind it. `BenchmarkSearch/docs=2000/common_alpha` picks up the `highlightTerms` half:
 128 → 118 allocs/op, 32230 → 30300 ns/op.
 
-#### MEDIUM: MCP TOC rebuilds the nav tree per call and re-opens every markdown file ✅ verified
+#### MEDIUM: MCP TOC rebuilds the nav tree per call and re-opens every markdown file ✅ FIXED
 
 `internal/mcp/tools.go:233-234` constructs a fresh `navigation.NewGenerator` per call, making its
 `sync.Once` cache useless, and never installs `SetTitleLookup` — so `buildTree` falls through to
@@ -1470,6 +1470,34 @@ GC pressure behind it. `BenchmarkSearch/docs=2000/common_alpha` picks up the `hi
 `get_table_of_contents` call. §9.8 eliminated exactly this for the HTTP path; the MCP path was left
 behind even though `s.deps.MetaIndex` is right there. (The pipeline's cached generator at
 `cmd/gomddoc/pipeline.go:222` is never passed into `ServerDeps`.)
+
+**Fix.** The pipeline's generator is published as `Pipeline.NavGenerator` and handed to
+`mcp.ServerDeps.NavGenerator`; `handleGetTOC` calls `Tree()` on it. `ServerDeps.DefaultIndex` and
+`.Resolver` existed only to feed the removed constructor and are gone. `gomddoc mcp` built its
+pipeline with `EnableNavigation: false`, so the fix required flipping it — the generator is lazy
+(bare `sync.Once`, `NewGenerator` only assigns fields), so this costs one struct allocation at
+startup and the first `get_table_of_contents` call does strictly less work than before.
+
+The title-lookup closure, previously written out at each site, is now
+`metadata.(*Index).TitleForPath` passed as a method value. It also drops `ByPath`'s defensive
+`PageInfo` copy (struct + `Tags` slice header) per navigation leaf.
+
+Behaviour note, deliberate: under `serve`, MCP receives the **default** pipeline's generator, whose
+exclude list hides every detected language directory. Translated pages are therefore absent from
+`get_table_of_contents` — consistent with `list_pages` and `search_docs`, which already read that
+pipeline's indexes, and better than the old TOC, which listed them with raw `.md` URLs the default
+resolver could not clean. They remain readable by path through `read_page`:
+`ServerDeps.ExcludePatterns` stays `cfg.Site.Exclude`, the author's access-control intent.
+
+`TestTools_GetTOC_SharedGenerator` pins both halves — leaf labels must come from the metadata index
+(frontmatter title, not the H1) and a `countingFS` must see no new `Open` calls on the second call.
+Restoring the per-call constructor turns both red. `setupPipeline`'s option table now asserts
+`NavGenerator` tracks `EnableNavigation`, which is the half no handler test can see.
+
+**Left open** (pre-existing, unrelated to the perf fix): `GetTOCInput.Path` is advertised in the tool
+schema as "subtree root path" and documented in `docs/guide/04-mcp.md` and
+`docs/guide/12-advanced/03-api-reference.md`, but `handleGetTOC` never reads it — an agent asking for
+one subtree gets the whole site. Now cheap to honour (a pointer walk into the cached tree) or delete.
 
 #### MEDIUM: compression and metrics cover only 2 of 8 route groups ✅ FIXED
 
@@ -1926,6 +1954,6 @@ three `"text/markdown; charset=utf-8"`).
 11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
     ~~compression pool nil~~ (DONE), ~~double breadcrumb generation~~ (DONE),
     ~~compression/metrics route coverage~~ (DONE), ~~`findBestWindow` re-lowercasing~~ (DONE),
-    MCP TOC nav rebuild, git-read blob decompression.
+    ~~MCP TOC nav rebuild~~ (DONE), git-read blob decompression.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.

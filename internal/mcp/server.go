@@ -8,20 +8,34 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
-	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/search"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // ServerDeps holds all dependencies for creating an MCP server.
 type ServerDeps struct {
-	Provider        provider.Provider
-	MetaIndex       *metadata.Index
-	SearchIndex     *search.Index
-	DefaultIndex    string
+	Provider    provider.Provider
+	MetaIndex   *metadata.Index
+	SearchIndex *search.Index
+
+	// NavGenerator is the pipeline's navigation generator, shared rather than
+	// rebuilt: its tree is cached behind a sync.Once and its titles come from
+	// the metadata index. get_table_of_contents returns "no navigation tree"
+	// when it is nil. DefaultIndex and Resolver are baked into it at
+	// construction, which is why they are not fields here.
+	NavGenerator *navigation.Generator
+
+	// ExcludePatterns gates direct reads (IsRestrictedPath). This is
+	// cfg.Site.Exclude, the author's access-control intent — deliberately not
+	// the pipeline's effective exclude. Under `serve` the two differ: the
+	// default pipeline additionally hides every detected language directory, so
+	// translated pages are absent from get_table_of_contents (as they already
+	// were from list_pages and search_docs, which read that pipeline's indexes)
+	// yet remain readable by path through read_page. They are not secret.
 	ExcludePatterns []string
-	Resolver        *resolve.PathResolver
-	SiteName        string
-	Version         string
+
+	SiteName string
+	Version  string
 }
 
 // MCPServer wraps the MCP SDK server with gomddoc-specific handlers.

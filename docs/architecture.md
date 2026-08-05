@@ -363,13 +363,13 @@ keyboard navigation (arrow keys + Enter), and highlighted snippets. CSS uses the
 
 ```go
 type ServerDeps struct {
-    Provider     provider.Provider
-    MetaIndex    *metadata.Index
-    SearchIndex  *search.Index
-    ContentRoot  fs.FS
-    DefaultIndex string
-    SiteName     string
-    Version      string
+    Provider        provider.Provider
+    MetaIndex       *metadata.Index
+    SearchIndex     *search.Index
+    NavGenerator    *navigation.Generator // the pipeline's, shared — never rebuilt here
+    ExcludePatterns []string              // cfg.Site.Exclude, gates direct reads
+    SiteName        string
+    Version         string
 }
 
 type MCPServer struct {
@@ -384,6 +384,9 @@ func (s *MCPServer) HTTPHandler() http.Handler            // Streamable HTTP
 
 The MCP server is a thin adapter that exposes gomddoc's existing internals — Provider, Metadata Index,
 Search Index, and Navigation — via the MCP protocol. No new parsing or indexing logic is introduced.
+It builds none of them: every index and the navigation generator arrive from the pipeline that already
+built them, so `get_table_of_contents` reads a tree cached behind a `sync.Once` instead of re-walking
+the content per call. `gomddoc mcp` therefore sets `EnableNavigation: true` on its pipeline.
 
 Uses the official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk`). Supports two transports:
 stdio (for local clients like Claude Desktop/Cursor) and Streamable HTTP (for remote access via `/_mcp/`).

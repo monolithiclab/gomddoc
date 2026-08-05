@@ -190,6 +190,15 @@ func TestSetupPipeline(t *testing.T) {
 			if !tt.opts.EnableNavigation && pipeline.RedirectFinder != nil {
 				t.Error("RedirectFinder should be nil when navigation disabled")
 			}
+			// Published so serve/build/mcp share one cached tree; unpublished it
+			// stays reachable only through the enricher adapters, and MCP
+			// silently answers "No navigation tree available."
+			if tt.opts.EnableNavigation && pipeline.NavGenerator == nil {
+				t.Error("NavGenerator should not be nil when navigation enabled")
+			}
+			if !tt.opts.EnableNavigation && pipeline.NavGenerator != nil {
+				t.Error("NavGenerator should be nil when navigation disabled")
+			}
 			if tt.opts.EnableMetadata && pipeline.MetaIndex == nil {
 				t.Error("MetaIndex should not be nil when metadata enabled")
 			}

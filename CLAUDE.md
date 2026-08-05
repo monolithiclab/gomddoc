@@ -147,6 +147,14 @@ testsite/              # Lorem ipsum test site for quick testing
   produces it (`BuildIndex` phase 3), not only at the loop that consumes it. Corollary: results derived
   from map iteration are unordered — give the final sort a deterministic tiebreaker, or serve and build
   disagree on equally-ranked hits.
+- **A cached object is shared through the pipeline, never reconstructed at the consumer** — publish it
+  as a `Pipeline` field and pass it down. `handleGetTOC` built its own `navigation.Generator` per MCP
+  call: a fresh `sync.Once` re-walked the content *and*, missing the title lookup the pipeline installs,
+  sent `buildTree` back to `extractTitle` — opening and line-scanning every `.md` file, per request. The
+  tell is a constructor call inside a request handler. Corollary: when the consumer needs the cached
+  object, its command must enable the pipeline stage that builds it (`gomddoc mcp` had
+  `EnableNavigation: false`), and `setupPipeline`'s option table test must assert the field is non-nil —
+  the two halves live in different files with no compile-time link between them.
 - **`yaml.Marshal`** for YAML output — never construct YAML with `fmt.Sprintf`/`fmt.Fprintf`
   (special characters like colons, brackets produce malformed output)
 - **Every field of a marshalled XML struct needs an explicit `xml:` tag** — `encoding/xml` silently
