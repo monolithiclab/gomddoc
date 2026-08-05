@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -175,6 +176,7 @@ func (g *GitProvider) Close() error {
 	// return fs.ErrClosed and break the reference chain to the storer.
 	g.treeState.mu.Lock()
 	g.treeState.tree = nil
+	g.treeState.objects = nil
 	g.treeState.mu.Unlock()
 
 	return nil
@@ -328,6 +330,7 @@ func (g *GitProvider) cacheTreeLocked() error {
 	// Publish the tree so the provider and gitTreeFS instances can see it.
 	g.treeState.mu.Lock()
 	g.treeState.tree = tree
+	g.treeState.objects = g.repo.Storer
 	g.treeState.modTime = g.commitTime
 	g.treeState.mu.Unlock()
 
@@ -389,20 +392,14 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 		return g.handleDirectoryLocked(tree, modTime, requestPath)
 	}
 
-	// Try to get as file first
-	file, err := tree.File(cleanPath)
-	if err == nil {
-		return g.readFileLocked(file, requestPath)
+	file, subtree, err := resolveTreeNode(tree, g.treeState.objects, cleanPath)
+	if err != nil {
+		return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
 	}
-
-	// Try as directory
-	if errors.Is(err, object.ErrFileNotFound) {
-		if subtree, treeErr := tree.Tree(cleanPath); treeErr == nil {
-			return g.handleDirectoryLocked(subtree, modTime, requestPath)
-		}
+	if subtree != nil {
+		return g.handleDirectoryLocked(subtree, modTime, requestPath)
 	}
-
-	return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
+	return g.readFileLocked(file, requestPath)
 }
 
 // readFileLocked reads the content of a file object.
@@ -417,7 +414,7 @@ func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]b
 		}
 	}
 
-	content, err := file.Contents()
+	content, err := blobBytes(file)
 	if err != nil {
 		return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
 	}
@@ -432,7 +429,7 @@ func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]b
 	}
 
 	mimeType := negotiate.DetectMIME(requestPath)
-	return []byte(content), mimeType, nil
+	return content, mimeType, nil
 }
 
 // handleDirectoryLocked processes a directory request against an
@@ -444,11 +441,7 @@ func (g *GitProvider) handleDirectoryLocked(dirTree *object.Tree, modTime time.T
 			if err != nil {
 				return nil, err
 			}
-			content, err := indexFile.Contents()
-			if err != nil {
-				return nil, err
-			}
-			return []byte(content), nil
+			return blobBytes(indexFile)
 		},
 		func() ([]fs.DirEntry, error) { return treeDirEntries(dirTree, modTime), nil },
 	)
@@ -472,7 +465,7 @@ func (g *GitProvider) Stat(ctx context.Context, requestPath string) (fs.FileInfo
 	if g.treeState.tree == nil {
 		return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrProviderClosed}
 	}
-	tree, modTime := g.treeState.tree, g.treeState.modTime
+	tree, objects, modTime := g.treeState.tree, g.treeState.objects, g.treeState.modTime
 
 	// Root directory
 	if cleanPath == "." {
@@ -485,32 +478,14 @@ func (g *GitProvider) Stat(ctx context.Context, requestPath string) (fs.FileInfo
 		}, nil
 	}
 
-	// Try as file
-	file, err := tree.File(cleanPath)
-	if err == nil {
-		fileMode, _ := file.Mode.ToOSFileMode()
-		return &gitFileInfo{
-			name:    path.Base(cleanPath),
-			size:    file.Size,
-			mode:    fileMode,
-			modTime: modTime,
-			isDir:   false,
-		}, nil
+	// Entry and object header only — see statTreeNode. That matters: pipeline.go
+	// wires Stat into the breadcrumb generator, so it runs once per page request
+	// under the exclusive tree lock.
+	info, err := statTreeNode(tree, objects, cleanPath, modTime)
+	if err != nil {
+		return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrNotFound}
 	}
-
-	// Try as directory
-	_, err = tree.Tree(cleanPath)
-	if err == nil {
-		return &gitFileInfo{
-			name:    path.Base(cleanPath),
-			size:    0,
-			mode:    fs.ModeDir | 0755,
-			modTime: modTime,
-			isDir:   true,
-		}, nil
-	}
-
-	return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrNotFound}
+	return info, nil
 }
 
 // normalizePath cleans and normalizes a request path for use with git trees.
@@ -523,6 +498,6 @@ func normalizePath(requestPath string) string {
 }
 
 // isLFSPointer checks if content is a Git LFS pointer file.
-func isLFSPointer(content string) bool {
-	return strings.HasPrefix(content, "version https://git-lfs.github.com/")
+func isLFSPointer(content []byte) bool {
+	return bytes.HasPrefix(content, []byte("version https://git-lfs.github.com/"))
 }

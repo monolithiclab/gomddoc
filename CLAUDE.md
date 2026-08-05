@@ -187,6 +187,23 @@ testsite/              # Lorem ipsum test site for quick testing
 - **go-git reads are writes** — `object.Tree` memoises lookups into unsynchronised maps and go-git's
   storers mutate on read. Tree/blob access needs an *exclusive* mutex; an `RWMutex` lets two
   "readers" hit a concurrent map write (an unrecoverable runtime throw). See `gitTreeState`.
+- **Resolve a git path once, then work from the hash it produced** — `tree.File(p)` is `FindEntry` +
+  a full object decode, so probing with it and falling back to `tree.Tree(p)` on failure throws away
+  a packfile delta + zlib decode on every directory hit; `tree.Size(p)` and `tree.Tree(p)` re-walk
+  the path, and `Tree.FindEntry` only consults its subtree cache from three segments up
+  (`for i := len(pathParts) - 1; i > 1`), so the second walk of `docs/guide.md` re-decodes `docs`.
+  `FindEntry` once, switch on `entry.Mode`, then `object.GetTree(objects, entry.Hash)` /
+  `tree.TreeEntryFile(entry)` / `objects.EncodedObjectSize(entry.Hash)`. `object.Tree` keeps its
+  storer unexported, which is why `gitTreeState` carries `objects` beside `tree` — one lock, set and
+  cleared together. See `resolveTreeNode`, `statTreeNode`.
+- **A read-only `fs.FS` wrapper owes `io/fs` its optional interfaces** — `fs.Stat` and `fs.ReadFile`
+  fall back to `Open`, and for `gitTreeFS` that decoded the whole blob: sitemap and feed generation
+  stat every page for a `ModTime` that is one constant, and the metadata and search index builds read
+  every file in the repo through a fallback that copies the payload a second time. Implementing
+  `fs.StatFS` cut `fs.Stat` from 2469 ns/8823 B to 564 ns/352 B. Assert them
+  (`var _ fs.StatFS = (*T)(nil)`) — nothing else catches the regression, because the fallback is
+  always correct, only slow. The same trap in reverse: a type embedding the `fs.FS` *interface* does
+  not satisfy `fs.ReadDirFS`, so `fs.ReadDir` routes through `Open` (see `countingFS`).
 - **Never derive a page URL from a file path by hand** — call
   `(*resolve.PathResolver).PageURLPath(realPath, defaultIndex)`. It is the only implementation of
   the clean-path lookup plus default-index fold. Four hand-rolled copies silently disagreed, which

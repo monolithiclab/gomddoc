@@ -14,13 +14,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/go-git/go-billy/v5/memfs"
-	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage"
-	"github.com/go-git/go-git/v5/storage/memory"
 )
 
 // runCommand executes a command and returns combined output.
@@ -33,82 +29,6 @@ func runCommand(t *testing.T, name string, args ...string) (string, error) {
 func init() {
 	// Register markdown MIME type for tests
 	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
-}
-
-// createTestRepo creates an in-memory Git repository with the specified files.
-// Files are specified as a map of path -> content.
-func createTestRepo(t *testing.T, files map[string]string) *git.Repository {
-	t.Helper()
-
-	stor := memory.NewStorage()
-	fs := memfs.New()
-
-	repo, err := git.Init(stor, fs)
-	if err != nil {
-		t.Fatalf("Failed to init test repo: %v", err)
-	}
-
-	// Create worktree
-	wt, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Failed to get worktree: %v", err)
-	}
-
-	// Add files
-	for path, content := range files {
-		// Create file in worktree filesystem
-		f, err := wt.Filesystem.Create(path)
-		if err != nil {
-			t.Fatalf("Failed to create file %s: %v", path, err)
-		}
-		_, err = f.Write([]byte(content))
-		if err != nil {
-			t.Fatalf("Failed to write file %s: %v", path, err)
-		}
-		f.Close()
-
-		// Add to staging
-		_, err = wt.Add(path)
-		if err != nil {
-			t.Fatalf("Failed to add file %s: %v", path, err)
-		}
-	}
-
-	// Create commit
-	_, err = wt.Commit("Initial commit", &git.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Test",
-			Email: "test@example.com",
-			When:  time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC),
-		},
-	})
-	if err != nil {
-		t.Fatalf("Failed to commit: %v", err)
-	}
-
-	return repo
-}
-
-// mustGetTree gets the tree from a repository's HEAD commit.
-func mustGetTree(t *testing.T, repo *git.Repository) *object.Tree {
-	t.Helper()
-
-	head, err := repo.Head()
-	if err != nil {
-		t.Fatalf("Failed to get HEAD: %v", err)
-	}
-
-	commit, err := repo.CommitObject(head.Hash())
-	if err != nil {
-		t.Fatalf("Failed to get commit: %v", err)
-	}
-
-	tree, err := commit.Tree()
-	if err != nil {
-		t.Fatalf("Failed to get tree: %v", err)
-	}
-
-	return tree
 }
 
 func TestNewGitProvider(t *testing.T) {
@@ -277,7 +197,7 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 		dirIndex:     true,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -378,7 +298,7 @@ func TestGitProvider_StatMocked(t *testing.T) {
 		dirIndex:     true,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -475,7 +395,7 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			dirIndex:     true,
 			maxFileSize:  defaultMaxFileSize,
 			repo:         repo,
-			treeState:    gitTreeState{tree: tree, modTime: commitTime},
+			treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 			commitTime:   commitTime,
 		}
 
@@ -510,7 +430,7 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			dirIndex:     false,
 			maxFileSize:  defaultMaxFileSize,
 			repo:         repo,
-			treeState:    gitTreeState{tree: tree, modTime: commitTime},
+			treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 			commitTime:   commitTime,
 		}
 
@@ -546,7 +466,7 @@ func TestGitProvider_LFSPointerDetection(t *testing.T) {
 		dirIndex:     false,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -618,7 +538,7 @@ func TestIsLFSPointer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := isLFSPointer(tt.content)
+			got := isLFSPointer([]byte(tt.content))
 			if got != tt.want {
 				t.Errorf("isLFSPointer() = %v, want %v", got, tt.want)
 			}
@@ -905,7 +825,7 @@ func TestGitProvider_FileSizeLimit(t *testing.T) {
 		dirIndex:     false,
 		maxFileSize:  1, // 1 byte limit
 		repo:         repo,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -951,7 +871,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 		dirIndex:     true,
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		treeState:    gitTreeState{tree: docsTree, modTime: commitTime}, // Use the subdirectory tree
+		treeState:    gitTreeState{tree: docsTree, objects: repo.Storer, modTime: commitTime}, // Use the subdirectory tree
 		commitTime:   commitTime,
 		commitHash:   head.Hash(),
 	}
@@ -1035,7 +955,7 @@ func TestGitProvider_RootFS_Mocked(t *testing.T) {
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
 		commitTime:   commitTime,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 	}
 
 	rootFS, err := p.RootFS(t.Context())
@@ -1094,7 +1014,7 @@ func TestGitProvider_EnsureCloned_AlreadyCloned(t *testing.T) {
 		defaultIndex: "README.md",
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -1122,7 +1042,7 @@ func TestGitProvider_EnsureCloned_ConcurrentAccess(t *testing.T) {
 		defaultIndex: "README.md",
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 		commitTime:   commitTime,
 	}
 
@@ -1170,7 +1090,7 @@ func TestGitProvider_ConcurrentReadsAreRaceFree(t *testing.T) {
 		maxFileSize:  defaultMaxFileSize,
 		repo:         repo,
 		commitTime:   commitTime,
-		treeState:    gitTreeState{tree: tree, modTime: commitTime},
+		treeState:    gitTreeState{tree: tree, objects: repo.Storer, modTime: commitTime},
 	}
 
 	rootFS, err := p.RootFS(t.Context())

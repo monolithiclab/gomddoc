@@ -1548,19 +1548,18 @@ This also partly resolves the `docs/01-http-behavior.md` MEDIUM drift entry ("ov
 ETag and compression as universal") — compression *is* now universal across user-facing routes.
 Cache-Control and ETag remain content-handler-only.
 
-#### MEDIUM: git reads do redundant work under the (now serialised) tree lock
+#### ~~MEDIUM: git reads do redundant work under the (now serialised) tree lock~~ ✅ FIXED
 
-Surfaced while fixing the §10.1 tree race. All of these are now on the critical path of a single
+Surfaced while fixing the §10.1 tree race. All of these were on the critical path of a single
 exclusive lock, so they cost throughput on git-backed sites rather than just CPU:
 
 - **`Stat` decompresses an entire blob to read `file.Size`** (`internal/provider/git.go:509`).
   `tree.File()` calls `GetBlob`, which loads and decodes the whole object; only `Mode` and `Size` are
   used. On packfile-backed disk storage that is a full delta/zlib decode, discarded immediately —
-  and `cmd/gomddoc/pipeline.go:167` wires `prov.Stat` into the breadcrumb generator, so it runs once
-  per path segment per request. `tree.FindEntry` + `tree.Size` (header only, no decompression)
-  answers both questions.
+  and `cmd/gomddoc/pipeline.go:167` wires `prov.Stat` into the breadcrumb generator, so it runs on
+  every page request.
 - **Every path is resolved twice on a directory hit** — `git.go:393`+`400`, `git.go:509`+`522`,
-  `gitfs.go:63`+`69` each run `FindEntry` for the same path once as a file and once as a tree. One
+  `gitfs.go:63`+`69` each ran `FindEntry` for the same path once as a file and once as a tree. One
   `FindEntry` then switching on `entry.Mode` does it in one pass. Worse on the filesystem storer,
   where the failing `File()` attempt fully decodes the tree object before discarding it on the type
   check.
@@ -1569,10 +1568,72 @@ exclusive lock, so they cost throughput on git-backed sites rather than just CPU
   `[]byte(content)`. `file.Reader()` + `io.ReadFull` into a `make([]byte, file.Size)` is one
   exact-size allocation.
 
+**Fix.** `gitTreeState` now carries the tree's own object storer (`objects
+storer.EncodedObjectStorer`) beside the tree — published by `cloneLocked` and cleared by `Close`, both
+under the one lock that already guards the tree. `object.Tree` keeps its storer unexported, and that
+field is what lets a caller ask for an object by a hash the path walk already produced. Three helpers
+in `gitfs.go` now own the object access, and both surfaces (the `GitProvider` methods and the
+`gitTreeFS` handed out by `RootFS`) go through them:
+
+- `resolveTreeNode` walks a path once, switches on `entry.Mode`, and fetches through the hash
+  (`object.GetTree(objects, entry.Hash)` for a subtree, `tree.TreeEntryFile(entry)` for a blob) —
+  no probe, no second walk. It restores `file.Name` to the full path, which `TreeEntryFile` sets to
+  the base name alone.
+- `statTreeNode` answers a stat from the entry plus `objects.EncodedObjectSize(entry.Hash)`.
+  `tree.Size` was not enough: `Tree.FindEntry` only consults its subtree cache from three segments up
+  (`for i := len(pathParts) - 1; i > 1`), so a second lookup of `docs/guide.md` re-decodes the `docs`
+  tree. Verified against go-git v5.19.1.
+- `blobBytes` reads a blob into one exact-size allocation.
+
+The same defect had a second home the original entry missed: `gitTreeFS` implemented only `fs.FS`, so
+`fs.Stat` and `fs.ReadFile` fell back to `Open` — which decodes the whole blob. Sitemap and feed
+generation stat every page in the site (`internal/server/sitemap.go:130`, `feed.go:111`) for a
+`ModTime` that is the commit timestamp, the same constant for every file in the tree; the metadata and
+search index builds read every file in the repository through `fs.ReadFile`. `gitTreeFS` now
+implements `fs.StatFS` and `fs.ReadFileFS`.
+
+Measured on an ~8 KB page, in-memory storage (`BenchmarkGitProvider_*`, `BenchmarkGitTreeFS_*`, Apple
+M1 Max, `-count 3`). Memory storage understates the win — the deployed storer for `--git-storage-dir`
+is `filesystem.ObjectStorage`, where materialising an object is a packfile seek plus a delta and zlib
+decode rather than a map lookup:
+
+| Benchmark | Before | After |
+| --------------------- | ---------------------------- | -------------------------- |
+| `GitProvider.Stat` | 675 ns, 480 B, 11 allocs | 585 ns, 352 B, 9 allocs |
+| `GitProvider.ReadFile` | 11.0 µs, 49.3 KB, 19 allocs | 2.40 µs, 8.7 KB, 13 allocs |
+| `GitProvider` dir read | 1017 ns, 641 B, 21 allocs | 872 ns, 609 B, 19 allocs |
+| `fs.Stat` (RootFS) | 2469 ns, 8823 B, 16 allocs | 564 ns, 352 B, 9 allocs |
+| `fs.ReadFile` (RootFS) | 4190 ns, 17.0 KB, 17 allocs | 2363 ns, 8.7 KB, 13 allocs |
+
+Tests (`internal/provider/git_reads_test.go`) assert the object access itself, not the timing: a
+`countingStorer` separates `EncodedObject` (materialise) from `EncodedObjectSize` (header), and each
+assertion was mutation-verified — restoring the `tree.File` probe, `tree.Size`, `file.Contents()`, or
+removing either `fs.StatFS`/`fs.ReadFileFS` turns the relevant counter or the `cap(body) == len(body)`
+check red. The package's provider-construction helpers moved to `internal/provider/testhelpers_test.go`,
+where `newTestTreeState` pairs a tree with its storer so a hand-built `gitTreeState` cannot reach the
+`tree != nil, objects == nil` state the provider never produces.
+
 Whether the blob read can move *outside* the lock is a separate question — the blob looks detached
-from the tree once `Tree.File` returns, but that depends on storer- and version-specific go-git
+from the tree once the file is resolved, but that depends on storer- and version-specific go-git
 internals (see `docs/decisions.md`, "Serialised Git Reads"). Do not change it without a benchmark
-justifying the risk.
+justifying the risk. **Left open**, all raised during this fix's review and none of them regressions
+from it:
+
+- **The directory-index read bypasses `readFileLocked`'s guards** (`git.go:441`) — the closure
+  `handleDirectoryLocked` passes to `handleDirectory` reads the default index with
+  `dirTree.File(g.defaultIndex)` + `blobBytes`, so neither `maxFileSize` nor `isLFSPointer` applies.
+  An LFS-tracked `README.md` is rejected at `/README.md` and served as raw pointer text at `/`.
+- **`gitTreeFS.Open` applies no size cap at all** and `blobBytes` commits `make([]byte, f.Size)` from
+  a header-declared size, so the index builds will happily materialise a repo-sized blob.
+- **Depth-2 paths defeat go-git's subtree memo** — `FindEntry`'s cache is only consulted from three
+  segments up, so `/docs/guide.md`, the commonest URL shape on a docs site, re-decodes the `docs`
+  tree on every request. A `map[string]*object.Tree` beside `tree`/`objects` in `gitTreeState`
+  (immutable for the provider's lifetime, cleared by `Close`) would fix it.
+- **Three spellings of "this entry is a directory"** — `entry.Mode == filemode.Dir` in
+  `resolveTreeNode`/`statTreeNode`, `!entry.Mode.IsFile()` in `treeDirEntries`. They agree except on
+  submodule gitlinks, where behaviour is unchanged from before this fix.
+- **`git_test.go` still hand-rolls 22 `&GitProvider{…}` literals** that `gitProviderOver` (now in
+  `testhelpers_test.go`) covers; adding the `objects` field meant editing 11 of them.
 
 #### LOW — performance
 
@@ -1954,6 +2015,6 @@ three `"text/markdown; charset=utf-8"`).
 11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
     ~~compression pool nil~~ (DONE), ~~double breadcrumb generation~~ (DONE),
     ~~compression/metrics route coverage~~ (DONE), ~~`findBestWindow` re-lowercasing~~ (DONE),
-    ~~MCP TOC nav rebuild~~ (DONE), git-read blob decompression.
+    ~~MCP TOC nav rebuild~~ (DONE), ~~git-read blob decompression~~ (DONE) — §10.4 complete.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.
