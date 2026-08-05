@@ -6,6 +6,39 @@ author: "research"
 
 # SEO Competitive Analysis
 
+> **Historical research, not a gap analysis.** This document was written before Phase 9 to decide
+> what to build. Most of it has since shipped, so every "gomddoc is missing X" statement below
+> describes the state at the time of writing, not today. The competitor survey and the rationale for
+> each recommendation are still accurate and still worth reading; the verdicts are not. See
+> [Implementation Status](#implementation-status) for what actually landed, and
+> [roadmap.md](roadmap.md) Phase 9 for the authoritative record.
+
+## Implementation Status
+
+| #  | Recommendation                     | Status | Where                                                     |
+| -- | ---------------------------------- | ------ | --------------------------------------------------------- |
+| 1  | Canonical URLs                     | ✅     | `internal/seo`, `canonicalURL` template func               |
+| 2  | XML sitemap                        | ✅     | `internal/server/sitemap.go`, `build.go` (+ sitemap index) |
+| 3  | robots.txt                         | ✅     | `GET /robots.txt`, `generateSEOFiles`                      |
+| 4  | Open Graph / Twitter Card          | ✅     | `partials/head-shared.html.tmpl`                           |
+| 5  | JSON-LD structured data            | ✅     | `seo.GenerateJSONLD`, `partials/jsonld.html.tmpl`          |
+| 6  | Auto-generated meta description    | ❌     | frontmatter `description` or the site default only         |
+| 7  | Git-based timestamps               | 🟡     | sitemap `<lastmod>` and the feed use ModTime; JSON-LD has no `datePublished`/`dateModified` |
+| 8  | Social preview image generation    | ❌     | no `og:image`; deliberately deferred (needs image rendering) |
+| 9  | Per-page `<meta name="robots">`    | ✅     | frontmatter `robots`, site default `meta.robots`           |
+| 10 | Heading anchor slug stability      | 🟡     | goldmark `WithAutoHeadingID` is stable, but the algorithm is neither documented nor pinned by a test |
+| 11 | `<html lang>`                      | ✅     | `layouts/default.html.tmpl`, `site.language`               |
+| 12 | Related pages via tags             | ✅     | `findRelatedDocs`, `PageContext.RelatedDocs`               |
+| 13 | 404 page with navigation           | ✅     | error layout in serve, `404.html` in build                 |
+| 14 | Redirect support                   | ✅     | frontmatter `redirect_from`, `URLRedirectMap`              |
+| 15 | RSS/Atom feed                      | ✅     | `internal/server/feed.go`, `GET /feed.xml`                 |
+| 16 | Preconnect/preload resource hints  | ✅     | `partials/head.html.tmpl`                                  |
+| 17 | Image dimension attributes         | ❌     | images pass through unchanged                              |
+| 18 | `<link rel="next/prev">`           | ✅     | `partials/head-shared.html.tmpl`                           |
+
+One item from [Features to Skip](#features-to-skip) shipped anyway: **hreflang**, because i18n landed
+(`partials/hreflang.html.tmpl`). The rest of that section still stands.
+
 ## Executive Summary
 
 This analysis examines the technical SEO mechanisms used by WordPress (with Yoast/RankMath), major
@@ -18,6 +51,7 @@ Key findings:
 1. **The basics matter most.** Canonical URLs, meta description, Open Graph tags, and XML sitemaps
    account for the largest SEO impact. gomddoc has partial coverage (description meta tag exists,
    sitemap is planned) but is missing canonical URLs, Open Graph, and robots.txt.
+   _(All four have since shipped — see [Implementation Status](#implementation-status).)_
 2. **Structured data is a differentiator.** JSON-LD markup (Article, TechArticle, BreadcrumbList)
    enables rich snippets in search results. Documentation tools rarely implement this, creating an
    opportunity.
@@ -29,6 +63,7 @@ Key findings:
 
 gomddoc's current state: `<meta name="description">` is present, `<title>` uses page + site title,
 `base_url`/`domain` config exists. Everything else in this document is net-new.
+_(As of Phase 9, 14 of the 18 recommendations below are implemented.)_
 
 ## WordPress SEO Deep Dive
 
@@ -604,8 +639,13 @@ Not worth implementing.
 
 ### Hreflang / Multi-Language
 
-gomddoc has explicitly deferred i18n. When/if it ships, `hreflang` tags would be needed, but
-it's premature to implement now.
+~~gomddoc has explicitly deferred i18n. When/if it ships, `hreflang` tags would be needed, but
+it's premature to implement now.~~
+
+**Superseded.** i18n shipped, and with it `hreflang`: on a multi-language site,
+`partials/hreflang.html.tmpl` emits one `<link rel="alternate" hreflang="…">` per detected language
+plus `x-default`, in both serve and build. The reasoning above was right about the ordering — the
+tags followed the feature.
 
 ### News/Video Sitemaps
 

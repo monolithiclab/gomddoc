@@ -109,7 +109,9 @@ _Usability improvements to the serve, build, and preview subcommands._
 _Technical SEO features to compete with MkDocs Material, Docusaurus, and Hugo for search rankings.
 gomddoc's server-rendered HTML with no client-side framework is a natural Core Web Vitals advantage —
 these items close the gap on crawl management, structured data, and social sharing.
-See `docs/seo-competitive-analysis.md` for full competitive analysis._
+See `docs/seo-competitive-analysis.md` for the full competitive analysis — it is the pre-Phase-9
+research that produced this list, so its verdicts on gomddoc are historical; this section is the
+authoritative record of what shipped._
 
 ### 9a: Pre-Launch SEO (P0)
 

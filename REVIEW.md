@@ -1706,7 +1706,7 @@ regressed*: the theme-count correction was applied to `05-theming-and-assets.md`
 | ~~D10~~ | ~~*"8 built-in themes"* across the repo and 6 website files~~ | ✅ FIXED. `cmd/gomddoc/assets/themes/` contains only `default`; the other seven are a directory drop from `gomddoc-themes`. The guide's theme table gained a **Bundled** column, and `05-theming-and-assets.md`'s correct-but-buried footnote was promoted above the table. Where the count was incidental (*"works across all eight built-in themes"*) the phrasing now says *every theme*, which stays true if the count changes |
 | D11 | `gomddoc-website/docs/distribution.md:75-97` — wrong archive filenames; advertises Windows binaries | `.goreleaser.yaml:14,23-24` builds linux/darwin × amd64/arm64 only; `install.sh:62` hard-`die`s on any other OS |
 | ~~D12~~ | ~~Top-level `features:` documented in `02-markdown-extensions.md:205-210` + website~~ | ✅ FIXED, at both altitudes. The docs now nest under `theme.features` (the top-level `features:` blocks elsewhere in the guide are *frontmatter*, where it is correct — only the `config.yml` example was wrong), and `LoadFromFile` no longer accepts the misplaced key silently: see the `KnownFields` entry in §10.3. The website's inert `GOMDDOC_SITE_COLOR_CHIPS` is replaced by the real `GOMDDOC_SITE_THEME_FEATURES_COLOR_CHIPS`, which is what `applyEnvOverridesWithPrefix`'s `map[string]bool` branch actually reads |
-| D13 | `docs/seo-competitive-analysis.md:18-32` claims canonical URLs, OG, robots and sitemap are **absent**; `:605` recommends skipping hreflang | All shipped. ~14 of its 18 recommendations are implemented. Reads as a current gap analysis with no "superseded" marker |
+| ~~D13~~ | ~~`docs/seo-competitive-analysis.md:18-32` claims canonical URLs, OG, robots and sitemap are **absent**; `:605` recommends skipping hreflang~~ | ✅ FIXED by dating the document rather than rewriting it — the competitor survey and the per-recommendation rationale are still correct and still worth reading; only the verdicts on gomddoc went stale. A banner marks it pre-Phase-9 research, a new **Implementation Status** table audits all 18 against the tree (14 shipped, 2 partial, 2 not), the two inverted claims carry inline corrections, the Hreflang "skip" section is struck (i18n shipped, and the tags followed it), and `roadmap.md` Phase 9 is now named as the authoritative record. Two gaps the audit surfaced are recorded below: JSON-LD carries no dates, and the heading-slug algorithm is unpinned by any test |
 | D14 | `gomddoc-website/docs/distribution.md:36-38` shows plain `https://…git` as a Git source | Only `git://`, `git+ssh://`, `git+https://` are accepted (`config.go:379-383`) |
 | D15 | `gomddoc-themes/themes/CLAUDE.md:94,150,167` reference `color-chip.mjs` | The file is `gmd-color-chip.mjs`. Copy-paste produces 404s |
 
@@ -1725,6 +1725,34 @@ documents are misfiled under `docs/specs/`.
 
 **Godoc:** 21 of 22 packages have **no package doc comment** — only `internal/resolve/resolver.go:1`
 has one. There is no `.golangci.yml`, so no `revive`/`stylecheck` rule enforces it.
+
+#### MEDIUM: every page shares one `<meta name="description">` — NEW (found while auditing D13)
+
+`partials/head-shared.html.tmpl:29` emits `<meta name="description" content="{{ .Site.Meta.Description }}">`
+unconditionally. Two lines above it, `og:description` and `twitter:description` both prefer
+`.Page.Meta.description` and fall back to the site's — so a page that sets `description:` in
+frontmatter gets it into the Open Graph tags and into `sitemap`/JSON-LD, but *not* into the one tag
+search engines actually read for the result snippet. Every page on the site therefore advertises the
+same description, which is the duplicate-content signal the canonical work was meant to avoid. The
+fix is the three-line `if/else if` already sitting next to it. `06-auto-generated meta description`
+in the SEO analysis is a separate, larger item; this is the plain frontmatter path being dropped.
+
+#### LOW: JSON-LD has no `datePublished`/`dateModified` — NEW (found while auditing D13)
+
+`seo.JSONLDPage` carries `Title`/`Description`/`Author`/`Breadcrumbs` but no dates
+(`renderer.go:592-606`), so the `TechArticle` node omits both. The data exists — `sitemap.xml` and
+`feed.xml` already read `ModTime()` through the provider, and the git provider returns commit time —
+so this is plumbing a value that is one `Stat` away, not a new capability. `dateModified` is the
+ranking signal the sitemap `<lastmod>` is already claiming.
+
+#### LOW: the heading-slug algorithm is documented nowhere and pinned by no test — NEW
+
+Anchor stability is an inbound-link contract: `#installation` silently becoming `#installing`
+breaks every external link to it, and nothing in the tree would go red. Both parsers enable
+goldmark's `parser.WithAutoHeadingID` (`renderer/markdown.go:83`, `enricher/markdown.go:65`), so the
+algorithm is goldmark's and is stable in practice — but it is *goldmark's choice*, not ours, and a
+dependency bump could change it. One table-driven test over the punctuation/unicode/duplicate cases
+plus a paragraph in the guide converts an implicit dependency into a stated one.
 
 ### 10.6 Test coverage & quality
 
