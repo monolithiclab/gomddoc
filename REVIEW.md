@@ -8,9 +8,10 @@
 - **Reviewers:** Claude Architecture Analysis (6 parallel review agents + manual verification)
 - **Branch:** main
 - **Go Version:** 1.26 (toolchain 1.26.5)
-- **Coverage:** 88.1% product code — **above the 87% target**. The commonly-quoted 82.7% is an
-  artifact: it includes the untracked `docs/skills/favicons/scripts` package (0%, 148 stmts) and the
-  `internal/testutil/*` helpers. Excluding `docs/skills` alone → 87.2%; excluding both → 88.1%.
+- **Coverage:** 88.1% product code — **above the 87% target**. `make test` now reports this figure
+  directly, and reports the same one in CI: the 82.7% that used to be quoted alongside it was an
+  artifact of the untracked `docs/skills/favicons/scripts` package (0%, 148 stmts), which
+  `.covignore` now filters out next to `internal/testutil/*`.
 - **Source LoC:** ~12,785 (production) + ~27,311 (tests)
 - **Latest findings:** §10 (15th pass). Sections 1–8 are the 13th-pass record and §9 the 14th-pass
   record, both retained for history.
@@ -1705,17 +1706,66 @@ has one. There is no `.golangci.yml`, so no `revive`/`stylecheck` rule enforces 
 **The 87% target is already met** (88.1% product code) — see the header. No coverage-chasing work is
 needed; the debt is in test *quality*.
 
-#### The untracked `docs/skills/` package ✅ verified
+#### ~~The untracked `docs/skills/` package~~ ✅ FIXED
 
-`docs/skills/favicons/scripts/favicon-check.go` is a standalone `package main` (484 lines) — Claude
+~~`docs/skills/favicons/scripts/favicon-check.go` is a standalone `package main` (484 lines) — Claude
 Code agent tooling, not product code — that **is** in the module: `go list ./...` includes
 `github.com/monolithiclab/gomddoc/docs/skills/favicons/scripts`, and its 148 uncovered statements are
 the sole reason aggregate coverage reads below target. Because CI checks out without the directory,
-local `make test` and CI compute permanently different totals. It also carries a
-`.claude/settings.local.json` permission allowlist invisible to `git status` (`.gitignore` ignores
-`.claude/`). **Decide:** gitignore it (consistent with the `.agents/` ignore from `1ac1169`), move it
-outside the module root, or commit it and add `docs/` to `.covignore` (which currently lists only
-`testutil/`).
+local `make test` and CI compute permanently different totals.~~
+
+**Decision: committed, and `docs/skills/` added to `.covignore`.** Of the three dispositions, this is
+the only one that makes local and CI agree — gitignoring it would have left the local run still
+walking the directory, so the two totals would keep diverging, just silently and in the other
+direction. The `.agents/` precedent from `1ac1169` does not transfer: that directory was ignored
+because it held business-confidential product-marketing context, and a favicon procedure has none.
+Both runs now report **88.1%**.
+
+The tool stays a real package in the module, so `go vet`, `staticcheck`, `golangci-lint`, `gosec` and
+`gocritic` cover it — it is Go code in the repo and should compile and lint like the rest. What is
+scoped away is the two filters that answer "which packages ship": `.covignore` drops it from the
+coverage total (same rationale as `internal/testutil/`), and `make vulncheck` now scans
+`./cmd/... ./internal/...` instead of `./...`. That second one was not on the list. `image/png` enters
+this module's vulnerability graph *solely* through `favicon-check.go`'s `png.DecodeConfig`, and
+`make vulncheck` has a dedicated CI job — so an `image/png` CVE would have blocked the product over a
+tool that is never distributed (`.goreleaser.yaml` builds only `./cmd/gomddoc`; `.dockerignore`
+excludes `docs/`). Both filters are now prefix contracts on `docs/skills/`, recorded in `CLAUDE.md`.
+
+Two defects came out of committing it:
+
+- **`SKILL.md` never referenced its own script.** The "Verification checklist" hand-rolled a `curl`
+  loop plus `magick identify`, `file` and `python3 -m json.tool` — a strict subset of what
+  `favicon-check.go` already asserts, which is why nothing invoked the tool. The checklist now runs
+  it, and lists only the two rules it genuinely cannot check over HTTP (the maskable safe zone, and
+  DevTools manifest warnings).
+- **`attr()` matched attribute names inside longer ones.** Its regex anchored on `\b`, and a word
+  boundary also sits between the hyphen and the `s` of `data-sizes`, so `attr(tag, "sizes")` read a
+  `data-sizes` value as `sizes`. Found by the new test, not by inspection. Rather than tune the
+  anchor, `attr` was replaced by `attrs`, which parses *whole* names into a map: the value lands
+  under `data-sizes`, so a lookup of `sizes` misses by construction. That also retired the module's
+  only in-function `regexp.MustCompile` — `attr` recompiled per call, once per candidate tag.
+
+`favicon_check_test.go` covers the byte-level parsers — the ICO directory (including the width-byte-0
+means-256 encoding), the PNG colour-type and `tRNS` alpha detection, the chunk walk's overflow guard,
+the head-tag matchers and the manifest checks. `checkPNGSize` is left untested: it now takes a single
+`edge` (every favicon is square), so it is a comparison against what `png.DecodeConfig` returns with
+no width/height pair to transpose. The `.claude/settings.local.json` alongside the skill stays
+untracked — `.gitignore` already ignores `.claude/`, and it holds machine-local absolute paths.
+
+**Simplify pass — skipped findings**, each a real observation whose fix costs more than it returns:
+
+- The eight asset paths are written twice (fetch list, then per-asset checks). Deduplicating them
+  means restructuring `main()` around a table, well outside this diff.
+- `checkPNGNoAlpha` indexes the IHDR colour-type byte rather than reusing `png.DecodeConfig`. The
+  `color.Model` → colour-type mapping is not one-to-one, and the palette+`tRNS` path would still
+  need its own chunk walk.
+- `TestCheckPNGNoAlpha`'s three passing colour-type rows (0, 2, 3) look redundant with each other,
+  but they are the complete enumeration of PNG's non-alpha types — dropping any leaves a colour type
+  no test names.
+- Hand-built PNG/ICO fixtures could use `binary.Append`/`png.Encode`. Byte literals are what make the
+  offsets the checks index visible in the fixture.
+- The eight asset fetches run sequentially. They share one keep-alive client against one host; at a
+  50 ms RTT that is ~0.4 s for a command a human runs by hand.
 
 #### ~~HIGH: unfalsifiable assertions~~ ✅ FIXED
 
@@ -2016,5 +2066,10 @@ three `"text/markdown; charset=utf-8"`).
     ~~compression pool nil~~ (DONE), ~~double breadcrumb generation~~ (DONE),
     ~~compression/metrics route coverage~~ (DONE), ~~`findBestWindow` re-lowercasing~~ (DONE),
     ~~MCP TOC nav rebuild~~ (DONE), ~~git-read blob decompression~~ (DONE) — §10.4 complete.
-12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
+12. ~~**Decide `docs/skills/`**~~ (§10.6) — **DONE.** Committed and added to `.covignore`, so
+    `make test` reports 88.1% both locally and in CI. Committing it surfaced two defects in the
+    script it had been hiding: `SKILL.md` duplicated the tool's checks instead of invoking it, and
+    `attr()`'s `\b` anchor matched attribute names inside longer ones (`data-sizes` read as `sizes`).
+    `make vulncheck` is now scoped to `./cmd/... ./internal/...` for the same "what ships" reason —
+    `image/png` reached the product's vuln graph only through this script.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.

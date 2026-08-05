@@ -1,1 +1,12 @@
+# Coverage-profile exclusions: unanchored EREs, one per line, fed to `grep -v -f`
+# by `make test`. Each entry drops packages that are tooling rather than product
+# code, so the reported total measures what ships.
+#
+# No blank lines — an empty pattern matches every line, which makes grep discard
+# the whole profile.
+#
+# testutil/    — shared test helpers; exercised only by the tests that call them.
+# docs/skills/ — agent skill scripts; real packages in this module, so they are
+#                built and linted, but they are not part of the binary.
 testutil/
+docs/skills/

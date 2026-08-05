@@ -48,7 +48,11 @@ test:  ## Run unit tests with coverage and race detection
 
 vulncheck:  ## Scan dependencies for known vulnerabilities (needs network)
 	((test -z "$$FORCE_UPDATE" && which govulncheck) || go install golang.org/x/vuln/cmd/govulncheck@latest) > /dev/null
-	$$(go env GOPATH)/bin/govulncheck ./...
+	# Scoped to what ships, for the same reason .covignore excludes docs/skills/:
+	# nothing under docs/ reaches the binary, but govulncheck traces its imports
+	# all the same, so an image/png CVE would red this job over a tool that is
+	# never distributed. image/png enters the graph solely via favicon-check.go.
+	$$(go env GOPATH)/bin/govulncheck ./cmd/... ./internal/...
 
 
 .SILENT: bench bench-compare bench-save build deploy install run test vulncheck

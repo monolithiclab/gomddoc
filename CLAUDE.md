@@ -34,6 +34,7 @@ docs/
 ├── roadmap.md              # Phased roadmap, deferred ideas
 ├── guide/                  # Feature documentation (agent + human audience)
 ├── specs/                  # Feature specifications (written before implementation)
+├── skills/                 # Agent skills (SKILL.md + scripts/) — excluded from coverage
 └── custom-renderers.md     # (legacy — should be folded into guide/)
 ```
 
@@ -49,6 +50,15 @@ docs/
   correctly, but useful for humans too. Update when adding user-facing features.
 - **specs/** — complete feature specifications written _before_ implementation for non-trivial
   features. Written by agents, validated by the developer. Implementation follows the spec.
+- **skills/** — Claude Code skills: one directory per skill, each a `SKILL.md` plus any `scripts/`
+  it drives. Repo-agnostic engineering procedure, not product docs — keep business context out of
+  them (that is what the gitignored `.agents/` is for). A skill's Go scripts are real packages in
+  this module, so they are vetted and linted like everything else, but they are tools, not product
+  code, and both "what ships" filters exclude them by path prefix: `.covignore` drops `docs/skills/`
+  from the coverage total (same rationale as `internal/testutil/`) and `make vulncheck` scans
+  `./cmd/... ./internal/...` rather than `./...`. Both are prefix contracts — a script placed
+  anywhere but `docs/skills/<name>/scripts/` re-enters the coverage total and puts its imports back
+  in the product's vulnerability graph.
 
 **Feature workflow:**
 
