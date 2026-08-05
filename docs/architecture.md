@@ -16,7 +16,7 @@ sources. It is designed for extensibility, testability, and HTTP compliance.
 
 ```mermaid
 graph TD
-    A[HTTP Request] --> B["Middleware<br/>1. Security Headers<br/>2. RequestID<br/>3. Compression<br/>4. Method Filter<br/>5. Hidden Path Block<br/>6. Metrics"]
+    A[HTTP Request] --> B["Middleware<br/>1. Security Headers<br/>2. RequestID<br/>3. Compression<br/>4. Metrics<br/>5. Basic Auth<br/>6. Method Filter<br/>7. Hidden Path Block<br/>8. Extension Redirect"]
     B --> C["Handler<br/>ServeContent()"]
     C --> RES["PathResolver<br/>ResolvePath"]
     RES --> D["Provider<br/>ReadFile"]
@@ -413,36 +413,48 @@ File processing is parallelized with an `errgroup` worker pool bounded by `runti
 
 ### 12. Middleware Chain
 
-Middleware is applied in two layers using `RouteGroup` for structured route registration:
+Middleware is applied in layers using `RouteGroup` for structured route registration. A subgroup
+inherits its parent's middleware and appends its own, so a concern belongs on the highest group that
+wants it — attaching it to a leaf means every sibling added later silently opts out.
 
 **Shared middleware (applied to all routes via mux wrapper):**
 
 1. **SecurityHeaders** — Sets X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS
 2. **RequestID** — Assigns unique request ID for tracing
 
-**Auth group middleware (applied to authenticated routes via RouteGroup):**
+**`base` group middleware (applied to every user-facing route):**
 
-3. **BasicAuth** — HTTP Basic Authentication via htpasswd file (when configured)
+3. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception). The decision precedes the copy: a write that takes the response past 1KB is committed and encoded straight through, and only the sub-threshold prefix before it was ever buffered. The pooled buffer is therefore fixed at 1KB and never re-grown, so `returnBuf` hands the pointer back untouched. Sets `Vary: Accept-Encoding` unconditionally, including on responses it leaves uncompressed.
+4. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
 
-**Content-specific middleware (applied to content handler via Subgroup):**
+**`auth` subgroup middleware:**
 
-4. **Compression** — Gzip with smart thresholds (min 1KB, skips images/video/audio/archives, SVG exception). The decision precedes the copy: a write that takes the response past 1KB is committed and encoded straight through, and only the sub-threshold prefix before it was ever buffered. The pooled buffer is therefore fixed at 1KB and never re-grown, so `returnBuf` hands the pointer back untouched.
-5. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
-6. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsHiddenPath()` — the same check applied by MCP tools to ensure consistent path restrictions across all entry points.
-7. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/docs/guide.md` → `/docs/guide`) via 301.
-8. **Metrics** — Prometheus counters and histograms (`http_requests_total`, `http_request_duration_seconds`)
+5. **BasicAuth** — HTTP Basic Authentication via htpasswd file (when configured). Inside Compression and Metrics, so 401s are counted.
+
+**Content-specific middleware (applied to content handlers via Subgroup):**
+
+6. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
+7. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsHiddenPath()` — the same check applied by MCP tools to ensure consistent path restrictions across all entry points.
+8. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/docs/guide.md` → `/docs/guide`) via 301.
+
+Metrics wrapping these three means their 405/403/301 responses are counted too, not just handler hits.
 
 **Route groups:**
 
 | Group | Prefix | Middleware | Routes |
 |-------|--------|-----------|--------|
 | health | `/health` | _(none)_ | `/live`, `/ready` |
-| _(mux direct)_ | | _(none)_ | `/robots.txt`, `/_assets/*` |
-| auth | | BasicAuth (if configured) | `/metrics`, `/sitemap.xml`, `/_mcp/*` |
+| _(mux direct)_ | | BasicAuth (if configured) | `/metrics`, `/debug/pprof/*` |
+| base | | Compression, Metrics | `/robots.txt`, `/_assets/*` |
+| base → auth | | BasicAuth (if configured) | `/sitemap.xml`, `/feed.xml`, `/tags/*`, `/_mcp/*` |
 | auth → api | `/api` | _(inherits auth)_ | `/tags`, `/tags/{tag}`, `/search` |
 | auth → mcp | `/_mcp` | _(inherits auth)_ | MCP Streamable HTTP endpoint |
-| auth → debug | `/debug/pprof` | _(inherits auth)_ | `/`, `/cmdline`, `/profile`, `/symbol`, `/trace` |
-| auth → content | | Compression, MethodFilter, ContentExclusion, ExtensionRedirect, Metrics | `/` (catch-all) |
+| auth → content | | MethodFilter, ContentExclusion, ExtensionRedirect | `/` (catch-all) |
+
+Three groups stay deliberately off `base`. Health probes would swamp the request counters and their
+bodies are far below the 1KB threshold. `/metrics` negotiates its own content encoding through
+`promhttp`, and a scrape that increments the counter it is reporting feeds its own numbers back.
+pprof profiles are already compressed and are not user-facing traffic.
 
 ### 13. Theme System
 
@@ -574,7 +586,7 @@ language's page.
 
 | Group | Prefix | Middleware | Routes |
 |-------|--------|-----------|--------|
-| auth → lang content | `/{lang}` | Compression, MethodFilter, ContentExclusion, ExtensionRedirect, Metrics | `/{lang}/` (catch-all per language) |
+| auth → lang content | `/{lang}` | stripPathPrefix, MethodFilter, ContentExclusion, ExtensionRedirect | `/{lang}/` (catch-all per language) |
 
 Per-language `/{lang}/sitemap.xml` and `/{lang}/feed.xml` routes are also registered.
 

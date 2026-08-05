@@ -207,6 +207,15 @@ testsite/              # Lorem ipsum test site for quick testing
 - **Cap input lengths** (query params, form values) before processing — truncate, don't reject
 - **`Vary` header required** when response depends on a request header (e.g., `Accept` for content
   negotiation, `Accept-Encoding` for compression)
+- **A cross-cutting middleware goes on the highest `RouteGroup` that wants it, never on a leaf** —
+  `Subgroup` inherits the parent's chain, so a concern attached to one leaf is a concern every
+  sibling opts out of *silently*, and every route added later opts out by default. `Compression` and
+  `Metrics` sat on the two content subgroups: `/tags/`, `/sitemap.xml`, `/feed.xml`, `/_assets/`,
+  `/api/*` and `/robots.txt` — the most compressible payloads on the site — were served plain, with
+  no `Vary`, and uncounted. They now hang off `base`. Exemptions are the exception and each carries
+  its reason at the registration site (`/metrics` must not count its own scrape; health probes would
+  swamp the counters). Corollary: hoisting `Metrics` above MethodFilter/ContentExclusion/
+  ExtensionRedirect is what makes 405/403/301 show up in `http_requests_total` at all.
 
 ### Testing Conventions
 

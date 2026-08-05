@@ -101,33 +101,46 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 
 	mux := http.NewServeMux()
 
-	// Health endpoints are unauthenticated (load balancer probes)
+	// Health endpoints are unauthenticated (load balancer probes). They stay off
+	// base: probe traffic would swamp the request counters, and the bodies are
+	// far below minCompressionSize.
 	healthHandler := NewHealthHandler(opts.Provider)
 	healthGroup := NewGroup(mux, "/health")
 	healthGroup.HandleFunc("GET /live", healthHandler.LiveHandler)
 	healthGroup.HandleFunc("GET /ready", healthHandler.ReadyHandler)
 
+	var authMW []func(http.Handler) http.Handler
+	if opts.AuthStore != nil {
+		authMW = append(authMW, NewBasicAuthMiddleware(opts.AuthStore, basicAuthRealm))
+	}
+
+	// base carries the two concerns every user-facing response wants: gzip
+	// (Compression also sets Vary: Accept-Encoding) and request metrics. Every
+	// route below hangs off it, so a new endpoint gets both by default instead
+	// of by remembering to opt in — /tags/, /sitemap.xml, /feed.xml, /_assets/
+	// and /api/search were all silently uncompressed and uncounted.
+	base := NewGroup(mux, "", Compression, Metrics)
+
 	// Robots handler is unauthenticated
 	robotsHandler := NewRobotsHandler(cfg.Site.Meta.Domain)
-	mux.Handle("GET /robots.txt", robotsHandler)
+	base.Handle("GET /robots.txt", robotsHandler)
 
 	// Assets handler is unauthenticated
 	if opts.StaticFS != nil {
 		assetsHandler := NewAssetsHandler(opts.StaticFS)
-		mux.Handle("GET /_assets/", http.StripPrefix("/_assets/", assetsHandler))
+		base.Handle("GET /_assets/", http.StripPrefix("/_assets/", assetsHandler))
 	}
 
 	// All other endpoints require auth when configured
-	auth := NewGroup(mux, "")
-	if opts.AuthStore != nil {
-		auth = NewGroup(mux, "", NewBasicAuthMiddleware(opts.AuthStore, basicAuthRealm))
-	}
+	auth := base.Subgroup("", authMW...)
 
 	// Determine if admin endpoints should be on main mux or separate admin server
 	adminOnMain := cfg.Server.AdminOnMain()
 
 	if adminOnMain {
-		auth.Handle("/metrics", promhttp.Handler())
+		// Off base deliberately: promhttp negotiates its own encoding, and a
+		// scrape that counts itself feeds its own numbers back.
+		NewGroup(mux, "", authMW...).Handle("/metrics", promhttp.Handler())
 	}
 
 	// API sub-group
@@ -193,8 +206,9 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	}
 
 	if cfg.Server.Pprof && adminOnMain {
-		// Mounted on the base group, not auth: mountPprof applies the gate
-		// itself so both listeners enforce the same rule.
+		// Mounted on the bare mux, off base and off auth: mountPprof applies the
+		// gate itself so both listeners enforce the same rule, and profiles are
+		// already compressed binary — not user-facing traffic worth counting.
 		mountPprof(NewGroup(mux, ""), opts.AuthStore)
 	}
 
@@ -233,11 +247,9 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		prefix := "/" + lang
 		langContent := auth.Subgroup(prefix,
 			stripPathPrefix(prefix),
-			Compression,
 			NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),
 			ContentExclusion(cfg.Site.Exclude),
 			ExtensionRedirect(lp.Resolver, cfg.Site.StripExtensions, prefix),
-			Metrics,
 		)
 		langContent.HandleFunc("/", langHandler.ServeContent)
 	}
@@ -262,13 +274,12 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		Languages:        defaultLangInfos,
 	})
 
-	// Content handler with content-specific middleware (outermost first)
+	// Content handler with content-specific middleware (outermost first).
+	// Compression and Metrics come from base.
 	content := auth.Subgroup("",
-		Compression, // Gzip responses >= 1KB when client accepts
 		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),     // Only allow GET and HEAD
 		ContentExclusion(cfg.Site.Exclude),                             // Block hidden files and user-configured exclusions
 		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions, ""), // Redirect .md URLs to clean URLs
-		Metrics, // Innermost: measure actual handler time
 	)
 	content.HandleFunc("/", handler.ServeContent)
 

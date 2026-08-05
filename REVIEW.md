@@ -1440,7 +1440,7 @@ document body once per doc, or store a pre-lowered snippet body in the index at 
 behind even though `s.deps.MetaIndex` is right there. (The pipeline's cached generator at
 `cmd/gomddoc/pipeline.go:222` is never passed into `ServerDeps`.)
 
-#### MEDIUM: compression and metrics cover only 2 of 8 route groups ✅ reproduced
+#### MEDIUM: compression and metrics cover only 2 of 8 route groups ✅ FIXED
 
 `internal/server/server.go:228,259` — the only two `Compression` occurrences, both content subgroups.
 Measured:
@@ -1456,6 +1456,38 @@ GET /sitemap.xml             Accept-Encoding: gzip → NOT COMPRESSED
 These are the *most* compressible payloads on the site. `http_requests_total` likewise counts content
 requests only, under-reporting real traffic. `RouteGroup.Subgroup` composes cleanly; hang these off a
 subgroup carrying at least Compression + Metrics.
+
+**Fix.** `Compression` and `Metrics` moved off the two content subgroups onto a new
+`base := NewGroup(mux, "", Compression, Metrics)`, and every user-facing route now descends from it:
+`/robots.txt` and `/_assets/` directly, everything else through `auth := base.Subgroup("", authMW...)`.
+The two content subgroups keep only their own concerns (`stripPathPrefix`, MethodFilter,
+ContentExclusion, ExtensionRedirect). Attaching a cross-cutting concern to a leaf is what let six
+sibling groups opt out silently; on the parent, a route added later gets it without anyone
+remembering to.
+
+Two ordering consequences, both improvements:
+
+- BasicAuth is now *inside* Compression and Metrics, so 401s are counted.
+- Metrics now wraps MethodFilter/ContentExclusion/ExtensionRedirect, so their 405/403/301 responses
+  are counted too, not just handler hits.
+
+Three groups stay deliberately off `base`, each with the reason in a comment at the registration
+site: `/health/*` (probe traffic would swamp the counters; bodies are far below the 1 KB threshold),
+`/metrics` (`promhttp` negotiates its own encoding, and a scrape that increments the counter it is
+reporting feeds its own numbers back), and pprof (already-compressed binary, not user-facing).
+
+Tests: `internal/server/route_coverage_test.go` tables the eight routes and asserts, per route, a
+200, a `+1` delta on `httpRequestsTotal{GET,200}`, `Vary: Accept-Encoding`, `Content-Encoding: gzip`,
+and a gzip stream that decodes to ≥ `minCompressionSize`. Its fixture is 60 pages with a shared and a
+unique tag each, sized so `/tags/`, `/api/tags` and the rendered page all clear the threshold.
+`TestRobotsTxt_VaryWithoutCompression` covers the small-body half of the contract (Vary present,
+no `Content-Encoding`), and `TestMetricsEndpoint_NotSelfCounted` pins the `/metrics` exemption.
+Mutation-verified: moving either middleware back down to `content` turns all seven non-content cases
+plus the robots test red. No `t.Parallel` — `httpRequestsTotal` is a package-level Prometheus counter.
+
+This also partly resolves the `docs/01-http-behavior.md` MEDIUM drift entry ("overstates Cache-Control,
+ETag and compression as universal") — compression *is* now universal across user-facing routes.
+Cache-Control and ETag remain content-handler-only.
 
 #### MEDIUM: git reads do redundant work under the (now serialised) tree lock
 
@@ -1862,7 +1894,7 @@ three `"text/markdown; charset=utf-8"`).
     outright instead of rendered with the default resolver (which emitted raw `.md` links).
 11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
     ~~compression pool nil~~ (DONE), ~~double breadcrumb generation~~ (DONE),
-    compression/metrics route coverage, `findBestWindow` re-lowercasing, MCP TOC nav rebuild,
-    git-read blob decompression.
+    ~~compression/metrics route coverage~~ (DONE), `findBestWindow` re-lowercasing,
+    MCP TOC nav rebuild, git-read blob decompression.
 12. **Decide `docs/skills/`** (§10.6) — it silently diverges local and CI coverage totals.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.
