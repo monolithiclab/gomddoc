@@ -77,7 +77,14 @@ gomddoc build [DIR] [flags]
 **Build behavior:**
 - A `.gomddoc-build` sentinel file is written to the output directory. On subsequent builds, the sentinel proves the directory was created by gomddoc and is safe to overwrite. Non-empty directories without the sentinel are refused.
 - Markdown files are rendered to HTML through the full template pipeline
-- `README.md` files generate both `README.html` and `index.html` for clean URLs (unless `index.md` exists in the same directory)
+- The output layout follows `strip_extensions`. With it set (the default, `[".md"]`), `guide.md`
+  becomes `guide/index.html` so the URL is `/guide`; with it empty, `guide.md` becomes `guide.html`.
+  In both modes the default index (`README.md`) becomes `index.html` in its own directory — never
+  `README.html` — unless that directory also has an `index.md`, which wins.
+- In pretty mode, each source path is also written as a redirect stub, so `/guides/setup.md` still
+  resolves on a static host: the stub lives at `guides/setup.md` and points at `/guides/setup`.
+  Default-index files get no stub, because their URL is the directory itself.
+- Pages with `redirect_from` frontmatter get a stub per source, at `<source>/index.html`
 - Non-markdown files (images, CSS, JS) are copied as-is
 - Hidden files (starting with `.`) are skipped
 - `robots.txt` is always generated

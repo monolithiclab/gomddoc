@@ -636,8 +636,10 @@ func prettyOutputPath(filePath, defaultIndex string, dirsWithIndexMD map[string]
 	return path.Join(stem, "index.html")
 }
 
-// generateExtensionRedirects generates HTML redirect files so old extension-based
-// URLs still work on static hosts (e.g. guide.html -> guide/).
+// generateExtensionRedirects generates HTML redirect files so extension-bearing
+// URLs still work on static hosts. The stub is written at the *source* path, so
+// guide.md is a file containing redirect HTML that points at /guide — the
+// extension in the name is the URL being redirected, not the stub's format.
 // Default index files (e.g., README.md) are skipped — their URL is the
 // directory path, not the extensionless form.
 //

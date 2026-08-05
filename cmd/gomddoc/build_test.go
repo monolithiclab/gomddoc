@@ -407,6 +407,48 @@ func TestBuildCmd_Run(t *testing.T) {
 	// Just verify the command succeeded without error
 }
 
+// The extension redirect stub is written at the *source* path, so the file is
+// named guides/setup.md and its body is HTML. Nothing else pinned that: the doc
+// comment on generateExtensionRedirects claimed `guide.html -> guide/` and
+// 02-configuration.md claimed README.md produced a README.html, both of which
+// survived because no test read a stub back.
+func TestBuildCmd_Run_ExtensionRedirectStubs(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	writeTestFile(t, srcDir, "README.md", "# Home\n")
+	writeTestFile(t, srcDir, "guides/setup.md", "# Setup\n")
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// The page itself lands at the pretty path.
+	if page := readTestFile(t, filepath.Join(outDir, "guides", "setup"), "index.html"); !strings.Contains(page, "Setup") {
+		t.Errorf("guides/setup/index.html does not contain the page: %q", page)
+	}
+
+	// The stub sits at the source path and points at the pretty URL.
+	stub := readTestFile(t, filepath.Join(outDir, "guides"), "setup.md")
+	if !strings.Contains(stub, `url=/guides/setup"`) {
+		t.Errorf("guides/setup.md should redirect to /guides/setup, got %q", stub)
+	}
+	if strings.Contains(stub, "Setup</h1>") {
+		t.Error("guides/setup.md holds the rendered page, not a redirect stub")
+	}
+
+	// A default index has no extensionless form, so it gets no stub.
+	if _, err := os.Stat(filepath.Join(outDir, "README.md")); !os.IsNotExist(err) {
+		t.Error("README.md stub should not exist — the default index's URL is the directory")
+	}
+	if _, err := os.Stat(filepath.Join(outDir, "guides", "setup.html")); !os.IsNotExist(err) {
+		t.Error("guides/setup.html should not exist — the stub carries the source extension, not .html")
+	}
+}
+
 func TestCopyStaticAssets(t *testing.T) {
 	t.Parallel()
 
