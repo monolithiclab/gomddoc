@@ -282,7 +282,6 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 	// Try cache first (returns nil if PassthroughTemplateStore)
 	tmpl := h.cache.Get(cacheKey)
 
-	var err error
 	if tmpl == nil {
 		// Check context again before expensive template parsing
 		select {
@@ -294,7 +293,7 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 		// Cache miss — use singleflight to coalesce concurrent parses
 		// for the same template. Without this, N concurrent requests on a
 		// cold cache all trigger independent parseTemplate calls.
-		v, sfErr, _ := h.parseGroup.Do(cacheKey, func() (any, error) {
+		v, err, _ := h.parseGroup.Do(cacheKey, func() (any, error) {
 			// Double-check cache: another flight may have populated it
 			if cached := h.cache.Get(cacheKey); cached != nil {
 				return cached, nil
@@ -306,8 +305,11 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 			h.cache.Set(cacheKey, parsed)
 			return parsed, nil
 		})
-		if sfErr != nil {
-			return nil, fmt.Errorf("parse template: %w", sfErr)
+		if err != nil {
+			// Not wrapped: parseTemplate's failures already name the layout path
+			// or the partial glob, and "parse template:" only names this cache
+			// layer, which no reader can act on.
+			return nil, err
 		}
 		tmpl = v.(*template.Template)
 	}
@@ -321,9 +323,10 @@ func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any
 		}
 	}()
 
-	err = tmpl.Execute(buf, data)
-	if err != nil {
-		return nil, err
+	if err := tmpl.Execute(buf, data); err != nil {
+		// The name is in the ExecError already; the asset path, and with it the
+		// theme that supplied the layout, is not.
+		return nil, fmt.Errorf("execute %s: %w", cacheKey, err)
 	}
 
 	// Copy bytes since buffer will be reused
@@ -429,9 +432,17 @@ func (h *HTMLRenderer) executePartial(name string, data any) ([]byte, error) {
 		}
 	}()
 	if err := tmpl.ExecuteTemplate(buf, name, data); err != nil {
+		// Left bare: the ExecError names the partial, and both callers already
+		// wrap with "render tags-list"/"render tags-index".
 		return nil, err
 	}
 	return slices.Clone(buf.Bytes()), nil
+}
+
+// parsePartialFrom parses one theme's copy of a partial.
+func (h *HTMLRenderer) parsePartialFrom(theme, name string) (*template.Template, error) {
+	p := path.Join("assets", "themes", theme, "partials", name+".html.tmpl")
+	return template.New(name+".html.tmpl").Funcs(h.funcMap()).ParseFS(h.assetsFS, p)
 }
 
 // partialTemplate returns the parsed partial for name, falling back from the
@@ -446,15 +457,17 @@ func (h *HTMLRenderer) partialTemplate(name string) (*template.Template, error) 
 		}
 	}
 
-	partialPath := path.Join("assets", "themes", h.siteConfig.Theme.Name, "partials", name+".html.tmpl")
-	tmpl, err := template.New(name+".html.tmpl").Funcs(h.funcMap()).ParseFS(h.assetsFS, partialPath)
+	tmpl, err := h.parsePartialFrom(h.siteConfig.Theme.Name, name)
 	if err != nil {
-		// Fall back to default theme partial.
-		fallback := path.Join("assets", "themes", config.DefaultThemeName, "partials", name+".html.tmpl")
-		tmpl, err = template.New(name+".html.tmpl").Funcs(h.funcMap()).ParseFS(h.assetsFS, fallback)
-		if err != nil {
-			return nil, err
+		// Both errors: they are usually different failures, and reporting only
+		// the fallback's points the author at the default theme when the broken
+		// file is their own.
+		fallback, fallbackErr := h.parsePartialFrom(config.DefaultThemeName, name)
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("parse partial %q: theme %q: %w; default theme: %w",
+				name, h.siteConfig.Theme.Name, err, fallbackErr)
 		}
+		tmpl = fallback
 	}
 
 	if h.cacheAssets {
@@ -505,7 +518,7 @@ func (h *HTMLRenderer) parseThemeTemplate(templateName, theme string) (*template
 	// Start with layout only; partials are layered in priority order below.
 	tmpl, err := template.New(templateName).Funcs(h.funcMap()).ParseFS(h.assetsFS, layoutPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse layout %s: %w", layoutPath, err)
 	}
 
 	// For non-default themes, load default theme partials as a baseline

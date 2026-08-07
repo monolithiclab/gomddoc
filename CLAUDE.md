@@ -138,6 +138,15 @@ testsite/              # Lorem ipsum test site for quick testing
 - Table-driven tests: `[]struct{...}` with `t.Parallel()`
 - Sentinel errors with `errors.Is()` for classification
 - Errors wrapped: `fmt.Errorf("context: %w", err)`
+- **A wrap must add context, not restate it** — check what the wrapped error already prints before
+  reaching for `%w`. `html/template`'s `ExecError` embeds the template name, so
+  `execute template %q: … executing "x" at <.Y>` says it three times; the context actually missing
+  is the asset path, which names the *theme* that supplied the file. Bare returns are correct where
+  the callee already identifies itself (and where the caller wraps, e.g. `render tags-list`) or
+  where the value is a sentinel classified with `errors.Is` (`ctx.Err()`). Conversely, when two
+  errors both matter, double-`%w` beats `errors.Join`: `Join` separates with `\n`, which mangles a
+  single-line slog field, and has nowhere to put the labels that say which error is which
+  (`theme %q: %w; default theme: %w`).
 - Path joining: `path.Join("assets", "themes", cfg.Theme)` (each segment separate)
 - **`for i := range N`** over `for i := 0; i < N; i++` (Go 1.22+ range-over-int)
 - **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains

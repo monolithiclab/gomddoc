@@ -2403,3 +2403,111 @@ func TestExecutePartial_Caching(t *testing.T) {
 		}
 	})
 }
+
+// TestRenderer_ErrorsCarryContext pins the context each failure path adds, and
+// only the context the underlying error does not already carry: html/template
+// names the template in both its parse and its exec errors, so what these wraps
+// add is the theme the file came from. The partial fallback additionally used
+// to discard the configured theme's error entirely, so a theme partial that
+// exists but does not compile surfaced as the *default* theme's "no files"
+// error — pointing the author at a file they never touched.
+func TestRenderer_ErrorsCarryContext(t *testing.T) {
+	t.Parallel()
+
+	const brokenPartial = "{{ if }}"
+
+	tests := []struct {
+		name  string
+		theme string
+		files fstest.MapFS
+		call  func(*HTMLRenderer) error
+		want  []string
+	}{
+		{
+			name:  "layout fails to parse",
+			theme: "default",
+			files: fstest.MapFS{
+				"assets/themes/default/layouts/test.html.tmpl": {Data: []byte("{{ if }}")},
+			},
+			call: func(h *HTMLRenderer) error {
+				_, err := h.Render(context.Background(), "test.html.tmpl", nil)
+				return err
+			},
+			want: []string{"parse layout assets/themes/default/layouts/test.html.tmpl"},
+		},
+		{
+			// The wrap names the asset path, not the template: html/template's
+			// ExecError already carries `executing "test.html.tmpl"`, and the
+			// path is what identifies the theme that supplied the layout.
+			name:  "layout fails to execute",
+			theme: "custom",
+			files: fstest.MapFS{
+				"assets/themes/custom/layouts/test.html.tmpl": {Data: []byte("{{ .NoSuchField }}")},
+			},
+			call: func(h *HTMLRenderer) error {
+				_, err := h.Render(context.Background(), "test.html.tmpl", struct{}{})
+				return err
+			},
+			want: []string{"execute assets/themes/custom/layouts/test.html.tmpl", "NoSuchField"},
+		},
+		{
+			// Deliberately unwrapped: this row pins the dependency the decision
+			// rests on. executePartial returns ExecError bare because it names
+			// the partial itself — if html/template ever stopped doing that,
+			// the error would lose its only identifying context and this fails.
+			name:  "partial fails to execute",
+			theme: "default",
+			files: fstest.MapFS{
+				"assets/themes/default/partials/frag.html.tmpl": {
+					Data: []byte(`{{ define "frag" }}{{ .NoSuchField }}{{ end }}`),
+				},
+			},
+			call: func(h *HTMLRenderer) error {
+				_, err := h.executePartial("frag", struct{}{})
+				return err
+			},
+			want: []string{`"frag"`, "NoSuchField"},
+		},
+		{
+			// The case the discarded error hid: the theme's own partial is the
+			// broken one, and the default theme simply has no partial by that
+			// name. Both halves must survive.
+			name:  "partial fails in theme and default",
+			theme: "custom",
+			files: fstest.MapFS{
+				"assets/themes/custom/partials/frag.html.tmpl": {Data: []byte(brokenPartial)},
+			},
+			call: func(h *HTMLRenderer) error {
+				_, err := h.executePartial("frag", nil)
+				return err
+			},
+			want: []string{
+				`parse partial "frag"`,
+				`theme "custom"`,
+				"missing value for if", // the theme partial's own parse error
+				"default theme",        // and the fallback's, kept apart from it
+				"pattern matches no files",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			siteConfig := config.NewSiteConfig(".")
+			siteConfig.Theme.Name = tt.theme
+			h := NewHTMLRenderer(&siteConfig, tt.files)
+
+			err := tt.call(h)
+			if err == nil {
+				t.Fatal("error = nil, want a wrapped error")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err, want)
+				}
+			}
+		})
+	}
+}

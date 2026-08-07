@@ -2167,6 +2167,16 @@ three `"text/markdown; charset=utf-8"`).
 - **`template/inline_asset.go:31` discards the underlying error unconditionally** — NEW. A missing
   asset and an unreadable one produce the same message, so a permission or I/O failure on a theme
   asset reads as a typo in the template.
+- **`internal/template` has no `testhelpers_test.go`** — NEW (found while fixing the unwrapped-error
+  bullet below). The `config.NewSiteConfig(".")` + `Theme.Name` + `NewHTMLRenderer(&cfg, mapFS)`
+  construction repeats ~60 times across the package's tests, which is exactly the duplication
+  CLAUDE.md's "one canonical test helper per pattern" rule exists to prevent. Prior art:
+  `internal/server/testhelpers_test.go:57 setupTestRenderer`. Its own commit — the fix is a
+  mechanical migration of 60 call sites and does not belong inside a behavior change.
+- **`template/renderer.go:278,289` return a bare `ctx.Err()`** — NEW, lowest. Deliberately left that
+  way when the sibling execute failure gained context: `internal/server/errors.go:131,133` classify
+  cancellation with `errors.Is`, and a wrap that named the template would not change the response.
+  Filed only so the asymmetry reads as a decision rather than an oversight.
 - ~~**Latent panics:** `search/snippet.go:100-103` guards `pos > 0` instead of `pos < len(content)` —
   brute-forced to `index out of range` with `content="あ", windowSize=1`; unreachable today but
   `generateSnippet` takes `maxLen` as a parameter. `renderer/markdown.go:128` — unchecked
@@ -2184,9 +2194,25 @@ three `"text/markdown; charset=utf-8"`).
   the shared loop, so they now hold every row accountable including the pre-existing CJK case. The
   name-string discriminator (`if tt.name == "content shorter than window"`) became a `pinPos`
   field. Reverting `alignRuneStart`'s bound panics the new subtest — verified by mutation.
-- **Unwrapped errors** (CLAUDE.md requires `%w`): `template/renderer.go:306-309,410-412,430-436`.
+- ~~**Unwrapped errors** (CLAUDE.md requires `%w`): `template/renderer.go:306-309,410-412,430-436`.
   `:434-436` discards the *primary theme's* parse error entirely and surfaces only the fallback's, so
-  a broken theme partial reports as a missing default partial.
+  a broken theme partial reports as a missing default partial.~~ **FIXED.** The real defect was the
+  discarded error, and it is now a double-`%w`: `parse partial %q: theme %q: %w; default theme: %w`.
+  `errors.Join` was considered and rejected — it separates with `\n`, which mangles a single-line
+  slog field, and it has nowhere to put the `theme %q` / `default theme` labels that say which half
+  is which. The layout `ParseFS` failure gained `parse layout %s: %w` (the path, which names the
+  theme). The other two sites were left *deliberately unwrapped*, against the original finding:
+  `html/template`'s `ExecError` already embeds the template name, so `execute template %q: executing
+  "x" at <.Y>` prints the name three times and adds nothing. `Render`'s execute wrap was instead
+  repointed at the full asset path — genuinely absent from the exec error, and the only thing that
+  identifies which theme supplied the layout — and the pre-existing `parse template:` wrap around
+  the singleflight result was dropped, since `parse layout <path>` now names the real failure.
+  `executePartial` returns the `ExecError` bare; both its callers already prefix `render tags-list`.
+  Duplication removed on the way: `parsePartialFrom(theme, name)` replaces two copies of the
+  `template.New(…).Funcs(…).ParseFS(…)` chain. `TestRenderer_ErrorsCarryContext` covers all four
+  paths, including a row that pins the *unwrapped* one — if `ExecError` ever stops naming the
+  partial, that error loses its only identifying context and the row fails. Mutation-verified:
+  reverting the three wraps produces 6 missing-assertion failures.
 - **Ignored errors:** `build.go:324` uses `err == io.EOF` not `errors.Is`;
   `provider/git.go:118-121,318-321` collapse four distinct `parseGitURL` messages into a bare sentinel
   (and this is the failure that produces §10.1's nil-tree state, so the cause matters);
