@@ -104,7 +104,10 @@ When multiple languages are detected, each language gets its own sitemap:
 - `/fr-FR/sitemap.xml` — French pages
 - `/es-ES/sitemap.xml` — Spanish pages
 
-A sitemap index file is generated at `/sitemap-index.xml` that references all per-language sitemaps:
+**In `build` mode only**, a `sitemap-index.xml` referencing all per-language sitemaps is written to
+the output root. `serve` registers no route for it, so on a live server that URL is a 404 — the
+per-language sitemaps above are served, but nothing indexes them. Submit them individually, or put
+the built site behind a static host:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>

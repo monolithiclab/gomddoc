@@ -296,8 +296,9 @@ Each language gets its own independent:
 
 - **Search index** — full-text search operates within a single language. The search API accepts a `lang` parameter to
   query a specific language's index.
-- **Sitemap** — each language has its own `sitemap.xml` (e.g., `/fr-FR/sitemap.xml`). When multiple languages exist,
-  a `sitemap-index.xml` is generated at the root that references all per-language sitemaps.
+- **Sitemap** — each language has its own `sitemap.xml` (e.g., `/fr-FR/sitemap.xml`), served in both
+  modes. When multiple languages exist, a `sitemap-index.xml` referencing them all is written at the
+  root — **in `build` mode only**; `serve` has no route for it.
 - **Atom feed** — each language has its own `feed.xml` (e.g., `/fr-FR/feed.xml`).
 - **Navigation tree** — sidebar navigation is built from each language's content independently.
 - **Metadata index** — tags, related documents, and page metadata are indexed per language.

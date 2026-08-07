@@ -149,6 +149,70 @@ func TestServer_ContentRoutes_PerLanguage(t *testing.T) {
 	}
 }
 
+// TestServer_PerLanguageSitemaps_ButNoIndex pins the serve/build asymmetry the
+// guides now describe: serve routes one sitemap per language and *no*
+// sitemap-index.xml, while build writes the index. Both live sitemaps are
+// asserted first because the routes are gated on meta.domain — without a domain
+// the 404 below would pass no matter what NewHTTPServer registered.
+func TestServer_PerLanguageSitemaps_ButNoIndex(t *testing.T) {
+	t.Parallel()
+
+	enFiles := fstest.MapFS{"guide.md": {Data: []byte("# Guide\n")}}
+	frFiles := fstest.MapFS{"guide.md": {Data: []byte("# Guide\n")}}
+
+	enIdx, err := metadata.BuildIndex(context.Background(), enFiles, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex en: %v", err)
+	}
+	frIdx, err := metadata.BuildIndex(context.Background(), frFiles, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex fr: %v", err)
+	}
+
+	site := config.NewSiteConfig(".")
+	site.Meta.Domain = "https://example.com"
+	cfg := &config.Config{
+		Server: config.ServerConfig{Port: ":8080", Dir: "."},
+		Site:   site,
+	}
+
+	srv := NewHTTPServer(HTTPServerConfig{
+		Config:           cfg,
+		Provider:         newMemoryProvider(enFiles, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		MetaIndex:        enIdx,
+		DefaultLang:      "en-US",
+		AllLanguages:     []string{"fr"},
+		LangPipelines: map[string]LangPipelineConfig{
+			"fr": {
+				TemplateRenderer: setupTestRenderer(),
+				MetaIndex:        frIdx,
+				Provider:         newMemoryProvider(frFiles, "README.md", false),
+				EnricherRegistry: setupTestEnricherRegistry(),
+			},
+		},
+	})
+
+	tests := []struct {
+		path string
+		want int
+	}{
+		{"/sitemap.xml", http.StatusOK},
+		{"/fr/sitemap.xml", http.StatusOK},
+		{"/sitemap-index.xml", http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		w := httptest.NewRecorder()
+		srv.server.Handler.ServeHTTP(w, req)
+		if w.Code != tt.want {
+			t.Errorf("GET %s = %d, want %d", tt.path, w.Code, tt.want)
+		}
+	}
+}
+
 // TestServer_ContentRoutes_PerLanguage_Redirects proves both redirect kinds work
 // inside a language subtree and target the language's own pages:
 //
