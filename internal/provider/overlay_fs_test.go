@@ -249,29 +249,67 @@ func TestOverlayFS_ReadDir(t *testing.T) {
 	}
 }
 
-func TestOverlayFS_EmptyFilesystems(t *testing.T) {
+// TestOverlayFS_PathErrorContract pins what io/fs owes every method that takes
+// a name: a *fs.PathError carrying the operation and the path, not a bare
+// sentinel that errors.As cannot reach and fs.WalkDir cannot report.
+//
+// The "missing" rows run against zero layers, the only configuration that
+// reaches OverlayFS's own not-found returns — with a layer present the wrapped
+// filesystem supplies the error. The invalid-path rows run against a populated
+// overlay on purpose: fstest.MapFS would answer with its own *fs.PathError, so
+// the op string is what proves the guard fired here and not one layer down.
+func TestOverlayFS_PathErrorContract(t *testing.T) {
 	t.Parallel()
 
-	overlay := NewOverlayFS()
+	empty := NewOverlayFS()
+	layered := NewOverlayFS(fstest.MapFS{"file.txt": &fstest.MapFile{Data: []byte("x")}})
 
-	_, err := overlay.Open("any.txt")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Open() on empty overlay error = %v, want ErrNotExist", err)
+	methods := []struct {
+		name string
+		op   string
+		call func(fs.FS, string) error
+	}{
+		{"Open", opOpen, func(f fs.FS, n string) error { _, err := f.Open(n); return err }},
+		{"ReadFile", opReadFile, func(f fs.FS, n string) error { _, err := fs.ReadFile(f, n); return err }},
+		{"Stat", opStat, func(f fs.FS, n string) error { _, err := fs.Stat(f, n); return err }},
+		{"ReadDir", opReadDir, func(f fs.FS, n string) error { _, err := fs.ReadDir(f, n); return err }},
 	}
 
-	_, err = overlay.ReadFile("any.txt")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("ReadFile() on empty overlay error = %v, want ErrNotExist", err)
+	paths := []struct {
+		name    string
+		fsys    fs.FS
+		path    string
+		wantErr error
+	}{
+		{"missing", empty, "dir/any.txt", fs.ErrNotExist},
+		{"parent escape", layered, "../escape.txt", fs.ErrInvalid},
+		{"absolute", layered, "/etc/passwd", fs.ErrInvalid},
 	}
 
-	_, err = overlay.Stat("any.txt")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Stat() on empty overlay error = %v, want ErrNotExist", err)
-	}
+	for _, m := range methods {
+		for _, p := range paths {
+			t.Run(m.name+"/"+p.name, func(t *testing.T) {
+				t.Parallel()
 
-	_, err = overlay.ReadDir("any")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("ReadDir() on empty overlay error = %v, want ErrNotExist", err)
+				err := m.call(p.fsys, p.path)
+				if err == nil {
+					t.Fatalf("%s(%q) succeeded, want error", m.name, p.path)
+				}
+				var pe *fs.PathError
+				if !errors.As(err, &pe) {
+					t.Fatalf("%s(%q) error = %v (%T), want *fs.PathError", m.name, p.path, err, err)
+				}
+				if pe.Op != m.op {
+					t.Errorf("Op = %q, want %q", pe.Op, m.op)
+				}
+				if pe.Path != p.path {
+					t.Errorf("Path = %q, want %q", pe.Path, p.path)
+				}
+				if !errors.Is(err, p.wantErr) {
+					t.Errorf("error = %v, want %v", err, p.wantErr)
+				}
+			})
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ package provider
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 )
 
 var (
@@ -67,3 +68,25 @@ func (e *PathError) Error() string {
 
 // Unwrap returns the underlying error for use with errors.Is and errors.As.
 func (e *PathError) Unwrap() error { return e.Err }
+
+// io/fs operation names, spelled as os.dirFS spells them so a caller switching
+// on (*fs.PathError).Op gets the same answer whichever provider backs the site.
+// OverlayFS and gitTreeFS disagreed before this: ReadFile reported "open" in one
+// and "read" in the other.
+const (
+	opOpen     = "open"
+	opReadFile = "readfile"
+	opStat     = "stat"
+	opReadDir  = "readdir"
+)
+
+// fsPathErr builds the *fs.PathError io/fs requires of every method taking a
+// name. It is the one construction for the whole package — the fs.FS
+// implementations here used to mix a bare sentinel, a raw wrapped-library
+// error, and hand-written literals, so errors.As found no path to report.
+//
+// Not to be confused with the exported PathError above: that one is the
+// provider API's own error type and carries no io/fs meaning.
+func fsPathErr(op, name string, err error) *fs.PathError {
+	return &fs.PathError{Op: op, Path: name, Err: err}
+}

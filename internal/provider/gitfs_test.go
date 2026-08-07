@@ -6,6 +6,9 @@ import (
 	"io/fs"
 	"testing"
 	"time"
+
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 func TestGitTreeFS_Open_File(t *testing.T) {
@@ -431,5 +434,43 @@ func TestGitTreeFS_Open_AfterClose(t *testing.T) {
 	}
 	if !errors.Is(pathErr.Err, fs.ErrClosed) {
 		t.Errorf("PathError.Err = %v, want fs.ErrClosed", pathErr.Err)
+	}
+}
+
+// TestTreeErr asserts the two-way mapping. Only a missing object becomes
+// fs.ErrNotExist; everything else keeps its own error, because reporting a
+// corrupt packfile as "no such file" makes a broken repository render as an
+// empty site rather than fail.
+func TestTreeErr(t *testing.T) {
+	t.Parallel()
+
+	decodeFailure := errors.New("object corrupt")
+
+	tests := []struct {
+		name         string
+		in           error
+		wantNotExist bool
+	}{
+		{"entry not found", object.ErrEntryNotFound, true},
+		{"directory not found", object.ErrDirectoryNotFound, true},
+		{"object not found", plumbing.ErrObjectNotFound, true},
+		{"decode failure", decodeFailure, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := treeErr(opOpen, "docs/guide.md", tt.in)
+			if err.Op != opOpen || err.Path != "docs/guide.md" {
+				t.Errorf("PathError = {Op:%q Path:%q}, want {open docs/guide.md}", err.Op, err.Path)
+			}
+			if got := errors.Is(err, fs.ErrNotExist); got != tt.wantNotExist {
+				t.Errorf("errors.Is(err, fs.ErrNotExist) = %v, want %v (err = %v)", got, tt.wantNotExist, err)
+			}
+			if !tt.wantNotExist && !errors.Is(err, decodeFailure) {
+				t.Errorf("a non-sentinel failure must survive; got %v", err)
+			}
+		})
 	}
 }

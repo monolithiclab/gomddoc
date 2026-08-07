@@ -254,6 +254,17 @@ testsite/              # Lorem ipsum test site for quick testing
   Only `ReadDir(n > 0)` returns `io.EOF` when exhausted.
 - **`fs.ValidPath`** — no leading `/`, no trailing `/`, no `..` segments, no empty segments
 - **`path`** package for all `fs.FS` path operations (not `filepath`)
+- **`*fs.PathError` or nothing** — every method taking a name owes one. A bare `fs.ErrNotExist`
+  satisfies `errors.Is` but `errors.As` finds no path, so `fs.WalkDir` has nothing to report, and a
+  test asserting only `errors.Is` cannot see the difference — assert `Op` and `Path` too. Give the
+  package *one* construction (`provider.fsPathErr` + `op*` constants): two implementations spelling
+  `ReadFile`'s `Op` differently is a disagreement a per-implementation helper preserves. The mapping
+  onto the sentinels runs **both ways** — flattening every backend failure to `fs.ErrNotExist` makes
+  a corrupt repository render as an empty site instead of failing, so map only the not-found errors
+  and let the rest through (`provider.treeErr`).
+- **`fstest.TestFS` is the conformance check** — a new `fs.FS` implementation runs it in its test.
+  It catches what hand-written tests do not: an `Open(dir)` handle whose `ReadDir` disagrees with the
+  filesystem's own `ReadDir`, a `DirEntry.Info()` that disagrees with `Stat`.
 
 ### HTTP Conventions
 

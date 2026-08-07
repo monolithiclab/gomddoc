@@ -2,6 +2,7 @@ package provider
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/fs"
 	"path"
@@ -10,10 +11,27 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
+
+// treeErr maps a go-git failure onto the io/fs contract.
+//
+// The mapping runs both ways and both matter. A missing entry becomes
+// fs.ErrNotExist, because that is the sentinel every consumer here branches on.
+// Anything else — a corrupt packfile, a truncated blob, a storer I/O failure —
+// keeps its own error: collapsing those into ErrNotExist makes a broken
+// repository render as an empty site instead of failing.
+func treeErr(op, name string, err error) *fs.PathError {
+	if errors.Is(err, object.ErrEntryNotFound) ||
+		errors.Is(err, object.ErrDirectoryNotFound) ||
+		errors.Is(err, plumbing.ErrObjectNotFound) {
+		err = fs.ErrNotExist
+	}
+	return fsPathErr(op, name, err)
+}
 
 // gitTreeState owns the cached git tree and is the single synchronisation point
 // for every post-clone read of the git object graph, shared by GitProvider and
@@ -157,17 +175,27 @@ var (
 	_ fs.ReadFileFS = (*gitTreeFS)(nil)
 )
 
-func (g *gitTreeFS) Open(name string) (fs.File, error) {
+// guard rejects an invalid path and takes the state lock, which the caller
+// releases on success; on failure the lock is not held. Every fs.FS method here
+// opens with it, so the validity check and the use-after-close check cannot
+// drift apart between them.
+func (g *gitTreeFS) guard(op, name string) error {
 	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
+		return fsPathErr(op, name, fs.ErrInvalid)
 	}
-
 	g.state.mu.Lock()
-	defer g.state.mu.Unlock()
-
 	if g.state.tree == nil {
-		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrClosed}
+		g.state.mu.Unlock()
+		return fsPathErr(op, name, fs.ErrClosed)
 	}
+	return nil
+}
+
+func (g *gitTreeFS) Open(name string) (fs.File, error) {
+	if err := g.guard(opOpen, name); err != nil {
+		return nil, err
+	}
+	defer g.state.mu.Unlock()
 
 	tree := g.state.tree
 	modTime := g.state.modTime
@@ -178,12 +206,16 @@ func (g *gitTreeFS) Open(name string) (fs.File, error) {
 
 	file, subtree, err := resolveTreeNode(tree, g.state.objects, name)
 	if err != nil {
-		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+		return nil, treeErr(opOpen, name, err)
 	}
 	if subtree != nil {
 		return newGitDirFile(subtree, path.Base(name), modTime), nil
 	}
-	return newGitBlobFile(file, modTime)
+	blob, err := newGitBlobFile(file, modTime)
+	if err != nil {
+		return nil, treeErr(opOpen, name, err)
+	}
+	return blob, nil
 }
 
 // Stat answers without opening the file. Without it fs.Stat falls back to Open
@@ -191,16 +223,10 @@ func (g *gitTreeFS) Open(name string) (fs.File, error) {
 // stat every page in the site for a ModTime that is the commit timestamp, the
 // same constant for every file in the tree.
 func (g *gitTreeFS) Stat(name string) (fs.FileInfo, error) {
-	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrInvalid}
+	if err := g.guard(opStat, name); err != nil {
+		return nil, err
 	}
-
-	g.state.mu.Lock()
 	defer g.state.mu.Unlock()
-
-	if g.state.tree == nil {
-		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrClosed}
-	}
 
 	if name == "." {
 		return &gitFileInfo{
@@ -213,7 +239,7 @@ func (g *gitTreeFS) Stat(name string) (fs.FileInfo, error) {
 
 	info, err := statTreeNode(g.state.tree, g.state.objects, name, g.state.modTime)
 	if err != nil {
-		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
+		return nil, treeErr(opStat, name, err)
 	}
 	return info, nil
 }
@@ -223,25 +249,23 @@ func (g *gitTreeFS) Stat(name string) (fs.FileInfo, error) {
 // to avoid — and the metadata and search index builds read every file in the
 // repository through here.
 func (g *gitTreeFS) ReadFile(name string) ([]byte, error) {
-	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
+	if err := g.guard(opReadFile, name); err != nil {
+		return nil, err
 	}
-
-	g.state.mu.Lock()
 	defer g.state.mu.Unlock()
-
-	if g.state.tree == nil {
-		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrClosed}
-	}
 
 	file, subtree, err := resolveTreeNode(g.state.tree, g.state.objects, name)
 	if err != nil {
-		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+		return nil, treeErr(opReadFile, name, err)
 	}
 	if subtree != nil {
-		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
+		return nil, fsPathErr(opReadFile, name, fs.ErrInvalid)
 	}
-	return blobBytes(file)
+	data, err := blobBytes(file)
+	if err != nil {
+		return nil, treeErr(opReadFile, name, err)
+	}
+	return data, nil
 }
 
 // gitBlobFile implements fs.File for a git blob (regular file).

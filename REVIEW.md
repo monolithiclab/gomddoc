@@ -2132,9 +2132,41 @@ three `"text/markdown; charset=utf-8"`).
   `ctx.Page.Features` is `Site.Theme.Features` itself. Unlike `Meta` this is documented
   ("callers must not mutate the returned map") and nothing writes it, which is why it was left out
   of the fix above rather than cloned alongside.
-- **`fs` contract violations:** `provider/overlay_fs.go:53,84,125,185` return bare `fs.ErrNotExist`
+- ~~**`fs` contract violations:** `provider/overlay_fs.go:53,84,125,185` return bare `fs.ErrNotExist`
   where `io/fs` requires `*fs.PathError`, so `errors.As` consumers lose the path.
-  `gitfs.go:78` leaks a raw go-git error out of `Open`.
+  `gitfs.go:78` leaks a raw go-git error out of `Open`.~~
+  **FIXED.** Both halves, plus the mirror image of the second one. `OverlayFS`'s four
+  "nothing matched" returns are now `*fs.PathError`, and all four methods reject `!fs.ValidPath`
+  (the guard `FilesystemProvider` still lacks — see §9.9's open item above, which this does not
+  close). `gitTreeFS` routes every go-git failure through `treeErr`, which maps
+  `object.ErrEntryNotFound`/`ErrDirectoryNotFound`/`plumbing.ErrObjectNotFound` to `fs.ErrNotExist`
+  and lets everything else keep its own error: the raw leak out of `Open`/`ReadFile` was one defect,
+  and flattening a corrupt packfile into `ErrNotExist` — rendering a broken repository as an empty
+  site — would have been the other.
+  Construction is now single: `fsPathErr` in `errors.go` plus `opOpen`/`opReadFile`/`opStat`/
+  `opReadDir` constants. The fix's first draft had added a *third* `*fs.PathError` spelling to a
+  package that already had two, and pinned in a test the disagreement it should have removed —
+  `ReadFile` reported `Op: "open"` in `OverlayFS` and `Op: "read"` in `gitTreeFS`. `gitTreeFS`'s
+  three identical ValidPath→Lock→nil-tree preambles collapsed into `guard`.
+  Tests: `TestOverlayFS_PathErrorContract` (4 methods × 3 paths) asserts `Op`, `Path` and the
+  sentinel through `errors.As`, replacing an `errors.Is`-only test that could not see the missing
+  path. The not-found rows run against zero layers, the only configuration reaching `OverlayFS`'s
+  own returns; the invalid-path rows run against a *populated* overlay, where the op string is what
+  proves the guard fired before delegating rather than `fstest.MapFS` answering. `TestTreeErr`
+  covers the two-way mapping. Reverting either half turns the matching subtests red — verified by
+  mutation.
+- **`fstest.TestFS` is used nowhere in the repo, and both `fs.FS` implementations fail it** — NEW
+  (found while fixing the item above; reproduced in a scratch module). Two distinct defects:
+  `OverlayFS.Open(dir)` returns the *first* layer's directory handle, so `ReadDir` on it sees one
+  layer while `OverlayFS.ReadDir` merges all of them — the same directory has two answers depending
+  on how it was reached. And `treeDirEntries` never sets `gitDirEntry.size`, so `DirEntry.Info()`
+  reports 0 for every file while `gitTreeFS.Stat` reports the real size; the comment says a size
+  "would mean loading every blob", which stopped being true when `statTreeNode` started taking sizes
+  from the object header. `fstest.TestFS` is the canonical conformance check and would have caught
+  both.
+- **`template/inline_asset.go:31` discards the underlying error unconditionally** — NEW. A missing
+  asset and an unreadable one produce the same message, so a permission or I/O failure on a theme
+  asset reads as a typo in the template.
 - **Latent panics:** `search/snippet.go:100-103` guards `pos > 0` instead of `pos < len(content)` —
   brute-forced to `index out of range` with `content="あ", windowSize=1`; unreachable today but
   `generateSnippet` takes `maxLen` as a parameter. `renderer/markdown.go:128` — unchecked

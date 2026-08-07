@@ -35,6 +35,10 @@ func NewOverlayFS(filesystems ...fs.FS) *OverlayFS {
 // Open implements fs.FS interface
 // Searches through filesystems in order, returning the first match
 func (o *OverlayFS) Open(name string) (fs.File, error) {
+	if !fs.ValidPath(name) {
+		return nil, fsPathErr(opOpen, name, fs.ErrInvalid)
+	}
+
 	var lastErr error
 
 	for _, filesystem := range o.filesystems {
@@ -50,12 +54,16 @@ func (o *OverlayFS) Open(name string) (fs.File, error) {
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, fs.ErrNotExist
+	return nil, fsPathErr(opOpen, name, fs.ErrNotExist)
 }
 
 // ReadFile implements fs.ReadFileFS interface
 // Provides optimized ReadFile implementation by searching through filesystems
 func (o *OverlayFS) ReadFile(name string) ([]byte, error) {
+	if !fs.ValidPath(name) {
+		return nil, fsPathErr(opReadFile, name, fs.ErrInvalid)
+	}
+
 	var lastErr error
 
 	for i, filesystem := range o.filesystems {
@@ -81,12 +89,16 @@ func (o *OverlayFS) ReadFile(name string) ([]byte, error) {
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, fs.ErrNotExist
+	return nil, fsPathErr(opReadFile, name, fs.ErrNotExist)
 }
 
 // Stat implements fs.StatFS interface
 // Returns file info from the first filesystem that contains the file
 func (o *OverlayFS) Stat(name string) (fs.FileInfo, error) {
+	if !fs.ValidPath(name) {
+		return nil, fsPathErr(opStat, name, fs.ErrInvalid)
+	}
+
 	var lastErr error
 
 	for _, filesystem := range o.filesystems {
@@ -122,12 +134,16 @@ func (o *OverlayFS) Stat(name string) (fs.FileInfo, error) {
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, fs.ErrNotExist
+	return nil, fsPathErr(opStat, name, fs.ErrNotExist)
 }
 
 // ReadDir implements fs.ReadDirFS interface
 // Merges directory entries from all filesystems, with first filesystem taking priority
 func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if !fs.ValidPath(name) {
+		return nil, fsPathErr(opReadDir, name, fs.ErrInvalid)
+	}
+
 	var lastErr error
 	seenEntries := make(map[string]fs.DirEntry)
 
@@ -182,5 +198,5 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, fs.ErrNotExist
+	return nil, fsPathErr(opReadDir, name, fs.ErrNotExist)
 }
