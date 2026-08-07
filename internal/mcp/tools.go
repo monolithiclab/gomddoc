@@ -299,7 +299,9 @@ func (s *MCPServer) handleFindRelated(_ context.Context, _ *mcp.CallToolRequest,
 	var related []relatedEntry
 
 	for _, tag := range pageTags {
-		for _, p := range s.deps.MetaIndex.ByTag(tag) {
+		// PagesByTag, not ByTag: this loop reads Path and Title and retains
+		// neither pointer, so there is nothing to gain from a deep copy per page.
+		for p := range s.deps.MetaIndex.PagesByTag(tag) {
 			if seen[p.Path] {
 				// Update shared tags for already-seen page.
 				for i := range related {

@@ -228,14 +228,15 @@ func (idx *Index) AllTags() []string {
 	return tags
 }
 
-// ByPath returns the page at the given path, or nil if not found.
-// The path should include a leading slash (e.g., "/docs/guide.md").
+// ByPath returns a deep copy of the page at the given path, or nil if not
+// found. The path should include a leading slash (e.g., "/docs/guide.md").
+// Callers that only want the title want TitleForPath, which copies nothing.
 func (idx *Index) ByPath(path string) *PageInfo {
 	i, ok := idx.byPath[path]
 	if !ok {
 		return nil
 	}
-	p := idx.pages[i]
+	p := clonePage(idx.pages[i])
 	return &p
 }
 
@@ -281,9 +282,10 @@ func (idx *Index) LookupTag(tag string) ([]PageInfo, bool) {
 	return pages, true
 }
 
-// ByTag returns all pages with the given tag, normalized the same way indexed
-// tags are, so a lookup cannot miss a key over whitespace or case. Returns nil
-// if no pages match. Callers holding a tag from a request want LookupTag.
+// ByTag returns a deep copy of every page with the given tag, normalized the
+// same way indexed tags are, so a lookup cannot miss a key over whitespace or
+// case. Returns nil if no pages match. Callers holding a tag from a request
+// want LookupTag; callers that only read want PagesByTag, which copies nothing.
 func (idx *Index) ByTag(tag string) []PageInfo {
 	indices, ok := idx.byTag[normalizeTag(tag)]
 	if !ok {
@@ -291,7 +293,7 @@ func (idx *Index) ByTag(tag string) []PageInfo {
 	}
 	result := make([]PageInfo, len(indices))
 	for i, pageIdx := range indices {
-		result[i] = idx.pages[pageIdx]
+		result[i] = clonePage(idx.pages[pageIdx])
 	}
 	return result
 }

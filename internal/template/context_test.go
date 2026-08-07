@@ -89,6 +89,32 @@ func TestBuildPageContext(t *testing.T) {
 			t.Fatal("Meta should be allocated, got nil")
 		}
 	})
+
+	t.Run("does not write into the caller's EnrichmentData", func(t *testing.T) {
+		t.Parallel()
+
+		// No "title" key, so the default-title write fires — the one write
+		// BuildPageContext makes into the map. Aliasing put it in the caller's
+		// EnrichmentData, which is a data race the moment enrichment is cached.
+		enr := &enricher.EnrichmentData{Metadata: map[string]any{"category": "docs"}}
+
+		ctx := BuildPageContext(PageContextInput{
+			Site:       site,
+			Path:       "/docs/my-page.md",
+			Enrichment: enr,
+		})
+
+		if ctx.Page.Meta["title"] != "My Page" {
+			t.Fatalf("derived title = %v, want My Page", ctx.Page.Meta["title"])
+		}
+		if _, ok := enr.Metadata["title"]; ok {
+			t.Error("BuildPageContext wrote the derived title into the caller's Metadata map")
+		}
+		// The clone still carries what the caller supplied.
+		if ctx.Page.Meta["category"] != "docs" {
+			t.Errorf("category = %v, want docs", ctx.Page.Meta["category"])
+		}
+	})
 }
 
 func TestBuildErrorContext(t *testing.T) {

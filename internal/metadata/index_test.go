@@ -327,52 +327,59 @@ func TestBuildIndex_EmptyFS(t *testing.T) {
 	}
 }
 
-func TestAllPages_ReturnsCopy(t *testing.T) {
+// TestIndexAccessors_DeepCopy asserts that every accessor handing a PageInfo out
+// of the index deep-copies it: the struct, its Tags slice and its Meta map. The
+// index is immutable after construction, so a caller must not be able to reach
+// through a returned value and change what the next reader sees. Checking only
+// Title passes a bare struct copy that still shares Tags and Meta — which is
+// exactly how ByPath and ByTag drifted from AllPages (REVIEW §9.8, §10.7).
+func TestIndexAccessors_DeepCopy(t *testing.T) {
 	t.Parallel()
 
-	testFS := fstest.MapFS{
-		"test.md": {Data: []byte("---\ntitle: Test\n---\n")},
-	}
-	idx, err := BuildIndex(context.Background(), testFS, nil)
-	if err != nil {
-		t.Fatalf("BuildIndex failed: %v", err)
-	}
-
-	pages1 := idx.AllPages()
-	pages1[0].Title = "Modified"
-	pages2 := idx.AllPages()
-	if pages2[0].Title == "Modified" {
-		t.Fatal("AllPages should return a copy, not a reference to internal state")
-	}
-}
-
-// TestAllPages_DeepCopiesInnerReferences asserts the Tags slice and Meta map are
-// cloned, not shared with the index (REVIEW §9.8).
-func TestAllPages_DeepCopiesInnerReferences(t *testing.T) {
-	t.Parallel()
-
-	testFS := fstest.MapFS{
-		"test.md": {Data: []byte("---\ntitle: Test\ntags: [go, api]\ncategory: docs\n---\n")},
-	}
-	idx, err := BuildIndex(context.Background(), testFS, nil)
-	if err != nil {
-		t.Fatalf("BuildIndex failed: %v", err)
+	tests := []struct {
+		name string
+		get  func(*Index) *PageInfo
+	}{
+		{"AllPages", func(idx *Index) *PageInfo { pages := idx.AllPages(); return &pages[0] }},
+		{"ByTag", func(idx *Index) *PageInfo { pages := idx.ByTag("go"); return &pages[0] }},
+		{"ByPath", func(idx *Index) *PageInfo { return idx.ByPath("/test.md") }},
+		// LookupTag delegates to ByTag today, but it is the accessor all three
+		// tag transports call, so it is pinned here in its own right — a future
+		// shallow-copy shortcut inside it must fail this test, not hide behind
+		// ByTag's row. PagesByTag is deliberately absent: it aliases by contract.
+		{"LookupTag", func(idx *Index) *PageInfo { pages, _ := idx.LookupTag("go"); return &pages[0] }},
 	}
 
-	pages1 := idx.AllPages()
-	if len(pages1[0].Tags) == 0 || pages1[0].Meta == nil {
-		t.Fatalf("fixture must have tags and meta: %+v", pages1[0])
-	}
-	// Mutate the returned slice and map.
-	pages1[0].Tags[0] = "MUTATED"
-	pages1[0].Meta["category"] = "MUTATED"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	pages2 := idx.AllPages()
-	if pages2[0].Tags[0] == "MUTATED" {
-		t.Error("AllPages must clone the Tags slice; mutation leaked into the index")
-	}
-	if pages2[0].Meta["category"] == "MUTATED" {
-		t.Error("AllPages must clone the Meta map; mutation leaked into the index")
+			idx, err := BuildIndex(context.Background(), fstest.MapFS{
+				"test.md": {Data: []byte("---\ntitle: Test\ntags: [go, api]\ncategory: docs\n---\n")},
+			}, nil)
+			if err != nil {
+				t.Fatalf("BuildIndex failed: %v", err)
+			}
+
+			first := tt.get(idx)
+			if first == nil || len(first.Tags) == 0 || first.Meta == nil {
+				t.Fatalf("fixture must yield a page with tags and meta, got %+v", first)
+			}
+			first.Title = "MUTATED"
+			first.Tags[0] = "MUTATED"
+			first.Meta["category"] = "MUTATED"
+
+			second := tt.get(idx)
+			if second.Title == "MUTATED" {
+				t.Error("Title mutation leaked into the index")
+			}
+			if second.Tags[0] == "MUTATED" {
+				t.Error("Tags slice is shared with the index, not cloned")
+			}
+			if second.Meta["category"] == "MUTATED" {
+				t.Error("Meta map is shared with the index, not cloned")
+			}
+		})
 	}
 }
 

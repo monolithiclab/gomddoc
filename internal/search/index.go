@@ -471,8 +471,9 @@ func (idx *Index) tagDocSet(tagged []metadata.PageInfo) map[int]struct{} {
 // taggedPages returns the metadata pages carrying every given tag (AND
 // semantics). Returns nil if no metadata index is available or any tag is
 // unknown. The metadata index already deduplicates tags per page, so each page
-// appears at most once. metadata.ByTag returns a fresh slice, so the result is
-// safe for the caller to mutate.
+// appears at most once. metadata.ByTag deep-copies, so the result is safe for
+// slices.DeleteFunc below and for tagOnlyResults' field writes. The
+// intersection loop only reads Path, so it takes the zero-copy iterator.
 func (idx *Index) taggedPages(tags []string) []metadata.PageInfo {
 	if idx.metaIndex == nil || len(tags) == 0 {
 		return nil
@@ -482,13 +483,12 @@ func (idx *Index) taggedPages(tags []string) []metadata.PageInfo {
 		return nil
 	}
 	for _, tag := range tags[1:] {
-		next := idx.metaIndex.ByTag(tag)
-		if len(next) == 0 {
-			return nil
-		}
-		paths := make(map[string]struct{}, len(next))
-		for _, p := range next {
+		paths := make(map[string]struct{})
+		for p := range idx.metaIndex.PagesByTag(tag) {
 			paths[p.Path] = struct{}{}
+		}
+		if len(paths) == 0 {
+			return nil
 		}
 		pages = slices.DeleteFunc(pages, func(p metadata.PageInfo) bool {
 			_, ok := paths[p.Path]

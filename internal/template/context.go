@@ -2,6 +2,7 @@ package template
 
 import (
 	"html/template"
+	"maps"
 	"net/http"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -35,7 +36,11 @@ type PageContextInput struct {
 // enrichment fields, and wires i18n. Callers pass already-rendered content and
 // pre-sorted related docs; this function adds no ordering of its own.
 func BuildPageContext(in PageContextInput) *TemplateContext {
-	meta := in.Enrichment.Metadata
+	// Cloned because Meta is the one enrichment field this function *writes*
+	// (the default title below); the rest are copied through and read-only.
+	// Aliasing put that write in the caller's EnrichmentData.
+	// maps.Clone(nil) is nil, so the empty-map fallback still fires.
+	meta := maps.Clone(in.Enrichment.Metadata)
 	if meta == nil {
 		meta = make(map[string]any)
 	}

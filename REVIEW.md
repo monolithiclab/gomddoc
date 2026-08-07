@@ -2085,11 +2085,53 @@ three `"text/markdown; charset=utf-8"`).
   genuine consumer is also a test: `countingCache` embeds `CachedTemplateStore` to count `Set` calls
   and prove singleflight coalescing, so the collapse needs an unexported parse-counter seam instead.
   Left out of the dead-code commit because it is a refactor, not a deletion.
-- **Aliasing:** `metadata.ByPath`/`ByTag` return values aliasing the index's `Tags` slice and `Meta`
+- ~~**Aliasing:** `metadata.ByPath`/`ByTag` return values aliasing the index's `Tags` slice and `Meta`
   map — `clonePage` exists and is used by `AllPages` (§9.8) but not here, and
   `search/index.go:381` documents the opposite. `template/context.go:32-38` — `meta` aliases
   `in.Enrichment.Metadata`, so `meta["title"] = …` mutates the caller's `EnrichmentData`; safe only
-  because enrichment is per-request, and becomes a race the moment the §9.8 response cache lands.
+  because enrichment is per-request, and becomes a race the moment the §9.8 response cache lands.~~
+  **FIXED.** `ByPath` and `ByTag` go through `clonePage`, so all three `PageInfo`-returning
+  accessors now agree. The "documents the opposite" comment was `search/index.go`'s *"metadata.ByTag
+  returns a fresh slice, so the result is safe for the caller to mutate"* — true of the slice, false
+  of every `Tags` and `Meta` inside it, which is the sentence that would have licensed the bug.
+  `BuildPageContext` clones `in.Enrichment.Metadata`; the comment there gives the real reason rather
+  than the speculative one — `Meta` is the single enrichment field the function *writes*, so it is
+  the only one that needs an owned copy.
+  The clone is not paid where it is pure waste: `ByTag` is the owned-slice accessor and `PagesByTag`
+  is the zero-copy one, so the two call sites that read a field and discard the page moved to the
+  iterator (`search/index.go`'s multi-tag intersection, which only builds a path set, and
+  `mcp/tools.go handleRelatedPages`, which reads `Path` and `Title`). `search.taggedPages`' first
+  call keeps `ByTag` — it owns the slice through `slices.DeleteFunc` and `tagOnlyResults`' field
+  writes. `LookupTag` also keeps it: it is the request-facing accessor behind `/tags/{tag}`,
+  `/api/tags/{tag}` and the MCP tag resource, and ~1.3 µs on a 50-page tag is not worth handing
+  three transports an aliased index.
+  Tests: the two `AllPages`-specific copy tests collapsed into one table over AllPages/ByTag/ByPath/
+  LookupTag, each mutating `Title`, `Tags[0]` and `Meta[k]` and re-reading. `LookupTag` is listed
+  even though it delegates, so a later shallow-copy shortcut inside it cannot hide behind `ByTag`'s
+  row; `PagesByTag` is deliberately absent because it aliases by contract. Reverting either
+  `clonePage` call turns the matching subtests red, and reverting the `maps.Clone` turns the new
+  `BuildPageContext` subtest red — both verified by mutation.
+- **`AllPages` has no `iter.Seq` sibling** — NEW (found while fixing the item above). CLAUDE.md
+  requires one next to any slice-returning accessor, and `PagesByTag` is that sibling for `ByTag`,
+  but five read-only consumers still take a full-corpus deep copy: `server/sitemap.go`,
+  `server/feed.go`, `server/redirect.go`, `search.buildMetaLookup`, and `mcp/resources.go`. The
+  first four are one-shot; `mcp/resources.go` and `mcp/tools.go handleListPages` run per call.
+  `handleListPages` is also a collect-all-then-truncate — it clones every page of a 300-page tag to
+  keep 50, against CLAUDE.md's bounded-results rule.
+- **`mcp/tools.go handleRelatedPages` is a second implementation of `enricher.findRelatedDocs`** —
+  NEW. Same shared-tag algorithm, but unbounded and unsorted, so the MCP answer and the rendered
+  "related docs" block can disagree on the same page. The enricher's version is the one with the
+  sorted top-N window.
+- **`navigation.Generator.Tree()` hands its cached `*NavNode` root out directly** — NEW. The tree is
+  built once and shared, its `Children []*NavNode` are mutable, and both `mcp/tools.go` and
+  `navBuilderAdapter` receive the live root on every request. Every consumer reads today, so this is
+  an unenforced contract rather than a bug — but it is now the largest remaining "immutable cache
+  hands out an aliased mutable object" in the tree.
+- **`PageContext.Features` aliases the process-wide site config map** — NEW, lower. `MergeFeatures`
+  returns `base` unmodified when a page has no `features:` override (the common case), so
+  `ctx.Page.Features` is `Site.Theme.Features` itself. Unlike `Meta` this is documented
+  ("callers must not mutate the returned map") and nothing writes it, which is why it was left out
+  of the fix above rather than cloned alongside.
 - **`fs` contract violations:** `provider/overlay_fs.go:53,84,125,185` return bare `fs.ErrNotExist`
   where `io/fs` requires `*fs.PathError`, so `errors.As` consumers lose the path.
   `gitfs.go:78` leaks a raw go-git error out of `Open`.

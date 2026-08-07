@@ -347,6 +347,15 @@ Built at startup by walking `RootFS()` and parsing YAML frontmatter concurrently
 (three-phase: collect paths → parse in parallel → merge sequentially). Uses a lightweight `---` delimiter
 parser, no full goldmark render. Provides `AllPages()`, `AllTags()`, and `ByTag(tag)` lookups.
 
+The index is immutable after construction, and its accessors come in two flavours that say so.
+`AllPages`, `ByPath`, `ByTag` and `LookupTag` hand back a **deep** copy — `clonePage` clones the
+`Tags` slice and the `Meta` map, because a bare struct copy would share both with the index. The
+`PagesByTag` iterator and `TitleForPath` are the zero-copy siblings: they read in place, and the
+caller must not retain or mutate what they yield. Pick the iterator whenever the loop reads a field
+or two and keeps nothing — `search.taggedPages`' multi-tag intersection and MCP's related-pages
+lookup both do. Pick the slice when the caller owns the result: `search.taggedPages` runs
+`slices.DeleteFunc` over its first tag's pages and later rewrites their `Title`/`Description`.
+
 Exposed via JSON API:
 - `GET /api/tags` — All tags (sorted)
 - `GET /api/tags/{tag}` — Pages with the given tag

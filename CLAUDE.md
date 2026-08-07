@@ -148,7 +148,15 @@ testsite/              # Lorem ipsum test site for quick testing
   `slices.ContainsFunc` over N replaces a set over the whole corpus. See `findRelatedDocs`.
 - **Return an `iter.Seq` accessor next to any slice-returning one** — `Index.ByTag` copies a
   `PageInfo` per page; `Index.PagesByTag` yields pointers and allocates nothing. Callers that read a
-  field or two, or discard most of what they see, take the iterator.
+  field or two, or discard most of what they see, take the iterator. The pair only works if the
+  slice-returning half copies *deeply* — a bare struct copy still shares every slice and map field,
+  so `ByPath`/`ByTag` handed out an aliased `Tags` and `Meta` from an index that is immutable after
+  construction, and the iterator had nothing left to be faster than. Route every such accessor
+  through one `clonePage`-style helper and pin them in a single table test, listing even the ones
+  that merely delegate — otherwise a later shortcut inside the delegator hides behind its
+  delegatee's row. The genuinely-aliasing accessor says so in its doc comment and stays out of the
+  table. Corollary for the *consumer* side: a function that writes into a caller-supplied map clones
+  it, and the comment names the write — not a hypothetical future cache.
 - **Never build a map at query time over data an index already ordered** — a build phase that appends
   one document at a time leaves its lists sorted, so lookups become linear merges. `search.Search`
   rebuilt a `map[int][]posting` per query token over the whole posting list; the postings were already
