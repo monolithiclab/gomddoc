@@ -31,19 +31,10 @@ func maxBodySize(next http.Handler, n int64) http.Handler {
 	})
 }
 
-// Server defines the interface for HTTP servers
-type Server interface {
-	// Start starts the HTTP server
-	Start(ctx context.Context) error
-	// Shutdown gracefully shuts down the server
-	Shutdown(ctx context.Context) error
-}
-
-// HTTPServer implements Server for HTTP/HTTPS serving
+// HTTPServer serves HTTP/HTTPS.
 type HTTPServer struct {
-	server  *http.Server
-	config  *config.Config
-	handler *Handler
+	server *http.Server
+	config *config.Config
 }
 
 // LangPipelineConfig holds per-language pipeline dependencies. Each language
@@ -313,9 +304,8 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	}
 
 	return &HTTPServer{
-		server:  server,
-		config:  cfg,
-		handler: handler,
+		server: server,
+		config: cfg,
 	}
 }
 

@@ -128,23 +128,6 @@ func TestLoadBundle_MergeLayers(t *testing.T) {
 	}
 }
 
-func TestBundle_Languages(t *testing.T) {
-	t.Parallel()
-
-	b := &Bundle{
-		defaultLang: "en-US",
-		strings: map[string]map[string]string{
-			"en-US": {"language_name": "English"},
-			"fr-FR": {"language_name": "Français"},
-		},
-	}
-
-	langs := b.Languages()
-	if len(langs) != 2 {
-		t.Fatalf("got %d languages, want 2", len(langs))
-	}
-}
-
 func TestBundle_LanguageName(t *testing.T) {
 	t.Parallel()
 

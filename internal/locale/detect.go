@@ -1,9 +1,6 @@
 package locale
 
-import (
-	"io/fs"
-	"strings"
-)
+import "io/fs"
 
 // IsBCP47Dir checks if a directory name is a valid BCP 47 language tag (ll-CC format).
 func IsBCP47Dir(name string) bool {
@@ -37,23 +34,4 @@ func DetectLanguages(fsys fs.FS) []string {
 		}
 	}
 	return langs
-}
-
-// ExtractLangFromPath extracts a BCP 47 language prefix from a URL path.
-func ExtractLangFromPath(urlPath string) (lang, rest string) {
-	trimmed := strings.TrimPrefix(urlPath, "/")
-
-	var first string
-	if idx := strings.IndexByte(trimmed, '/'); idx >= 0 {
-		first = trimmed[:idx]
-		rest = trimmed[idx:]
-	} else {
-		first = trimmed
-		rest = "/"
-	}
-
-	if IsBCP47Dir(first) {
-		return first, rest
-	}
-	return "", urlPath
 }

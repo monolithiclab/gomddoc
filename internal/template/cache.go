@@ -13,9 +13,6 @@ type TemplateCache interface {
 
 	// Set stores a template in cache
 	Set(key string, tmpl *template.Template)
-
-	// Clear removes all cached templates (used in dev mode hot reload)
-	Clear()
 }
 
 // CachedTemplateStore caches parsed templates for production use.
@@ -44,10 +41,6 @@ func (c *CachedTemplateStore) Set(key string, tmpl *template.Template) {
 	c.cache.Store(key, tmpl)
 }
 
-func (c *CachedTemplateStore) Clear() {
-	c.cache.Clear()
-}
-
 // PassthroughTemplateStore is a no-op cache for development mode
 // Always returns nil on Get, forcing template re-parsing on every request
 type PassthroughTemplateStore struct{}
@@ -58,8 +51,4 @@ func (p *PassthroughTemplateStore) Get(key string) *template.Template {
 
 func (p *PassthroughTemplateStore) Set(key string, tmpl *template.Template) {
 	// No-op - don't cache in dev mode
-}
-
-func (p *PassthroughTemplateStore) Clear() {
-	// No-op - nothing to clear
 }

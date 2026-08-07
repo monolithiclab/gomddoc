@@ -383,44 +383,6 @@ func TestValidateDefaultTheme(t *testing.T) {
 	})
 }
 
-func TestClearCache(t *testing.T) {
-	templateContent := `<h1>{{.Site.Meta.Title}}</h1>`
-	testFS := fstest.MapFS{
-		"assets/themes/default/layouts/test.html.tmpl": {
-			Data: []byte(templateContent),
-		},
-	}
-
-	siteConfig := config.NewSiteConfig(".")
-	cache := &CachedTemplateStore{}
-	renderer := NewHTMLRenderer(&siteConfig, testFS, WithCache(cache))
-
-	ctx := &TemplateContext{
-		Site: &siteConfig,
-		Page: PageContext{Path: "/"},
-	}
-
-	// First render - populates cache
-	_, err := renderer.Render(context.Background(), "test.html.tmpl", ctx)
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
-
-	// Verify cache has entry
-	templatePath := "assets/themes/default/layouts/test.html.tmpl"
-	if cache.Get(templatePath) == nil {
-		t.Error("Cache should have entry after render")
-	}
-
-	// Clear cache
-	renderer.ClearCache()
-
-	// Verify cache is empty
-	if cache.Get(templatePath) != nil {
-		t.Error("Cache should be empty after ClearCache()")
-	}
-}
-
 func TestParseTemplateWithPartials(t *testing.T) {
 	t.Parallel()
 
@@ -2427,10 +2389,6 @@ func TestExecutePartial_Caching(t *testing.T) {
 		t2, _ := r.partialCache.Load("default/probe")
 		if t1 != t2 {
 			t.Error("partial re-parsed despite caching being enabled")
-		}
-		r.ClearCache()
-		if _, ok := r.partialCache.Load("default/probe"); ok {
-			t.Error("ClearCache did not clear the partial cache")
 		}
 	})
 

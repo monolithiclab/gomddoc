@@ -263,10 +263,12 @@ func (h *HTMLRenderer) Configure(opts ...RendererOption) {
 	}
 }
 
-// Render renders an HTML template with the given data
-// Cache behavior is determined by the injected TemplateCache implementation
-// No conditional logic needed - PassthroughTemplateStore always returns nil (cache miss)
-// The context is checked before expensive operations for cancellation support
+// Render renders an HTML template with the given data.
+// The layout cache is the injected TemplateCache, so caching is off by dynamic
+// type (PassthroughTemplateStore's Get always misses) rather than by a branch
+// here. The sibling asset and partial caches are plain sync.Maps gated on
+// cacheAssets instead — see REVIEW.md for the note on collapsing the two.
+// The context is checked before expensive operations for cancellation support.
 func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any) ([]byte, error) {
 	cacheKey := "assets/themes/" + h.siteConfig.Theme.Name + "/layouts/" + templateName
 
@@ -738,15 +740,6 @@ func (h *HTMLRenderer) HasTemplate(name string) bool {
 	layoutPath := path.Join("assets", "themes", h.siteConfig.Theme.Name, "layouts", name)
 	_, err := fs.Stat(h.assetsFS, layoutPath)
 	return err == nil
-}
-
-// ClearCache clears the template and inline-asset caches (used in dev mode hot reload).
-// Delegates to cache implementation (no-op for PassthroughTemplateStore).
-func (h *HTMLRenderer) ClearCache() {
-	h.cache.Clear()
-	h.assetCache.Clear()
-	h.partialCache.Clear()
-	slog.Info("[DEV] Template cache cleared")
 }
 
 // ValidateDefaultTheme checks that the default theme exists in the asset filesystem

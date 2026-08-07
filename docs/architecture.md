@@ -410,7 +410,6 @@ type ServerDeps struct {
     SearchIndex     *search.Index
     NavGenerator    *navigation.Generator // the pipeline's, shared — never rebuilt here
     ExcludePatterns []string              // cfg.Site.Exclude, gates direct reads
-    SiteName        string
     Version         string
 }
 
@@ -636,7 +635,7 @@ language's page.
 **Language Detection:**
 
 - **Serve mode**: URL prefix matching via `RouteGroup.Subgroup("/{lang}", ...)` with prefix stripping
-- **Build mode**: File path prefix detection via `locale.ExtractLangFromPath()`
+- **Build mode**: One pipeline per directory `locale.DetectLanguages()` found under the content root
 - **API endpoints**: `?lang=` query param > `Accept-Language` header > config default
 
 **Multi-Language Routes** (added to route table):

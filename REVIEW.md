@@ -2048,13 +2048,43 @@ three `"text/markdown; charset=utf-8"`).
   ETag and no `Cache-Control`. Marshalling to bytes and handing them to `serveWithETag` fixes both
   halves at once. Left out of the cache-header commit to keep it atomic; the exception is recorded in
   CLAUDE.md and `docs/architecture.md` rather than left silent.
-- **Dead code:** `navigation/flatten.go:5 FlattenPages` (duplicates `appendLeaves`),
+- ~~**Dead code:** `navigation/flatten.go:5 FlattenPages` (duplicates `appendLeaves`),
   `template/renderer.go:743 ClearCache`, `assets/overlay.go:14 NewOverlayFS` (zero callers in all
   three repos), `locale/detect.go:43 ExtractLangFromPath` (last call site removed by §6),
   `locale/bundle.go:38 DefaultLang`, `negotiate/accept.go:50 (MediaType).String()`,
   `mcp/server.go:23 ServerDeps.SiteName` (populated by both call sites, never read),
   `server/server.go:47 HTTPServer.handler` (assigned at `:284`, never read — pins the whole handler
-  graph for the server's lifetime).
+  graph for the server's lifetime).~~ **FIXED.** All eight deleted, plus four the sweep for them
+  turned up. One correction to the item as written: `provider.NewOverlayFS` is live — it is the
+  thin `internal/assets` wrapper of the same name that had no callers, and `internal/assets` is now
+  that constructor's sole consumer, so the package no longer re-exports its own dependency under a
+  colliding name. Deleting `ClearCache` made `TemplateCache.Clear()` test-only in turn, so the
+  interface method and both implementations' `Clear` went with it; no dev-mode reload path was
+  orphaned, because none exists (all three renderer caches are gated on `cacheAssets`, so dev mode
+  already re-reads). `(MediaType).String()` was verified unused by any `%v`/`%s` verb before
+  deletion — `accept_test.go` now composes `Type + "/" + Subtype` inline rather than keeping a
+  method alive for one assertion. The four extras, all the same class:
+  `negotiate.(MediaType).Matches` (test-and-benchmark-only, and a second implementation of the
+  RFC 9110 media-range match that `renderer/registry.go:155,178` already hand-rolls for production
+  — the documented, benchmarked, table-tested copy was the dead one), `locale.(*Bundle).Languages`
+  (`template.BuildLanguageInfos` takes its list from `locale.DetectLanguages`, not the bundle),
+  the `server.Server` interface (zero references — same shape of leftover as the `handler` field,
+  its only reader the `// HTTPServer implements Server` comment), and the passthrough cache test's
+  second `Set`/`Get` pair, which was added in this change to fill the hole `Clear()` left and
+  could not have gone red against any compiling implementation.
+- **`TemplateCache` models a boolean as a two-implementation interface** — NEW (found while fixing
+  the item above; both simplify agents raised it independently). `Clear()` was the one method that
+  made it a strategy; with it gone the interface is `Get`/`Set` over one real store and one no-op,
+  and that on/off bit is already stored three other ways along the same path (`EnableCache` in
+  `pipeline.go:225`, presence of the `WithCache` option, and `HTMLRenderer.cacheAssets` — which is
+  how the *sibling* asset and partial caches, plain `sync.Map` fields, get gated). Collapsing to a
+  `sync.Map` behind `cacheAssets` deletes `cache.go`, `cache_test.go` and three exported names.
+  `cache_test.go` is the reason to do it: post-deletion it asserts that `sync.Map` stores and loads,
+  that `sync.Map` is concurrency-safe, and that a `return nil` body returns nil — no production
+  change turns any of it red, and the real coverage comes through `renderer_test.go`. The one
+  genuine consumer is also a test: `countingCache` embeds `CachedTemplateStore` to count `Set` calls
+  and prove singleflight coalescing, so the collapse needs an unexported parse-counter seam instead.
+  Left out of the dead-code commit because it is a refactor, not a deletion.
 - **Aliasing:** `metadata.ByPath`/`ByTag` return values aliasing the index's `Tags` slice and `Meta`
   map — `clonePage` exists and is used by `AllPages` (§9.8) but not here, and
   `search/index.go:381` documents the opposite. `template/context.go:32-38` — `meta` aliases
@@ -2085,6 +2115,8 @@ three `"text/markdown; charset=utf-8"`).
   enricher solved the same collision with `txt "…/internal/text"`).
 - **`locale.IsBCP47Dir` accepts only `ll-CC`** (`detect.go:8-23`) — `fr`, `en`, `zh-Hans`, `es-419`
   are all valid BCP 47 and all rejected. The name promises more than the implementation delivers.
+  Since `ExtractLangFromPath` was deleted its only callers are `DetectLanguages` and the in-package
+  test, so whatever fixes the predicate should also unexport it.
 - **Misc:** `.md`/`.markdown` MIME types are registered in `internal/renderer` (`markdown.go:28-29`),
   a package `resolve` does not import — so the entire clean-URL feature depends on `internal/renderer`
   happening to be linked in; move them next to the `.mjs` registration in `negotiate/mime.go`.

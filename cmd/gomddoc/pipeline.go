@@ -453,7 +453,6 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		SearchIndex:     pipeline.SearchIndex,
 		NavGenerator:    pipeline.NavGenerator,
 		ExcludePatterns: cfg.Site.Exclude,
-		SiteName:        cfg.Site.Meta.Title,
 		Version:         version,
 	})
 

@@ -22,25 +22,3 @@ func BenchmarkParseAccept(b *testing.B) {
 		})
 	}
 }
-
-func BenchmarkMatches(b *testing.B) {
-	tests := []struct {
-		name      string
-		mediaType MediaType
-		mimeType  string
-	}{
-		{"Exact", MediaType{Type: "text", Subtype: "html"}, "text/html"},
-		{"WildcardSubtype", MediaType{Type: "text", Subtype: "*"}, "text/html"},
-		{"WildcardAll", MediaType{Type: "*", Subtype: "*"}, "text/html"},
-		{"NoMatch", MediaType{Type: "image", Subtype: "png"}, "text/html"},
-	}
-
-	for _, tt := range tests {
-		b.Run(tt.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for b.Loop() {
-				tt.mediaType.Matches(tt.mimeType)
-			}
-		})
-	}
-}

@@ -181,6 +181,13 @@ testsite/              # Lorem ipsum test site for quick testing
   panics. Fold once and reuse it (`strings.ToLower` returns its argument when there is nothing to
   fold, so the common case is free); do not fold the same string once per loop iteration or once per
   token. `findTokenSpansRunewise` is the aligned-offset path when you actually need the positions.
+- **A symbol whose only callers are `_test.go` files is dead, and its tests are what disguise it** —
+  `(MediaType).Matches` had a doc comment, a table test and a benchmark, and zero production callers;
+  `renderer/registry.go` hand-rolled the same RFC 9110 media-range match twice. Grep excluding
+  `_test.go` before believing a symbol is live. Deletion cascades, so follow the chain: removing
+  `HTMLRenderer.ClearCache` made `TemplateCache.Clear()` test-only, which made both implementations'
+  `Clear` test-only, which took the interface method. Corollary: an interface left with one real
+  implementation and one no-op is storing a boolean — say so where it is constructed, or collapse it.
 - **One mutable object, one lock** — never guard the same value with two independent mutexes. If two
   types need it, give one type ownership and let the other borrow through it.
 - **A pooled buffer's slice header belongs to the pool, not the request** — `compressionWriter` wrote

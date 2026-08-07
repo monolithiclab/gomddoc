@@ -97,7 +97,6 @@ func setupTest(t *testing.T) *testFixture {
 		MetaIndex:    metaIdx,
 		SearchIndex:  searchIdx,
 		NavGenerator: navGen,
-		SiteName:     "Test Docs",
 		Version:      "test",
 	})
 
@@ -125,7 +124,6 @@ func TestNewServer(t *testing.T) {
 	prov := &testProvider{fsys: fstest.MapFS{}, defaultIndex: "README.md"}
 	s := NewServer(ServerDeps{
 		Provider: prov,
-		SiteName: "Test",
 	})
 	if s.server == nil {
 		t.Fatal("server should not be nil")

@@ -59,34 +59,6 @@ func TestCachedTemplateStore(t *testing.T) {
 	}
 }
 
-func TestCachedTemplateStore_Clear(t *testing.T) {
-	t.Parallel()
-
-	cache := &CachedTemplateStore{}
-
-	// Add multiple templates
-	tmpl1 := template.Must(template.New("test1").Parse("Template 1"))
-	tmpl2 := template.Must(template.New("test2").Parse("Template 2"))
-	cache.Set("key1", tmpl1)
-	cache.Set("key2", tmpl2)
-
-	// Verify they're stored
-	if cache.Get("key1") == nil || cache.Get("key2") == nil {
-		t.Fatal("Templates should be stored")
-	}
-
-	// Clear cache
-	cache.Clear()
-
-	// Verify they're gone
-	if cache.Get("key1") != nil {
-		t.Error("Cache should be cleared for key1")
-	}
-	if cache.Get("key2") != nil {
-		t.Error("Cache should be cleared for key2")
-	}
-}
-
 func TestCachedTemplateStore_Concurrent(t *testing.T) {
 	t.Parallel()
 
@@ -131,13 +103,5 @@ func TestPassthroughTemplateStore(t *testing.T) {
 	// Get should always return nil (no caching)
 	if retrieved := cache.Get("test-key"); retrieved != nil {
 		t.Error("PassthroughTemplateStore should always return nil on Get")
-	}
-
-	// Clear should be no-op (should not panic)
-	cache.Clear()
-
-	// Verify Get still returns nil after clear
-	if cache.Get("test-key") != nil {
-		t.Error("PassthroughTemplateStore should not cache templates")
 	}
 }

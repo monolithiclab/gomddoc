@@ -61,31 +61,3 @@ func TestDetectLanguages(t *testing.T) {
 		t.Errorf("expected fr-FR and es-ES, got %v", langs)
 	}
 }
-
-func TestExtractLangFromPath(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		path     string
-		wantLang string
-		wantRest string
-	}{
-		{"/fr-FR/guide", "fr-FR", "/guide"},
-		{"/fr-FR/", "fr-FR", "/"},
-		{"/fr-FR", "fr-FR", "/"},
-		{"/guide", "", "/guide"},
-		{"/docs/readme", "", "/docs/readme"},
-		{"/", "", "/"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			t.Parallel()
-			lang, rest := ExtractLangFromPath(tt.path)
-			if lang != tt.wantLang || rest != tt.wantRest {
-				t.Errorf("ExtractLangFromPath(%q) = (%q, %q), want (%q, %q)",
-					tt.path, lang, rest, tt.wantLang, tt.wantRest)
-			}
-		})
-	}
-}

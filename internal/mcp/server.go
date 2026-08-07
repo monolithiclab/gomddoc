@@ -34,8 +34,7 @@ type ServerDeps struct {
 	// yet remain readable by path through read_page. They are not secret.
 	ExcludePatterns []string
 
-	SiteName string
-	Version  string
+	Version string
 }
 
 // MCPServer wraps the MCP SDK server with gomddoc-specific handlers.

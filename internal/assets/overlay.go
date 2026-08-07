@@ -9,12 +9,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
-// NewOverlayFS creates a new overlay filesystem from a variadic list of fs.FS
-// Filesystems are searched in the order provided (first has highest priority)
-func NewOverlayFS(filesystems ...fs.FS) fs.FS {
-	return provider.NewOverlayFS(filesystems...)
-}
-
 // BuildStaticFS creates a layered filesystem for serving static assets.
 // It combines up to three sources (highest priority first):
 //  1. Site-level: .gomddoc/static/ (user overrides)

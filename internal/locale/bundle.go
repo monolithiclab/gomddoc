@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"maps"
 	"path"
-	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -32,21 +31,6 @@ func (b *Bundle) T(lang, key string) string {
 		}
 	}
 	return key
-}
-
-// DefaultLang returns the default language code.
-func (b *Bundle) DefaultLang() string {
-	return b.defaultLang
-}
-
-// Languages returns all loaded language codes in sorted order.
-func (b *Bundle) Languages() []string {
-	langs := make([]string, 0, len(b.strings))
-	for lang := range b.strings {
-		langs = append(langs, lang)
-	}
-	slices.Sort(langs)
-	return langs
 }
 
 // TFunc returns a translation function bound to the given language.
