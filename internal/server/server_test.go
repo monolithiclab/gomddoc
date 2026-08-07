@@ -550,6 +550,24 @@ func TestHTTPServer_AdminPortSeparation(t *testing.T) {
 			path:       "/debug/pprof/",
 			wantStatus: http.StatusNotFound,
 		},
+		// Health is the exception: it is registered on both muxes on purpose,
+		// because load-balancer and k8s probes target the service port, not the
+		// admin port. 08-observability.md used to claim --admin-port removed it
+		// from main along with /metrics and pprof.
+		{
+			name:       "admin port set — /health/live stays on main",
+			adminPort:  ":9090",
+			port:       ":8080",
+			path:       "/health/live",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "admin port set — /health/ready stays on main",
+			adminPort:  ":9090",
+			port:       ":8080",
+			path:       "/health/ready",
+			wantStatus: http.StatusOK,
+		},
 		{
 			name:       "same port — /metrics stays on main",
 			adminPort:  ":8080",

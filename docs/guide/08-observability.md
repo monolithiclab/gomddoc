@@ -23,8 +23,12 @@ Or via environment variable:
 GOMDDOC_SERVER_ADMIN_PORT=:9090 gomddoc serve ./docs
 ```
 
-When configured, health checks (`/health/live`, `/health/ready`), metrics (`/metrics`), and pprof (`/debug/pprof/*`)
-are served exclusively on the admin port. They are removed from the main port entirely. This allows you to:
+When configured, metrics (`/metrics`) and pprof (`/debug/pprof/*`) move to the admin port and are
+removed from the main port entirely — requesting them there returns 404.
+
+**Health checks are the exception.** `/health/live` and `/health/ready` stay on *both* ports, because
+load balancer and Kubernetes probes target the service port, not an internal admin port; moving them
+would break every probe the moment you split the ports. Splitting the ports gives you:
 
 - Expose the admin port only to your internal network or monitoring systems
 - Keep the main port clean for user traffic

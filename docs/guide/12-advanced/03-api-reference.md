@@ -158,10 +158,11 @@ Returns a robots.txt file. Always available regardless of domain configuration. 
 Returns an XML sitemap listing all indexed pages. Only available when `meta.domain` is configured. Pages with
 `robots: noindex` frontmatter are excluded. URLs use clean extensionless paths when `strip_extensions` is active.
 
-### `GET /sitemap-index.xml`
+### `sitemap-index.xml` — not an endpoint
 
-Returns a sitemap index referencing all per-language sitemaps. Only generated when multiple languages are detected and
-`meta.domain` is configured.
+`gomddoc build` writes a `sitemap-index.xml` referencing all per-language sitemaps when multiple
+languages are detected and `meta.domain` is configured. **`serve` registers no route for it**, so on
+a live server this path 404s. The per-language sitemaps below are served in both modes.
 
 ### `GET /feed.xml`
 
@@ -301,5 +302,6 @@ registered within the auth group. The MCP endpoint (`/_mcp/`) and pprof endpoint
 credentials when `--basic-auth-file` is configured. Static assets at `/_assets/` bypass auth for unauthenticated
 access.
 
-When `--admin-port` is configured, health, metrics, and pprof endpoints move to the admin port and are removed from the
-main port. See [Observability](../08-observability.md#admin-port) for details.
+When `--admin-port` is configured, metrics and pprof move to the admin port and are removed from the
+main port. Health endpoints stay on both, so probes pointed at the service port keep working. See
+[Observability](../08-observability.md#admin-port) for details.
