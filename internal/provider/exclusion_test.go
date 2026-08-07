@@ -82,6 +82,22 @@ func TestIsExcludedPath(t *testing.T) {
 		{"path glob", "docs/internal/secret.md", []string{"docs/internal/*.md"}, true},
 		{"path glob no match", "other/internal/secret.md", []string{"docs/internal/*.md"}, false},
 
+		// A glob inside a trailing-"/" pattern. The literal HasPrefix this
+		// replaces matched none of these, so all four excluded paths were
+		// served — the one exclusion branch that failed open.
+		{"dir prefix glob", "drafts/2024/secret.md", []string{"drafts/*/"}, true},
+		{"dir prefix glob, dir itself", "drafts/2024", []string{"drafts/*/"}, true},
+		{"dir prefix glob, wrong root", "docs/2024/secret.md", []string{"drafts/*/"}, false},
+		{"dir prefix leading glob", "team/private/notes.md", []string{"*/private/"}, true},
+		{"dir prefix leading glob no match", "team/public/notes.md", []string{"*/private/"}, false},
+		// "a*" matches the segment "a", so "a*/" covers everything under a/.
+		{"dir prefix glob on the root segment", "a/b/c.md", []string{"a*/"}, true},
+		// Fewer segments than the pattern: the prefix walk must run out
+		// rather than match on what it has consumed so far.
+		{"dir prefix glob, path too short", "drafts", []string{"drafts/*/"}, false},
+		// Deliberate over-exclusion, per IsExcludedPath's contract.
+		{"dir prefix glob over-matches a file", "drafts/secret.md", []string{"drafts/*/"}, true},
+
 		// Multiple patterns
 		{"multi first matches", "TODO.md", []string{"TODO.md", "*.bak"}, true},
 		{"multi second matches", "notes.bak", []string{"TODO.md", "*.bak"}, true},

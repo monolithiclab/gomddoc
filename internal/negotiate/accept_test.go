@@ -52,6 +52,24 @@ func TestParseAccept(t *testing.T) {
 			wantOrder: []string{"text/html", "application/xhtml+xml", "image/webp", "application/xml", "*/*"},
 		},
 		{
+			// The regression: sorting by q alone left the wildcard first.
+			name:      "specificity breaks a q tie",
+			header:    "*/*, text/markdown",
+			wantOrder: []string{"text/markdown", "*/*"},
+		},
+		{
+			name:      "specificity ranks all three forms",
+			header:    "*/*, text/*, text/markdown",
+			wantOrder: []string{"text/markdown", "text/*", "*/*"},
+		},
+		{
+			// q still outranks specificity: a client that says it prefers
+			// anything-at-0.9 over markdown-at-0.5 means it.
+			name:      "q outranks specificity",
+			header:    "text/markdown;q=0.5, */*;q=0.9",
+			wantOrder: []string{"*/*", "text/markdown"},
+		},
+		{
 			name:      "q=0 filtered out with other types",
 			header:    "text/html;q=0, application/json",
 			wantOrder: []string{"application/json"},

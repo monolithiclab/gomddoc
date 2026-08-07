@@ -219,6 +219,30 @@ testsite/              # Lorem ipsum test site for quick testing
   Atom element. A round-trip test through the same struct reads it back happily and cannot see it.
 - **Consistent behavior across code paths** — error/fallback paths must behave identically to happy
   paths (e.g., if the fast path lowercases, the error path must too)
+- **An `init()` that writes a process-global registry belongs with the *consumers*, not the owner** —
+  an `init()` only runs if its package is linked. `.md`'s `mime.AddExtensionType` sat in
+  `renderer/markdown.go` because renderer owns the format, but `internal/resolve` calls
+  `negotiate.DetectMIME` and does not import renderer, so the whole clean-URL feature depended on
+  something else pulling renderer into the binary. The tell is a test file re-registering the value
+  to make its own package pass — there were four, one of them with a *different* value
+  (`text/markdown`, no charset), and because test-file inits run after imported-package inits it
+  silently won for that entire test binary. Put the registration in the package that owns the
+  accessor (`internal/negotiate`), and never add a second one.
+- **A guard must distinguish "absent" from "could not tell"** — `guardOutputDir` stands between
+  `os.RemoveAll` and a directory gomddoc did not create, and read *any* `os.Stat` error as "does not
+  exist, nothing to guard". Test `errors.Is(err, fs.ErrNotExist)`, not `err != nil`. The same applies
+  in reverse to a guard that fails closed: refusing is safe, but reporting "not created by gomddoc
+  build" when the stat failed for an unrelated reason asserts a fact the code does not have and
+  discards the one detail the operator needs. Corollary for exclusion predicates, where failing open
+  serves content the author excluded: match a pattern with the matcher it was written for.
+  `strings.HasPrefix(clean, "drafts/*/")` compares the glob literally, so every trailing-slash
+  pattern containing a wildcard matched nothing.
+- **A precedence ladder gets one implementation** — RFC 9110 §12.5.1's `exact=3, type/*=2, */*=1`
+  reached three hand-rolled copies (twice in `renderer/registry.go`, once more in `ParseAccept`'s
+  sort on a 0/1/2 scale of its own) after a `(negotiate.MediaType).Matches` method had already been
+  deleted for the same reason. It lives on `(negotiate.MediaType).Specificity()`; a matcher returns
+  that or 0. Ranking rules drift silently — nothing fails when two copies disagree, the wrong
+  representation is just served.
 - **Counters over string-length comparisons** — detect "nothing written" with a counter, not by
   comparing buffer length against a magic string constant (breaks silently if format changes)
 - **`strings.ToLower` is not positionally aligned with its input, and can return something

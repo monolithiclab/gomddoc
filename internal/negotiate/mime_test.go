@@ -1,14 +1,8 @@
 package negotiate
 
 import (
-	"mime"
 	"testing"
 )
-
-func init() {
-	// Register markdown MIME type for tests
-	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
-}
 
 func TestDetectMIME(t *testing.T) {
 	t.Parallel()
@@ -19,7 +13,12 @@ func TestDetectMIME(t *testing.T) {
 	}{
 		{"html file", "test.html", "text/html; charset=utf-8"},
 		{"text file", "test.txt", "text/plain; charset=utf-8"},
+		// .md and .markdown are registered by this package's init(), not by
+		// internal/renderer's, and these two rows are what says so — the test
+		// binary does not link renderer. They were dead until that moved: this
+		// file used to register .md in an init() of its own.
 		{"markdown file", "test.md", "text/markdown; charset=utf-8"},
+		{"markdown file, long extension", "test.markdown", "text/markdown; charset=utf-8"},
 		{"json file", "test.json", "application/json"},
 		{"mjs module", "component.mjs", "text/javascript; charset=utf-8"},
 		{"unknown extension", "test.unknown", "application/octet-stream"},

@@ -2,17 +2,12 @@ package navigation
 
 import (
 	"io/fs"
-	"mime"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
-
-func init() {
-	_ = mime.AddExtensionType(".md", "text/markdown")
-}
 
 // fnFS wraps an fstest.MapFS to record which files are opened, so tests can
 // assert the title lookup avoids opening files.

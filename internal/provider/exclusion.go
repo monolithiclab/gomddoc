@@ -51,6 +51,35 @@ func SkipWalkEntry(entryPath, name string, isDir bool, excludePatterns []string)
 	return false, nil
 }
 
+// matchDirPrefix reports whether the path.Match pattern dir matches clean or
+// one of clean's leading directories. dir carries no trailing "/".
+//
+// The predecessor was strings.HasPrefix(clean, pattern), which compares the
+// pattern literally: every trailing-slash pattern with a glob in it —
+// "drafts/*/", "*/private/" — matched nothing and so failed *open*, serving
+// content the author had excluded.
+//
+// path.Match's "*" never crosses a "/", so only the prefix of clean holding
+// the same number of segments as dir can possibly match: find that prefix and
+// match once. Testing every prefix instead measures 1.5x slower at two
+// segments and 3x at four, on a predicate that runs per request and per file
+// across five index walks.
+func matchDirPrefix(clean, dir string) bool {
+	end := -1 // index of the "/" ending the segment just consumed
+	for range strings.Count(dir, "/") + 1 {
+		if end == len(clean) {
+			return false // clean has fewer segments than dir
+		}
+		if i := strings.IndexByte(clean[end+1:], '/'); i >= 0 {
+			end += 1 + i
+		} else {
+			end = len(clean)
+		}
+	}
+	matched, _ := path.Match(dir, clean[:end])
+	return matched
+}
+
 // IsExcludedPath reports whether a file path matches any pattern in the
 // exclude list. Patterns use path.Match syntax (*, ?, []).
 //
@@ -59,8 +88,12 @@ func SkipWalkEntry(entryPath, name string, isDir bool, excludePatterns []string)
 // matched against the full cleaned path (e.g., "drafts/" matches
 // "drafts/secret.md" but not "docs/drafts.md").
 //
-// A trailing "/" on a pattern means it only matches directory prefixes
-// (any path that starts with that directory).
+// A trailing "/" on a pattern means it only matches directory prefixes: any
+// path at or below that directory. The directory part is itself a path.Match
+// pattern, so "drafts/*/" excludes every immediate subdirectory of drafts —
+// and also "drafts/secret.md", because nothing here knows whether a path names
+// a file or a directory and "*" matches the filename either way.
+// Over-excluding is the safe direction for an access control predicate.
 func IsExcludedPath(filePath string, patterns []string) bool {
 	if len(patterns) == 0 {
 		return false
@@ -78,10 +111,9 @@ func IsExcludedPath(filePath string, patterns []string) bool {
 
 		// Pattern with "/" — match against the full path.
 		if strings.Contains(pattern, "/") {
-			if before, ok := strings.CutSuffix(pattern, "/"); ok {
+			if dir, ok := strings.CutSuffix(pattern, "/"); ok {
 				// Trailing "/" means directory prefix match.
-				dir := before
-				if strings.HasPrefix(clean, pattern) || clean == dir {
+				if matchDirPrefix(clean, dir) {
 					return true
 				}
 			} else if matched, _ := path.Match(pattern, clean); matched {

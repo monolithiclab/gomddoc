@@ -3,7 +3,6 @@ package renderer
 import (
 	"bytes"
 	"context"
-	"mime"
 
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
@@ -16,17 +15,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 )
-
-func init() {
-	// Register markdown MIME types with the standard library.
-	// This ensures mime.TypeByExtension() returns "text/markdown"
-	// for .md and .markdown files.
-	//
-	// Co-located with MarkdownRenderer as it owns this mapping.
-	// Errors are ignored as these are standard MIME types that should always succeed.
-	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
-	_ = mime.AddExtensionType(".markdown", "text/markdown; charset=utf-8")
-}
 
 // MarkdownOptions configures the MarkdownRenderer.
 type MarkdownOptions struct {

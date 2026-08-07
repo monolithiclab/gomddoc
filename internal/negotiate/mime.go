@@ -8,7 +8,17 @@ import (
 
 func init() {
 	// Register MIME types not present in all OS MIME databases.
+	//
+	// Markdown lives here rather than beside MarkdownRenderer, which owns the
+	// format, because ownership is not what decides this: an init() only runs
+	// if the package is linked, and the consumers are DetectMIME's callers.
+	// internal/resolve is one of them and does not import internal/renderer, so
+	// the entire clean-URL feature depended on some *other* package pulling
+	// renderer into the binary. Its tests had to re-register .md themselves to
+	// pass — which is the tell.
 	_ = mime.AddExtensionType(".mjs", "text/javascript; charset=utf-8")
+	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
+	_ = mime.AddExtensionType(".markdown", "text/markdown; charset=utf-8")
 }
 
 // DetectMIME returns the MIME type for a file path.

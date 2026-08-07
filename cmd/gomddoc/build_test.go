@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/xml"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -553,16 +555,7 @@ func TestBuildCmd_Run_ReadOnlyParent(t *testing.T) {
 	writeTestFile(t, srcDir, "README.md", "# Test")
 
 	// Make parent read-only so the output dir can't be created
-	parent := filepath.Join(t.TempDir(), "locked")
-	if err := os.MkdirAll(parent, 0750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(parent, 0444); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(parent, 0750) })
-
-	outDir := filepath.Join(parent, "out")
+	outDir := filepath.Join(lockedDir(t, 0444), "out")
 	cmd := &BuildCmd{Dir: srcDir, Output: outDir}
 	err := cmd.Run()
 	if err == nil {
@@ -613,14 +606,7 @@ func TestBuildCmd_Defaults(t *testing.T) {
 func TestWriteOutputFile_ReadOnlyDir(t *testing.T) {
 	t.Parallel()
 
-	outDir := filepath.Join(t.TempDir(), "readonly")
-	if err := os.MkdirAll(outDir, 0750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(outDir, 0444); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(outDir, 0750) })
+	outDir := lockedDir(t, 0444)
 
 	b := &BuildCmd{Output: outDir}
 	err := b.writeOutputFile(filepath.Join("sub", "file.html"), []byte("data"))
@@ -834,14 +820,7 @@ func TestWalkAndBuild_WriteError(t *testing.T) {
 	t.Parallel()
 
 	// Use a read-only output directory so writes fail
-	outDir := filepath.Join(t.TempDir(), "readonly")
-	if err := os.MkdirAll(outDir, 0750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(outDir, 0444); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(outDir, 0750) })
+	outDir := lockedDir(t, 0444)
 
 	b := &BuildCmd{Output: outDir}
 
@@ -960,6 +939,28 @@ func TestGuardOutputDir(t *testing.T) {
 				t.Errorf("guardOutputDir() = %v, want nil", err)
 			}
 		})
+	}
+}
+
+// An unreadable parent makes os.Stat fail with something other than
+// fs.ErrNotExist. That used to be read as "does not exist — nothing to guard",
+// so the guard standing between os.RemoveAll and a directory gomddoc did not
+// create was skipped by the one error it cannot interpret.
+func TestGuardOutputDir_StatErrorIsNotTreatedAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	output := filepath.Join(lockedDir(t, 0o000), "out")
+	if _, err := os.Stat(output); errors.Is(err, fs.ErrNotExist) {
+		t.Skip("stat sees through the unreadable parent (running as root?)")
+	}
+
+	b := &BuildCmd{Output: output}
+	err := b.guardOutputDir()
+	if err == nil {
+		t.Fatal("guardOutputDir() = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "stat output directory") {
+		t.Errorf("error = %q, want it to name the stat failure", err)
 	}
 }
 

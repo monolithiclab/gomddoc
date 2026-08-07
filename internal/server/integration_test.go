@@ -95,6 +95,17 @@ func TestIntegration_ContentServing(t *testing.T) {
 			shouldContain:  []string{"Guide", "Instructions"},
 		},
 
+		{
+			// The wire half of ParseAccept's specificity tiebreaker: the unit
+			// test proves the sort order, this proves the registry acts on it.
+			name:           "explicit type outranks */* at equal q",
+			path:           "/README.md",
+			acceptHeader:   "*/*, text/markdown",
+			expectedStatus: 200,
+			expectedType:   "text/markdown; charset=utf-8",
+			shouldContain:  []string{"# Project"},
+		},
+
 		// Directory with README
 		{
 			name:           "directory serves README",

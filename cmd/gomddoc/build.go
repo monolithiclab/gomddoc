@@ -304,9 +304,18 @@ func (b *BuildCmd) Run() error {
 // to prove it was created by a previous build. Without the sentinel, the
 // build refuses to proceed to prevent accidental deletion of unrelated files.
 func (b *BuildCmd) guardOutputDir() error {
+	// Both stats in this function distinguish "absent" from "could not tell".
+	// Reading a permission error on the parent as "does not exist" is the one
+	// wrong direction for the guard that stands between os.RemoveAll and a
+	// directory gomddoc did not create; reporting a directory as "not created
+	// by gomddoc" when the sentinel stat failed for an unrelated reason
+	// refuses safely but asserts a fact the code does not have.
 	info, err := os.Stat(b.Output)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil // does not exist — nothing to guard
+	}
+	if err != nil {
+		return fmt.Errorf("stat output directory %q: %w", b.Output, err)
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("output path %q exists but is not a directory", b.Output)
@@ -321,8 +330,12 @@ func (b *BuildCmd) guardOutputDir() error {
 	}
 
 	// Non-empty directory: require sentinel file
-	si, err := os.Stat(filepath.Join(b.Output, sentinelFile))
-	if err != nil || si.IsDir() {
+	sentinel := filepath.Join(b.Output, sentinelFile)
+	si, err := os.Stat(sentinel)
+	switch {
+	case err != nil && !errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("stat build sentinel %q: %w", sentinel, err)
+	case err != nil || si.IsDir():
 		return fmt.Errorf("output directory %q is not empty and was not created by gomddoc build; refusing to overwrite", b.Output)
 	}
 

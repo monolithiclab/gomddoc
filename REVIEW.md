@@ -1951,9 +1951,9 @@ inlined 8× in `internal/config` (no `testhelpers_test.go`); the default-layout 
 in `internal/template`; `internal/server` *has* a canonical `setupTestRenderer` yet re-inlines its
 body 4× plus two near-duplicate named helpers. **Latent bug:** `server_test.go:55-57` and `:146-148`
 hand-roll the registry and **omit `NewMarkdownPassthroughRenderer()`**, so those two tests exercise a
-different registry than every other server test. `mime.AddExtensionType(".md", …)` appears in 4
-`init()`s with **inconsistent values** (`navigation_test.go:14` registers `"text/markdown"`, the other
-three `"text/markdown; charset=utf-8"`).
+different registry than every other server test. ~~`mime.AddExtensionType(".md", …)` appears in 4
+`init()`s with **inconsistent values**~~ ✅ FIXED with §10.7's Misc bullet — all four crutch `init()`s
+deleted, the one registration lives in `negotiate/mime.go`.
 
 **Missing benchmarks on hot paths:** `metadata.BuildIndex` (runs at every startup; `search` has one,
 `metadata` does not), `provider` (no benchmarks at all), `resolve` lookup, `template/breadcrumb`,
@@ -2327,7 +2327,7 @@ three `"text/markdown; charset=utf-8"`).
   an extension singleton, and an extension is not a region. Cost measured at +80 bytes of binary
   (`golang.org/x/text` was already a direct dependency via `internal/text`) and 336 ns/272 B per hit,
   on a path that runs once per startup over top-level entries only.
-- **Misc:** `.md`/`.markdown` MIME types are registered in `internal/renderer` (`markdown.go:28-29`),
+- ~~**Misc:** `.md`/`.markdown` MIME types are registered in `internal/renderer` (`markdown.go:28-29`),
   a package `resolve` does not import — so the entire clean-URL feature depends on `internal/renderer`
   happening to be linked in; move them next to the `.mjs` registration in `negotiate/mime.go`.
   `exclusion.go:81-86`'s trailing-`/` branch uses `HasPrefix`, so `drafts/*/` matches nothing and
@@ -2335,7 +2335,27 @@ three `"text/markdown; charset=utf-8"`).
   ignoring RFC 9110 §12.5.1 specificity, so `Accept: */*, text/markdown` resolves at `*/*`.
   `build.go:286-289 guardOutputDir` returns `nil` on *any* stat error, so a permission error reads as
   "nothing to guard". No `*.test` entry in `.gitignore` (a 19 MB `template.test` artifact appeared in
-  the working tree during this review).
+  the working tree during this review).~~ ✅ **FIXED — all five.**
+  - **MIME.** Moved to `negotiate/mime.go`, next to `.mjs`. The finding understated it: *two* test
+    files (`resolve/resolver_test.go`, `negotiate/mime_test.go`) carried crutch `init()`s to paper
+    over the missing link, which is the tell that ownership is not what decides where an
+    `AddExtensionType` belongs — the consumers are. Also removed the two remaining copies tracked
+    separately at §9.4, including `navigation_test.go`'s, which registered `text/markdown` **without
+    charset** and, because test-file inits run after imported-package inits, overwrote the canonical
+    value for that whole test binary. `.markdown` had never been exercised; it has a row now.
+  - **Exclusion.** New `matchDirPrefix`. `path.Match`'s `*` never crosses `/`, so only the prefix
+    with the pattern's segment count can match — one `Match`, not one per segment (measured 1.5x
+    faster at two segments, 3x at four, on a predicate that runs per request and per file across
+    five index walks). Reverting to `HasPrefix` fails five of the eight new rows.
+  - **Accept.** Specificity now breaks the `q` tie. The ladder moved to
+    `(negotiate.MediaType).Specificity()` rather than becoming a third copy —
+    `renderer/registry.go`'s `outputMatchScore` had hand-rolled the same `exact=3, type/*=2, */*=1`
+    ranking, and a `(MediaType).Matches` method was deleted once before for exactly this. See
+    §10.12 for the part of RFC 9110 §12.5.1 this does *not* fix.
+  - **`guardOutputDir`.** Distinguishes absent from could-not-tell, and the sentinel stat below it
+    now does too — it refused safely but reported "not created by gomddoc build", asserting a fact
+    it did not have.
+  - **`.gitignore`.** `*.test` added.
 
 ### 10.8 `docs/architecture.md` drift
 
@@ -2502,3 +2522,72 @@ predicate change would show up.
 Lines 23, 393-420 and 508-563 contain the removed function, its test, and "must be `ll-CC`"
 comments. It is a frozen plan document, so leaving it is defensible — noted because it is what a
 future grep for `IsBCP47Dir` finds first.
+
+### 10.12 NEW — RFC 9110 §12.5.1 is evaluated globally, not per candidate
+
+Surfaced while fixing §10.7's Accept ordering. Both are LOW: they need a client that sends a
+wildcard *and* a deprioritised specific type, which browsers and LLM clients do not.
+
+#### MEDIUM: `registry.Get` early-returns at the first matching accepted range
+
+`internal/renderer/registry.go:96-121` walks `accepted` in sorted order and returns at the first
+entry that matches anything. §12.5.1 precedence is per *candidate representation* — for each output
+type, find the most specific range matching **that type** and use **its** q — so a sorted
+`[]MediaType` is not a sufficient interface, and the ordering fix hardens the illusion that it is.
+Measured against the real registry with input `text/markdown`:
+
+| `Accept` | served | §12.5.1 |
+| ---- | ---- | ---- |
+| `*/*, text/markdown` | `text/markdown` | `text/markdown` ✅ |
+| `*/*, text/html;q=0.1` | `text/html` | `text/markdown` ❌ |
+| `text/html;q=0.9, */*` | `text/html` | `text/markdown` ❌ |
+
+Fix: drop the early return; for each resolved output type pick the max-scoring matching range, then
+maximise on `(that range's q, outputScore, inputScore, order)`.
+
+#### MEDIUM: `ParseAccept` drops `q=0`, so a hard refusal cannot carve an exception
+
+`accept.go:42`. Dropping is right under "q=0 means not acceptable" read in isolation, but a `q=0` on
+a *specific* range exists precisely to except it from a broader one: `Accept: */*, text/html;q=0`
+means "anything except HTML", and gomddoc serves HTML. Coupled to the item above — the fix needs the
+q=0 entries present to know what to exclude.
+
+### 10.13 NEW — `Pipeline.Exclude` consumers that still read `cfg.Site.Exclude`
+
+The CLAUDE.md convention this branch's §10.6 fix created, violated in three live places. All LOW
+(the only thing currently added to `Pipeline.Exclude` is the language directories, and translated
+content is public), but they are the same shape as the bug that made `build` render every translated
+page twice.
+
+- `cmd/gomddoc/pipeline.go:455` and `cmd/gomddoc/mcp.go:59` — `MCPDeps.ExcludePatterns:
+  cfg.Site.Exclude`, while the sibling fields in the same literal (`MetaIndex`, `SearchIndex`,
+  `NavGenerator`) all come from `lp.Default`. So MCP's `IsRestrictedPath` gate
+  (`internal/mcp/tools.go:150,249,269`, `resources.go:82`, `prompts.go:120`) does not know about the
+  language directories its own indexes were built to exclude, and `mcp_read_page("fr/x.md")` passes
+  it. `Pipeline.Exclude` is in scope at both call sites.
+- `internal/server/server.go:287` — the default content scope's `ContentExclusion(cfg.Site.Exclude,
+  …)` has the same gap; `NewHTTPServer` is never handed `Pipeline.Exclude` at all. Reachable when a
+  language pipeline fails to build: `pipeline.go` logs and `continue`s, so `/fr/` has no subgroup and
+  falls through to the default scope, which carries no `fr/` pattern. Line 277 (lang scope) is fine.
+- `internal/provider/gitfs.go:314` — `strings.HasPrefix(entry.Name, ".")` is `IsHiddenPath` without
+  its `.well-known` exception. A directory-listing disagreement, not a leak.
+
+#### LOW: the three exclusion branches want one compiled representation
+
+`internal/provider/exclusion.go:99-138` re-derives each pattern's structure on every call
+(`strings.Contains(pattern, "/")`, `CutSuffix`, `strings.Count(dir, "/")`) from strings that came
+from config and cannot change. The branches are now visibly one operation — match a segment list
+against a segment window: `*.bak` matches any one segment, `docs/*.md` matches all N, `drafts/*/`
+matches the first N. A `compiledPattern{segs, anchored, prefix}` built once at pipeline construction
+covers all three and deletes `matchDirPrefix`'s index arithmetic, which is where a fourth branch
+(`**`) would otherwise land.
+
+#### LOW: `DetectMIME` depends on a process-global registry
+
+`internal/negotiate/mime.go`. The `init()` is correctly placed *today* only because every
+`DetectMIME` caller imports `negotiate` — a property of the current layout, not an invariant, and one
+that four crutch `init()`s in test files had already been quietly violating. A `map[string]string`
+owned by `negotiate`, consulted before `mime.TypeByExtension`, would depend on neither init order nor
+the OS MIME database (some distros map `.md` to `text/x-markdown`), and would drop the two discarded
+`AddExtensionType` errors. Nothing outside our code reads the global registry — no
+`http.ServeFile`/`ServeContent`/`FileServer`/`TypeByExtension` calls anywhere.

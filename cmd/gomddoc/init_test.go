@@ -143,14 +143,7 @@ func TestInitCmd_Defaults(t *testing.T) {
 func TestInitCmd_ReadOnlyDir(t *testing.T) {
 	t.Parallel()
 
-	dir := filepath.Join(t.TempDir(), "readonly")
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(dir, 0444); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0750) })
+	dir := lockedDir(t, 0444)
 
 	cmd := &InitCmd{Dir: dir, Theme: "default"}
 	err := cmd.Run()

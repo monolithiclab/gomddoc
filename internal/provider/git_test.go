@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"mime"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,11 +24,6 @@ func runCommand(t *testing.T, name string, args ...string) (string, error) {
 	t.Helper()
 	out, err := exec.Command(name, args...).CombinedOutput()
 	return string(out), err
-}
-
-func init() {
-	// Register markdown MIME type for tests
-	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
 }
 
 func TestNewGitProvider(t *testing.T) {

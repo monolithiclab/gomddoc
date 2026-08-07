@@ -5,16 +5,10 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
-	"mime"
 	"strings"
 	"testing"
 	"testing/fstest"
 )
-
-func init() {
-	// Register markdown MIME type for tests (normally done by renderer package init).
-	_ = mime.AddExtensionType(".md", "text/markdown; charset=utf-8")
-}
 
 // mockRenderer returns a RendererCheck that returns true for the given MIME types.
 func mockRenderer(types ...string) RendererCheck {

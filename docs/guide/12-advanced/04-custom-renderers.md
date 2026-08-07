@@ -114,15 +114,19 @@ registry.Register(renderer.NewCSVRenderer())
 ```
 
 `text/csv` already maps from `.csv` via the standard library's MIME table. For an extension Go does
-not know, add it in your renderer's `init()` — `markdown.go` does this for `.md`:
+not know, add it to the `init()` in `internal/negotiate/mime.go`, which is where `.md` and
+`.markdown` are registered:
 
 ```go
-func init() {
-    _ = mime.AddExtensionType(".adoc", "text/asciidoc; charset=utf-8")
-}
+_ = mime.AddExtensionType(".adoc", "text/asciidoc; charset=utf-8")
 ```
 
 Without that, the provider reports `application/octet-stream` and your renderer is never consulted.
+
+Put it there rather than beside your renderer. An `init()` only runs if its package is linked, and
+the packages that call `negotiate.DetectMIME` — `internal/resolve` among them — do not import
+`internal/renderer`. `.md` used to be registered in `markdown.go`, so clean-URL resolution worked
+only because something else pulled the renderer package into the binary.
 
 ## How the registry picks a renderer
 

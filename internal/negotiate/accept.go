@@ -14,19 +14,40 @@ type MediaType struct {
 	Q       float64 // Quality factor (0.0-1.0), defaults to 1.0
 }
 
-// ParseAccept parses an HTTP Accept header and returns a list of MediaType values
-// sorted by quality factor (highest first).
+// Specificity ranks a media range per RFC 9110 §12.5.1, "media ranges can be
+// overridden by more specific media ranges": exact=3, type/*=2, */*=1.
+//
+// This is the one implementation of that ladder. internal/renderer's
+// outputMatchScore hand-rolled a second copy on the same scale, and ParseAccept
+// briefly grew a third on a 0/1/2 scale of its own; a (MediaType).Matches
+// method was deleted once before for the same reason.
+func (mt MediaType) Specificity() int {
+	switch {
+	case mt.Type == "*":
+		return 1
+	case mt.Subtype == "*":
+		return 2
+	default:
+		return 3
+	}
+}
+
+// ParseAccept parses an HTTP Accept header and returns a list of MediaType
+// values sorted by quality factor (highest first), then by specificity per
+// RFC 9110 §12.5.1.
 //
 // Behavior:
 //   - Empty header returns "*/*" with q=1.0 (accept anything)
 //   - Quality factors parsed from q parameter (defaults to 1.0)
 //   - Entries with q=0 are excluded (per HTTP spec, q=0 means "not acceptable")
 //   - Invalid entries are silently skipped
-//   - Uses slices.SortStableFunc to preserve client preference order for equal q-values
+//   - At equal q, "type/subtype" outranks "type/*" outranks "*/*"
+//   - Uses slices.SortStableFunc, so client order breaks any remaining tie
 //
 // Examples:
 //   - "text/html, application/json" -> [{text/html, q=1.0}, {application/json, q=1.0}]
 //   - "text/html;q=0.8, application/json;q=0.9" -> [{application/json, q=0.9}, {text/html, q=0.8}]
+//   - "*/*, text/markdown" -> [{text/markdown, q=1.0}, {*/*, q=1.0}]
 //   - "*/*" -> [{*/*, q=1.0}]
 func ParseAccept(acceptHeader string) []MediaType {
 	if acceptHeader == "" {
@@ -42,9 +63,19 @@ func ParseAccept(acceptHeader string) []MediaType {
 		types = append(types, mt)
 	}
 
-	// Stable sort preserves client preference order for equal q-values
+	// Clients routinely send an explicit type alongside "*/*" at the same q —
+	// "*/*, text/markdown" is the shape an LLM client asking for markdown
+	// produces — and sorting by q alone left "*/*" first, so the registry
+	// resolved at the wildcard and served HTML. Only the q tie needs
+	// Specificity; a lower q on a more specific range still loses, which is
+	// what "q=0.5" on that range means.
+	//
+	// Stable sort preserves client preference order for equal q and specificity.
 	slices.SortStableFunc(types, func(a, b MediaType) int {
-		return cmp.Compare(b.Q, a.Q)
+		if c := cmp.Compare(b.Q, a.Q); c != 0 {
+			return c
+		}
+		return cmp.Compare(b.Specificity(), a.Specificity())
 	})
 
 	return types

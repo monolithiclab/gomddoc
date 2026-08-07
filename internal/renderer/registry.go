@@ -172,28 +172,24 @@ func inputMatchScore(inputTypes []string, mimeType string) int {
 
 // outputMatchScore returns how well an accepted MediaType matches a resolved
 // output type. The outputType must already be resolved (no wildcards).
-// Returns 0 for no match.
-//
-//	exact=3, type/*=2, */*=1
+// Returns 0 for no match, otherwise (*negotiate.MediaType).Specificity() —
+// exact=3, type/*=2, */*=1. The ladder lives in negotiate because ParseAccept's
+// sort needs the same one; this function only decides match versus no match.
 func outputMatchScore(accepted negotiate.MediaType, outputType string) int {
 	slash := strings.IndexByte(outputType, '/')
 	if slash <= 0 {
 		return 0
 	}
 
-	if accepted.Type == "*" {
-		return 1
+	if accepted.Type != "*" {
+		if accepted.Type != outputType[:slash] {
+			return 0
+		}
+		if accepted.Subtype != "*" && accepted.Subtype != outputType[slash+1:] {
+			return 0
+		}
 	}
-	if accepted.Type != outputType[:slash] {
-		return 0
-	}
-	if accepted.Subtype == "*" {
-		return 2
-	}
-	if accepted.Subtype == outputType[slash+1:] {
-		return 3
-	}
-	return 0
+	return accepted.Specificity()
 }
 
 // resolveOutputType resolves wildcard output types to concrete types.
