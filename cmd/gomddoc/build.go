@@ -745,21 +745,20 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 	return nil
 }
 
-// renderErrorPage renders an error page through the template engine. Passing
-// bc.languageInfos (rather than nil) keeps the static error page in parity with
-// the live server, which includes the language switcher.
+// renderErrorPage renders an error page through the same writer the server
+// uses, so the static 404 and the live one cannot drift — they did once, when
+// build passed nil where serve passed languageInfos (REVIEW.md §10.7).
 func (b *BuildCmd) renderErrorPage(statusCode int, bc *buildContext) ([]byte, error) {
-	ctx := tmpl.BuildErrorContext(tmpl.ErrorContextInput{
-		Site:       bc.siteConfig,
-		Path:       "/" + strconv.Itoa(statusCode),
-		StatusCode: statusCode,
-		Message:    server.StatusMessage(statusCode),
-		Lang:       bc.lang,
-		TFunc:      bc.tFunc,
-		Languages:  bc.languageInfos,
+	page := server.NewErrorPage(bc.templateRenderer, tmpl.ErrorContextInput{
+		Site:      bc.siteConfig,
+		Lang:      bc.lang,
+		TFunc:     bc.tFunc,
+		Languages: bc.languageInfos,
 	})
 
-	return bc.templateRenderer.Render(context.Background(), "error.html.tmpl", ctx)
+	// There is no request path in build mode; the file is named after its
+	// status, so that is what the template reports.
+	return page.Render(context.Background(), statusCode, "/"+strconv.Itoa(statusCode))
 }
 
 // emitTagPages writes /tags/index.html plus one /tags/{escaped}/index.html per

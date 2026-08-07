@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -35,6 +37,18 @@ func newTestAuthStore(t *testing.T) *CredentialStore {
 	return store
 }
 
+// errorLayout stands in for the theme's error.html.tmpl. Every bundled theme
+// ships one, so a test renderer without it would exercise ErrorPage's plain-text
+// fallback instead of the themed response every error path actually produces.
+// The wrapping markup is what distinguishes it from that fallback, which is the
+// bare "<code> <status text>"; errorBody builds the expected string.
+const errorLayout = `<html><body>Error {{ .Page.Meta.error_code }} {{ .Page.Meta.error_title }}</body></html>`
+
+// errorBody is what errorLayout renders for a status code.
+func errorBody(statusCode int) string {
+	return fmt.Sprintf("<html><body>Error %d %s</body></html>", statusCode, http.StatusText(statusCode))
+}
+
 // setupTestRenderer builds the canonical in-memory renderer for this package.
 // The layout carries a breadcrumb bar so tests can assert on it by passing
 // tmpl.WithBreadcrumbGenerator; without a generator the trail is nil and the
@@ -50,12 +64,23 @@ func setupTestRenderer(opts ...tmpl.RendererOption) *tmpl.HTMLRenderer {
 		"assets/themes/default/layouts/default.html.tmpl": {
 			Data: []byte(templateContent),
 		},
+		"assets/themes/default/layouts/error.html.tmpl": {
+			Data: []byte(errorLayout),
+		},
 	}
 
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Title = "Test Site"
 
 	return tmpl.NewHTMLRenderer(&siteConfig, testFS, opts...)
+}
+
+// setupTestErrorPage builds the themed error writer the server shares across a
+// language scope, backed by the canonical test renderer.
+func setupTestErrorPage() *ErrorPage {
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Title = "Test Site"
+	return NewErrorPage(setupTestRenderer(), tmpl.ErrorContextInput{Site: &siteConfig})
 }
 
 func setupTestRegistry() renderer.RendererRegistry {

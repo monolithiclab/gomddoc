@@ -21,6 +21,12 @@ func NewAssetsHandler(staticFS fs.FS) *AssetsHandler {
 // ServeHTTP serves a static file from the overlay filesystem.
 // Blocks directory listings and dotfile access, sets cache headers,
 // and supports ETag-based conditional requests.
+//
+// The 404s here stay http.NotFound rather than going through ErrorPage, which
+// every content route shares: an asset request is a sub-resource fetch, so
+// answering it with a themed HTML page costs a template render and hands the
+// browser HTML where it asked for CSS, a font, or an image. Nothing about which
+// assets exist is worth hiding — they are all served unauthenticated.
 func (h *AssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	filePath := strings.TrimPrefix(r.URL.Path, "/")
 

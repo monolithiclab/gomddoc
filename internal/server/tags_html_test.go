@@ -12,27 +12,44 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/template"
 )
 
-func newTagPageHandler(t *testing.T) (*TagPageHandler, *metadata.Index) {
+// newTagHandlerConfig wires an index and renderer into the config both tag
+// handlers take, including the themed error page they share with the language's
+// content handler.
+func newTagHandlerConfig(t *testing.T, files, themeFS fstest.MapFS) TagHandlerConfig {
 	t.Helper()
 
-	files := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: A page\ntags: [go, docs]\n---\n# A")},
-		"b.md": {Data: []byte("---\ntitle: B page\ntags: [docs]\n---\n# B")},
-	}
 	idx, err := metadata.BuildIndex(t.Context(), files, nil)
 	if err != nil {
 		t.Fatalf("BuildIndex: %v", err)
 	}
+	themeFS["assets/themes/default/layouts/error.html.tmpl"] = &fstest.MapFile{Data: []byte(errorLayout)}
 
-	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":    {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-list.html.tmpl": {Data: []byte("{{ define \"tags-list\" }}<h1>Pages tagged {{ .Tag }}</h1><ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
-	}
 	siteConfig := config.NewSiteConfig(".")
 	r := template.NewHTMLRenderer(&siteConfig, themeFS)
 	tFunc := func(k string) string { return k }
 
-	return NewTagPageHandler(idx, r, tFunc, "" /* default lang */), idx
+	return TagHandlerConfig{
+		Index:     idx,
+		Renderer:  r,
+		TFunc:     tFunc,
+		ErrorPage: NewErrorPage(r, template.ErrorContextInput{Site: &siteConfig, TFunc: tFunc}),
+	}
+}
+
+func newTagPageHandler(t *testing.T) (*TagPageHandler, *metadata.Index) {
+	t.Helper()
+
+	cfg := newTagHandlerConfig(t,
+		fstest.MapFS{
+			"a.md": {Data: []byte("---\ntitle: A page\ntags: [go, docs]\n---\n# A")},
+			"b.md": {Data: []byte("---\ntitle: B page\ntags: [docs]\n---\n# B")},
+		},
+		fstest.MapFS{
+			"assets/themes/default/layouts/default.html.tmpl":    {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+			"assets/themes/default/partials/tags-list.html.tmpl": {Data: []byte("{{ define \"tags-list\" }}<h1>Pages tagged {{ .Tag }}</h1><ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
+		})
+
+	return NewTagPageHandler(cfg), cfg.Index
 }
 
 func TestTagPageHandler_Found(t *testing.T) {
@@ -72,6 +89,14 @@ func TestTagPageHandler_NotFound(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", w.Code)
 	}
+	// The theme's 404, not net/http's default: a client that can tell which
+	// handler answered can tell an unknown tag from an excluded one.
+	if got, want := w.Body.String(), errorBody(http.StatusNotFound); got != want {
+		t.Errorf("body = %q, want the theme's error layout %q", got, want)
+	}
+	if got := w.Header().Get("Content-Type"); got != mimeHTML {
+		t.Errorf("Content-Type = %q, want %q", got, mimeHTML)
+	}
 }
 
 func TestTagPageHandler_OverlongTagRejected(t *testing.T) {
@@ -94,21 +119,14 @@ func TestTagPageHandler_OverlongTagRejected(t *testing.T) {
 func TestTagPageHandler_DecodesPathValue(t *testing.T) {
 	t.Parallel()
 
-	files := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: ML Page\ntags: [\"machine learning\"]\n---\n# A")},
-	}
-	idx, err := metadata.BuildIndex(t.Context(), files, nil)
-	if err != nil {
-		t.Fatalf("BuildIndex: %v", err)
-	}
-	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":    {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-list.html.tmpl": {Data: []byte("{{ define \"tags-list\" }}<ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
-	}
-	siteConfig := config.NewSiteConfig(".")
-	r := template.NewHTMLRenderer(&siteConfig, themeFS)
-	tFunc := func(k string) string { return k }
-	h := NewTagPageHandler(idx, r, tFunc, "")
+	h := NewTagPageHandler(newTagHandlerConfig(t,
+		fstest.MapFS{
+			"a.md": {Data: []byte("---\ntitle: ML Page\ntags: [\"machine learning\"]\n---\n# A")},
+		},
+		fstest.MapFS{
+			"assets/themes/default/layouts/default.html.tmpl":    {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+			"assets/themes/default/partials/tags-list.html.tmpl": {Data: []byte("{{ define \"tags-list\" }}<ul>{{ range .Pages }}<li>{{ .Title }}</li>{{ end }}</ul>{{ end }}")},
+		}))
 
 	req := httptest.NewRequest("GET", "/tags/machine%20learning", nil)
 	req.SetPathValue("tag", "machine learning")
@@ -126,23 +144,16 @@ func TestTagPageHandler_DecodesPathValue(t *testing.T) {
 func TestTagsIndexHandler(t *testing.T) {
 	t.Parallel()
 
-	files := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: A\ntags: [go, docs]\n---\n# A")},
-		"b.md": {Data: []byte("---\ntitle: B\ntags: [docs]\n---\n# B")},
-		"c.md": {Data: []byte("---\ntitle: C\ntags: [tutorial]\n---\n# C")},
-	}
-	idx, err := metadata.BuildIndex(t.Context(), files, nil)
-	if err != nil {
-		t.Fatalf("BuildIndex: %v", err)
-	}
-	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":     {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-index.html.tmpl": {Data: []byte("{{ define \"tags-index\" }}<ul>{{ range .Tags }}<li>{{ .Tag }}({{ .Count }})</li>{{ end }}</ul>{{ end }}")},
-	}
-	siteConfig := config.NewSiteConfig(".")
-	r := template.NewHTMLRenderer(&siteConfig, themeFS)
-	tFunc := func(k string) string { return k }
-	h := NewTagsIndexHandler(idx, r, tFunc, "")
+	h := NewTagsIndexHandler(newTagHandlerConfig(t,
+		fstest.MapFS{
+			"a.md": {Data: []byte("---\ntitle: A\ntags: [go, docs]\n---\n# A")},
+			"b.md": {Data: []byte("---\ntitle: B\ntags: [docs]\n---\n# B")},
+			"c.md": {Data: []byte("---\ntitle: C\ntags: [tutorial]\n---\n# C")},
+		},
+		fstest.MapFS{
+			"assets/themes/default/layouts/default.html.tmpl":     {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+			"assets/themes/default/partials/tags-index.html.tmpl": {Data: []byte("{{ define \"tags-index\" }}<ul>{{ range .Tags }}<li>{{ .Tag }}({{ .Count }})</li>{{ end }}</ul>{{ end }}")},
+		}))
 
 	req := httptest.NewRequest("GET", "/tags/", nil)
 	w := httptest.NewRecorder()
@@ -165,18 +176,12 @@ func TestTagsIndexHandler(t *testing.T) {
 func TestTagsIndexHandler_Empty(t *testing.T) {
 	t.Parallel()
 
-	idx, err := metadata.BuildIndex(t.Context(), fstest.MapFS{}, nil)
-	if err != nil {
-		t.Fatalf("BuildIndex: %v", err)
-	}
-	themeFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl":     {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
-		"assets/themes/default/partials/tags-index.html.tmpl": {Data: []byte("{{ define \"tags-index\" }}<p>tags index ({{ len .Tags }} tags)</p>{{ end }}")},
-	}
-	siteConfig := config.NewSiteConfig(".")
-	r := template.NewHTMLRenderer(&siteConfig, themeFS)
-	tFunc := func(k string) string { return k }
-	h := NewTagsIndexHandler(idx, r, tFunc, "")
+	h := NewTagsIndexHandler(newTagHandlerConfig(t,
+		fstest.MapFS{},
+		fstest.MapFS{
+			"assets/themes/default/layouts/default.html.tmpl":     {Data: []byte(`<html><body>{{ .Page.Content }}</body></html>`)},
+			"assets/themes/default/partials/tags-index.html.tmpl": {Data: []byte("{{ define \"tags-index\" }}<p>tags index ({{ len .Tags }} tags)</p>{{ end }}")},
+		}))
 
 	req := httptest.NewRequest("GET", "/tags/", nil)
 	w := httptest.NewRecorder()

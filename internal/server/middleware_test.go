@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/config"
 )
 
 func TestSecurityHeaders(t *testing.T) {
@@ -57,7 +60,7 @@ func TestSecurityHeaders(t *testing.T) {
 func TestContentExclusion_HiddenFiles(t *testing.T) {
 	t.Parallel()
 
-	handler := ContentExclusion(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ContentExclusion(nil, setupTestErrorPage())(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}))
@@ -235,30 +238,65 @@ func TestNewBasicAuthMiddleware_MultipleUsers(t *testing.T) {
 	}
 }
 
-func TestContentExclusion_ResponseFormat(t *testing.T) {
+// TestContentExclusion_IndistinguishableFromMissing is the point of sharing one
+// ErrorPage across a language scope. ContentExclusion answers 404 so a client
+// cannot tell an excluded path from an absent one — but the status is only half
+// of that. It used to write plain-text "File not found" where the content
+// handler wrote the theme's 404, and the body is what a client compares.
+//
+// Both halves request the *same* URL so a theme that prints the requested path
+// cannot make the bodies differ for a reason that is not a leak: in one site
+// the file exists and is excluded, in the other it was never there.
+func TestContentExclusion_IndistinguishableFromMissing(t *testing.T) {
 	t.Parallel()
 
-	handler := ContentExclusion(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	}))
-
-	req := httptest.NewRequest("GET", "/.gomddoc/config.yml", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Status = %d, want %d", w.Code, http.StatusNotFound)
+	const target = "/TODO.md"
+	present := fstest.MapFS{
+		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
+		"TODO.md":  &fstest.MapFile{Data: []byte("# CANARY")},
+	}
+	absent := fstest.MapFS{
+		"guide.md": &fstest.MapFile{Data: []byte("# Guide")},
 	}
 
-	body := w.Body.String()
-	if body != "File not found" {
-		t.Errorf("Body = %q, want %q", body, "File not found")
+	serve := func(files fstest.MapFS, exclude []string) *httptest.ResponseRecorder {
+		siteConfig := config.NewSiteConfig(".")
+		siteConfig.Meta.Title = "Test Site"
+		siteConfig.Exclude = exclude
+
+		handler := NewHandler(HandlerConfig{
+			Provider:         newMemoryProvider(files, "README.md", false),
+			Registry:         setupTestRegistry(),
+			EnricherRegistry: setupTestEnricherRegistry(),
+			TemplateRenderer: setupTestRenderer(),
+			SiteConfig:       &siteConfig,
+		})
+
+		w := httptest.NewRecorder()
+		ContentExclusion(exclude, handler.ErrorPage())(http.HandlerFunc(handler.ServeContent)).
+			ServeHTTP(w, httptest.NewRequest("GET", target, nil))
+		return w
 	}
 
-	contentType := w.Header().Get("Content-Type")
-	if contentType != "text/plain; charset=utf-8" {
-		t.Errorf("Content-Type = %q, want %q", contentType, "text/plain; charset=utf-8")
+	excluded := serve(present, []string{"TODO.md"})
+	missing := serve(absent, nil)
+
+	if excluded.Code != http.StatusNotFound || missing.Code != http.StatusNotFound {
+		t.Fatalf("status: excluded = %d, missing = %d, want 404 for both", excluded.Code, missing.Code)
+	}
+	if excluded.Body.String() != missing.Body.String() {
+		t.Errorf("bodies differ, which is the leak:\nexcluded: %q\nmissing:  %q", excluded.Body, missing.Body)
+	}
+	// Absolute, not excluded == missing: two empty Content-Types are equal too.
+	for name, rec := range map[string]*httptest.ResponseRecorder{"excluded": excluded, "missing": missing} {
+		if got := rec.Header().Get("Content-Type"); got != mimeHTML {
+			t.Errorf("%s Content-Type = %q, want %q", name, got, mimeHTML)
+		}
+	}
+	// Themed, not the plain-text fallback — otherwise the two agree by both
+	// being untemplated and the assertion above proves nothing. This also covers
+	// the CANARY body never reaching the client: the match is exact.
+	if got, want := excluded.Body.String(), errorBody(http.StatusNotFound); got != want {
+		t.Errorf("body = %q, want the theme's error layout %q", got, want)
 	}
 }

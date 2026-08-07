@@ -258,6 +258,22 @@ testsite/              # Lorem ipsum test site for quick testing
   its reason at the registration site (`/metrics` must not count its own scrape; health probes would
   swamp the counters). Corollary: hoisting `Metrics` above MethodFilter/ContentExclusion/
   ExtensionRedirect is what makes 405/403/301 show up in `http_requests_total` at all.
+- **Every route in a language scope writes errors through the scope's one `ErrorPage`** — a status
+  code chosen to hide something is undone by a body that reveals it. `ContentExclusion` returns 404
+  precisely so an excluded path is indistinguishable from an absent one; because the statuses match
+  by construction, the *body* is the only thing a client can still compare, and it used to differ
+  (plain-text `File not found` against the handler's themed page, with the tag routes on
+  `net/http`'s default as a third shape). The `Handler` *owns* its scope's writer — `NewHandler`
+  builds it from the renderer, lang and `TFunc` it was given, so no caller can hand a scope a writer
+  that disagrees with it — and siblings borrow it via `Handler.ErrorPage()`. `NewHTTPServer`
+  therefore builds each scope's handler before the routes that borrow from it; registration order is
+  irrelevant under Go 1.22+ ServeMux specificity matching. Anything rendering the same page outside
+  the request path calls `ErrorPage.Render` rather than re-deriving the context — build's static
+  `404.html` did the latter and drifted. Test it by requesting the *same* URL against two sites, one
+  where the file exists and is excluded and one where it never existed, then comparing bodies
+  byte-for-byte; asserting each is "themed" passes even when they differ. Exemptions are legitimate
+  but must say why at the call site: `/_assets/` (a sub-resource fetch), the 406 (the client's
+  `Accept` excluded HTML), MethodFilter's bodyless 405, and the XML endpoints.
 
 ### Testing Conventions
 

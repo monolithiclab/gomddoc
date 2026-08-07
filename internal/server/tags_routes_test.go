@@ -32,6 +32,9 @@ func setupTagRenderer(t *testing.T, opts ...tmpl.RendererOption) *tmpl.HTMLRende
 		"assets/themes/default/layouts/default.html.tmpl": {
 			Data: []byte(`<!DOCTYPE html><html><body>{{ .Page.Content }}</body></html>`),
 		},
+		"assets/themes/default/layouts/error.html.tmpl": {
+			Data: []byte(errorLayout),
+		},
 		"assets/themes/default/partials/tags-list.html.tmpl": {
 			Data: tagsListPartial,
 		},
@@ -191,7 +194,10 @@ tags_index_title: "Toutes les étiquettes"
 	}{
 		{path: "/tags/docs", want: http.StatusOK},
 		{path: "/fr/tags/tutoriel", want: http.StatusOK, body: `href="/fr/b"`},
-		{path: "/fr/tags/missing", want: http.StatusNotFound},
+		// The themed 404, not net/http's default: a tag route must answer an
+		// unknown tag exactly as the language's content handler answers an
+		// unknown page.
+		{path: "/fr/tags/missing", want: http.StatusNotFound, body: errorBody(http.StatusNotFound)},
 		{path: "/fr/tags/", want: http.StatusOK},
 	}
 	for _, tt := range tests {

@@ -468,7 +468,7 @@ wants it — attaching it to a leaf means every sibling added later silently opt
 **Content-specific middleware (applied to content handlers via Subgroup):**
 
 6. **MethodFilter** — Returns 405 Method Not Allowed for non-GET/HEAD requests with `Allow` header
-7. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsRestrictedPath()` — `IsHiddenPath() || IsExcludedPath()` — which is also what every MCP tool, resource and prompt calls, so both entry points restrict the same set of paths. Note this middleware matches the *request* path: with `strip_extensions` on, `/TODO` does not match the `TODO.md` pattern, which is why exclusion also has to be enforced in each content index rather than here alone.
+7. **ContentExclusion** — Blocks hidden files (dot-prefixed, except `.well-known` per RFC 8615) and user-configured exclusion patterns. Uses `provider.IsRestrictedPath()` — `IsHiddenPath() || IsExcludedPath()` — which is also what every MCP tool, resource and prompt calls, so both entry points restrict the same set of paths. Note this middleware matches the *request* path: with `strip_extensions` on, `/TODO` does not match the `TODO.md` pattern, which is why exclusion also has to be enforced in each content index rather than here alone. Its 404 is written through the same `ErrorPage` as the handler it wraps — see [Error Responses](#error-responses).
 8. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/docs/guide.md` → `/docs/guide`) via 301.
 
 Metrics wrapping these three means their 405/403/301 responses are counted too, not just handler hits.
@@ -729,6 +729,53 @@ All provider and renderer errors are mapped to HTTP status codes via `classifyEr
 | _(default)_                   | Internal Server Error | 500 |
 
 All errors use `errors.Is()` for classification, supporting wrapped errors via `fmt.Errorf("%w", err)`.
+
+### Error Responses
+
+`server.ErrorPage` renders the classified status through the theme's `error.html.tmpl`. There is one
+per language scope, and `Handler` owns it: `NewHandler` builds it from the same renderer, language
+and translator the handler itself got, and the routes around it borrow it through
+`Handler.ErrorPage()`. `NewHTTPServer` therefore constructs each scope's handler *before* the routes
+that need its writer — safe because Go 1.22+ `ServeMux` matches by pattern specificity, not
+registration order. Borrowers today: the `ContentExclusion` middleware wrapping the handler, and that
+language's tag routes.
+
+Sharing is the point rather than a convenience: `ContentExclusion` answers 404 so a client cannot
+tell an excluded path from an absent one, and since the statuses match by construction, the response
+*body* is the only thing left that could tell them apart. It used to — plain-text `File not found`
+against the handler's themed page, with the tag routes as a third shape (`net/http`'s default) that
+could never reach the theme's 404 at all. Ownership rather than injection is what keeps them
+agreeing: there is no config field through which a caller could hand a scope a writer built from a
+different renderer.
+
+The scope's own `template.Renderer` is used by construction (`LangPipelineConfig.TemplateRenderer`
+reaches `ErrorPage` through `HandlerConfig`), which matters for the same reason content links do: the
+default-language renderer cannot resolve paths that exist only in that language's tree.
+
+`ErrorPage.Write` is the HTTP entry point; `ErrorPage.Render` returns the body and the render error
+instead. The build command uses `Render` for the static `404.html`, so the static and live error
+pages cannot drift — they did once, when build passed `nil` languages where serve passed the real
+list.
+
+`ErrorPage` degrades to plain `"<code> <status text>"` when the writer is nil, when it has no
+renderer or site config, or when the template will not render — an error response that cannot be
+produced is worse than an ugly one.
+
+Deliberate exemptions, each carrying its reason at the call site:
+
+- **`/_assets/`** — a sub-resource fetch. A themed HTML body would cost a template render and answer
+  a request for CSS or a font with a page. Asset existence is not a secret; they are served
+  unauthenticated.
+- **The 406 in `Handler.ServeContent`** — the client's `Accept` header just said it will not take
+  HTML, and the available-types list has nowhere to go in the theme's layout.
+- **`MethodFilter`'s 405** — it sends no body, and a body it does not have cannot leak.
+- **`/sitemap.xml` and `/feed.xml`** — XML endpoints, where an HTML error body is worse than a plain
+  one.
+- **The admin listener's mux** — no renderer to build a page from.
+
+The trade is size: a themed error is the theme's full page (~49 KB with the default theme's inlined
+CSS, gzipped on the way out) where the plain-text 404 was 14 bytes, and `ContentExclusion`'s traffic
+is largely hidden-path scanning. The bytes buy the indistinguishability.
 
 ### Custom Error Type
 

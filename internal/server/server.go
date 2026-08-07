@@ -143,6 +143,38 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		NewGroup(mux, "", authMW...).Handle("/metrics", promhttp.Handler())
 	}
 
+	// Build language info for the language switcher (only when multiple languages exist)
+	var allLanguageInfos []template.LanguageInfo
+	if len(opts.AllLanguages) > 0 && opts.LocaleBundle != nil {
+		allLanguageInfos = template.BuildLanguageInfos(opts.LocaleBundle, opts.DefaultLang, opts.AllLanguages)
+	}
+
+	// The default language's content handler, built up front so the routes and
+	// middleware around it can borrow its ErrorPage. Every route in a language
+	// scope writes errors through that one writer: a 404 whose body differs by
+	// which handler produced it tells a client things the status code
+	// deliberately does not. See ErrorPage.
+	//
+	// Building it here rather than next to its own route registration is safe —
+	// Go 1.22+ ServeMux matches by pattern specificity, not registration order.
+	var defaultTFunc func(string) string
+	if opts.LocaleBundle != nil {
+		defaultTFunc = opts.LocaleBundle.TFunc(opts.DefaultLang)
+	}
+	handler := NewHandler(HandlerConfig{
+		Provider:         opts.Provider,
+		Registry:         opts.Registry,
+		EnricherRegistry: opts.EnricherRegistry,
+		TemplateRenderer: opts.TemplateRenderer,
+		SiteConfig:       &cfg.Site,
+		RedirectFinder:   opts.RedirectFinder,
+		URLRedirects:     opts.URLRedirects,
+		Resolver:         opts.Resolver,
+		Lang:             opts.DefaultLang,
+		TFunc:            defaultTFunc,
+		Languages:        template.WithActiveLang(allLanguageInfos, opts.DefaultLang),
+	})
+
 	// API sub-group
 	api := auth.Subgroup("/api")
 	if opts.MetaIndex != nil {
@@ -181,28 +213,14 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 
 	// Tag routes for default language
 	if opts.MetaIndex != nil && opts.LocaleBundle != nil {
-		defaultTagTFunc := opts.LocaleBundle.TFunc(opts.DefaultLang)
-		auth.Handle("GET /tags/{tag}", NewTagPageHandler(opts.MetaIndex, opts.TemplateRenderer, defaultTagTFunc, ""))
-		auth.Handle("GET /tags/", NewTagsIndexHandler(opts.MetaIndex, opts.TemplateRenderer, defaultTagTFunc, ""))
-	}
-
-	// Per-language sitemap and feed routes
-	for lang, lp := range opts.LangPipelines {
-		prefix := "/" + lang
-		if lp.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
-			langSitemapHandler := NewSitemapHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, lp.Resolver, prefix)
-			auth.Handle("GET "+prefix+"/sitemap.xml", langSitemapHandler)
-
-			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, lp.Resolver, prefix)
-			auth.Handle("GET "+prefix+"/feed.xml", langFeedHandler)
+		defaultTags := TagHandlerConfig{
+			Index:     opts.MetaIndex,
+			Renderer:  opts.TemplateRenderer,
+			TFunc:     defaultTFunc,
+			ErrorPage: handler.ErrorPage(),
 		}
-
-		// Tag routes per language
-		if lp.MetaIndex != nil && opts.LocaleBundle != nil {
-			langTagTFunc := opts.LocaleBundle.TFunc(lang)
-			auth.Handle("GET "+prefix+"/tags/{tag}", NewTagPageHandler(lp.MetaIndex, lp.TemplateRenderer, langTagTFunc, lang))
-			auth.Handle("GET "+prefix+"/tags/", NewTagsIndexHandler(lp.MetaIndex, lp.TemplateRenderer, langTagTFunc, lang))
-		}
+		auth.Handle("GET /tags/{tag}", NewTagPageHandler(defaultTags))
+		auth.Handle("GET /tags/", NewTagsIndexHandler(defaultTags))
 	}
 
 	if cfg.Server.Pprof && adminOnMain {
@@ -212,19 +230,17 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		mountPprof(NewGroup(mux, ""), opts.AuthStore)
 	}
 
-	// Build language info for the language switcher (only when multiple languages exist)
-	var allLanguageInfos []template.LanguageInfo
-	if len(opts.AllLanguages) > 0 && opts.LocaleBundle != nil {
-		allLanguageInfos = template.BuildLanguageInfos(opts.LocaleBundle, opts.DefaultLang, opts.AllLanguages)
-	}
-
-	// Per-language content handlers (must be registered before the default catch-all)
+	// Per-language routes. The tag handlers share the scope's error page with the
+	// content handler, so /fr/tags/nope and /fr/nope answer alike. Sitemap and
+	// feed do not: they serve XML, and an HTML error body on an XML endpoint is
+	// worse than a plain one.
 	for lang, lp := range opts.LangPipelines {
+		prefix := "/" + lang
+
 		var langTFunc func(string) string
 		if opts.LocaleBundle != nil {
 			langTFunc = opts.LocaleBundle.TFunc(lang)
 		}
-		langInfos := template.WithActiveLang(allLanguageInfos, lang)
 
 		langHandler := NewHandler(HandlerConfig{
 			Provider:         lp.Provider,
@@ -237,48 +253,47 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 			Resolver:         lp.Resolver,
 			Lang:             lang,
 			TFunc:            langTFunc,
-			Languages:        langInfos,
+			Languages:        template.WithActiveLang(allLanguageInfos, lang),
 		})
+
+		if lp.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
+			langSitemapHandler := NewSitemapHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, lp.Resolver, prefix)
+			auth.Handle("GET "+prefix+"/sitemap.xml", langSitemapHandler)
+
+			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, lp.Resolver, prefix)
+			auth.Handle("GET "+prefix+"/feed.xml", langFeedHandler)
+		}
+
+		if lp.MetaIndex != nil && opts.LocaleBundle != nil {
+			langTags := TagHandlerConfig{
+				Index:     lp.MetaIndex,
+				Renderer:  lp.TemplateRenderer,
+				TFunc:     langTFunc,
+				Lang:      lang,
+				ErrorPage: langHandler.ErrorPage(),
+			}
+			auth.Handle("GET "+prefix+"/tags/{tag}", NewTagPageHandler(langTags))
+			auth.Handle("GET "+prefix+"/tags/", NewTagsIndexHandler(langTags))
+		}
 
 		// StripPrefix removes the /{lang} segment so the language provider,
 		// resolver, exclusion, and handler all operate on content-root-relative
 		// paths — matching build mode, which walks the language sub-FS directly.
 		// ExtensionRedirect re-adds the prefix to its 301 Location via basePath.
-		prefix := "/" + lang
 		langContent := auth.Subgroup(prefix,
 			stripPathPrefix(prefix),
 			NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),
-			ContentExclusion(cfg.Site.Exclude),
+			ContentExclusion(cfg.Site.Exclude, langHandler.ErrorPage()),
 			ExtensionRedirect(lp.Resolver, cfg.Site.StripExtensions, prefix),
 		)
 		langContent.HandleFunc("/", langHandler.ServeContent)
 	}
 
-	var defaultTFunc func(string) string
-	if opts.LocaleBundle != nil {
-		defaultTFunc = opts.LocaleBundle.TFunc(opts.DefaultLang)
-	}
-	defaultLangInfos := template.WithActiveLang(allLanguageInfos, opts.DefaultLang)
-
-	handler := NewHandler(HandlerConfig{
-		Provider:         opts.Provider,
-		Registry:         opts.Registry,
-		EnricherRegistry: opts.EnricherRegistry,
-		TemplateRenderer: opts.TemplateRenderer,
-		SiteConfig:       &cfg.Site,
-		RedirectFinder:   opts.RedirectFinder,
-		URLRedirects:     opts.URLRedirects,
-		Resolver:         opts.Resolver,
-		Lang:             opts.DefaultLang,
-		TFunc:            defaultTFunc,
-		Languages:        defaultLangInfos,
-	})
-
 	// Content handler with content-specific middleware (outermost first).
 	// Compression and Metrics come from base.
 	content := auth.Subgroup("",
 		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),     // Only allow GET and HEAD
-		ContentExclusion(cfg.Site.Exclude),                             // Block hidden files and user-configured exclusions
+		ContentExclusion(cfg.Site.Exclude, handler.ErrorPage()),        // Block hidden files and user-configured exclusions
 		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions, ""), // Redirect .md URLs to clean URLs
 	)
 	content.HandleFunc("/", handler.ServeContent)

@@ -1962,9 +1962,38 @@ three `"text/markdown; charset=utf-8"`).
 
 ### 10.7 LOW — code quality (abridged)
 
-- **Four different 404 shapes**: themed HTML (`handler.go:218-225`), plain-text *"File not found"*
+- ~~**Four different 404 shapes**: themed HTML (`handler.go:218-225`), plain-text *"File not found"*
   (`middleware.go:99-105`), `http.NotFound` (`tags_html.go`, `assets_handler.go`), and Go's default
-  mux 404. A client cannot distinguish "excluded" from "missing"; only one honours the theme.
+  mux 404.~~ ✅ FIXED, and it was not a consistency nit. `ContentExclusion`'s own doc comment says
+  both hidden and excluded paths return 404 *"to avoid leaking the existence of excluded files"* —
+  but the statuses match by construction, so the **body is the leak**: plain-text `File not found`
+  where a genuinely missing page got the themed page told a client exactly which of the two it had
+  hit. The tag routes were a third shape (`net/http`'s default) from which the theme's 404 was
+  unreachable. The fix is therefore one shared writer, not four independently-tidied call sites:
+  `server.ErrorPage` (`internal/server/errors.go`). `Handler` **owns** its language scope's writer —
+  `NewHandler` builds it from the renderer, lang and `TFunc` the handler itself was given, so there
+  is no config field through which a caller could hand a scope a writer built from a different
+  renderer — and `ContentExclusion` and the tag routes borrow it via `Handler.ErrorPage()`.
+  `NewHTTPServer` builds each scope's handler before those routes; safe because Go 1.22+ `ServeMux`
+  matches by pattern specificity, not registration order, which also retired the stale "must be
+  registered before the catch-all" comment and let the two `LangPipelines` loops merge.
+  `handler.renderErrorPage` is gone, and `cmd/gomddoc/build.go`'s duplicate of the same
+  `BuildErrorContext` + `Render("error.html.tmpl")` sequence now calls the exported
+  `ErrorPage.Render` — that pair had already drifted once (§10.3: build passed `nil` languages where
+  serve passed the real list).
+  Exemptions, each with its reason at the call site: `/_assets/` (a sub-resource fetch; asset
+  existence is not a secret), the 406 in `ServeContent` (the client's `Accept` just excluded HTML,
+  and the available-types list has nowhere to go in the layout), `MethodFilter`'s bodyless 405 (a
+  body it does not have cannot leak), the XML endpoints (an HTML error body on `/sitemap.xml` is
+  worse than a plain one), and the admin listener's mux (no renderer to build a page from). Measured
+  cost of the trade: a themed 404 is ~49 KB uncompressed / 11 KB gzipped at ~1 ms, against 14 bytes
+  at ~111 µs, and `ContentExclusion`'s traffic is largely hidden-path scanning. Memoizing per
+  (scope, status) is the mitigation if it ever matters, but is only sound for themes whose error
+  layout ignores `Page.Path`, so it was not done.
+  `TestContentExclusion_IndistinguishableFromMissing` is the guard: it requests the **same** URL
+  against two sites — one where the file exists and is excluded, one where it never existed — and
+  compares the bodies byte-for-byte. Asserting each is "themed" would pass while they differ, and
+  comparing two *different* URLs would fail for a theme that prints the requested path.
 - **`/api/tags/{tag}` and `/tags/{tag}` disagree on unknown tags** — 200 with `[]`
   (`metadata.go:43-47`) vs 404 (`tags_html.go:37-41`). Same index, same question, two answers.
 - **Cache headers only on some endpoints** — `/sitemap.xml`, `/feed.xml`, `/robots.txt` hand-roll

@@ -93,7 +93,11 @@ func SecurityHeaders(next http.Handler) http.Handler {
 // ContentExclusion blocks HTTP access to hidden files/directories (always enforced)
 // and to paths matching user-configured exclude patterns. Both return 404 to avoid
 // leaking the existence of excluded files.
-func ContentExclusion(excludePatterns []string) func(http.Handler) http.Handler {
+//
+// errs must be the same error page the language's content handler uses. Writing
+// a different body here than a genuinely missing path gets is itself the leak:
+// the status matches, so the body is what a client compares.
+func ContentExclusion(excludePatterns []string, errs *ErrorPage) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if provider.IsRestrictedPath(r.URL.Path, excludePatterns) {
@@ -101,13 +105,7 @@ func ContentExclusion(excludePatterns []string) func(http.Handler) http.Handler 
 					text.Safe("path", r.URL.Path),
 					slog.String("remote", r.RemoteAddr))
 
-				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-				w.WriteHeader(http.StatusNotFound)
-				if _, err := w.Write([]byte("File not found")); err != nil {
-					slog.Debug("Failed to write response", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
-						text.Safe("path", r.URL.Path),
-						slog.Any("error", err))
-				}
+				errs.NotFound(w, r)
 				return
 			}
 

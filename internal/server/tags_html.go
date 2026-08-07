@@ -14,38 +14,46 @@ import (
 // over-long values avoids needlessly lowercasing huge inputs (REVIEW §9.9).
 const maxTagLength = 128
 
+// TagHandlerConfig holds what both tag handlers need. ErrorPage must be the one
+// the language's content handler uses, so /tags/nope and /nope answer alike —
+// they used to differ, net/http's plain default against the theme's 404.
+type TagHandlerConfig struct {
+	Index     *metadata.Index
+	Renderer  template.Renderer
+	TFunc     func(string) string
+	Lang      string // "" for default language
+	ErrorPage *ErrorPage
+}
+
 // TagPageHandler serves the HTML page for /tags/{tag} (or /{lang}/tags/{tag}).
 type TagPageHandler struct {
-	index    *metadata.Index
-	renderer template.Renderer
-	tFunc    func(string) string
-	lang     string // "" for default language
+	TagHandlerConfig
 }
 
 // NewTagPageHandler binds an index, renderer, and translator to a language scope.
-func NewTagPageHandler(index *metadata.Index, renderer template.Renderer, tFunc func(string) string, lang string) *TagPageHandler {
-	return &TagPageHandler{index: index, renderer: renderer, tFunc: tFunc, lang: lang}
+func NewTagPageHandler(cfg TagHandlerConfig) *TagPageHandler {
+	return &TagPageHandler{cfg}
 }
 
 func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tag := r.PathValue("tag")
 	if tag == "" || len(tag) > maxTagLength {
-		http.NotFound(w, r)
+		h.ErrorPage.NotFound(w, r)
 		return
 	}
 
-	pages := h.index.ByTag(tag)
+	pages := h.Index.ByTag(tag)
 	if len(pages) == 0 {
-		http.NotFound(w, r)
+		h.ErrorPage.NotFound(w, r)
 		return
 	}
 
 	slices.SortFunc(pages, metadata.CompareTitles)
 
-	body, err := h.renderer.RenderTagPage(r.Context(), h.lang, h.tFunc, tag, pages)
+	body, err := h.Renderer.RenderTagPage(r.Context(), h.Lang, h.TFunc, tag, pages)
 	if err != nil {
 		slog.Error("render tag page", text.Safe("tag", tag), slog.Any("error", err)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.ErrorPage.Write(w, r, http.StatusInternalServerError, r.URL.Path)
 		return
 	}
 	serveWithETag(w, r, body, mimeHTML, cacheDynamic)
@@ -53,27 +61,24 @@ func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // TagsIndexHandler serves the HTML page for /tags/ (or /{lang}/tags/).
 type TagsIndexHandler struct {
-	index    *metadata.Index
-	renderer template.Renderer
-	tFunc    func(string) string
-	lang     string
+	TagHandlerConfig
 }
 
 // NewTagsIndexHandler binds an index, renderer, and translator to a language scope.
-func NewTagsIndexHandler(index *metadata.Index, renderer template.Renderer, tFunc func(string) string, lang string) *TagsIndexHandler {
-	return &TagsIndexHandler{index: index, renderer: renderer, tFunc: tFunc, lang: lang}
+func NewTagsIndexHandler(cfg TagHandlerConfig) *TagsIndexHandler {
+	return &TagsIndexHandler{cfg}
 }
 
 func (h *TagsIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	tags := h.index.AllTags() // already alphabetical
+	tags := h.Index.AllTags() // already alphabetical
 	entries := make([]template.TagCount, 0, len(tags))
 	for _, tag := range tags {
-		entries = append(entries, template.TagCount{Tag: tag, Count: h.index.CountByTag(tag)})
+		entries = append(entries, template.TagCount{Tag: tag, Count: h.Index.CountByTag(tag)})
 	}
-	body, err := h.renderer.RenderTagsIndex(r.Context(), h.lang, h.tFunc, entries)
+	body, err := h.Renderer.RenderTagsIndex(r.Context(), h.Lang, h.TFunc, entries)
 	if err != nil {
 		slog.Error("render tags index", slog.Any("error", err))
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.ErrorPage.Write(w, r, http.StatusInternalServerError, r.URL.Path)
 		return
 	}
 	serveWithETag(w, r, body, mimeHTML, cacheDynamic)

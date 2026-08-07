@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -54,10 +53,22 @@ type Handler struct {
 	lang      string              // BCP 47 language for this handler
 	tFunc     func(string) string // translation function
 	languages []tmpl.LanguageInfo // all available languages
+
+	errorPage *ErrorPage
 }
 
 // NewHandler creates a new HTTP handler with the given dependencies
 func NewHandler(cfg HandlerConfig) *Handler {
+	// The handler owns its language scope's error page rather than receiving
+	// one, so it cannot be handed a writer that disagrees with the renderer and
+	// translator it was built with. Every other route in the scope borrows it
+	// through ErrorPage() — see that method.
+	errorPage := NewErrorPage(cfg.TemplateRenderer, tmpl.ErrorContextInput{
+		Site:      cfg.SiteConfig,
+		Lang:      cfg.Lang,
+		TFunc:     cfg.TFunc,
+		Languages: cfg.Languages,
+	})
 	return &Handler{
 		provider:         cfg.Provider,
 		registry:         cfg.Registry,
@@ -70,8 +81,14 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		lang:             cfg.Lang,
 		tFunc:            cfg.TFunc,
 		languages:        cfg.Languages,
+		errorPage:        errorPage,
 	}
 }
+
+// ErrorPage returns the language scope's error writer, for the middleware and
+// sibling routes registered around this handler. They must write the same body
+// this handler does — see ErrorPage's doc comment for why.
+func (h *Handler) ErrorPage() *ErrorPage { return h.errorPage }
 
 // ServeContent handles HTTP requests with content negotiation and rendering.
 //
@@ -119,6 +136,10 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	contentRenderer, selectedOutput, err := h.registry.Get(normalized, acceptedTypes)
 	if err != nil {
 		if errors.Is(err, renderer.ErrNoMatchingRenderer) {
+			// Plain text, not the themed error page: the client's Accept header
+			// just told us it will not take HTML, which is the whole reason we
+			// are here. The available-types list is also the actionable part of
+			// a 406 and has nowhere to go in the theme's error layout.
 			available := h.registry.AvailableOutputTypes(normalized)
 			http.Error(w,
 				"Not Acceptable: available types: "+strings.Join(available, ", "),
@@ -216,32 +237,5 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 		)
 	}
 
-	w.Header().Set("Content-Type", mimeHTML)
-	w.WriteHeader(statusCode)
-
-	page := h.renderErrorPage(r, statusCode, path)
-	_, writeErr := w.Write(page) // #nosec G104,G705 -- best-effort error response, content from trusted templates
-	if writeErr != nil {
-		slog.Error("Cannot write error response", slog.Any("error", writeErr))
-	}
-}
-
-// renderErrorPage renders an error page through the template engine.
-// Falls back to plain text if template rendering fails.
-func (h *Handler) renderErrorPage(r *http.Request, statusCode int, pagePath string) []byte {
-	context := tmpl.BuildErrorContext(tmpl.ErrorContextInput{
-		Site:       h.siteConfig,
-		Path:       pagePath,
-		StatusCode: statusCode,
-		Message:    StatusMessage(statusCode),
-		Lang:       h.lang,
-		TFunc:      h.tFunc,
-		Languages:  h.languages,
-	})
-
-	rendered, err := h.templateRenderer.Render(r.Context(), "error.html.tmpl", context)
-	if err != nil {
-		return fmt.Appendf(nil, "%d %s", statusCode, http.StatusText(statusCode))
-	}
-	return rendered
+	h.errorPage.Write(w, r, statusCode, path)
 }

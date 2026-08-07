@@ -192,8 +192,8 @@ func TestHandlerErrorResponses(t *testing.T) {
 		t.Errorf("error response content-type = %q, want text/html; charset=utf-8", contentType)
 	}
 
-	if !strings.Contains(w.Body.String(), "404 Not Found") {
-		t.Error("response should contain '404 Not Found'")
+	if got, want := w.Body.String(), errorBody(http.StatusNotFound); got != want {
+		t.Errorf("body = %q, want the theme's error layout %q", got, want)
 	}
 }
 
@@ -713,7 +713,7 @@ func TestHandlerResolverHonoursExclusions(t *testing.T) {
 		SiteConfig:       &siteConfig,
 		Resolver:         resolver,
 	})
-	guarded := ContentExclusion(exclude)(http.HandlerFunc(handler.ServeContent))
+	guarded := ContentExclusion(exclude, setupTestErrorPage())(http.HandlerFunc(handler.ServeContent))
 
 	for _, path := range []string{"/TODO", "/TODO.md", "/drafts/plan", "/drafts/plan.md"} {
 		w := httptest.NewRecorder()

@@ -6,12 +6,83 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
+	"testing/fstest"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
+
+// TestErrorPage_FallsBackToPlainText covers the degraded paths. A response that
+// cannot be produced is worse than an ugly one, so a nil writer, a missing
+// renderer, and a theme with no error.html.tmpl all still answer — and they must
+// answer with the right status, since that is all a client has left.
+func TestErrorPage_FallsBackToPlainText(t *testing.T) {
+	t.Parallel()
+
+	noErrorLayout := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(`<html></html>`)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+
+	tests := []struct {
+		name string
+		page *ErrorPage
+	}{
+		{"nil writer", nil},
+		{"no renderer", NewErrorPage(nil, tmpl.ErrorContextInput{Site: &siteConfig})},
+		{"no site config", NewErrorPage(setupTestRenderer(), tmpl.ErrorContextInput{})},
+		{"theme without error layout", NewErrorPage(
+			tmpl.NewHTMLRenderer(&siteConfig, noErrorLayout),
+			tmpl.ErrorContextInput{Site: &siteConfig},
+		)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			w := httptest.NewRecorder()
+			tt.page.Write(w, httptest.NewRequest("GET", "/missing", nil), http.StatusForbidden, "/missing")
+
+			if w.Code != http.StatusForbidden {
+				t.Errorf("status = %d, want 403", w.Code)
+			}
+			if got, want := w.Body.String(), "403 Forbidden"; got != want {
+				t.Errorf("body = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestErrorPage_NotFoundUsesRequestPath pins the one difference between the two
+// entry points: NotFound reports the URL, while Write takes the path explicitly
+// because the content handler resolves a clean URL to a real file before failing.
+func TestErrorPage_NotFoundUsesRequestPath(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	page := NewErrorPage(
+		tmpl.NewHTMLRenderer(&siteConfig, fstest.MapFS{
+			"assets/themes/default/layouts/error.html.tmpl": {Data: []byte(`{{ .Page.Path }}`)},
+		}),
+		tmpl.ErrorContextInput{Site: &siteConfig},
+	)
+
+	w := httptest.NewRecorder()
+	page.NotFound(w, httptest.NewRequest("GET", "/guide/intro", nil))
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
+	}
+	if got := w.Body.String(); got != "/guide/intro" {
+		t.Errorf("rendered path = %q, want %q", got, "/guide/intro")
+	}
+}
 
 func TestClassifyError(t *testing.T) {
 	t.Parallel()
