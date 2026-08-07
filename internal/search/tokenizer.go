@@ -57,7 +57,15 @@ func stripMarkdown(text string) string {
 	return string(b)
 }
 
-// tokenize splits text into lowercase tokens, filtering out tokens shorter than 2 characters.
+const minTokenBytes = 2
+
+// tokenize splits text into lowercase tokens, dropping any token under
+// minTokenBytes. Bytes, not runes: what the threshold is really for is dropping
+// single ASCII letters, and counting runes would take single CJK ideographs —
+// three bytes, and meaningful search terms — with them. It is a proxy, so it is
+// lenient in the other direction too: a one-rune Cyrillic or Greek stopword is
+// two bytes and survives. Index and query both go through here, so the two
+// agree whichever way it errs.
 func tokenize(text string) []string {
 	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
@@ -65,7 +73,7 @@ func tokenize(text string) []string {
 
 	result := make([]string, 0, len(words))
 	for _, w := range words {
-		if len(w) >= 2 {
+		if len(w) >= minTokenBytes {
 			result = append(result, w)
 		}
 	}

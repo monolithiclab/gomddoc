@@ -13,8 +13,8 @@ type HealthHandler struct {
 }
 
 // NewHealthHandler creates a new HealthHandler with the given provider.
-func NewHealthHandler(provider provider.Provider) *HealthHandler {
-	return &HealthHandler{provider: provider}
+func NewHealthHandler(p provider.Provider) *HealthHandler {
+	return &HealthHandler{provider: p}
 }
 
 // healthResponse is the JSON structure returned by health endpoints.

@@ -719,11 +719,11 @@ func TestMemoryStorageFactory(t *testing.T) {
 	t.Parallel()
 
 	factory := MemoryStorageFactory()
-	storage, err := factory()
+	store, err := factory()
 	if err != nil {
 		t.Errorf("MemoryStorageFactory() error = %v", err)
 	}
-	if storage == nil {
+	if store == nil {
 		t.Error("MemoryStorageFactory() returned nil storage")
 	}
 }

@@ -13,7 +13,7 @@ const tagPrefix = "tag:"
 // Remaining tokens are rejoined with single spaces as the free-text query.
 //
 // Tag values are extracted before tokenization, so they bypass the tokenizer's
-// 2-char minimum and letter/digit-only normalization — a single-char tag or a
+// minTokenBytes minimum and letter/digit-only normalization — a single-char tag or a
 // tag containing dots/hyphens filters correctly.
 func parseQuery(query string) (tags []string, freeText string) {
 	var textTokens []string

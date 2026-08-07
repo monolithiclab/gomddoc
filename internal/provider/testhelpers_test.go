@@ -22,9 +22,9 @@ func createTestRepo(t testing.TB, files map[string]string) *git.Repository {
 	t.Helper()
 
 	stor := memory.NewStorage()
-	fs := memfs.New()
+	worktree := memfs.New()
 
-	repo, err := git.Init(stor, fs)
+	repo, err := git.Init(stor, worktree)
 	if err != nil {
 		t.Fatalf("Failed to init test repo: %v", err)
 	}

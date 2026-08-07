@@ -47,7 +47,12 @@ lint-gosec:  ## (no-help)
 .PHONY: lint-gocritic
 lint-gocritic:  # (no-help)
 	((test -z "$$FORCE_UPDATE" && which gocritic) || go install -v github.com/go-critic/go-critic/cmd/gocritic@latest) > /dev/null
-	$$(go env GOPATH)/bin/gocritic check ./...
+	# builtinShadow/importShadow are off by default. They are on here because a
+	# local named min, max, path, text or fs silently outranks the builtin or the
+	# imported package for the rest of the scope, and the compiler is happy either
+	# way — the whole class is invisible until someone reaches for the shadowed
+	# name and gets a type error they cannot explain.
+	$$(go env GOPATH)/bin/gocritic check -enable="builtinShadow,importShadow" ./...
 
 
 .SILENT: lint

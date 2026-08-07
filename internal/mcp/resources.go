@@ -124,12 +124,12 @@ func (s *MCPServer) handleTagResource(_ context.Context, req *mcp.ReadResourceRe
 	return jsonResourceResult(uri, string(data))
 }
 
-func jsonResourceResult(uri, text string) (*mcp.ReadResourceResult, error) {
+func jsonResourceResult(uri, body string) (*mcp.ReadResourceResult, error) {
 	return &mcp.ReadResourceResult{
 		Contents: []*mcp.ResourceContents{{
 			URI:      uri,
 			MIMEType: "application/json",
-			Text:     text,
+			Text:     body,
 		}},
 	}, nil
 }

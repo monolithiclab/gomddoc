@@ -24,11 +24,11 @@ func ExtractSection(content []byte, headingID string) ([]byte, error) {
 	found := false
 
 	for i, line := range lines {
-		level, text, ok := headingLevel(string(line))
+		level, heading, ok := headingLevel(string(line))
 		if !ok {
 			continue
 		}
-		if slugifyHeading(text) == headingID {
+		if slugifyHeading(heading) == headingID {
 			startIdx = i
 			startLevel = level
 			found = true
@@ -101,23 +101,23 @@ func headingLevel(line string) (int, string, bool) {
 		return 0, "", false
 	}
 
-	text := strings.TrimSpace(rest)
+	heading := strings.TrimSpace(rest)
 	// Strip optional closing hashes: "## Heading ##" -> "Heading"
-	text = strings.TrimRight(text, "#")
-	text = strings.TrimRight(text, " ")
-	return level, text, true
+	heading = strings.TrimRight(heading, "#")
+	heading = strings.TrimRight(heading, " ")
+	return level, heading, true
 }
 
 // slugifyHeading converts heading text to a URL-friendly anchor ID,
 // matching goldmark's parser.WithAutoHeadingID() behavior:
 // lowercase, non-alphanumeric characters replaced with hyphens,
 // consecutive hyphens collapsed, leading/trailing hyphens trimmed.
-func slugifyHeading(text string) string {
+func slugifyHeading(heading string) string {
 	var b strings.Builder
-	b.Grow(len(text))
+	b.Grow(len(heading))
 	prevHyphen := true // Start true to trim leading hyphens.
 
-	for _, r := range text {
+	for _, r := range heading {
 		switch {
 		case unicode.IsLetter(r) || unicode.IsDigit(r):
 			b.WriteRune(unicode.ToLower(r))

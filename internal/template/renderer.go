@@ -645,17 +645,16 @@ func (h *HTMLRenderer) generateEditURL(pagePath string) string {
 // Breadcrumbs generates the breadcrumb trail for the given path. Generating it
 // costs a provider Stat plus a title-cased segment list, so it is page data
 // built once at context-build time, not a template function each consumer calls.
-func (h *HTMLRenderer) Breadcrumbs(path string) []breadcrumb.Breadcrumb {
+func (h *HTMLRenderer) Breadcrumbs(pagePath string) []breadcrumb.Breadcrumb {
 	if h.breadcrumbGen == nil {
 		return nil
 	}
-	return h.breadcrumbGen.Generate(path)
+	return h.breadcrumbGen.Generate(pagePath)
 }
 
 // filterTOC returns a filtered list of TOCNode children for template rendering.
-// Nodes outside the min/max level range are pruned: nodes below min are traversed
-// transparently (their children promoted), nodes above max are dropped entirely.
-// Default levels: 1–2.
+// levels is [min, max] and defaults to 1–2; see filterTOCNodes for the pruning
+// rule.
 func filterTOC(toc *enricher.TOCNode, levels ...int) []*enricher.TOCNode {
 	if toc == nil || len(toc.Children) == 0 {
 		return nil
@@ -674,36 +673,35 @@ func filterTOC(toc *enricher.TOCNode, levels ...int) []*enricher.TOCNode {
 }
 
 // filterTOCNodes recursively filters a slice of TOCNode by heading level range.
-// Nodes within [min, max] are kept with their children filtered recursively.
-// Nodes below min are skipped but their children are promoted (transparent traversal).
-// Nodes above max are dropped entirely.
-func filterTOCNodes(nodes []*enricher.TOCNode, min, max int) []*enricher.TOCNode {
+// Nodes within [minLevel, maxLevel] are kept with their children filtered
+// recursively. Nodes below minLevel are skipped but their children are promoted
+// (transparent traversal). Nodes above maxLevel are dropped entirely.
+func filterTOCNodes(nodes []*enricher.TOCNode, minLevel, maxLevel int) []*enricher.TOCNode {
 	var result []*enricher.TOCNode
 	for _, node := range nodes {
-		if node.Level > max {
+		if node.Level > maxLevel {
 			continue
 		}
-		if node.Level >= min {
+		if node.Level >= minLevel {
 			result = append(result, &enricher.TOCNode{
 				Level:    node.Level,
 				Text:     node.Text,
 				ID:       node.ID,
-				Children: filterTOCNodes(node.Children, min, max),
+				Children: filterTOCNodes(node.Children, minLevel, maxLevel),
 			})
 		} else {
-			// Below min level — promote children (transparent traversal)
-			result = append(result, filterTOCNodes(node.Children, min, max)...)
+			result = append(result, filterTOCNodes(node.Children, minLevel, maxLevel)...)
 		}
 	}
 	return result
 }
 
-// ResolveLayout determines the template name to use based on frontmatter metadata.
-// If the metadata contains a "layout" field and the corresponding template exists,
+// ResolveLayout determines the template name to use based on frontmatter.
+// If the frontmatter contains a "layout" field and the corresponding template exists,
 // it returns "{layout}.html.tmpl". Otherwise, it falls back to "default.html.tmpl".
-func ResolveLayout(r Renderer, metadata map[string]any) string {
+func ResolveLayout(r Renderer, frontmatter map[string]any) string {
 	const defaultTemplate = "default.html.tmpl"
-	layout, ok := metadata["layout"].(string)
+	layout, ok := frontmatter["layout"].(string)
 	if !ok || layout == "" {
 		return defaultTemplate
 	}

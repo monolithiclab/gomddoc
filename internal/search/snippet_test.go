@@ -315,20 +315,6 @@ func TestIsWordBoundary(t *testing.T) {
 	}
 }
 
-func TestSortSpans(t *testing.T) {
-	t.Parallel()
-
-	spans := []span{{10, 15}, {0, 5}, {5, 10}}
-	sortSpans(spans)
-
-	for i := 1; i < len(spans); i++ {
-		if spans[i].start < spans[i-1].start {
-			t.Errorf("spans not sorted: %v", spans)
-			break
-		}
-	}
-}
-
 func TestMergeSpans(t *testing.T) {
 	t.Parallel()
 
@@ -343,6 +329,10 @@ func TestMergeSpans(t *testing.T) {
 		{"overlap", []span{{0, 7}, {5, 10}}, []span{{0, 10}}},
 		{"contained", []span{{0, 10}, {3, 7}}, []span{{0, 10}}},
 		{"multiple merges", []span{{0, 5}, {3, 8}, {7, 12}}, []span{{0, 12}}},
+		// Unsorted input: every other row is pre-sorted, so dropping the sort
+		// out of mergeSpans would pass all of them. This is the one that pins
+		// the precondition the two functions used to leave implicit.
+		{"unsorted input", []span{{10, 15}, {0, 5}, {3, 8}}, []span{{0, 8}, {10, 15}}},
 	}
 
 	for _, tt := range tests {

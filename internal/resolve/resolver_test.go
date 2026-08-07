@@ -81,9 +81,9 @@ func TestResolver_MultiExtensionCollision(t *testing.T) {
 	// .md is first, so it wins the "guide" clean path.
 	r := Build(fsys, BuildOptions{StripExtensions: []string{".md", ".html"}, HasRenderer: mockRenderer("text/markdown", "text/html")})
 
-	real, found := r.Resolve("guide")
-	if !found || real != "guide.md" {
-		t.Errorf("Resolve(guide) = %q, %v; want guide.md, true", real, found)
+	realPath, found := r.Resolve("guide")
+	if !found || realPath != "guide.md" {
+		t.Errorf("Resolve(guide) = %q, %v; want guide.md, true", realPath, found)
 	}
 
 	// guide.html should NOT have a clean path since guide.md claimed it.
@@ -105,20 +105,20 @@ func TestResolver_DirectoryCollision(t *testing.T) {
 	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
 
 	// File wins over directory.
-	real, found := r.Resolve("guide")
-	if !found || real != "guide.md" {
-		t.Errorf("Resolve(guide) = %q, %v; want guide.md, true", real, found)
+	realPath, found := r.Resolve("guide")
+	if !found || realPath != "guide.md" {
+		t.Errorf("Resolve(guide) = %q, %v; want guide.md, true", realPath, found)
 	}
 
 	// Directory contents still have their own mappings.
-	real, found = r.Resolve("guide/install")
-	if !found || real != "guide/install.md" {
-		t.Errorf("Resolve(guide/install) = %q, %v; want guide/install.md, true", real, found)
+	realPath, found = r.Resolve("guide/install")
+	if !found || realPath != "guide/install.md" {
+		t.Errorf("Resolve(guide/install) = %q, %v; want guide/install.md, true", realPath, found)
 	}
 
-	real, found = r.Resolve("guide/overview")
-	if !found || real != "guide/overview.md" {
-		t.Errorf("Resolve(guide/overview) = %q, %v; want guide/overview.md, true", real, found)
+	realPath, found = r.Resolve("guide/overview")
+	if !found || realPath != "guide/overview.md" {
+		t.Errorf("Resolve(guide/overview) = %q, %v; want guide/overview.md, true", realPath, found)
 	}
 }
 
@@ -131,9 +131,9 @@ func TestResolver_MultipleDots(t *testing.T) {
 
 	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
 
-	real, found := r.Resolve("my.config")
-	if !found || real != "my.config.md" {
-		t.Errorf("Resolve(my.config) = %q, %v; want my.config.md, true", real, found)
+	realPath, found := r.Resolve("my.config")
+	if !found || realPath != "my.config.md" {
+		t.Errorf("Resolve(my.config) = %q, %v; want my.config.md, true", realPath, found)
 	}
 
 	clean, found := r.CleanPath("my.config.md")
@@ -221,9 +221,9 @@ func TestResolver_NonRenderedFileSkipped(t *testing.T) {
 	}
 
 	// .md should still work.
-	real, found := r.Resolve("guide")
-	if !found || real != "guide.md" {
-		t.Errorf("Resolve(guide) = %q, %v; want guide.md, true", real, found)
+	realPath, found := r.Resolve("guide")
+	if !found || realPath != "guide.md" {
+		t.Errorf("Resolve(guide) = %q, %v; want guide.md, true", realPath, found)
 	}
 }
 
@@ -289,8 +289,8 @@ func TestResolver_ExcludedPathsHaveNoMapping(t *testing.T) {
 		".gomddoc/hide", "docs/.secret",
 	}
 	for _, clean := range blocked {
-		if real, found := r.Resolve(clean); found {
-			t.Errorf("Resolve(%q) = %q, want no mapping (path is excluded or hidden)", clean, real)
+		if realPath, found := r.Resolve(clean); found {
+			t.Errorf("Resolve(%q) = %q, want no mapping (path is excluded or hidden)", clean, realPath)
 		}
 	}
 
@@ -302,8 +302,8 @@ func TestResolver_ExcludedPathsHaveNoMapping(t *testing.T) {
 	}
 
 	for clean, want := range map[string]string{"index": "index.md", "docs/guide": "docs/guide.md"} {
-		if real, found := r.Resolve(clean); !found || real != want {
-			t.Errorf("Resolve(%q) = %q (found=%v), want %q", clean, real, found, want)
+		if realPath, found := r.Resolve(clean); !found || realPath != want {
+			t.Errorf("Resolve(%q) = %q (found=%v), want %q", clean, realPath, found, want)
 		}
 	}
 }
@@ -332,14 +332,14 @@ func TestResolver_PageURLPath(t *testing.T) {
 		{"root default index is the site root", r, "README.md", "README.md", "/"},
 		{"nested default index is its directory", r, "guides/README.md", "README.md", "/guides"},
 		{"default index match is case-insensitive", r, "guides/readme.md", "README.md", "/guides"},
-		// An unmapped file is served at its real path — the URL must keep the
+		// An unmapped file is served at its realPath path — the URL must keep the
 		// extension or the link 404s.
 		{"unmapped extension keeps the path", r, "guides/data.csv", "README.md", "/guides/data.csv"},
 		{"unstripped extension keeps the path", r, "reference/api.markdown", "README.md", "/reference/api.markdown"},
 		// Callers hold a *PathResolver that is nil before Build runs, and an
 		// empty one when strip_extensions is disabled. Both must degrade to the
-		// real path rather than panic.
-		{"nil resolver falls back to the real path", nil, "guides/quickstart.md", "README.md", "/guides/quickstart.md"},
+		// realPath path rather than panic.
+		{"nil resolver falls back to the realPath path", nil, "guides/quickstart.md", "README.md", "/guides/quickstart.md"},
 		{"nil resolver still resolves the default index", nil, "guides/README.md", "README.md", "/guides"},
 		// With no default index configured, README.md is an ordinary page and
 		// gets an ordinary clean URL rather than its directory's.

@@ -11,7 +11,9 @@ import (
 
 const defaultSnippetLen = 160
 
-// span represents a character range in text.
+// span is a half-open *byte* range into the original text, not a rune range.
+// byteToRuneIndex exists because findTokenSpansRunewise is the one path that
+// needs rune indices and has to convert.
 type span struct{ start, end int }
 
 // generateSnippet extracts a text snippet from content centered around the densest
@@ -163,8 +165,6 @@ func highlightTerms(text string, queryTokens []string) string {
 		return html.EscapeString(text)
 	}
 
-	// Sort spans by start position and merge overlaps
-	sortSpans(spans)
 	merged := mergeSpans(spans)
 
 	// Build result with highlighting
@@ -213,23 +213,8 @@ func findTokenSpans(text, lower, token string, spans []span) []span {
 // length. It maps byte positions from the lowered text back to the original
 // using rune-to-byte offset tables.
 func findTokenSpansRunewise(text, lower, token string, spans []span) []span {
-	// Build rune-to-byte offset table for original text.
-	runeOffsets := make([]int, 0, utf8.RuneCountInString(text)+1)
-	for i := 0; i < len(text); {
-		runeOffsets = append(runeOffsets, i)
-		_, size := utf8.DecodeRuneInString(text[i:])
-		i += size
-	}
-	runeOffsets = append(runeOffsets, len(text))
-
-	// Build rune-to-byte offset table for lowered text.
-	lowerRuneOffsets := make([]int, 0, len(runeOffsets))
-	for i := 0; i < len(lower); {
-		lowerRuneOffsets = append(lowerRuneOffsets, i)
-		_, size := utf8.DecodeRuneInString(lower[i:])
-		i += size
-	}
-	lowerRuneOffsets = append(lowerRuneOffsets, len(lower))
+	runeOffsets := runeOffsetTable(text)
+	lowerRuneOffsets := runeOffsetTable(lower)
 
 	// Find token in lowered text, map positions back to original via rune index.
 	offset := 0
@@ -257,6 +242,18 @@ func findTokenSpansRunewise(text, lower, token string, spans []span) []span {
 	return spans
 }
 
+// runeOffsetTable returns the byte offset of every rune in s, plus len(s) as a
+// terminator, so byteToRuneIndex can binary-search it.
+func runeOffsetTable(s string) []int {
+	offsets := make([]int, 0, utf8.RuneCountInString(s)+1)
+	for i := 0; i < len(s); {
+		offsets = append(offsets, i)
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	return append(offsets, len(s))
+}
+
 // byteToRuneIndex finds the rune index for a byte offset using binary search
 // on a pre-built, sorted offset table.
 func byteToRuneIndex(offsets []int, bytePos int) int {
@@ -278,18 +275,16 @@ func isWordBoundary(text string, pos int) bool {
 	return !isWord(prevR) || !isWord(nextR)
 }
 
-// sortSpans sorts spans by start position using insertion sort (small slices).
-func sortSpans(spans []span) {
-	slices.SortFunc(spans, func(a, b span) int {
-		return cmp.Compare(a.start, b.start)
-	})
-}
-
-// mergeSpans merges overlapping spans.
+// mergeSpans sorts spans by start position and merges the overlaps. The sort is
+// in here rather than at the call site because it is the merge's precondition:
+// as two functions the ordering was an unwritten contract that only one caller
+// happened to honour, and nothing failed if it stopped. spans is sorted in
+// place.
 func mergeSpans(spans []span) []span {
 	if len(spans) == 0 {
 		return nil
 	}
+	slices.SortFunc(spans, func(a, b span) int { return cmp.Compare(a.start, b.start) })
 	merged := []span{spans[0]}
 	for _, s := range spans[1:] {
 		last := &merged[len(merged)-1]

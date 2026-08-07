@@ -49,8 +49,8 @@ type ErrorPage struct {
 
 // NewErrorPage builds the error writer for one language scope. Only the Site,
 // Lang, TFunc and Languages fields of scope are read.
-func NewErrorPage(renderer template.Renderer, scope template.ErrorContextInput) *ErrorPage {
-	return &ErrorPage{renderer: renderer, scope: scope}
+func NewErrorPage(r template.Renderer, scope template.ErrorContextInput) *ErrorPage {
+	return &ErrorPage{renderer: r, scope: scope}
 }
 
 // NotFound writes a themed 404 for the requested path.

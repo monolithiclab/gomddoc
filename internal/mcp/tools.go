@@ -369,9 +369,9 @@ type pageEntry struct {
 	Tags        []string
 }
 
-func textResult(text string) *mcp.CallToolResult {
+func textResult(body string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		Content: []mcp.Content{&mcp.TextContent{Text: body}},
 	}
 }
 

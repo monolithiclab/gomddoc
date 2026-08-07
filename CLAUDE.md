@@ -157,7 +157,18 @@ testsite/              # Lorem ipsum test site for quick testing
   are usually the ones on the request path.
 - Path joining: `path.Join("assets", "themes", cfg.Theme)` (each segment separate)
 - **`for i := range N`** over `for i := 0; i < N; i++` (Go 1.22+ range-over-int)
+- **Never name a local after a builtin or an imported package** — `min`, `max`, `path`, `text`, `fs`,
+  `metadata`, `real`. The compiler accepts the shadow silently and the code keeps working until
+  someone reaches for the shadowed name inside that scope, so the class is invisible by construction.
+  `make lint` gates it (`gocritic -enable="builtinShadow,importShadow"`); aliasing the import
+  (`txt "…/internal/text"`) is the fallback when the local really has no better name, but usually it
+  does — the shadowing name is vague precisely because it was borrowed.
 - **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains
+- **A precondition belongs inside the function that has it, not at the call site** — `mergeSpans`
+  required its input sorted by `start`, and the sort lived one line above the only call. Nothing
+  failed if it stopped: every test row fed pre-sorted input, so the contract was unwritten *and*
+  unpinned. Fold it in (`mergeSpans` sorts, then merges) and the contract cannot be violated. If it
+  genuinely cannot be folded, the test suite owes it a row that violates the precondition.
 - **Bounded results keep a sorted top-N window** — never collect-all, sort, then truncate on a path
   that runs per request or per file. Drop a candidate ordered after the window's worst on sight; sort
   only the window, only on admission. It also shrinks the dedup set: with a window, a duplicate can

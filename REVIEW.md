@@ -2269,13 +2269,37 @@ three `"text/markdown; charset=utf-8"`).
   — including the `giturl.go` one, whose assertion reaches past the `malformed URL` label into
   `net/url`'s text, because a `strings.Contains` on a label alone cannot tell `errors.New("x")` from
   `fmt.Errorf("x: %w", err)`.
-- **Misleading comments/naming:** `search/snippet.go:255` says *"using insertion sort"* over a
+- ~~**Misleading comments/naming:** `search/snippet.go:255` says *"using insertion sort"* over a
   `slices.SortFunc` body (CLAUDE.md bans manual insertion sorts — the comment claims one exists);
   `snippet.go:14` calls byte offsets "character range" in the one file where that distinction is the
   entire difficulty; `search/tokenizer.go:60,68` says "shorter than 2 characters" over a byte check;
   `template/renderer.go:647 filterTOCNodes(nodes, min, max)` shadows the `min`/`max` builtins CLAUDE.md
   lists as target idioms; `mcp/section.go:27,104` shadows the imported `internal/text` package (the
-  enricher solved the same collision with `txt "…/internal/text"`).
+  enricher solved the same collision with `txt "…/internal/text"`).~~ **FIXED**, and the shadow half
+  is now a lint gate rather than five hand-edits: `make lint` runs `gocritic` with
+  `-enable="builtinShadow,importShadow"`, both off by default. That is what closes the class — fixing
+  the two listed sites by hand would have left `renderer.go:648 Breadcrumbs(path)` and
+  `renderer.go:704 ResolveLayout(…, metadata)` shadowing `path` and `internal/metadata` *five and six
+  lines away from the edit*, plus `server/errors.go:52`, `server/health.go:16`, `build.go:337`,
+  `mcp/section_test.go:74` (the same `text` shadow, in the package being fixed), 14 `fs :=` in
+  `navigation_test.go`, and 6 `real :=` in `resolver_test.go`. All are renamed and the repo is clean
+  under both checks.
+  On the comments: `sortSpans` was deleted rather than re-documented — one caller, and its test
+  asserted that `slices.SortFunc` sorts, which no production change could falsify. The sort moved
+  *into* `mergeSpans`, because it was that function's unwritten precondition and deleting the wrapper
+  would have traded a misleading comment for a missing one. `TestMergeSpans` gained the suite's only
+  unsorted-input row; mutation-verified as the only row that fails when the sort is removed.
+  `span`'s doc says byte range; the type was *not* renamed to `byteSpan` (~13 edits of churn for a
+  distinction one sentence carries, and `start`/`end` would still not say bytes on the fields).
+  `tokenize` gained `minTokenBytes` and a comment that states the rule it actually implements —
+  bytes is a *proxy* for "drop single ASCII letters", lenient enough that a two-byte Cyrillic
+  stopword survives, and index and query both go through it so they agree whichever way it errs;
+  the CJK-only version of that comment was the first draft and flattered the design. A CJK row in
+  `TestTokenize` pins it, and `parse.go:16`'s "2-char minimum" — a second, contradicting statement of
+  the same threshold — now names the constant. Dedup on the way: `findTokenSpansRunewise` had two
+  byte-identical rune-offset walks, now one `runeOffsetTable`.
+  Deliberately not done: `filterTOCNodes` still starts `result` at nil rather than preallocating, and
+  `headingLevel` still takes a `string` converted per line — both pre-existing, neither in this item.
 - **`locale.IsBCP47Dir` accepts only `ll-CC`** (`detect.go:8-23`) — `fr`, `en`, `zh-Hans`, `es-419`
   are all valid BCP 47 and all rejected. The name promises more than the implementation delivers.
   Since `ExtractLangFromPath` was deleted its only callers are `DetectLanguages` and the in-package

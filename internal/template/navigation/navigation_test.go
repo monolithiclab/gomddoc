@@ -31,7 +31,7 @@ func (f fnFS) Open(name string) (fs.File, error) {
 func TestTree_BasicShape(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"README.md":       {Data: []byte("# Home")},
 		"guide.md":        {Data: []byte("# Getting Started")},
 		"reference.md":    {Data: []byte("# API Reference")},
@@ -39,7 +39,7 @@ func TestTree_BasicShape(t *testing.T) {
 		"docs/usage.md":   {Data: []byte("# Usage Guide")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -110,11 +110,11 @@ func TestTree_TitleLookup(t *testing.T) {
 func TestTree_CachedAcrossCalls(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"guide.md": {Data: []byte("# Guide")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	first := gen.Tree()
 	second := gen.Tree()
 
@@ -126,13 +126,13 @@ func TestTree_CachedAcrossCalls(t *testing.T) {
 func TestTree_HiddenFilesSkipped(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"visible.md":         {Data: []byte("# Visible")},
 		".hidden.md":         {Data: []byte("# Hidden")},
 		".gomddoc/config.md": {Data: []byte("# Config")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -151,14 +151,14 @@ func TestTree_HiddenFilesSkipped(t *testing.T) {
 func TestTree_DefaultIndexSkipped(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"README.md":      {Data: []byte("# Home")},
 		"guide.md":       {Data: []byte("# Guide")},
 		"docs/README.md": {Data: []byte("# Docs Index")},
 		"docs/setup.md":  {Data: []byte("# Setup")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -180,12 +180,12 @@ func TestTree_DefaultIndexSkipped(t *testing.T) {
 func TestTree_EmptyDirsExcluded(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"guide.md":        {Data: []byte("# Guide")},
 		"empty/README.md": {Data: []byte("# Empty")}, // Only has default index
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -200,7 +200,7 @@ func TestTree_EmptyDirsExcluded(t *testing.T) {
 func TestTree_NonMDFilesSkipped(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"guide.md":    {Data: []byte("# Guide")},
 		"image.png":   {Data: []byte("PNG")},
 		"style.css":   {Data: []byte("body{}")},
@@ -209,7 +209,7 @@ func TestTree_NonMDFilesSkipped(t *testing.T) {
 		"script.html": {Data: []byte("<html>")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -255,11 +255,11 @@ func TestTree_TitleExtraction(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			fs := fstest.MapFS{
+			fsys := fstest.MapFS{
 				"test-file.md": {Data: []byte(tt.content)},
 			}
 
-			gen := NewGenerator(fs, "README.md", nil, nil)
+			gen := NewGenerator(fsys, "README.md", nil, nil)
 			root := gen.Tree()
 
 			if root == nil {
@@ -280,14 +280,14 @@ func TestTree_TitleExtraction(t *testing.T) {
 func TestTree_SortOrder(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"zebra.md":     {Data: []byte("# Zebra")},
 		"alpha.md":     {Data: []byte("# Alpha")},
 		"beta/one.md":  {Data: []byte("# One")},
 		"alpha/two.md": {Data: []byte("# Two")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -321,9 +321,9 @@ func TestTree_SortOrder(t *testing.T) {
 func TestTree_EmptyFS(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{}
+	fsys := fstest.MapFS{}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root != nil {
@@ -334,11 +334,11 @@ func TestTree_EmptyFS(t *testing.T) {
 func TestTree_OnlyDefaultIndex(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"README.md": {Data: []byte("# Home")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root != nil {
@@ -376,11 +376,11 @@ func TestNormalizeRequestPath(t *testing.T) {
 func TestExtractTitle_FrontMatter(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"page.md": {Data: []byte("---\ntitle: FM Title\nauthor: Test\n---\n\nSome intro text.\n\n# Real Heading\n\nContent.")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -395,11 +395,11 @@ func TestExtractTitle_FrontMatter(t *testing.T) {
 func TestTree_DeepNesting(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"a/b/c/deep.md": {Data: []byte("# Deep Page")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	root := gen.Tree()
 
 	if root == nil {
@@ -551,14 +551,14 @@ func TestPrevNext(t *testing.T) {
 
 	// Files/dirs are sorted alphabetically and interleaved at each level,
 	// so depth-first leaf order is: faq.md, guide/setup.md, guide/usage.md, intro.md.
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"intro.md":       {Data: []byte("# Intro")},
 		"guide/setup.md": {Data: []byte("# Setup")},
 		"guide/usage.md": {Data: []byte("# Usage")},
 		"faq.md":         {Data: []byte("# FAQ")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 
 	tests := []struct {
 		name      string
@@ -643,11 +643,11 @@ func TestPrevNext(t *testing.T) {
 func TestPrevNext_SinglePage(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
+	fsys := fstest.MapFS{
 		"only.md": {Data: []byte("# Only")},
 	}
 
-	gen := NewGenerator(fs, "README.md", nil, nil)
+	gen := NewGenerator(fsys, "README.md", nil, nil)
 	prev, next := gen.PrevNext("/only.md")
 
 	if prev != nil || next != nil {

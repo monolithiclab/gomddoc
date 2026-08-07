@@ -98,6 +98,12 @@ func TestTokenize(t *testing.T) {
 			want:  []string{"go", "25", "release"},
 		},
 		{
+			// A rune-counting threshold drops "文" and turns this red.
+			name:  "keeps a single CJK ideograph",
+			input: "a 文 ab",
+			want:  []string{"文", "ab"},
+		},
+		{
 			name:  "empty input",
 			input: "",
 			want:  []string{},

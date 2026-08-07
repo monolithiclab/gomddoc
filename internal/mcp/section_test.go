@@ -71,10 +71,10 @@ func TestHeadingLevel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			level, text, ok := headingLevel(tt.line)
-			if ok != tt.wantOK || level != tt.wantLevel || text != tt.wantText {
+			level, heading, ok := headingLevel(tt.line)
+			if ok != tt.wantOK || level != tt.wantLevel || heading != tt.wantText {
 				t.Errorf("headingLevel(%q) = (%d, %q, %v), want (%d, %q, %v)",
-					tt.line, level, text, ok, tt.wantLevel, tt.wantText, tt.wantOK)
+					tt.line, level, heading, ok, tt.wantLevel, tt.wantText, tt.wantOK)
 			}
 		})
 	}
