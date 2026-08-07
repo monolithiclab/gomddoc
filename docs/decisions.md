@@ -524,3 +524,32 @@ input that drives both it and `template.WithLangPrefix`.
 pipeline's effective list. Its index now covers default-language content only — translations
 are duplicates and indexing them once is right — while `fr-FR/page.md` stays readable by
 explicit path.
+
+## A Language Directory Needs a Script or a Region Subtag
+
+**Chosen**: `locale.isLanguageDir` recognises `fr-FR`, `zh-Hans`, `es-419` and `sr-Latn-RS`,
+but not `fr`, `en` or `zh`. The tag must also be canonically cased and its primary subtag must
+be a language `golang.org/x/text/language` knows.
+
+**Why**: detection is automatic — the i18n design has no `languages` config map — so the
+predicate is evaluated against every directory at the content root, and a false positive is
+expensive rather than cosmetic: the directory becomes its own pipeline and, per "One Effective
+Exclude List per Pipeline" above, the default pipeline excludes it. The site loses that
+content. Bare primary subtags are exactly where that risk lives: `language.Parse` accepts
+`doc`, `api`, `css`, `bin`, `id`, `is`, `no` and `it` as languages. Requiring a script or a
+region subtag makes a collision with an ordinary directory name implausible while covering
+every form the i18n guide documents.
+
+**Alternatives considered**: (a) full BCP 47 via `language.Parse` alone — rejected, it takes
+`doc/` and `api/`, and by itself it also returns `is-a-test` unchanged (Icelandic plus an
+extension singleton), so the round-trip has to recompose from base/script/region rather than
+compare `tag.String()`; (b) keeping the `ll-CC` check — rejected, it silently drops `zh-Hans`
+and `es-419`, which are what a Chinese or Latin American Spanish translation is actually
+named; (c) an explicit `languages:` config list — rejected as a larger design change than the
+defect warrants, and it re-introduces the configuration the i18n spec set out to avoid;
+(d) requiring a matching locale bundle (`assets/locales/{lang}.yml`) instead of a name rule —
+rejected, `Bundle.T` falls back to the default language and only `en-US.yml` ships, so a
+translation tree with no locale file of its own is a legitimate setup that renders correctly.
+
+**Cost**: a site that wants `/fr/` rather than `/fr-FR/` cannot have it. That is the price of
+auto-detection, and the guide states it.

@@ -2300,10 +2300,33 @@ three `"text/markdown; charset=utf-8"`).
   byte-identical rune-offset walks, now one `runeOffsetTable`.
   Deliberately not done: `filterTOCNodes` still starts `result` at nil rather than preallocating, and
   `headingLevel` still takes a `string` converted per line — both pre-existing, neither in this item.
-- **`locale.IsBCP47Dir` accepts only `ll-CC`** (`detect.go:8-23`) — `fr`, `en`, `zh-Hans`, `es-419`
+- ~~**`locale.IsBCP47Dir` accepts only `ll-CC`** (`detect.go:8-23`) — `fr`, `en`, `zh-Hans`, `es-419`
   are all valid BCP 47 and all rejected. The name promises more than the implementation delivers.
   Since `ExtractLangFromPath` was deleted its only callers are `DetectLanguages` and the in-package
-  test, so whatever fixes the predicate should also unexport it.
+  test, so whatever fixes the predicate should also unexport it.~~ **FIXED, with the premise
+  half-rejected.** Renamed to `isLanguageDir` and broadened to `zh-Hans`, `es-419`, `sr-Latn-RS`,
+  `zh-Hant-TW` and three-letter primaries (`abc-DE`); newly *tightened* against `zz-ZZ`/`xx-XX`
+  (well-formed, not a language — the old check invented a pipeline for them) and against
+  non-canonical spellings, so `en-US` and `en-us` cannot become two pipelines for one language.
+  But `fr` and `en` stay rejected, deliberately. Detection is automatic — no `languages:` config —
+  so the predicate runs against every directory at the content root, and `language.Parse` accepts
+  `doc`, `api`, `css`, `bin`, `id`, `is`, `no` and `it` as languages. Honouring the finding as filed
+  would turn a `doc/` directory into its own pipeline and, per §10.6's exclude invariant, drop it
+  from the default one: the fix would delete content from the site. A script and/or region subtag is
+  now required. Rationale and the four alternatives are in `docs/decisions.md`.
+  Nothing downstream assumed the five-character shape — verified across route registration
+  (`server.go:275`), `stripPathPrefix` (`redirect.go:67-71`), the sitemap index (`sitemap.go:68-72`),
+  build output paths (`build.go:243,258,265`), bundle filenames (`bundle.go:85`), the hreflang
+  partial, all 7 external themes and the website theme; every one is string-keyed.
+  Implementation: `language.Parse`, then `tag.Raw()` for the script/region test (`Script()`/`Region()`
+  *infer* the subtags that were not written, `Raw()` does not), then `language.Compose(base, script,
+  region).String() == name`. The recompose is load-bearing rather than decorative: `Compose` keeps
+  only those three subtags, and a plain `tag.String() == name` round-trip accepts `en-US-x-foo`,
+  `en-US-u-co-phonebk`, `ca-ES-valencia` and `de-CH-1901` — the four rows that mutation-verify it.
+  `is-a-test` is caught one step earlier, by the bare-subtag rule: Parse reads it as Icelandic plus
+  an extension singleton, and an extension is not a region. Cost measured at +80 bytes of binary
+  (`golang.org/x/text` was already a direct dependency via `internal/text`) and 336 ns/272 B per hit,
+  on a path that runs once per startup over top-level entries only.
 - **Misc:** `.md`/`.markdown` MIME types are registered in `internal/renderer` (`markdown.go:28-29`),
   a package `resolve` does not import — so the entire clean-URL feature depends on `internal/renderer`
   happening to be linked in; move them next to the `.mjs` registration in `negotiate/mime.go`.
@@ -2436,3 +2459,46 @@ three `"text/markdown; charset=utf-8"`).
     `make vulncheck` is now scoped to `./cmd/... ./internal/...` for the same "what ships" reason —
     `image/png` reached the product's vuln graph only through this script.
 13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.
+
+### 10.11 NEW — language-code handling (found while fixing §10.7's language-directory predicate)
+
+Tightening `isLanguageDir` put a name rule on one end of the i18n pipeline. These are the other
+ends, where a language code arrives from a source that has no rule at all.
+
+#### MEDIUM: `SiteConfig.Validate` never validates `language`
+
+`config.go:410` checks theme, dir-index and the rest, but `Language` passes through untouched.
+`language: english` is accepted and then flows into `<html lang>`, the locale bundle key,
+`LanguageInfo.Code` and the `x-default` hreflang — four places where it is served to a client as a
+BCP 47 tag. A `language.Parse` call in `Validate` is the whole fix.
+
+Worse in one specific case: `BuildLanguageInfos` (`renderer.go:68-82`) unconditionally prepends the
+default language and then appends every detected directory, with no dedup. A site whose content
+root contains `en-US/` while `cfg.Site.Language` is `en-US` — the default value — gets the code
+twice in the switcher and **two `<link rel="alternate" hreflang="en-US">` with different hrefs**
+(`hreflang.html.tmpl:7` and `:10`). Either `Validate` rejects the collision or `BuildLanguageInfos`
+skips a detected language equal to the default.
+
+#### LOW: `?lang=` is an exact, case-sensitive lookup
+
+`ResolveAPILanguage` (`language.go:11-29`) tests `known[lang]`, so `?lang=fr-fr` and
+`?lang=FR-FR` fall back to the default silently. The parameter is documented as a bare "BCP 47
+code" (`docs/guide/10-search.md:113`, `docs/guide/12-advanced/03-api-reference.md:72`), which reads
+as case-insensitive because BCP 47 is. Same lookup serves `Accept-Language`, where a client
+sending `fr-fr` is entirely ordinary. Canonicalise through `language.Parse` before the lookup, or
+key `known` by folded code.
+
+#### LOW: no test runs detection → pipelines → serve
+
+`internal/server/language_content_test.go:110-116`, `sitemap_test.go:256-257`,
+`renderer_test.go:1955-1956,2033` and the comment at `build.go:430` all key `LangPipelines` by a
+bare `fr`/`de`. Those fixtures are hand-built, so they pass — but they model a site
+`DetectLanguages` cannot produce, and now never could have. Nothing in the suite runs a content
+root through detection and then serves from the pipelines it produced, which is the seam where a
+predicate change would show up.
+
+#### LOW: `docs/plans/2026-04-10-i18n-l10n.md` still carries the deleted `IsBCP47Dir`
+
+Lines 23, 393-420 and 508-563 contain the removed function, its test, and "must be `ll-CC`"
+comments. It is a frozen plan document, so leaving it is defensible — noted because it is what a
+future grep for `IsBCP47Dir` finds first.

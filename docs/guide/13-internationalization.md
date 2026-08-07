@@ -15,9 +15,8 @@ translation files, and gomddoc handles the rest.
 
 ## Content Structure
 
-Multi-language content is organized by placing translated pages in directories named with BCP 47 language codes. The
-format is `ll-CC` — two lowercase language letters, a hyphen, two uppercase country letters (e.g., `fr-FR`, `es-ES`,
-`ja-JP`).
+Multi-language content is organized by placing translated pages in directories named with BCP 47 language tags —
+a language subtag plus a script and/or a region (e.g., `fr-FR`, `es-ES`, `ja-JP`, `zh-Hans`, `es-419`, `sr-Latn-RS`).
 
 Content at the root of your documentation directory is served as the **default language** (configured via
 `language` in your config, default: `en-US`). Each BCP 47 directory becomes an additional language:
@@ -57,17 +56,23 @@ Extension stripping, clean URLs, and all other URL features work the same way wi
 
 ### Language Detection
 
-gomddoc detects available languages automatically at startup by scanning the content root for directories matching the
-BCP 47 format (`ll-CC`). No configuration is needed beyond creating the directories.
+gomddoc detects available languages automatically at startup by scanning the content root. No configuration is needed
+beyond creating the directories.
 
 Requirements for a directory to be detected as a language:
 
-- Exactly 5 characters in `ll-CC` format
-- First two characters: lowercase ASCII letters (language code)
-- Third character: hyphen (`-`)
-- Last two characters: uppercase ASCII letters (country code)
+- A valid BCP 47 language subtag (2–3 letters), which must be a **real** language — `zz-ZZ` is well-formed but is not
+  one, and is ignored
+- Followed by a script subtag (`zh-Hans`), a region subtag (`fr-FR`, `es-419`), or both (`sr-Latn-RS`)
+- Written in canonical form: lowercase language, title-case script, uppercase region. `en-us` is not detected, so one
+  language cannot end up split across two directories
 
-Directories that don't match this pattern (e.g., `docs/`, `api/`, `en/`) are treated as regular content directories.
+**A bare language subtag such as `en/` or `fr/` is deliberately not detected.** Detection is automatic and runs against
+every directory at the content root, and short bare subtags collide with ordinary directory names — `doc`, `api`,
+`css`, `bin`, `id`, `is`, `no` and `it` are all real language codes. Mistaking one for a translation tree would take
+that content out of the main site, so the extra subtag is required. Use `en-US`, `fr-FR` and so on.
+
+Directories that don't match (e.g., `docs/`, `api/`, `getting-started/`) are treated as regular content directories.
 
 ## Translation Files
 

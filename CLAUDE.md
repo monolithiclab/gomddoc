@@ -169,6 +169,18 @@ testsite/              # Lorem ipsum test site for quick testing
   failed if it stopped: every test row fed pre-sorted input, so the contract was unwritten *and*
   unpinned. Fold it in (`mergeSpans` sorts, then merges) and the contract cannot be violated. If it
   genuinely cannot be folded, the test suite owes it a row that violates the precondition.
+- **A predicate that auto-classifies user-named things must be narrower than the standard it comes
+  from** — `isLanguageDir` runs against every directory at the content root and there is no
+  `languages:` config to override it, so a false positive is not a mislabel: the directory becomes
+  its own pipeline and the default pipeline excludes it, and the site loses that content. Full
+  BCP 47 would have claimed `doc/`, `api/`, `css/`, `bin/`, `id/`, `is/`, `no/` and `it/` — all real
+  language subtags. Widen to the shapes that cannot collide (here: a script and/or region subtag is
+  required) and say in `docs/decisions.md` what was deliberately left out, because "it is valid
+  BCP 47 and we reject it" reads as a bug to the next reader. Corollary for
+  `golang.org/x/text/language`: `Tag.Script()`/`Region()` **infer** subtags that were never written
+  (`Raw()` does not), and `Parse` preserves variants, extensions and privateuse verbatim — so
+  `tag.String() == name` is not a canonicality check. Recompose through
+  `language.Compose(base, script, region)`, which keeps only those three.
 - **Bounded results keep a sorted top-N window** — never collect-all, sort, then truncate on a path
   that runs per request or per file. Drop a candidate ordered after the window's worst on sight; sort
   only the window, only on admission. It also shrinks the dedup set: with a window, a duplicate can
