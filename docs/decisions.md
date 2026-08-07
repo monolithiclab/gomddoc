@@ -155,16 +155,16 @@ Extracted from completed spec files before deletion.
 
 ## Color Chip Web Component
 
-**Chosen**: Shadow DOM `<color-chip>` custom element, shared via `inlineJSAsset`
+**Chosen**: Shadow DOM `<gmd-color-chip>` custom element, shared via `inlineJSAsset`
 
 **Alternatives considered**:
 - **Inline `<span>` with styles**: Simple but leaks CSS between themes; each theme must define chip styles independently
 - **Server-side SVG**: Would add rendering complexity; no interactivity (click-to-copy)
 - **CSS-only with `background-color`**: No click-to-copy; requires parsing hex in CSS (not possible without JS)
 
-**Why web component**: Shadow DOM encapsulation means the chip renders identically across all 8 themes without any theme-specific CSS. The `::part(swatch)` and `::part(label)` CSS parts allow themes to customize appearance if needed. Click-to-copy with "Copied!" feedback provides utility. The component is loaded once via `{{ inlineJSAsset "color-chip.mjs" }}` — shared across all themes from `assets/shared/`.
+**Why web component**: Shadow DOM encapsulation means the chip renders identically across all 8 themes without any theme-specific CSS. The `::part(swatch)` and `::part(label)` CSS parts allow themes to customize appearance if needed. Click-to-copy with "Copied!" feedback provides utility. The component is loaded once via `{{ inlineJSAsset "gmd-color-chip.mjs" }}` — shared across all themes from `assets/shared/`.
 
-**Pipeline integration**: The `ColorChipExtension` goldmark extension detects hex color codes in `ast.CodeSpan` nodes during AST transformation and replaces them with `ColorChipNode` custom nodes, rendered as `<color-chip>#HEX</color-chip>`. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by the `color_chips` feature toggle (default: enabled) with per-page frontmatter override via `features: { color_chips: false }`.
+**Pipeline integration**: The `ColorChipExtension` goldmark extension detects hex color codes in `ast.CodeSpan` nodes during AST transformation and replaces them with `ColorChipNode` custom nodes, rendered as `<gmd-color-chip>#HEX</gmd-color-chip>`. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by the `color_chips` feature toggle (default: enabled) with per-page frontmatter override via `features: { color_chips: false }`.
 
 ## TOC Scroll Highlighting
 
@@ -294,7 +294,7 @@ Snippets are generated with `<mark>` highlighting around query terms.
 
 **Search UI:** Shared `search.mjs` module loaded via `{{ inlineJSAsset "search.mjs" }}` across all 8 themes.
 CSS injected dynamically using theme custom properties (`--color-*`) for automatic cross-theme and dark
-mode compatibility — no per-theme CSS needed. Follows the `color-chip.mjs` precedent for shared assets.
+mode compatibility — no per-theme CSS needed. Follows the `gmd-color-chip.mjs` precedent for shared assets.
 
 **Build mode:** Option B (Pagefind) deferred as optional post-build step.
 
