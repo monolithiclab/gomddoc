@@ -8,7 +8,6 @@ import (
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	meta "github.com/yuin/goldmark-meta"
-	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
@@ -125,7 +124,7 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 	doc := m.md.Parser().Parse(reader, parser.WithContext(pCtx))
 
 	// Set features on document node for node renderers.
-	setDocFeatures(doc.(*ast.Document), merged)
+	setDocFeatures(doc, merged)
 
 	var buf bytes.Buffer
 	buf.Grow(len(content) * 2)

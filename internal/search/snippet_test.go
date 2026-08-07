@@ -3,6 +3,7 @@ package search
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestTruncateAtWord(t *testing.T) {
@@ -77,13 +78,18 @@ func TestFindBestWindow(t *testing.T) {
 		content    string
 		tokens     []string
 		windowSize int
-		wantPos    int
+		// pinPos rows assert the exact result; the rest only assert that the
+		// window found contains a token. Every row asserts the two invariants
+		// in the loop below — an in-range start, on a rune boundary.
+		pinPos  bool
+		wantPos int
 	}{
 		{
 			name:       "content shorter than window",
 			content:    "short",
 			tokens:     []string{"short"},
 			windowSize: 100,
+			pinPos:     true,
 			wantPos:    0,
 		},
 		{
@@ -117,6 +123,27 @@ func TestFindBestWindow(t *testing.T) {
 			tokens:     []string{"target"},
 			windowSize: 50,
 		},
+		{
+			// A window small enough to leave the sampled start inside the body's
+			// final multi-byte rune. The rune-alignment walk was bounded by
+			// `pos > 0` — always true once it has advanced — so it indexed past
+			// the end of content. No token can be in either window; the point is
+			// that the call returns a usable position at all.
+			name:       "window ends inside trailing rune",
+			content:    "あ",
+			tokens:     []string{"x"},
+			windowSize: 1,
+			pinPos:     true,
+			wantPos:    0,
+		},
+		{
+			name:       "window ends inside trailing rune after ASCII",
+			content:    "abcあ",
+			tokens:     []string{"x"},
+			windowSize: 2,
+			pinPos:     true,
+			wantPos:    0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -124,7 +151,14 @@ func TestFindBestWindow(t *testing.T) {
 			t.Parallel()
 			pos := findBestWindow(tt.content, tt.tokens, tt.windowSize)
 
-			if tt.name == "content shorter than window" {
+			if maxPos := max(len(tt.content)-tt.windowSize, 0); pos < 0 || pos > maxPos {
+				t.Fatalf("findBestWindow() = %d, want a start in [0,%d]", pos, maxPos)
+			}
+			if !utf8.RuneStart(tt.content[pos]) {
+				t.Errorf("findBestWindow() = %d, not a rune boundary in %q", pos, tt.content)
+			}
+
+			if tt.pinPos {
 				if pos != tt.wantPos {
 					t.Errorf("findBestWindow() = %d, want %d", pos, tt.wantPos)
 				}

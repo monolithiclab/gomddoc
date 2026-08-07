@@ -31,7 +31,13 @@ func getFeatures(pc parser.Context) map[string]bool {
 
 // setDocFeatures stores feature flags on the document node as an attribute,
 // making them accessible to node renderers via getDocFeatures.
-func setDocFeatures(doc *ast.Document, features map[string]bool) {
+//
+// The parameter is ast.Node, not *ast.Document, because the only caller has a
+// parser result: asserting it to *ast.Document there put a panic in the request
+// path to buy nothing, since SetAttributeString is an ast.Node method. If a
+// parser ever returned some other root, getDocFeatures' OwnerDocument lookup
+// yields nil and features fall back to off — a degradation, not a crash.
+func setDocFeatures(doc ast.Node, features map[string]bool) {
 	doc.SetAttributeString(featuresDocAttr, features)
 }
 

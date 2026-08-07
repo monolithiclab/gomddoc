@@ -82,6 +82,21 @@ func generateSnippet(content string, queryTokens []string, maxLen int) string {
 	return snippet
 }
 
+// alignRuneStart returns the smallest offset >= from that begins a rune in s,
+// or len(s) if the walk runs off the end.
+//
+// findBestWindow aligns twice per iteration, and the two copies had drifted:
+// the window start was bounded by `from > 0` — always true once the walk has
+// advanced a byte — so a window small enough to leave the start inside the
+// body's last multi-byte rune indexed past the end of the string. One helper
+// means one bound.
+func alignRuneStart(s string, from int) int {
+	for from < len(s) && !utf8.RuneStart(s[from]) {
+		from++
+	}
+	return from
+}
+
 // findBestWindow finds the starting byte position of the window with the
 // highest density of query term occurrences.
 func findBestWindow(content string, queryTokens []string, windowSize int) int {
@@ -108,18 +123,11 @@ func findBestWindow(content string, queryTokens []string, windowSize int) int {
 	step := max(len(content)/50, 1)
 
 	for pos := 0; pos <= len(content)-windowSize; pos += step {
-		// Align to rune boundary
-		for pos > 0 && !utf8.RuneStart(content[pos]) {
-			pos++
-		}
+		pos = alignRuneStart(content, pos)
 		if pos > len(content)-windowSize {
 			break
 		}
-		// Align end to rune boundary
-		end := pos + windowSize
-		for end < len(content) && !utf8.RuneStart(content[end]) {
-			end++
-		}
+		end := alignRuneStart(content, pos+windowSize)
 		window := content[pos:end]
 		if aligned {
 			window = lower[pos:end]

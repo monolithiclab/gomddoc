@@ -2167,10 +2167,23 @@ three `"text/markdown; charset=utf-8"`).
 - **`template/inline_asset.go:31` discards the underlying error unconditionally** — NEW. A missing
   asset and an unreadable one produce the same message, so a permission or I/O failure on a theme
   asset reads as a typo in the template.
-- **Latent panics:** `search/snippet.go:100-103` guards `pos > 0` instead of `pos < len(content)` —
+- ~~**Latent panics:** `search/snippet.go:100-103` guards `pos > 0` instead of `pos < len(content)` —
   brute-forced to `index out of range` with `content="あ", windowSize=1`; unreachable today but
   `generateSnippet` takes `maxLen` as a parameter. `renderer/markdown.go:128` — unchecked
-  `doc.(*ast.Document)` assertion in the hot request path.
+  `doc.(*ast.Document)` assertion in the hot request path.~~
+  **FIXED.** The bug in `findBestWindow` was not a wrong bound so much as a *second* bound: the
+  same forward rune-alignment walk appeared twice in the function, once correctly bounded by
+  `len(content)` for the window end and once by `pos > 0` for the window start. Both call sites now
+  go through one `alignRuneStart`, so the divergence cannot recur.
+  `setDocFeatures` takes `ast.Node` instead of `*ast.Document`, which deletes the assertion rather
+  than guarding it — `SetAttributeString` is an `ast.Node` method, so the assertion bought nothing
+  and could only panic. A root that is not a `*ast.Document` now degrades to features-off through
+  `getDocFeatures`' `OwnerDocument` lookup instead of crashing the request.
+  Tests: the two boundary cases join `TestFindBestWindow`'s existing table rather than forming a
+  second one, and the invariants they check — an in-range start, on a rune boundary — moved into
+  the shared loop, so they now hold every row accountable including the pre-existing CJK case. The
+  name-string discriminator (`if tt.name == "content shorter than window"`) became a `pinPos`
+  field. Reverting `alignRuneStart`'s bound panics the new subtest — verified by mutation.
 - **Unwrapped errors** (CLAUDE.md requires `%w`): `template/renderer.go:306-309,410-412,430-436`.
   `:434-436` discards the *primary theme's* parse error entirely and surfaces only the fallback's, so
   a broken theme partial reports as a missing default partial.
