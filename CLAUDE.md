@@ -245,6 +245,19 @@ testsite/              # Lorem ipsum test site for quick testing
 - **`w.Header().Add()` not `Set()`** for multi-value headers (`Vary`, etc.) — `Set` overwrites
   values from other middleware
 - **Weak ETag comparison**: strip `W/` prefix before comparing opaque-tags (RFC 9110 §8.8.3.2)
+- **A handler holding a complete body serves it through `serveWithETag`, never `Set`+`WriteHeader`+
+  `Write`** — `/sitemap.xml`, `/feed.xml` and `/robots.txt` are generated once and cached for the
+  process's lifetime, and all three hand-rolled the write: no ETag, no `Cache-Control`, so every
+  crawler hit re-downloaded a document that could not have changed. The rule now lives on
+  `lazyBytes.serve` rather than in however many handlers happen to wrap a `lazyBytes`, which is also
+  the one place the plain-text 500 (an HTML error body on an XML endpoint is worse than a bare one)
+  is written and commented. Test it with `assertRevalidates`: 200 with a body, Content-Type,
+  Cache-Control and an ETag, then a conditional GET answering 304 with the same Content-Type and no
+  body. Each half alone passes a broken handler — checking only the 304 status passes one that still
+  ships the payload, checking only the headers passes one that ignores `If-None-Match` — and the
+  three call sites that predated the helper each asserted a different subset.
+  Known exception: `writeJSON` (`/api/*`) streams through a `json.Encoder` with no byte slice in
+  hand, so it neither caches nor revalidates. That is recorded in REVIEW.md, not silently accepted.
 - **`http.MaxBytesReader`** on any endpoint accepting request bodies — prevents memory exhaustion
 - **Cap input lengths** (query params, form values) before processing — truncate, don't reject
 - **`Vary` header required** when response depends on a request header (e.g., `Accept` for content

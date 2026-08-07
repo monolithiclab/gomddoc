@@ -188,10 +188,12 @@ func TestFeedHandler_ServeHTTP(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	ct := w.Header().Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/atom+xml") {
-		t.Errorf("Content-Type = %q, want application/atom+xml", ct)
-	}
+	assertRevalidates(t, revalidationCase{
+		Handler:   handler,
+		Path:      "/feed.xml",
+		WantType:  mimeAtom,
+		WantCache: cacheDynamic,
+	})
 
 	body := w.Body.String()
 	if !strings.Contains(body, "<feed") {

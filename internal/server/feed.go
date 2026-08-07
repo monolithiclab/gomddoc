@@ -41,15 +41,7 @@ func NewFeedHandler(index *metadata.Index, domain, defaultIndex string, prov pro
 
 // ServeHTTP writes the Atom feed response.
 func (h *FeedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	data, err := h.body.get()
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", mimeAtom)
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	h.body.serve(w, r, mimeAtom)
 }
 
 // atomFeed is the root element of an Atom feed.

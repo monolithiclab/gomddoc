@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -89,4 +90,67 @@ func setupTestRegistry() renderer.RendererRegistry {
 
 func setupTestEnricherRegistry() enricher.EnricherRegistry {
 	return registryutil.NewEnricherRegistry()
+}
+
+// revalidationCase describes one cacheable endpoint for assertRevalidates.
+type revalidationCase struct {
+	Handler   http.Handler
+	Path      string
+	Accept    string // optional; sent on both requests
+	WantType  string
+	WantCache string
+}
+
+// assertRevalidates asserts the whole contract serveWithETag owes a cacheable
+// endpoint: a 200 carrying a body, a Content-Type, a Cache-Control and an ETag,
+// then a conditional GET with that ETag answering 304 — same Content-Type, no
+// body. Each half alone is passed by a broken handler: checking only the 304
+// status passes one that still ships the payload, and checking only the headers
+// passes one that ignores If-None-Match. Three call sites each used to assert a
+// different subset, so which of them caught a regression was luck.
+func assertRevalidates(t *testing.T, tc revalidationCase) {
+	t.Helper()
+
+	newReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet, tc.Path, nil)
+		if tc.Accept != "" {
+			req.Header.Set("Accept", tc.Accept)
+		}
+		return req
+	}
+
+	first := httptest.NewRecorder()
+	tc.Handler.ServeHTTP(first, newReq())
+
+	if first.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", first.Code)
+	}
+	if first.Body.Len() == 0 {
+		t.Fatal("200 carried no body")
+	}
+	if got := first.Header().Get("Content-Type"); got != tc.WantType {
+		t.Errorf("Content-Type = %q, want %q", got, tc.WantType)
+	}
+	if got := first.Header().Get("Cache-Control"); got != tc.WantCache {
+		t.Errorf("Cache-Control = %q, want %q", got, tc.WantCache)
+	}
+	etag := first.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("no ETag")
+	}
+
+	req := newReq()
+	req.Header.Set("If-None-Match", etag)
+	second := httptest.NewRecorder()
+	tc.Handler.ServeHTTP(second, req)
+
+	if second.Code != http.StatusNotModified {
+		t.Fatalf("conditional GET: status = %d, want 304", second.Code)
+	}
+	if got := second.Header().Get("Content-Type"); got != tc.WantType {
+		t.Errorf("304 Content-Type = %q, want %q", got, tc.WantType)
+	}
+	if second.Body.Len() != 0 {
+		t.Errorf("304 carried a body: %q", second.Body.String())
+	}
 }

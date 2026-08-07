@@ -788,6 +788,31 @@ The trade is size: a themed error is the theme's full page (~49 KB with the defa
 CSS, gzipped on the way out) where the plain-text 404 was 14 bytes, and `ContentExclusion`'s traffic
 is largely hidden-path scanning. The bytes buy the indistinguishability.
 
+### Caching and Revalidation
+
+`serveWithETag` (`internal/server/etag.go`) is the single write path for any handler that holds a
+complete body: it hashes the content (FNV-64a), sets `Content-Type`, `ETag` and `Cache-Control`,
+answers `If-None-Match` with a 304, and otherwise writes with an explicit `Content-Length`.
+`cacheDynamic` (`max-age=300`) covers rendered HTML, tag pages, sitemaps, feeds and `robots.txt`;
+`cacheImmutable` (a year, `immutable`) covers `/_assets/`.
+
+`/sitemap.xml`, `/feed.xml` and `/robots.txt` are generated once and cached for the process's
+lifetime, yet each hand-rolled `Set`+`WriteHeader`+`Write` — no ETag, no `Cache-Control`, so every
+crawler hit re-downloaded a document that could not have changed, and every response over net/http's
+2 KB buffer went out chunked. The rule now lives on `lazyBytes.serve(w, r, contentType)` rather than
+in however many handlers wrap a `lazyBytes`, so a fourth cached-body endpoint gets it by
+construction. That method is also the one place the plain-text 500 is written, next to its reason.
+`RobotsHandler` generates eagerly and holds a plain `[]byte`, so it calls `serveWithETag` directly.
+
+The hash is recomputed per request over bytes that never change. Precomputing it beside the cached
+slice is a small change but needs a second serve entry point, and the worst realistic body — a 5k-page
+sitemap — costs ~774 µs on a low-QPS crawler endpoint, so it was measured and left alone. The 304s it
+buys avoid a whole gzip pass over that same body.
+
+Known gap: `writeJSON` (`/api/*`) streams through a `json.Encoder` with no byte slice in hand, so the
+JSON endpoints neither cache nor revalidate even though they read the same immutable index. Tracked
+in `REVIEW.md` §10.7.
+
 ### Custom Error Type
 
 ```go

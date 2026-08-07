@@ -71,8 +71,9 @@ func stripWeakPrefix(etag string) string {
 }
 
 // serveWithETag generates an ETag, sets cache headers, handles conditional
-// requests, and writes the response body. Returns true if the response was
-// served (either 200 or 304), false should not happen in practice.
+// requests, and writes the response body. Every handler in this package that
+// has a complete body in hand goes through it; assertRevalidates is the test
+// that pins what it owes them.
 func serveWithETag(w http.ResponseWriter, r *http.Request, content []byte, contentType, cacheControl string) {
 	etag := generateETag(content)
 	w.Header().Set("Content-Type", contentType)

@@ -40,10 +40,12 @@ func TestRobotsHandler(t *testing.T) {
 				t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 			}
 
-			ct := w.Header().Get("Content-Type")
-			if !strings.HasPrefix(ct, "text/plain") {
-				t.Errorf("Content-Type = %q, want text/plain", ct)
-			}
+			assertRevalidates(t, revalidationCase{
+				Handler:   handler,
+				Path:      "/robots.txt",
+				WantType:  mimePlain,
+				WantCache: cacheDynamic,
+			})
 
 			body := w.Body.String()
 			if !strings.Contains(body, "User-agent: *") {

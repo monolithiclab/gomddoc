@@ -17,10 +17,8 @@ func NewRobotsHandler(domain string) *RobotsHandler {
 }
 
 // ServeHTTP writes the robots.txt response.
-func (h *RobotsHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", mimePlain)
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(h.cached)
+func (h *RobotsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	serveWithETag(w, r, h.cached, mimePlain, cacheDynamic)
 }
 
 // GenerateRobotsTxt produces the robots.txt content string.

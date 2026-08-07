@@ -88,15 +88,7 @@ func GenerateSitemapIndex(domain string, langs []string) ([]byte, error) {
 
 // ServeHTTP writes the sitemap XML response.
 func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	data, err := h.body.get()
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", mimeXML)
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	h.body.serve(w, r, mimeXML)
 }
 
 // GenerateSitemap produces the sitemap XML bytes.

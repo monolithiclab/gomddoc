@@ -43,10 +43,14 @@ func TestSitemapHandler(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	ct := w.Header().Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/xml") {
-		t.Errorf("Content-Type = %q, want application/xml", ct)
-	}
+	// A body cached for the process's lifetime must revalidate; it used to be
+	// written with a bare Set+WriteHeader+Write (REVIEW.md §10.7).
+	assertRevalidates(t, revalidationCase{
+		Handler:   handler,
+		Path:      "/sitemap.xml",
+		WantType:  mimeXML,
+		WantCache: cacheDynamic,
+	})
 
 	// The handler is a lazyBytes wrapper over GenerateSitemap, whose output
 	// TestGenerateSitemap pins exhaustively; assert only that this response is that

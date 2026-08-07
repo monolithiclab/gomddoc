@@ -296,30 +296,13 @@ func TestHandler304IncludesContentType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// First request to get the ETag
-			req := httptest.NewRequest("GET", tt.path, nil)
-			req.Header.Set("Accept", tt.accept)
-			w := httptest.NewRecorder()
-			handler.ServeContent(w, req)
-
-			etag := w.Header().Get("ETag")
-			if etag == "" {
-				t.Fatal("expected ETag on first request")
-			}
-
-			// Conditional request should return 304 with Content-Type
-			req2 := httptest.NewRequest("GET", tt.path, nil)
-			req2.Header.Set("Accept", tt.accept)
-			req2.Header.Set("If-None-Match", etag)
-			w2 := httptest.NewRecorder()
-			handler.ServeContent(w2, req2)
-
-			if w2.Code != http.StatusNotModified {
-				t.Fatalf("status = %d, want 304", w2.Code)
-			}
-			if ct := w2.Header().Get("Content-Type"); ct != tt.wantType {
-				t.Errorf("304 Content-Type = %q, want %q", ct, tt.wantType)
-			}
+			assertRevalidates(t, revalidationCase{
+				Handler:   http.HandlerFunc(handler.ServeContent),
+				Path:      tt.path,
+				Accept:    tt.accept,
+				WantType:  tt.wantType,
+				WantCache: cacheDynamic,
+			})
 		})
 	}
 }

@@ -2022,9 +2022,32 @@ three `"text/markdown; charset=utf-8"`).
   error it expects to be JSON gets a decode failure instead of `{"error": …}`. Registering
   `api.Handle("/", …)` with a JSON 404 fixes it — deliberately left out of the tag commit to keep
   that one atomic.
-- **Cache headers only on some endpoints** — `/sitemap.xml`, `/feed.xml`, `/robots.txt` hand-roll
+- ~~**Cache headers only on some endpoints** — `/sitemap.xml`, `/feed.xml`, `/robots.txt` hand-roll
   `Set`+`WriteHeader`+`Write` with no ETag and no Cache-Control, even though all three are
-  `lazyBytes`-cached immutable byte slices, i.e. ideal ETag candidates.
+  `lazyBytes`-cached immutable byte slices, i.e. ideal ETag candidates.~~
+  ✅ FIXED — all three now go through `serveWithETag` with `cacheDynamic`, so a crawler revalidates
+  instead of re-downloading a document that cannot have changed. The explicit `Content-Length` also
+  drops the chunked framing every body over net/http's 2 KB buffer was getting.
+  Rather than fix three call sites that happen to agree, the rule moved onto
+  `lazyBytes.serve(w, r, contentType)`: a fourth cached-body endpoint gets it by construction, and
+  the plain-text 500 (the XML-endpoint carve-out from the one-`ErrorPage`-per-scope rule) now has one
+  home and one comment instead of two. `RobotsHandler` generates eagerly and holds a plain `[]byte`,
+  so it calls `serveWithETag` directly.
+  `assertRevalidates` (`testhelpers_test.go`) is the guard and replaces three partial copies of the
+  conditional-GET dance: `TestAssetsHandler_ETagConditional` checked the empty 304 body but not
+  `Cache-Control`, `TestHandlerETagConditional` checked the 304's Content-Type but not the body, and
+  neither checked both. Which one caught a regression in `serveWithETag` was luck. It is falsifiable:
+  reverting `robots.go` to the hand-rolled write fails on the missing ETag and Cache-Control.
+  Measured and deliberately not done: precomputing the ETag beside the cached bytes. It is real
+  waste — FNV-64a re-runs per request, ~774 µs on a 5k-page sitemap — but it costs a second serve
+  entry point next to the one this fix exists to consolidate, on endpoints a crawler hits a handful
+  of times a day, and the 304s it buys skip a whole gzip pass over the same body.
+- **`/api/*` responses are neither cached nor revalidated** — NEW (found while fixing the item above).
+  `writeJSON` streams through a `json.Encoder`, so there is no byte slice to hash and `/api/tags`,
+  `/api/tags/{tag}` and `/api/search` re-encode the same immutable index on every request with no
+  ETag and no `Cache-Control`. Marshalling to bytes and handing them to `serveWithETag` fixes both
+  halves at once. Left out of the cache-header commit to keep it atomic; the exception is recorded in
+  CLAUDE.md and `docs/architecture.md` rather than left silent.
 - **Dead code:** `navigation/flatten.go:5 FlattenPages` (duplicates `appendLeaves`),
   `template/renderer.go:743 ClearCache`, `assets/overlay.go:14 NewOverlayFS` (zero callers in all
   three repos), `locale/detect.go:43 ExtractLangFromPath` (last call site removed by §6),

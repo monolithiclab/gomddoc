@@ -130,35 +130,13 @@ func TestAssetsHandler_ETagConditional(t *testing.T) {
 	staticFS := fstest.MapFS{
 		"style.css": {Data: []byte("body { color: red; }")},
 	}
-	handler := NewAssetsHandler(staticFS)
 
-	// First request to get the ETag
-	req := httptest.NewRequest(http.MethodGet, "/style.css", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("first request status = %d, want %d", rec.Code, http.StatusOK)
-	}
-
-	etag := rec.Header().Get("ETag")
-	if etag == "" {
-		t.Fatal("expected ETag header on first request")
-	}
-
-	// Second request with If-None-Match should return 304
-	req2 := httptest.NewRequest(http.MethodGet, "/style.css", nil)
-	req2.Header.Set("If-None-Match", etag)
-	rec2 := httptest.NewRecorder()
-	handler.ServeHTTP(rec2, req2)
-
-	if rec2.Code != http.StatusNotModified {
-		t.Errorf("conditional request status = %d, want %d", rec2.Code, http.StatusNotModified)
-	}
-
-	if rec2.Body.Len() != 0 {
-		t.Errorf("304 response should have empty body, got %d bytes", rec2.Body.Len())
-	}
+	assertRevalidates(t, revalidationCase{
+		Handler:   NewAssetsHandler(staticFS),
+		Path:      "/style.css",
+		WantType:  "text/css; charset=utf-8",
+		WantCache: cacheImmutable,
+	})
 }
 
 func TestAssetsHandler_ETagMismatch(t *testing.T) {
