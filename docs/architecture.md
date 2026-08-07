@@ -351,6 +351,17 @@ Exposed via JSON API:
 - `GET /api/tags` — All tags (sorted)
 - `GET /api/tags/{tag}` — Pages with the given tag
 
+**`LookupTag` is the one answer to "is this a known tag".** Four entry points take a tag from
+outside the index — `/tags/{tag}`, `/api/tags/{tag}`, the MCP resource `docs://site/tag/{tag}`, and
+build's `emitTagPages` — and three of them once answered differently for an unknown one (themed 404,
+200 with `[]`, and a *successful* read of JSON `null`). `Index.LookupTag(tag) ([]PageInfo, bool)`
+owns the length bound (`MaxTagLength`), the `normalizeTag` lookup, the emptiness verdict, and the
+title sort, so each caller only chooses how to *render* the miss. The sort belongs there too: it is
+why the JSON array, the HTML page and the static build list a tag's pages in the same order.
+
+`ByTag`, `PagesByTag` and `CountByTag` normalize their argument the same way `BuildIndex` keys the
+map. They must — lowercasing alone missed an indexed `go` when the request said `%20go`.
+
 ### 9. Search Index
 
 **Responsibility:** Full-text search across all documentation pages

@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -777,7 +776,10 @@ func (b *BuildCmd) emitTagPages(ctx context.Context, p *Pipeline, lang string, t
 	pagesPerTag := make(map[string][]metadata.PageInfo, len(tags))
 	entries := make([]tmpl.TagCount, 0, len(tags))
 	for _, tag := range tags {
-		pages := p.MetaIndex.ByTag(tag)
+		// LookupTag, not ByTag: it sorts, so the static tag page and the served
+		// one list their pages in the same order. Every tag comes from AllTags,
+		// so the "known" bool is true by construction.
+		pages, _ := p.MetaIndex.LookupTag(tag)
 		pagesPerTag[tag] = pages
 		entries = append(entries, tmpl.TagCount{Tag: tag, Count: len(pages)})
 	}
@@ -791,9 +793,7 @@ func (b *BuildCmd) emitTagPages(ctx context.Context, p *Pipeline, lang string, t
 	}
 
 	for _, tag := range tags {
-		pages := pagesPerTag[tag]
-		slices.SortFunc(pages, metadata.CompareTitles)
-		body, err := p.TemplateRenderer.RenderTagPage(ctx, lang, tFunc, tag, pages)
+		body, err := p.TemplateRenderer.RenderTagPage(ctx, lang, tFunc, tag, pagesPerTag[tag])
 		if err != nil {
 			return fmt.Errorf("render tag %q: %w", tag, err)
 		}

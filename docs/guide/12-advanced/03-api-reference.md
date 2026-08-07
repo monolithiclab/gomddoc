@@ -128,7 +128,8 @@ Returns all pages tagged with the specified tag. Tag matching is case-insensitiv
 ]
 ```
 
-Returns an empty array if no pages have the specified tag.
+Pages come back sorted by title. Returns `404` with `{"error": "unknown tag"}` when no page carries
+the tag, the same answer the HTML `GET /tags/{tag}` gives.
 
 ### `GET /tags/` and `GET /tags/{tag}` (HTML)
 

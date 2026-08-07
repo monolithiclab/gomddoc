@@ -3,16 +3,11 @@ package server
 import (
 	"log/slog"
 	"net/http"
-	"slices"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
-
-// maxTagLength bounds the {tag} route segment. Real tags are short; rejecting
-// over-long values avoids needlessly lowercasing huge inputs (REVIEW §9.9).
-const maxTagLength = 128
 
 // TagHandlerConfig holds what both tag handlers need. ErrorPage must be the one
 // the language's content handler uses, so /tags/nope and /nope answer alike —
@@ -37,18 +32,11 @@ func NewTagPageHandler(cfg TagHandlerConfig) *TagPageHandler {
 
 func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tag := r.PathValue("tag")
-	if tag == "" || len(tag) > maxTagLength {
+	pages, ok := h.Index.LookupTag(tag)
+	if !ok {
 		h.ErrorPage.NotFound(w, r)
 		return
 	}
-
-	pages := h.Index.ByTag(tag)
-	if len(pages) == 0 {
-		h.ErrorPage.NotFound(w, r)
-		return
-	}
-
-	slices.SortFunc(pages, metadata.CompareTitles)
 
 	body, err := h.Renderer.RenderTagPage(r.Context(), h.Lang, h.TFunc, tag, pages)
 	if err != nil {

@@ -109,7 +109,14 @@ func (s *MCPServer) handleTagResource(_ context.Context, req *mcp.ReadResourceRe
 		return jsonResourceResult(uri, "[]")
 	}
 
-	pages := s.deps.MetaIndex.ByTag(tag)
+	// Unknown tag is a missing resource, as an unknown page is eight lines
+	// above — not a successful read of JSON null. Index.LookupTag is the same
+	// answer /tags/{tag} and /api/tags/{tag} give.
+	pages, ok := s.deps.MetaIndex.LookupTag(tag)
+	if !ok {
+		return nil, mcp.ResourceNotFoundError(uri)
+	}
+
 	data, err := json.Marshal(pages)
 	if err != nil {
 		return nil, err

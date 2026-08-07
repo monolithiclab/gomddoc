@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -34,7 +36,7 @@ func TestTagsHandler(t *testing.T) {
 			files:      fstest.MapFS{},
 			wantStatus: http.StatusOK,
 			wantTags:   []string{},
-			wantCTType: "application/json",
+			wantCTType: mimeJSON,
 		},
 		{
 			name: "populated index returns sorted tags",
@@ -44,7 +46,7 @@ func TestTagsHandler(t *testing.T) {
 			},
 			wantStatus: http.StatusOK,
 			wantTags:   []string{"api", "go", "testing"},
-			wantCTType: "application/json",
+			wantCTType: mimeJSON,
 		},
 		{
 			name: "single file with tags",
@@ -53,7 +55,7 @@ func TestTagsHandler(t *testing.T) {
 			},
 			wantStatus: http.StatusOK,
 			wantTags:   []string{"alpha", "zebra"},
-			wantCTType: "application/json",
+			wantCTType: mimeJSON,
 		},
 	}
 
@@ -103,87 +105,68 @@ func TestTagPagesHandler(t *testing.T) {
 	index := buildTestIndex(t, files)
 	handler := NewMetadataHandler(index)
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/tags/{tag}", handler.TagPagesHandler)
+
+	get := func(path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if ct := w.Header().Get("Content-Type"); ct != mimeJSON {
+			t.Errorf("%s: Content-Type = %q, want %q", path, ct, mimeJSON)
+		}
+		return w
+	}
+
 	tests := []struct {
 		name       string
 		path       string
-		wantStatus int
-		wantCount  int
+		wantTitles []string // in response order; LookupTag sorts by title
 	}{
-		{
-			name:       "existing tag returns matching pages",
-			path:       "/api/tags/go",
-			wantStatus: http.StatusOK,
-			wantCount:  2,
-		},
-		{
-			name:       "tag with single match",
-			path:       "/api/tags/api",
-			wantStatus: http.StatusOK,
-			wantCount:  1,
-		},
-		{
-			name:       "missing tag returns empty array",
-			path:       "/api/tags/nonexistent",
-			wantStatus: http.StatusOK,
-			wantCount:  0,
-		},
+		{"existing tag returns matching pages", "/api/tags/go", []string{"Doc1", "Doc2"}},
+		{"tag with single match", "/api/tags/api", []string{"Doc2"}},
 	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/tags/{tag}", handler.TagPagesHandler)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
-			w := httptest.NewRecorder()
+			w := get(tt.path)
 
-			mux.ServeHTTP(w, req)
-
-			if w.Code != tt.wantStatus {
-				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
-			}
-
-			ct := w.Header().Get("Content-Type")
-			if ct != "application/json" {
-				t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", w.Code)
 			}
 
 			var pages []metadata.PageInfo
 			if err := json.Unmarshal(w.Body.Bytes(), &pages); err != nil {
 				t.Fatalf("failed to decode JSON: %v", err)
 			}
-
-			if len(pages) != tt.wantCount {
-				t.Errorf("got %d pages, want %d", len(pages), tt.wantCount)
+			got := make([]string, len(pages))
+			for i, p := range pages {
+				got[i] = p.Title
+			}
+			if !slices.Equal(got, tt.wantTitles) {
+				t.Errorf("titles = %v, want %v", got, tt.wantTitles)
 			}
 		})
 	}
-}
 
-func TestTagPagesHandler_EmptyTag(t *testing.T) {
-	t.Parallel()
-	index := buildTestIndex(t, fstest.MapFS{})
-	handler := NewMetadataHandler(index)
-
-	// Call TagPagesHandler directly without mux routing so PathValue("tag") returns ""
-	req := httptest.NewRequest(http.MethodGet, "/api/tags/", nil)
-	w := httptest.NewRecorder()
-
-	handler.TagPagesHandler(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
-	}
-
-	var body map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("failed to decode JSON: %v", err)
-	}
-
-	if body["error"] != "tag parameter required" {
-		t.Errorf("error = %q, want %q", body["error"], "tag parameter required")
-	}
+	// 404, not 200 with []: an empty result can only mean "no such tag", and
+	// /tags/nonexistent answers the same question with a 404. The body is
+	// compared raw — a decode into map[string]string is blind to the wire shape.
+	t.Run("unknown tag is 404", func(t *testing.T) {
+		t.Parallel()
+		for _, path := range []string{
+			"/api/tags/nonexistent",
+			"/api/tags/" + strings.Repeat("x", metadata.MaxTagLength+1),
+		} {
+			w := get(path)
+			if w.Code != http.StatusNotFound {
+				t.Errorf("%s: status = %d, want 404", path, w.Code)
+			}
+			if got, want := strings.TrimSpace(w.Body.String()), `{"error":"unknown tag"}`; got != want {
+				t.Errorf("%s: body = %q, want %q", path, got, want)
+			}
+		}
+	})
 }
 
 func TestWriteJSON(t *testing.T) {
@@ -200,21 +183,21 @@ func TestWriteJSON(t *testing.T) {
 			status:     http.StatusOK,
 			value:      []string{"a", "b"},
 			wantStatus: http.StatusOK,
-			wantCT:     "application/json",
+			wantCT:     mimeJSON,
 		},
 		{
 			name:       "404 with error map",
 			status:     http.StatusNotFound,
 			value:      map[string]string{"error": "not found"},
 			wantStatus: http.StatusNotFound,
-			wantCT:     "application/json",
+			wantCT:     mimeJSON,
 		},
 		{
 			name:       "201 with empty object",
 			status:     http.StatusCreated,
 			value:      map[string]any{},
 			wantStatus: http.StatusCreated,
-			wantCT:     "application/json",
+			wantCT:     mimeJSON,
 		},
 	}
 

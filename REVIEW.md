@@ -1994,8 +1994,34 @@ three `"text/markdown; charset=utf-8"`).
   against two sites — one where the file exists and is excluded, one where it never existed — and
   compares the bodies byte-for-byte. Asserting each is "themed" would pass while they differ, and
   comparing two *different* URLs would fail for a theme that prints the requested path.
-- **`/api/tags/{tag}` and `/tags/{tag}` disagree on unknown tags** — 200 with `[]`
-  (`metadata.go:43-47`) vs 404 (`tags_html.go:37-41`). Same index, same question, two answers.
+- ~~**`/api/tags/{tag}` and `/tags/{tag}` disagree on unknown tags** — 200 with `[]`
+  (`metadata.go:43-47`) vs 404 (`tags_html.go:37-41`). Same index, same question, two answers.~~
+  ✅ FIXED — there were **three** answers, not two: the MCP resource `docs://site/tag/{tag}`
+  succeeded with a body of JSON `null`. The HTML route was right — a tag enters the index only
+  because some page carries it, so an empty result can only mean "no such tag" — so the fix was not
+  to flip the API's status but to give the question one implementation:
+  `metadata.Index.LookupTag(tag) ([]PageInfo, bool)` owns the length bound (`MaxTagLength`, moved out
+  of `server`), the lookup, the emptiness verdict, and the title sort. All three callers now read the
+  same bool: `/tags/{tag}` → themed 404, `/api/tags/{tag}` → 404 `{"error": "unknown tag"}` (JSON, as
+  a client that asked the API for JSON expects), MCP → `ResourceNotFoundError`, matching what the
+  page resource eight lines above already did for an unknown path.
+  Two latent bugs fell out of the consolidation. `ByTag`/`PagesByTag`/`CountByTag` looked up with
+  `strings.ToLower` while `BuildIndex` keys with `normalizeTag` (lowercase **plus** trim), so
+  `/api/tags/%20go` missed an indexed `go`; all three now normalize. And the sort inside `LookupTag`
+  means the JSON array, the HTML page and the static build finally agree on order —
+  `emitTagPages` dropped its own duplicate `slices.SortFunc`.
+  `apiError`/`errUnknownTag` replace a per-request `map[string]string`: the 404 is now this
+  endpoint's most common answer, and a package-level struct value allocates nothing.
+  Skipped: `slices.Collect(PagesByTag)` on the JSON path (incompatible with returning a sorted
+  `[]PageInfo`); `CountByTag` as the existence check (`ByTag` returns `nil` before allocating on a
+  miss, so it would add a second map lookup and a second normalize on the hit path).
+- **Unmatched `/api/*` answers `text/plain`** — NEW (found while fixing the tag disagreement above).
+  The API group promises JSON, and every handler in it delivers JSON for both success and error, but
+  a path no pattern matches (`/api/nope`, or `/api/tags/` with an empty segment) falls through to
+  net/http's default 404: `404 page not found` as `text/plain`. A JSON client parsing the body of an
+  error it expects to be JSON gets a decode failure instead of `{"error": …}`. Registering
+  `api.Handle("/", …)` with a JSON 404 fixes it — deliberately left out of the tag commit to keep
+  that one atomic.
 - **Cache headers only on some endpoints** — `/sitemap.xml`, `/feed.xml`, `/robots.txt` hand-roll
   `Set`+`WriteHeader`+`Write` with no ETag and no Cache-Control, even though all three are
   `lazyBytes`-cached immutable byte slices, i.e. ideal ETag candidates.

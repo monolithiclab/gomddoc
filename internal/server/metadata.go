@@ -25,24 +25,25 @@ func (h *MetadataHandler) TagsHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, tags)
 }
 
-// TagPagesHandler returns all pages matching the given tag.
-// GET /api/tags/{tag}
-func (h *MetadataHandler) TagPagesHandler(w http.ResponseWriter, r *http.Request) {
-	tag := r.PathValue("tag")
-	if tag == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tag parameter required"})
-		return
-	}
-	if len(tag) > maxTagLength {
-		// Over-long tag can't match any indexed tag; return an empty list
-		// rather than lowercasing a huge input.
-		writeJSON(w, http.StatusOK, []metadata.PageInfo{})
-		return
-	}
+// apiError is the JSON error body for the /api routes. A struct rather than a
+// map so the encoder uses its cached path, and a package-level value so the
+// 404 — now the endpoint's most common answer — allocates nothing.
+type apiError struct {
+	Error string `json:"error"`
+}
 
-	pages := h.index.ByTag(tag)
-	if pages == nil {
-		pages = []metadata.PageInfo{}
+var errUnknownTag = apiError{Error: "unknown tag"}
+
+// TagPagesHandler returns all pages matching the given tag, sorted by title.
+// GET /api/tags/{tag}
+//
+// Index.LookupTag decides whether the tag is known, so this route, /tags/{tag}
+// and the MCP tag resource cannot answer that differently.
+func (h *MetadataHandler) TagPagesHandler(w http.ResponseWriter, r *http.Request) {
+	pages, ok := h.index.LookupTag(r.PathValue("tag"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errUnknownTag)
+		return
 	}
 	writeJSON(w, http.StatusOK, pages)
 }

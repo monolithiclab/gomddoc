@@ -104,7 +104,7 @@ func TestTagPageHandler_OverlongTagRejected(t *testing.T) {
 
 	h, _ := newTagPageHandler(t)
 
-	longTag := strings.Repeat("a", maxTagLength+1)
+	longTag := strings.Repeat("a", metadata.MaxTagLength+1)
 	req := httptest.NewRequest("GET", "/tags/x", nil)
 	req.SetPathValue("tag", longTag)
 	w := httptest.NewRecorder()

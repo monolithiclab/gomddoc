@@ -237,17 +237,17 @@ func TestResources_PagesByTag(t *testing.T) {
 		}
 	})
 
-	t.Run("no match", func(t *testing.T) {
+	// An unknown tag is a missing resource, the same answer /tags/{tag} and
+	// /api/tags/{tag} give. It used to be a *successful* read of JSON "null".
+	t.Run("no match is resource-not-found", func(t *testing.T) {
 		result, err := f.session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 			URI: "docs://site/tag/nonexistent",
 		})
-		if err != nil {
-			t.Fatalf("ReadResource: %v", err)
+		if err == nil {
+			t.Fatalf("ReadResource succeeded with %q, want resource-not-found", result.Contents[0].Text)
 		}
-		// Should return empty array, not error.
-		if result.Contents[0].Text != "null" && result.Contents[0].Text != "[]" {
-			// ByTag returns nil which marshals to "null"
-			t.Logf("empty tag result: %s", result.Contents[0].Text)
+		if !strings.Contains(err.Error(), "Resource not found") {
+			t.Errorf("error = %v, want resource-not-found", err)
 		}
 	})
 }

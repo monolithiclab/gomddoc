@@ -253,10 +253,39 @@ func (idx *Index) TitleForPath(filePath string) string {
 	return idx.pages[i].Title
 }
 
-// ByTag returns all pages with the given tag. The tag is matched
-// case-insensitively. Returns nil if no pages match.
+// MaxTagLength bounds a tag arriving from outside the index — a URL path
+// segment or a tool argument. Real tags are short, and nothing longer than this
+// can match an indexed key, so LookupTag rejects it before normalizing a
+// possibly huge input.
+const MaxTagLength = 128
+
+// LookupTag answers "is this a known tag, and what carries it" for every caller
+// that takes a tag from a request: /tags/{tag}, /api/tags/{tag}, and the MCP
+// tag resource. The bool is the single definition of a known tag — the three
+// used to answer differently (404, 200 with [], and JSON null), which is the
+// disagreement this method exists to make impossible. Pages come back sorted by
+// title, so the HTML page, the JSON array and the static build agree on order
+// too.
+//
+// A tag is in the index only because some page carries it, so !ok and an empty
+// slice are the same condition; the bool is there to be read at the call site.
+func (idx *Index) LookupTag(tag string) ([]PageInfo, bool) {
+	if len(tag) > MaxTagLength {
+		return nil, false
+	}
+	pages := idx.ByTag(tag)
+	if len(pages) == 0 {
+		return nil, false
+	}
+	slices.SortFunc(pages, CompareTitles)
+	return pages, true
+}
+
+// ByTag returns all pages with the given tag, normalized the same way indexed
+// tags are, so a lookup cannot miss a key over whitespace or case. Returns nil
+// if no pages match. Callers holding a tag from a request want LookupTag.
 func (idx *Index) ByTag(tag string) []PageInfo {
-	indices, ok := idx.byTag[strings.ToLower(tag)]
+	indices, ok := idx.byTag[normalizeTag(tag)]
 	if !ok {
 		return nil
 	}
@@ -267,14 +296,14 @@ func (idx *Index) ByTag(tag string) []PageInfo {
 	return result
 }
 
-// PagesByTag iterates the pages carrying the given tag, matched
-// case-insensitively. Unlike ByTag it copies nothing — the index owns the
+// PagesByTag iterates the pages carrying the given tag, normalized as ByTag
+// normalizes it. Unlike ByTag it copies nothing — the index owns the
 // PageInfo and the caller must not retain or mutate the pointer past the
 // iteration. Prefer it when the caller only reads a few fields, or discards
 // most of what it sees.
 func (idx *Index) PagesByTag(tag string) iter.Seq[*PageInfo] {
 	return func(yield func(*PageInfo) bool) {
-		for _, pageIdx := range idx.byTag[strings.ToLower(tag)] {
+		for _, pageIdx := range idx.byTag[normalizeTag(tag)] {
 			if !yield(&idx.pages[pageIdx]) {
 				return
 			}
@@ -329,11 +358,11 @@ func NormalizeTags(raw any) []string {
 	return out
 }
 
-// CountByTag returns the number of pages with the given tag, matched
-// case-insensitively. Unlike ByTag it allocates nothing, so it is preferred
+// CountByTag returns the number of pages with the given tag, normalized as
+// ByTag normalizes it. Unlike ByTag it allocates nothing, so it is preferred
 // when only the count is needed (e.g. the tags index page).
 func (idx *Index) CountByTag(tag string) int {
-	return len(idx.byTag[strings.ToLower(tag)])
+	return len(idx.byTag[normalizeTag(tag)])
 }
 
 // CompareTitles is a case-insensitive comparator for use with slices.SortFunc.

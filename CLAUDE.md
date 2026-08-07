@@ -274,6 +274,17 @@ testsite/              # Lorem ipsum test site for quick testing
   byte-for-byte; asserting each is "themed" passes even when they differ. Exemptions are legitimate
   but must say why at the call site: `/_assets/` (a sub-resource fetch), the 406 (the client's
   `Accept` excluded HTML), MethodFilter's bodyless 405, and the XML endpoints.
+- **When N transports ask the index the same question, the index answers it — they only choose how
+  to render the answer** — "is this a known tag" had *three* answers (`/tags/{tag}` 404,
+  `/api/tags/{tag}` 200 `[]`, MCP `docs://site/tag/{tag}` a successful read of JSON `null`), because
+  each handler re-derived it from a raw `ByTag`. `Index.LookupTag` now owns the length bound, the
+  normalization, the emptiness verdict *and* the sort; the handlers differ only in how a `false`
+  looks on the wire. Put the sort in the shared lookup too — it is what makes the JSON array, the
+  HTML page and the static build agree on order, and it deletes build's duplicate `slices.SortFunc`.
+  Corollary: a lookup helper must normalize its argument exactly as the build phase keyed the map —
+  `ByTag` lowercased where `BuildIndex` used `normalizeTag` (lowercase *plus* trim), so
+  `/api/tags/%20go` missed an indexed `go` and nothing failed. And keep the length guard *ahead* of
+  the normalize, so a megabyte of path segment is rejected before it is copied.
 
 ### Testing Conventions
 
