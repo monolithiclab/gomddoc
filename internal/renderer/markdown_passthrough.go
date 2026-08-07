@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/text"
@@ -48,11 +49,13 @@ func (m *MarkdownPassthroughRenderer) Render(ctx context.Context, content []byte
 
 	out, err := yaml.Marshal(fm)
 	if err != nil {
-		// Fall back to body without frontmatter on marshal error.
-		return &RenderResult{
-			Content:  body,
-			MimeType: "text/markdown; charset=utf-8",
-		}, nil
+		// Returned, not swallowed. Nothing the pipeline can put in fm fails to
+		// marshal — Metadata comes back out of goldmark's frontmatter parse, so
+		// it round-trips by construction, and the other three fields are plain
+		// structs. That makes this a bug rather than a degradation, and the old
+		// silent fallback served it as a well-formed 200 with related_docs and
+		// prev/next quietly missing. Every other failure here propagates too.
+		return nil, fmt.Errorf("marshal enriched frontmatter: %w", err)
 	}
 
 	buf := make([]byte, 0, len(out)+len(body)+8) // 8 = two "---\n" delimiters

@@ -14,6 +14,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage"
@@ -34,54 +35,57 @@ func init() {
 func TestNewGitProvider(t *testing.T) {
 	t.Parallel()
 
+	// wantErrContains is on one row only: TestParseGitURL covers every rejection
+	// message at its own layer, so what is left to prove here is that the wrap
+	// keeps both halves — the sentinel callers classify on, and the reason.
+	// Flattening to the sentinel made every malformed URL read "invalid git URL".
 	tests := []struct {
-		name         string
-		gitURL       string
-		defaultIndex string
-		dirIndex     bool
-		wantErr      bool
+		name            string
+		gitURL          string
+		defaultIndex    string
+		dirIndex        bool
+		wantErr         error
+		wantErrContains string
 	}{
 		{
 			name:         "valid git+https URL",
 			gitURL:       "git+https://github.com/user/repo",
 			defaultIndex: "README.md",
 			dirIndex:     false,
-			wantErr:      false,
 		},
 		{
 			name:         "valid git+ssh URL",
 			gitURL:       "git+ssh://git@github.com/org/docs#main",
 			defaultIndex: "README.md",
 			dirIndex:     true,
-			wantErr:      false,
 		},
 		{
 			name:         "valid git protocol URL",
 			gitURL:       "git://gitlab.com/group/project",
 			defaultIndex: "index.md",
 			dirIndex:     false,
-			wantErr:      false,
 		},
 		{
-			name:         "invalid URL scheme",
-			gitURL:       "https://github.com/user/repo",
-			defaultIndex: "README.md",
-			dirIndex:     false,
-			wantErr:      true,
+			name:            "invalid URL scheme",
+			gitURL:          "https://github.com/user/repo",
+			defaultIndex:    "README.md",
+			dirIndex:        false,
+			wantErr:         ErrInvalidGitURL,
+			wantErrContains: "unsupported scheme",
 		},
 		{
 			name:         "empty URL",
 			gitURL:       "",
 			defaultIndex: "README.md",
 			dirIndex:     false,
-			wantErr:      true,
+			wantErr:      ErrInvalidGitURL,
 		},
 		{
 			name:         "empty defaultIndex",
 			gitURL:       "git+https://github.com/user/repo",
 			defaultIndex: "",
 			dirIndex:     false,
-			wantErr:      true,
+			wantErr:      ErrEmptyDefaultIndex,
 		},
 	}
 
@@ -91,9 +95,12 @@ func TestNewGitProvider(t *testing.T) {
 
 			p, err := NewGitProvider(tt.gitURL, tt.defaultIndex, tt.dirIndex, nil, GitProviderConfig{})
 
-			if tt.wantErr {
-				if err == nil {
-					t.Error("NewGitProvider() error = nil, want error")
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("NewGitProvider() error = %v, want errors.Is %v", err, tt.wantErr)
+				}
+				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("NewGitProvider() error = %q, want it to name the reason %q", err, tt.wantErrContains)
 				}
 				return
 			}
@@ -1327,6 +1334,46 @@ func TestGitProvider_CacheTreeLocked(t *testing.T) {
 			t.Errorf("cacheTreeLocked() error = %v, want ErrNotFound", err)
 		}
 	})
+
+	// The other half of the mapping: the subdir exists in the tree, but the
+	// object behind it cannot be decoded. Flattening this to ErrNotFound made
+	// a corrupt repository report as a typo in the URL fragment — and, since
+	// ErrNotFound is a 404, made it look like a client error.
+	t.Run("keeps a storer fault distinct from a missing subdir", func(t *testing.T) {
+		t.Parallel()
+
+		repo := createTestRepo(t, map[string]string{
+			"README.md":     "# Root",
+			"docs/guide.md": "# Guide",
+		})
+		head, _ := repo.Head()
+
+		docs, err := mustGetTree(t, repo).FindEntry("docs")
+		if err != nil {
+			t.Fatalf("FindEntry(\"docs\") error = %v", err)
+		}
+
+		// Bare: cacheTreeLocked never touches a worktree.
+		faulty, err := git.Open(&faultyStorer{Storer: repo.Storer, fail: docs.Hash}, nil)
+		if err != nil {
+			t.Fatalf("git.Open() error = %v", err)
+		}
+
+		p := &GitProvider{
+			parsedURL:  &ParsedGitURL{Ref: "HEAD", Subdir: "docs"},
+			repo:       faulty,
+			commitHash: head.Hash(),
+			commitTime: time.Now(),
+		}
+
+		err = p.cacheTreeLocked()
+		if !errors.Is(err, errStorerFault) {
+			t.Errorf("cacheTreeLocked() error = %v, want the storer's own error", err)
+		}
+		if errors.Is(err, ErrNotFound) {
+			t.Errorf("cacheTreeLocked() error = %v, want it NOT classified as ErrNotFound", err)
+		}
+	})
 }
 
 func TestGitProvider_SetupAuthLocked(t *testing.T) {
@@ -1614,5 +1661,55 @@ func TestNewProvider_WithGitConfig(t *testing.T) {
 	}
 	if gp.cloneTimeout != 30*time.Second {
 		t.Errorf("cloneTimeout = %v, want 30s", gp.cloneTimeout)
+	}
+}
+
+// TestGitProvider_StorerFaultIsNotNotFound covers the request-path half of the
+// same mapping. ReadFile and Stat flattened every resolveTreeNode/statTreeNode
+// failure to ErrNotFound, so a corrupt packfile served a themed 404 on every
+// page instead of a 500 — the operator's only signal that the repository, not
+// the URL, is the problem.
+func TestGitProvider_StorerFaultIsNotNotFound(t *testing.T) {
+	t.Parallel()
+
+	repo := createTestRepo(t, map[string]string{"docs/guide.md": "# Guide"})
+
+	guide, err := mustGetTree(t, repo).FindEntry("docs/guide.md")
+	if err != nil {
+		t.Fatalf("FindEntry() error = %v", err)
+	}
+
+	// gitProviderOver, not a literal: the tree must be re-derived over the
+	// faulty storer, or TreeEntryFile resolves the blob through the repo's own
+	// and never sees the fault.
+	p := gitProviderOver(t, repo, &faultyStorer{Storer: repo.Storer, fail: guide.Hash})
+
+	t.Run("ReadFile", func(t *testing.T) {
+		_, _, err := p.ReadFile(t.Context(), "/docs/guide.md")
+		assertStorerFault(t, err)
+	})
+
+	t.Run("Stat", func(t *testing.T) {
+		_, err := p.Stat(t.Context(), "/docs/guide.md")
+		assertStorerFault(t, err)
+	})
+
+	t.Run("a genuinely missing path is still ErrNotFound", func(t *testing.T) {
+		if _, _, err := p.ReadFile(t.Context(), "/nope.md"); !errors.Is(err, ErrNotFound) {
+			t.Errorf("ReadFile() error = %v, want ErrNotFound", err)
+		}
+		if _, err := p.Stat(t.Context(), "/nope.md"); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Stat() error = %v, want ErrNotFound", err)
+		}
+	})
+}
+
+func assertStorerFault(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, errStorerFault) {
+		t.Errorf("error = %v, want the storer's own error", err)
+	}
+	if errors.Is(err, ErrNotFound) {
+		t.Errorf("error = %v, want it NOT classified as ErrNotFound", err)
 	}
 }

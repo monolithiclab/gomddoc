@@ -1,7 +1,12 @@
 package resolve
 
 import (
+	"bytes"
+	"errors"
+	"io/fs"
+	"log/slog"
 	"mime"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -348,5 +353,61 @@ func TestResolver_PageURLPath(t *testing.T) {
 				t.Errorf("PageURLPath(%q, %q) = %q, want %q", tt.realPath, tt.defaultIndex, got, tt.want)
 			}
 		})
+	}
+}
+
+// unreadableDirFS fails ReadDir for one directory and behaves normally
+// otherwise, standing in for a permission or I/O failure mid-walk.
+type unreadableDirFS struct {
+	fs.FS
+	fail string
+}
+
+var errUnreadableDir = errors.New("simulated read failure")
+
+func (u unreadableDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name == u.fail {
+		return nil, errUnreadableDir
+	}
+	return fs.ReadDir(u.FS, name)
+}
+
+// TestResolver_UnreadableSubtreeIsLoggedAndSkipped pins both halves of Build's
+// walk-error branch — the walk continues, and it says so. See Build for why.
+//
+// No t.Parallel: slog's default logger is process-wide state.
+func TestResolver_UnreadableSubtreeIsLoggedAndSkipped(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(prev)
+
+	fsys := unreadableDirFS{
+		FS: fstest.MapFS{
+			"index.md":         {Data: []byte("# Home")},
+			"secret/hidden.md": {Data: []byte("# Hidden")},
+			"docs/guide.md":    {Data: []byte("# Guide")},
+		},
+		fail: "secret",
+	}
+
+	r := Build(fsys, BuildOptions{
+		StripExtensions: []string{".md"},
+		HasRenderer:     mockRenderer("text/markdown"),
+	})
+
+	// The walk continued: the sibling subtree still resolves.
+	if got, ok := r.Resolve("docs/guide"); !ok || got != "docs/guide.md" {
+		t.Errorf("Resolve(\"docs/guide\") = %q, %v; want the walk to have continued past the failure", got, ok)
+	}
+	if _, ok := r.Resolve("secret/hidden"); ok {
+		t.Error("Resolve(\"secret/hidden\") mapped, want no mapping for an unreadable subtree")
+	}
+
+	logged := buf.String()
+	for _, want := range []string{"skipping unreadable path", "secret", errUnreadableDir.Error()} {
+		if !strings.Contains(logged, want) {
+			t.Errorf("log %q missing %q", logged, want)
+		}
 	}
 }

@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -216,5 +217,37 @@ func TestStripFrontmatter(t *testing.T) {
 				t.Errorf("text.StripFrontmatter() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// unmarshalableMetadata makes yaml.Marshal return an error. A plain
+// unsupported type (a func, say) is no good: yaml.v3 repanics those rather
+// than converting them to an error, so only a marshaller that fails on
+// purpose reaches Render's error branch. Nothing the enricher produces can
+// reach it either — that is the point of returning rather than degrading.
+type unmarshalableMetadata struct{}
+
+var errUnmarshalable = errors.New("simulated marshal failure")
+
+func (unmarshalableMetadata) MarshalYAML() (any, error) { return nil, errUnmarshalable }
+
+func TestMarkdownPassthroughRenderer_MarshalFailurePropagates(t *testing.T) {
+	t.Parallel()
+
+	r := NewMarkdownPassthroughRenderer()
+	result, err := r.Render(context.Background(), []byte("---\ntitle: T\n---\n# Body\n"), &enricher.EnrichmentData{
+		Metadata: map[string]any{"bad": unmarshalableMetadata{}},
+	})
+	if err == nil {
+		t.Fatalf("Render() error = nil, want the marshal failure; got %q", result.Content)
+	}
+	if !errors.Is(err, errUnmarshalable) {
+		t.Errorf("Render() error = %v, want it to wrap the marshaller's own error", err)
+	}
+	if !strings.Contains(err.Error(), "enriched frontmatter") {
+		t.Errorf("Render() error = %q, want it to name what failed to marshal", err)
+	}
+	if result != nil {
+		t.Errorf("Render() result = %+v, want nil alongside the error", result)
 	}
 }

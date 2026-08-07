@@ -2177,6 +2177,23 @@ three `"text/markdown; charset=utf-8"`).
   way when the sibling execute failure gained context: `internal/server/errors.go:131,133` classify
   cancellation with `errors.Is`, and a wrap that named the template would not change the response.
   Filed only so the asymmetry reads as a decision rather than an oversight.
+- **The four content-index builders disagree on what an unreadable subtree means** — NEW (found
+  while fixing the ignored-errors bullet below). `metadata.BuildIndex` aborts the walk, and the
+  caller warns and continues with a nil index; `search.BuildIndex` does the same, and the site loses
+  search; `resolve.Build` warns and keeps a partial map; `navigation.go:146` swallows the `fs.ReadDir`
+  error entirely and returns a partial tree with no log at all; `build.go:377` aborts and fails the
+  CLI. Four policies for one event, none of them written down. `navigation.go:146` is the outlier
+  worth fixing on its own — a subtree silently missing from the sidebar has no symptom an operator
+  can trace. The general form is a `provider.WalkContent(fsys, exclude, fn)` owning both
+  `SkipWalkEntry` and the error policy, but that is a behavior change for at least two of the four
+  and needs its own decision, not a drive-by.
+- **`internal/testutil` has no slog-capture helper** — NEW. The
+  `slog.SetDefault(slog.New(slog.NewTextHandler(&buf, …)))` + restore-in-`t.Cleanup` block is copied
+  at five sites across three packages (`cmd/gomddoc/pipeline_test.go:477,520,566`, and the new
+  `internal/resolve` one). Same "one canonical test helper per pattern" rule as the
+  `internal/template` item above; same reason for its own commit.
+- **`gitfs.go:354` builds a raw `&fs.PathError{Op: "read", …}`** — NEW, lowest. The package has
+  `fsPathErr` for exactly this and every other site in the file uses it.
 - ~~**Latent panics:** `search/snippet.go:100-103` guards `pos > 0` instead of `pos < len(content)` —
   brute-forced to `index out of range` with `content="あ", windowSize=1`; unreachable today but
   `generateSnippet` takes `maxLen` as a parameter. `renderer/markdown.go:128` — unchecked
@@ -2213,12 +2230,45 @@ three `"text/markdown; charset=utf-8"`).
   paths, including a row that pins the *unwrapped* one — if `ExecError` ever stops naming the
   partial, that error loses its only identifying context and the row fails. Mutation-verified:
   reverting the three wraps produces 6 missing-assertion failures.
-- **Ignored errors:** `build.go:324` uses `err == io.EOF` not `errors.Is`;
+- ~~**Ignored errors:** `build.go:324` uses `err == io.EOF` not `errors.Is`;
   `provider/git.go:118-121,318-321` collapse four distinct `parseGitURL` messages into a bare sentinel
   (and this is the failure that produces §10.1's nil-tree state, so the cause matters);
   `renderer/markdown_passthrough.go:49-56` drops a `yaml.Marshal` error with no log;
   `resolve/resolver.go:48-51` silently tolerates an unreadable subtree (symptom: 404s on clean URLs,
-  no log line) where both peer index builders wrap and return.
+  no log line) where both peer index builders wrap and return.~~ **FIXED**, and the git half turned
+  out to be twice as large as filed. `NewGitProvider` now wraps both ways — `%w: %w` keeps
+  `ErrInvalidGitURL` for `errors.Is` *and* `parseGitURL`'s message, which is the only thing that tells
+  an operator what to change. `parseGitURL` itself was discarding two of its own errors on the way
+  (`errors.New("malformed URL")` over `net/url`'s diagnosis, same for the endpoint parse); both are
+  now `%w`. The mapping also runs the *other* way: `cacheTreeLocked` collapsed every subtree failure
+  to `ErrNotFound`, so a corrupt packfile reported as a typo in the URL fragment. `isMissingGitObject`
+  — the one list of go-git not-found sentinels, extracted out of `gitfs.go`'s `treeErr` — now
+  gates that. The review pass caught the extraction being applied to only 2 of its 4 sites: `ReadFile`
+  and `Stat` were flattening too, and they are the *per-request* path, so a corrupt repository served
+  a themed 404 on every page instead of a 500.
+  `markdown_passthrough.go` **propagates** rather than logs: nothing the pipeline can put in the
+  struct fails to marshal (`Metadata` comes back out of goldmark's frontmatter parse, so it
+  round-trips by construction), which makes the branch a bug, not a degradation — the old fallback
+  served a well-formed 200 with `related_docs` and prev/next quietly missing. Logging would also have
+  put `log/slog` into a package that has no logger calls.
+  `resolve.Build` keeps walking and now *says so*, which is the opposite call from the peer index
+  builders and deliberate: an absent resolver degrades every link and canonical on the site to a raw
+  `.md` path, while a partial map is fail-*closed* for the exclusion invariant (an unmapped page
+  404s). `fs.WalkDir` calls back with an error at most once per directory and does not descend, so
+  the log is bounded. `isDirEmpty`'s `errors.Is` is hygiene, not a fix — `os.File.Readdirnames`
+  returns `io.EOF` itself, and had it not, `==` was the fail-*closed* answer; it is not reachable
+  from a test.
+  Tests: `faultyStorer` (beside its twin `countingStorer` in `testhelpers_test.go`) fails one object
+  and passes the rest, so a storer fault is separable from a genuinely absent one. It overrides
+  *both* `EncodedObject` and `EncodedObjectSize` — `ReadFile` decodes the blob, `Stat` reads only
+  the header — and the provider is built with `gitProviderOver`, since a tree from `mustGetTree` is
+  baked over `repo.Storer` and `TreeEntryFile` would resolve straight through the wrapper. The
+  rejection-reason assertions live in `TestParseGitURL`, where all five rejections are, rather than in
+  `TestNewGitProvider`, which keeps one row to prove the wrap carries both halves. Mutation-verified:
+  reverting the four git wraps, the passthrough return and the resolver log produces failures in each
+  — including the `giturl.go` one, whose assertion reaches past the `malformed URL` label into
+  `net/url`'s text, because a `strings.Contains` on a label alone cannot tell `errors.New("x")` from
+  `fmt.Errorf("x: %w", err)`.
 - **Misleading comments/naming:** `search/snippet.go:255` says *"using insertion sort"* over a
   `slices.SortFunc` body (CLAUDE.md bans manual insertion sorts — the comment claims one exists);
   `snippet.go:14` calls byte offsets "character range" in the one file where that distinction is the

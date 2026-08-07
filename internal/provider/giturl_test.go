@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -8,11 +9,12 @@ func TestParseGitURL(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		input      string
-		wantRef    string
-		wantSubdir string
-		wantErr    bool
+		name            string
+		input           string
+		wantRef         string
+		wantSubdir      string
+		wantErr         bool
+		wantErrContains string
 	}{
 		// Basic URLs
 		{
@@ -122,34 +124,49 @@ func TestParseGitURL(t *testing.T) {
 
 		// Error cases
 		{
-			name:    "empty URL",
-			input:   "",
-			wantErr: true,
+			name:            "empty URL",
+			input:           "",
+			wantErr:         true,
+			wantErrContains: "empty URL",
 		},
 		{
-			name:    "unsupported scheme https",
-			input:   "https://github.com/user/repo",
-			wantErr: true,
+			name:            "unsupported scheme https",
+			input:           "https://github.com/user/repo",
+			wantErr:         true,
+			wantErrContains: "unsupported scheme",
 		},
 		{
-			name:    "unsupported scheme ssh",
-			input:   "ssh://git@github.com/user/repo",
-			wantErr: true,
+			name:            "unsupported scheme ssh",
+			input:           "ssh://git@github.com/user/repo",
+			wantErr:         true,
+			wantErrContains: "unsupported scheme",
 		},
 		{
-			name:    "unsupported scheme http",
-			input:   "http://github.com/user/repo",
-			wantErr: true,
+			name:            "unsupported scheme http",
+			input:           "http://github.com/user/repo",
+			wantErr:         true,
+			wantErrContains: "unsupported scheme",
 		},
 		{
-			name:    "missing host",
-			input:   "git+ssh:///path/only",
-			wantErr: true,
+			name:            "missing host",
+			input:           "git+ssh:///path/only",
+			wantErr:         true,
+			wantErrContains: "missing host",
 		},
 		{
-			name:    "file path",
-			input:   "/path/to/repo",
-			wantErr: true,
+			name:            "file path",
+			input:           "/path/to/repo",
+			wantErr:         true,
+			wantErrContains: "unsupported scheme",
+		},
+		{
+			// The rejection that keeps net/url's own diagnosis. parseGitURL
+			// used to answer a flat "malformed URL"; the expectation reaches
+			// past the label so that dropping the %w again turns it red.
+			name:            "malformed URL",
+			input:           "git+https://exa mple.com/user/repo",
+			wantErr:         true,
+			wantErrContains: `malformed URL: parse "https://exa mple.com/user/repo": invalid character`,
 		},
 	}
 
@@ -161,7 +178,13 @@ func TestParseGitURL(t *testing.T) {
 
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("parseGitURL(%q) error = nil, want error", tt.input)
+					t.Fatalf("parseGitURL(%q) error = nil, want error", tt.input)
+				}
+				// Each rejection must say which one it was: NewGitProvider
+				// wraps this message behind ErrInvalidGitURL, and the sentinel
+				// alone tells an operator nothing to change.
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("parseGitURL(%q) error = %q, want it to name the reason %q", tt.input, err, tt.wantErrContains)
 				}
 				return
 			}

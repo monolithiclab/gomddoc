@@ -17,6 +17,17 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
+// isMissingGitObject reports whether a go-git failure means "no such entry"
+// rather than a real repository or I/O fault. It is the one list of go-git
+// not-found sentinels in the package — treeErr below and GitProvider's
+// cacheTreeLocked, ReadFile and Stat all branch on it, and a second list would
+// drift.
+func isMissingGitObject(err error) bool {
+	return errors.Is(err, object.ErrEntryNotFound) ||
+		errors.Is(err, object.ErrDirectoryNotFound) ||
+		errors.Is(err, plumbing.ErrObjectNotFound)
+}
+
 // treeErr maps a go-git failure onto the io/fs contract.
 //
 // The mapping runs both ways and both matter. A missing entry becomes
@@ -25,9 +36,7 @@ import (
 // keeps its own error: collapsing those into ErrNotExist makes a broken
 // repository render as an empty site instead of failing.
 func treeErr(op, name string, err error) *fs.PathError {
-	if errors.Is(err, object.ErrEntryNotFound) ||
-		errors.Is(err, object.ErrDirectoryNotFound) ||
-		errors.Is(err, plumbing.ErrObjectNotFound) {
+	if isMissingGitObject(err) {
 		err = fs.ErrNotExist
 	}
 	return fsPathErr(op, name, err)

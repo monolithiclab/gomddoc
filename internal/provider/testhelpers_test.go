@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"io/fs"
 	"strings"
 	"sync/atomic"
@@ -123,6 +124,36 @@ func (c *countingStorer) EncodedObject(t plumbing.ObjectType, h plumbing.Hash) (
 func (c *countingStorer) EncodedObjectSize(h plumbing.Hash) (int64, error) {
 	c.sizes.Add(1)
 	return c.Storer.EncodedObjectSize(h)
+}
+
+// errStorerFault stands in for a corrupt packfile or a storer I/O failure:
+// anything that is emphatically not "this object does not exist".
+var errStorerFault = errors.New("simulated storer fault")
+
+// faultyStorer fails on one specific object and behaves normally for every
+// other. Deleting the object instead would produce ErrObjectNotFound, which is
+// exactly the case a caller of faultyStorer needs it separated from.
+//
+// Both accessors, because the two paths under test reach the object by
+// different routes: ReadFile decodes it (EncodedObject) while Stat reads only
+// the header (EncodedObjectSize).
+type faultyStorer struct {
+	storage.Storer
+	fail plumbing.Hash
+}
+
+func (f *faultyStorer) EncodedObject(t plumbing.ObjectType, h plumbing.Hash) (plumbing.EncodedObject, error) {
+	if h == f.fail {
+		return nil, errStorerFault
+	}
+	return f.Storer.EncodedObject(t, h)
+}
+
+func (f *faultyStorer) EncodedObjectSize(h plumbing.Hash) (int64, error) {
+	if h == f.fail {
+		return 0, errStorerFault
+	}
+	return f.Storer.EncodedObjectSize(h)
 }
 
 // gitProviderOver builds a GitProvider whose tree resolves objects through

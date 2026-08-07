@@ -147,6 +147,14 @@ testsite/              # Lorem ipsum test site for quick testing
   errors both matter, double-`%w` beats `errors.Join`: `Join` separates with `\n`, which mangles a
   single-line slog field, and has nowhere to put the labels that say which error is which
   (`theme %q: %w; default theme: %w`).
+- **A not-found mapping runs both ways** — collapsing every failure from a lookup into the package's
+  "missing" sentinel turns a corrupt store into a client error: `GitProvider.ReadFile`/`Stat` mapped
+  *any* `resolveTreeNode` failure to `ErrNotFound`, so an undecodable packfile served a themed 404 on
+  every page instead of a 500, and the operator's only signal that the repository — not the URL — was
+  broken never appeared. Classify on the specific sentinels (`isMissingGitObject`) and let everything
+  else through. Corollary: a predicate extracted so there is *one* list must be applied at *every*
+  site; leaving 2 of 4 behind is exactly the drift the extraction was for, and the two left behind
+  are usually the ones on the request path.
 - Path joining: `path.Join("assets", "themes", cfg.Theme)` (each segment separate)
 - **`for i := range N`** over `for i := 0; i < N; i++` (Go 1.22+ range-over-int)
 - **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains
@@ -349,6 +357,9 @@ testsite/              # Lorem ipsum test site for quick testing
   documents (`xml.Unmarshal` into the production struct) and compare exhaustively with
   `slices.Equal`/`maps.Equal`, or delimit the substring (`<loc>…</loc>`). Keep a few raw-string
   checks for wire format — a round-trip through the production struct is blind to element names.
+  A `strings.Contains` on a *label* does not pin a `%w`: `errors.New("malformed URL")` and
+  `fmt.Errorf("malformed URL: %w", err)` both contain `"malformed URL"`, so the assertion has to
+  reach past the label into the wrapped error's own text.
 - **Tests over parallel write paths must read what was written, and deny the sibling's content** —
   `os.Stat` cannot see one page's HTML landing in another page's `index.html`
 

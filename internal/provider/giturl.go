@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -63,7 +64,7 @@ func parseGitURL(rawURL string) (*ParsedGitURL, error) {
 	// Parse URL to extract fragment
 	u, err := url.Parse(normalized)
 	if err != nil {
-		return nil, errors.New("malformed URL")
+		return nil, fmt.Errorf("malformed URL: %w", err)
 	}
 
 	if u.Host == "" {
@@ -92,7 +93,7 @@ func parseGitURL(rawURL string) (*ParsedGitURL, error) {
 	// Use go-git's endpoint parsing for protocol-specific handling
 	endpoint, err := transport.NewEndpoint(u.String())
 	if err != nil {
-		return nil, errors.New("invalid git endpoint")
+		return nil, fmt.Errorf("invalid git endpoint: %w", err)
 	}
 
 	return &ParsedGitURL{

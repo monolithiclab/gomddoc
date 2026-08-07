@@ -75,6 +75,14 @@ func Build(fsys fs.FS, opts BuildOptions) *PathResolver {
 
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
+			// Keep walking — one unreadable subtree should not cost the site
+			// every clean URL — but say so. The symptom otherwise is 404s on
+			// clean URLs for pages that plainly exist, with nothing in the log
+			// to connect them to a permission or I/O failure at startup.
+			slog.Warn("clean-URL index: skipping unreadable path",
+				"path", p,
+				"error", err,
+			)
 			return nil
 		}
 		if skip, skipErr := provider.SkipWalkEntry(p, d.Name(), d.IsDir(), opts.Exclude); skip {

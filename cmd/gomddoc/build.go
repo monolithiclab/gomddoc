@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -340,8 +341,14 @@ func isDirEmpty(path string) (bool, error) {
 	}
 	defer f.Close()
 
+	// errors.Is, not ==. Hygiene rather than a behavior fix: os.File.Readdirnames
+	// returns io.EOF itself, so the two agree today, and if they ever stopped
+	// agreeing == would be the fail-*closed* answer (a non-nil error out of
+	// isDirEmpty makes guardOutputDir refuse). The idiom is still right — a
+	// wrapped EOF means the directory is empty, and saying otherwise is a lie
+	// the rest of the function then has to work around.
 	_, err = f.Readdirnames(1)
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return true, nil
 	}
 	return false, err

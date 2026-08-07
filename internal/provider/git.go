@@ -118,7 +118,11 @@ func NewGitProvider(gitURL, defaultIndex string, dirIndex bool, excludePatterns 
 
 	parsed, err := parseGitURL(gitURL)
 	if err != nil {
-		return nil, &PathError{Op: "parse", Path: gitURL, Err: ErrInvalidGitURL}
+		// Both: the sentinel is what callers classify on, and parseGitURL's
+		// message is the only thing that says which of its rejections fired.
+		// Flattening to the sentinel told an operator that their URL was
+		// invalid without telling them what to change.
+		return nil, &PathError{Op: "parse", Path: gitURL, Err: fmt.Errorf("%w: %w", ErrInvalidGitURL, err)}
 	}
 
 	g := &GitProvider{
@@ -322,7 +326,13 @@ func (g *GitProvider) cacheTreeLocked() error {
 	if g.parsedURL.Subdir != "" {
 		subtree, err := tree.Tree(g.parsedURL.Subdir)
 		if err != nil {
-			return &PathError{Op: "subdir", Path: g.parsedURL.Subdir, Err: ErrNotFound}
+			// Same both-ways mapping as treeErr, onto the provider's
+			// ErrNotFound instead of fs.ErrNotExist. Collapsing everything
+			// reported a broken repository as a typo in the URL fragment.
+			if isMissingGitObject(err) {
+				err = ErrNotFound
+			}
+			return &PathError{Op: "subdir", Path: g.parsedURL.Subdir, Err: err}
 		}
 		tree = subtree
 	}
@@ -394,7 +404,10 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 
 	file, subtree, err := resolveTreeNode(tree, g.treeState.objects, cleanPath)
 	if err != nil {
-		return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
+		if isMissingGitObject(err) {
+			err = ErrNotFound
+		}
+		return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
 	}
 	if subtree != nil {
 		return g.handleDirectoryLocked(subtree, modTime, requestPath)
@@ -483,7 +496,10 @@ func (g *GitProvider) Stat(ctx context.Context, requestPath string) (fs.FileInfo
 	// under the exclusive tree lock.
 	info, err := statTreeNode(tree, objects, cleanPath, modTime)
 	if err != nil {
-		return nil, &PathError{Op: "stat", Path: requestPath, Err: ErrNotFound}
+		if isMissingGitObject(err) {
+			err = ErrNotFound
+		}
+		return nil, &PathError{Op: "stat", Path: requestPath, Err: err}
 	}
 	return info, nil
 }
