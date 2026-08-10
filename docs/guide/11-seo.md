@@ -220,6 +220,8 @@ your documentation appears when shared on social media, in chat applications, an
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Getting Started Guide">
 <meta name="twitter:description" content="Learn how to set up and configure the project">
+
+<meta name="description" content="Learn how to set up and configure the project">
 ```
 
 These tags are rendered in the `<head>` of every page by the default theme's `head.html.tmpl`
@@ -234,8 +236,11 @@ You can control Open Graph behavior through YAML frontmatter on individual pages
   for valid type values.
 - **`title`** — used as `og:title`. If not set in frontmatter, the page has no explicit title in
   Open Graph tags.
-- **`description`** — used as `og:description`. Falls back to the site-level `meta.description` from
-  your config file if not set on the page.
+- **`description`** — used as `og:description`, `twitter:description` **and** the plain
+  `<meta name="description">` that search engines read for the result snippet. All three come from
+  one value, falling back to the site-level `meta.description` from your config file when the page
+  does not set one. If neither is set, no description tag is emitted — an empty `content=""` is
+  worse than no tag.
 
 Example frontmatter:
 

@@ -1727,9 +1727,18 @@ documents are misfiled under `docs/specs/`.
 **Godoc:** 21 of 22 packages have **no package doc comment** — only `internal/resolve/resolver.go:1`
 has one. There is no `.golangci.yml`, so no `revive`/`stylecheck` rule enforces it.
 
-#### MEDIUM: every page shares one `<meta name="description">` — NEW (found while auditing D13)
+#### ~~MEDIUM: every page shares one `<meta name="description">`~~ ✅ FIXED (found while auditing D13)
 
-`partials/head-shared.html.tmpl:29` emits `<meta name="description" content="{{ .Site.Meta.Description }}">`
+The three tags now read one `$desc` derived once at the top of `head-meta`, so they cannot disagree
+again — the finding's proposed `if/else if` would have been a *third* copy of the same fallback. The
+tag is now conditional as well: `content=""` on a site with no `meta.description` is worse than no
+tag. `TestHeadMeta_DescriptionPrefersPageFrontmatter` renders through the **embedded** theme rather
+than a stub, because the defect lived in the partial; it reads the content back and denies the site
+description, since asserting the tag merely *exists* passed the whole time. Also applied to
+`gomddoc-website`'s `marketing` theme, which forks the tag in its own layout (not committable from
+here).
+
+`partials/head-shared.html.tmpl:29` emitted `<meta name="description" content="{{ .Site.Meta.Description }}">`
 unconditionally. Two lines above it, `og:description` and `twitter:description` both prefer
 `.Page.Meta.description` and fall back to the site's — so a page that sets `description:` in
 frontmatter gets it into the Open Graph tags and into `sitemap`/JSON-LD, but *not* into the one tag
