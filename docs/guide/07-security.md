@@ -51,7 +51,16 @@ gomddoc automatically blocks access to "hidden" files and directories (those sta
 - **Blocked:** `.env`, `.git/`, `.gomddoc/`, `.ssh/`, `.config/`, `.DS_Store`
 - **Allowed:** `/.well-known/` (Standard for SSL verification, security.txt — IETF RFC 8615)
 
-This prevents accidental exposure of configuration files, secrets, or git history. The validation logic (`provider.IsHiddenPath`) is shared between the HTTP `BlockHiddenPaths` middleware and MCP handlers to ensure consistent enforcement regardless of access method.
+This prevents accidental exposure of configuration files, secrets, or git history.
+
+One predicate answers the question everywhere: `provider.IsRestrictedPath`, which is
+`IsHiddenPath` (the dotfile rule above, always enforced) OR `IsExcludedPath` (your `exclude:`
+patterns, documented in [Configuration](02-configuration.md)). The HTTP side calls it from the
+`ContentExclusion` middleware; the MCP side calls it from `read_page`, `read_section`,
+`find_related`, the `docs://` resources and the prompts. Same answer regardless of access method.
+
+A blocked path gets a **404**, not a 403, and the body is the theme's ordinary not-found page — a
+403 would confirm that the file exists, and so would a differently-worded 404.
 
 ## 4. HTTP Method Filtering
 

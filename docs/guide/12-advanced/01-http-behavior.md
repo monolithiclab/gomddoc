@@ -10,21 +10,46 @@ gomddoc includes built-in HTTP features that require no configuration: caching, 
 
 ## Caching
 
+Cache-Control and ETag travel together: both are written by the one helper (`serveWithETag`) that
+every handler holding a complete response body goes through. So a route either has both or neither,
+and the scope below is the same for the two sections.
+
 ### Cache-Control
 
-All successful responses include a `Cache-Control: public, max-age=300` header, allowing browsers and intermediate caches to store responses for 5 minutes before revalidating.
+| Routes | `Cache-Control` |
+|--------|-----------------|
+| Rendered pages, `/tags/`, `/sitemap.xml`, `/feed.xml`, `/robots.txt` | `public, max-age=300` |
+| `/_assets/` (static files) | `public, max-age=31536000, immutable` |
+| `/api/*`, `/health/*`, `/metrics`, error responses | *(none)* |
+
+Five minutes is short enough that a redeploy propagates quickly and long enough to absorb a reload.
+
+> [!WARNING]
+> `/_assets/` URLs are **not** fingerprinted — `assetURL "css/site.css"` yields
+> `/_assets/css/site.css`, the same URL before and after you edit the file. Combined with
+> `max-age=31536000, immutable`, a browser that has fetched one will not ask about it again for a
+> year. Add your own cache-busting query string (`/_assets/css/site.css?v=3`) when you change a
+> published static file. Tracked in `REVIEW.md`.
 
 ### ETag / 304 Not Modified
 
-Every response includes an `ETag` header, a content-based fingerprint computed using the FNV-64a hash algorithm. The ETag is a weak validator (prefixed with `W/`) since the same content may be served with different transfer encodings (e.g., gzip).
+Responses written through `serveWithETag` — the same set as the first two rows above — carry an
+`ETag`: a content fingerprint computed with the FNV-64a hash. It is a weak validator (prefixed with
+`W/`) since the same content may be served with different transfer encodings (e.g., gzip).
 
 When a browser makes a subsequent request, it sends the cached ETag in the `If-None-Match` header. If the content has not changed, gomddoc responds with `304 Not Modified` and an empty body, saving bandwidth and processing time.
 
-This applies to all content types:
-- **Markdown pages**: The ETag is computed from the fully rendered HTML (after template wrapping), so any change to content, metadata, or templates produces a new ETag.
-- **Static assets** (CSS, JS, images): The ETag is computed from the raw file content.
+What the fingerprint is taken over depends on the route:
+- **Markdown pages**: the fully rendered HTML (after template wrapping), so any change to content, metadata, or templates produces a new ETag.
+- **Static assets** (CSS, JS, images): the raw file content.
+- **`/sitemap.xml`, `/feed.xml`, `/robots.txt`**: the generated document, which is built once and
+  cached for the life of the process.
 
-No configuration is required. ETag caching is always enabled.
+The `/api/*` JSON endpoints are the deliberate exception: they stream through a `json.Encoder`
+rather than buffering a body, so there is nothing to hash and no conditional-request handling. A
+client polling `/api/tags` re-downloads the payload every time.
+
+No configuration is required, and there is no way to turn ETags off.
 
 ---
 
@@ -42,7 +67,19 @@ When compression is active, the middleware:
 - Removes the `Content-Length` header (the compressed size is not known in advance).
 - Always sets `Vary: Accept-Encoding` so that caches distinguish between compressed and uncompressed variants.
 
-Compression requires no configuration and is always enabled. It uses a `sync.Pool` of gzip writers internally to minimize memory allocations under load.
+Compression requires no configuration and cannot be turned off. It uses a `sync.Pool` of gzip
+writers internally to minimize memory allocations under load.
+
+Two route groups sit outside it, both deliberately:
+
+- **`/health/live` and `/health/ready`** — probe bodies are far below the 1 KB threshold, so the
+  middleware would never fire anyway.
+- **`/metrics`** — `promhttp` negotiates its own encoding.
+
+Everything else — pages, `/tags/`, `/sitemap.xml`, `/feed.xml`, `/robots.txt`, `/_assets/`,
+`/api/*`, `/_mcp/` — is compressed, because the middleware is attached to the root route group
+rather than to individual handlers. A route added later gets it by default rather than by
+remembering to opt in.
 
 ---
 
@@ -168,13 +205,20 @@ it does not exist.
 
 ### Middleware Ordering
 
-Content requests pass through the middleware chain in this order:
+Content requests pass through the middleware chain in this order (outermost first):
 
-1. **ContentExclusion** — blocks hidden files (dotfiles) and user-configured exclude patterns
-2. **ExtensionRedirect** — redirects `.md` (or other stripped extensions) to extensionless URLs
+1. **SecurityHeaders** and **RequestID** — wrap the whole mux, including `/health/*` and `/metrics`
+2. **Compression** — gzip, plus `Vary: Accept-Encoding`
 3. **Metrics** — records Prometheus request metrics
-4. **Handler** — resolves path, reads content, renders, and responds
+4. **BasicAuth** — only when credentials are configured
+5. **stripPathPrefix** — per-language routes only; removes the `/{lang}` segment
+6. **MethodFilter** — 405 for anything but GET and HEAD
+7. **ContentExclusion** — blocks hidden files (dotfiles) and user-configured exclude patterns
+8. **ExtensionRedirect** — redirects `.md` (or other stripped extensions) to extensionless URLs
+9. **Handler** — resolves path, reads content, renders, and responds
 
+Steps 2 and 3 sit above the filters on purpose: that is what makes the 405s, the 404s from
+`ContentExclusion` and the 301s from `ExtensionRedirect` show up in `http_requests_total` at all.
 The redirect middleware runs before the handler so that extension-bearing requests never reach
 the rendering pipeline — they are redirected immediately.
 

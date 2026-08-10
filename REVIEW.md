@@ -1711,21 +1711,140 @@ regressed*: the theme-count correction was applied to `05-theming-and-assets.md`
 | ~~D14~~ | ~~`gomddoc-website/docs/distribution.md:36-38` shows plain `https://…git` as a Git source~~ | ✅ FIXED (website edit only, not committable from here). Verified empirically rather than from `config.IsGitURL` alone: `gomddoc serve "https://github.com/…"` fails with `directory validation failed: stat https://github.com/…: no such file or directory` — a bare `https://` URL is not rejected as a bad Git URL, it is taken as a **filesystem path**, which is why the error names `stat`. The Docker example now uses `git+https://`, followed by a line naming all three accepted schemes and that failure mode |
 | ~~D15~~ | ~~`gomddoc-themes/themes/CLAUDE.md:94,150,167` reference `color-chip.mjs`~~ | ✅ FIXED, and it was **not** doc drift. All seven external themes carried a `color-chip:not(:defined)` CSS rule (`academic:771`, `gitbook:732`, `material:829`, `midnight:830`, `minimal:217`, `nord:850`, `ocean:681`) — the element is `<gmd-color-chip>`, so the selector matched nothing and the anti-FOUC monospace rule was dead in every one of them. The in-repo `default` theme (`head.html.tmpl:755`) was already correct, which is exactly why nothing caught it. Selectors and `themes/CLAUDE.md` fixed (themes repo, not committable from here); the committable half is `docs/decisions.md:158,165,167,297`, which still described the component as `<color-chip>` loaded from `color-chip.mjs` even though `:399` records the `gmd-` rename right below it. `TestBundledThemes_NotDefinedSelectorsNameARealElement` is the guard: it collects every `customElements.define` name and every `:not(:defined)` selector from the embedded assets and asserts the second set is a subset of the first. It reads the **embedded** FS, not the overlay — a site's own `.gomddoc/assets/.../head.html.tmpl` legitimately shadows the bundled one, so failing on a valid override would be worse than the bug (same reasoning as the still-open guard at §10.7) |
 
-**MEDIUM — incomplete or stale (abridged):** README's *"~8MB binary"* (actually 32 MB unstripped,
-22 MB with GoReleaser's `-s -w`); `01-http-behavior.md` overstates Cache-Control, ETag and
-compression as universal (all three are scoped — see §10.4); `13-internationalization.md` documents
-3 locale layers (there are 2), 20 translation keys (there are 26), and preview on `:8080` (it is
-`:auto`); `07-security.md:54` names a `BlockHiddenPaths` middleware and `provider.IsHiddenPath` — the
-real names are `ContentExclusion` and `provider.IsRestrictedPath`; the website has **no CLI reference
-page** (6 subcommands, 20+ flags) and omits `language`, `exclude`, `strip_extensions`, `search.index`,
-`theme.vars`, `theme.features`, `meta.robots`, `server.admin_port`; ~~the website says 11 template
-functions~~ (corrected to 12 in §10.4's breadcrumb commit) but still omits the `.gomddoc/partials/`
-override layer; `gomddoc-themes` has no root README;
-stale "Go 1.25" references (go.mod says 1.26); `CLAUDE.md:29-36` omits `docs/plans/`, and four plan
-documents are misfiled under `docs/specs/`.
+~~**MEDIUM — incomplete or stale (abridged):** README's *"~8MB binary"*; `01-http-behavior.md`
+overstates Cache-Control, ETag and compression as universal; `13-internationalization.md` documents
+3 locale layers, 20 translation keys, and preview on `:8080`; `07-security.md:54` names a
+`BlockHiddenPaths` middleware and `provider.IsHiddenPath`; the website has no CLI reference page and
+omits the `.gomddoc/partials/` override layer; `gomddoc-themes` has no root README; stale "Go 1.25"
+references; `CLAUDE.md:29-36` omits `docs/plans/`, and four plan documents are misfiled under
+`docs/specs/`.~~ ✅ **FIXED.** Every claim was re-measured before rewriting, and three of the twelve
+did not survive contact:
+
+- **README's binary size** — 33,816,466 bytes from `make build` and 23,531,842 with `-s -w`
+  (darwin/arm64), so "32 MB / 22 MB" was MiB and the README's "~8MB" was off by 4×. The neighbouring
+  *"<15MB RAM usage"* was wrong too (31 MB RSS serving `testsite`) and is gone rather than
+  re-measured: it depends on corpus size, so any single number is a claim the next site falsifies.
+  Same edit deleted *"hot reload"* from `make run` — there is no watcher, and what preview actually
+  re-reads per request is content and templates, **not** the resolver, navigation, metadata or
+  search index, so adding a file still needs a restart.
+- **`01-http-behavior.md`** — the two caching sections now share one scope statement, because
+  Cache-Control and ETag are written by the same helper (`serveWithETag`) and therefore have exactly
+  the same scope; documenting them as two independent facts is what let one drift. Compression's
+  exemptions (`/health/*`, `/metrics`) each carry their reason. The middleware-order list was four
+  entries and is now nine: it predated §10.4's hoist, so it still showed Metrics *below*
+  ContentExclusion and ExtensionRedirect — the exact ordering that commit changed, and the reason
+  405s and 301s are counted at all.
+- **`13-internationalization.md`** — 2 layers, not 3: there is no theme-level locale layer, and no
+  theme ships one. 26 keys, not 20 — the six missing were `search_tag_tip`, `tags_title`,
+  `tags_index_title`, `tags_tagged_as`, `tags_empty` and `see_also`, i.e. everything added since the
+  page was written. Rather than transcribe them again,
+  `TestBuiltinTranslationKeysAreDocumented` (`cmd/gomddoc/locale_docs_test.go`) parses the guide's
+  YAML fence and the embedded `en-US.yml` and asserts **set equality both ways**. One direction is
+  not enough: "every shipped key is documented" passes a page that also lists keys which no longer
+  exist, which is the failure a translator notices last — they translate a key the templates never
+  ask for and the string simply never appears. `preview` binds `:auto`, not `:8080`; the page now
+  says so and names `serve` as the fixed-port command.
+- **`07-security.md`** — both symbols were wrong, and the fix is not a rename. `IsRestrictedPath` is
+  `IsHiddenPath || IsExcludedPath`, so naming `IsHiddenPath` as *the* shared predicate understated
+  what MCP enforces: `exclude:` patterns, not just dotfiles. The paragraph now names the real
+  middleware (`ContentExclusion`), the real predicate, the five MCP entry points that call it, and
+  the 404-with-the-theme's-own-body rule from §10.4 — a 403 would confirm the file exists, and so
+  would a differently-worded 404.
+- **The website's CLI reference page already exists** and covers all six subcommands and every flag,
+  as does its config file listing (`language`, `exclude`, `strip_extensions`, `search.index`,
+  `theme.vars`, `theme.features`, `meta.robots`, `server.admin_port` are all present). That half of
+  the finding was fixed by an earlier §10.5 pass and never struck. The `.gomddoc/partials/` gap was
+  real: `configuration.md` documented partials only inside `.gomddoc/assets/themes/<name>/`, which
+  is the fork-a-theme path. The site-level layer is a third, higher-priority pass
+  (`renderer.go:540`) that overrides *any* theme's partial and survives a `theme.name` change —
+  now documented with the three-pass order and the distinction from the theme-scoped path.
+- **`gomddoc-themes` root README** — written: a seven-row catalogue (category, heading font, look),
+  the copy-into-`.gomddoc/assets/themes/` install, the `theme.vars` recolour path, and a pointer to
+  `themes/CLAUDE.md` for authoring. Every column was read out of the theme READMEs' frontmatter
+  rather than recalled. While there, `themes/CLAUDE.md`'s own tree was one level stale — it showed
+  the themes at the repo root, but they live under `themes/`, and it credited `midnight` to Fira
+  Code when that is its *mono* font (heading and body are Inter).
+- **Go version** — `README.md:274` and `CLAUDE.md:136` said 1.25 against a `go.mod` of 1.26.
+  `docs/decisions.md:226` attributed `b.Loop()` to 1.25; it landed in 1.24. The `Go 1.25+` lines in
+  `docs/plans/` and `docs/specs/` are deliberately left alone — those are dated records of what was
+  true when the feature was designed, and rewriting them would be falsifying a log.
+- **`docs/plans/`** — the four `-plan.md` files under `docs/specs/` moved (`git mv`, no inbound
+  links to fix). CLAUDE.md's tree and purpose list gained the directory, and the feature workflow
+  gained the step that produces one. The purpose entry names the *reliable* tell — a `- [ ]`
+  checkbox list — not the `-plan.md` suffix, because half the files in `docs/plans/` predate that
+  convention and a suffix rule would have sorted them wrong.
+
+Website and themes edits are in their own repositories and are **not committable from here**
+(`gomddoc-website` has no commits yet; `gomddoc-themes` likewise).
+
+One new finding surfaced while writing the caching table, filed below: `/_assets/` is served
+`immutable` for a year on URLs that are not fingerprinted.
 
 **Godoc:** 21 of 22 packages have **no package doc comment** — only `internal/resolve/resolver.go:1`
 has one. There is no `.golangci.yml`, so no `revive`/`stylecheck` rule enforces it.
+
+#### MEDIUM: `/_assets/` promises `immutable` on URLs that never change name — NEW (found while writing the caching table)
+
+`assets_handler.go:59` serves every static file with `cacheImmutable`
+(`public, max-age=31536000, immutable`), and `assetURL` (`renderer.go:574`) is
+`return "/_assets/" + name` — no content hash, no version query, no mtime. `immutable` tells the
+browser not to revalidate *even on a forced reload*, so a visitor who has fetched
+`/_assets/css/site.css` once will not see an edit to it for a year. The two halves are individually
+defensible and jointly wrong: `immutable` is correct only for a content-addressed URL, and this one
+is a plain path.
+
+Nothing in-tree trips over it today, which is why it survived: `grep -rn assetURL cmd/gomddoc/assets
+../gomddoc-themes` returns **nothing** — the bundled and external themes all inline their CSS and JS
+through `inlineCSSAsset`/`inlineJSAsset`, so `/_assets/` is reached only by a site's own
+`.gomddoc/static/` files, referenced by hand from Markdown or a custom partial. That is exactly the
+population that edits a file and expects to see it.
+
+Options, cheapest first:
+
+1. **Fingerprint in `assetURL`** — hash the file at first resolution and emit
+   `/_assets/css/site.css?v=<fnv>`; the handler ignores the query. Keeps `immutable` honest, costs
+   one read per asset per process, and does nothing for a path written by hand in Markdown.
+2. **Downgrade the handler to `cacheDynamic`** — one-word change, correct for every caller, gives up
+   the edge-cache win on files that genuinely never change.
+3. **Both, keyed on the query** — `immutable` when the request carries a `v=`, `cacheDynamic`
+   otherwise. Rewards the fingerprinted path without punishing the hand-written one.
+
+The documentation half is done: `12-advanced/01-http-behavior.md` carries a warning naming the
+mismatch and the manual `?v=` workaround. A test is owed either way — `assets_handler_test.go` pins
+the header value but nothing pins it *against* the URL shape, so option 2 would pass a test suite
+that never noticed the contradiction in the first place.
+
+#### LOW: five more guide blocks transcribe a shipped data file with nothing pinning them — NEW (found by the simplify pass on §10.5)
+
+`TestBuiltinTranslationKeysAreDocumented` fixes one instance of a class. The class is "a prose list
+that reproduces a data structure the compiler owns", and the survey turned up five more, all in sync
+today and all free to drift tomorrow:
+
+| Doc block | Source of truth |
+| --- | --- |
+| `05-theming-and-assets.md:117-234` — the 12 template functions | the `funcMap` in `template/renderer.go:564-587` |
+| `05-theming-and-assets.md:328-334` — the `<gmd-*>` element table | `cmd/gomddoc/assets/shared/gmd-*.mjs` |
+| `04-mcp.md:129-257` — tools, resources, prompts | `mcp/tools.go:23-58`, `resources.go:18-45`, `prompts.go:16-49` |
+| `12-advanced/03-api-reference.md:256-286` — **the same** tools, resources and prompts again | the same three files |
+| `02-configuration.md` — ~53 `GOMDDOC_*` names | the 29 `env:"…"` tags in `config/config.go:52-79` |
+
+The fourth row is the one that argues for generalizing rather than cloning the test: two guide pages
+transcribe the same three registries, so there are three copies of that list and a pairwise check
+between the two docs would pass while both drift away from the code together. The shape is one
+table-driven test over `{docPath, anchor, extractor}` rows, which makes each additional pin three
+lines instead of a new file — and CLAUDE.md already names this failure mode twice ("a predicate
+extracted so there is *one* list must be applied at *every* site").
+
+Two sub-decisions belong to that work, not to a per-doc clone: the anchor (matching literal heading
+text and "first ```yaml fence" is invisible to an author reformatting the page — an HTML-comment
+marker or a frontmatter key would be a contract rather than reverse-engineered prose), and whether
+the checker lives in the package that owns the embed or under `docs/skills/`, which is the existing
+carve-out for module code that is tooling rather than product.
+
+Explicitly *not* a row: the fr-FR example in `13-internationalization.md`. Locales merge per key, so
+a fragment is the correct thing to show. It was 20 of 26 keys with no indication it was partial —
+the same drift, wearing an example's clothes — and is now a deliberate six-key fragment that says it
+is one.
 
 #### ~~MEDIUM: every page shares one `<meta name="description">`~~ ✅ FIXED (found while auditing D13)
 

@@ -271,13 +271,14 @@ curl -H "Accept: */*" http://localhost:8080/docs.md
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+ (see `go.mod`)
 - Make (optional, for convenience commands)
 
 ### Development Commands
 
 ```bash
-make run          # Run locally with hot reload
+make ci           # codefix + format + lint + test — run this before committing
+make run          # Serve ./testsite locally (go run; no hot reload)
 make test         # Run tests with coverage report
 make bench        # Run benchmarks
 make lint         # Run all linters (format, vet, staticcheck, golangci-lint, gosec, gocritic)
@@ -287,18 +288,23 @@ make clean        # Remove build artifacts
 make update-deps  # Update dependencies
 ```
 
+There is no file watcher. `gomddoc preview` runs in dev mode, which re-reads content and templates
+from disk per request, so editing the body of an existing page and refreshing the browser is enough.
+Adding, renaming or deleting a file needs a restart: the path resolver, navigation tree, metadata
+index and search index are all built once at startup.
+
 ### Project Structure
 
 ```
 gomddoc/
-├── cmd/gomddoc/              # CLI entry point and main()
-├── internal/
+├── cmd/gomddoc/              # CLI entry point, subcommands, and embedded assets/
+│   └── assets/              # Embedded default theme, shared static files, locales
+├── internal/                 # 16 packages — see CLAUDE.md for the full list
 │   ├── config/              # Configuration management
-│   ├── provider/            # Content providers (filesystem, future: S3, DB)
+│   ├── provider/            # Content providers (filesystem, git, overlay)
 │   ├── renderer/            # Content renderers (markdown, passthrough, custom)
 │   ├── template/            # Template rendering and caching
 │   └── server/              # HTTP server, handlers, middleware
-├── assets/                   # Embedded themes and templates
 ├── docs/                     # Architecture documentation
 ├── Makefile                  # Development commands
 ├── CLAUDE.md                 # Development guidance
@@ -391,7 +397,8 @@ All files are served through a unified content handler with automatic MIME detec
 
 ## Performance
 
-- **Lightweight**: ~8MB binary, <15MB RAM usage
+- **Single static binary**: ~32 MB from `make build`, ~22 MB for release builds (GoReleaser strips
+  symbols with `-s -w`). No runtime, no shared libraries, no sidecar services
 - **Fast Startup**: Sub-second startup time
 - **Template Caching**: Production mode caches parsed templates
 - **Efficient**: Direct file serving with minimal allocations

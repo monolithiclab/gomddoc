@@ -223,7 +223,7 @@ Extracted from completed spec files before deletion.
 **Chosen**: Per-package `*_bench_test.go` files with table-driven small/medium/large document sizes
 
 **Key decisions**:
-- **`b.Loop()` over `b.N`**: Go 1.25+ `b.Loop()` eliminates common benchmark pitfalls (compiler optimization, timer management)
+- **`b.Loop()` over `b.N`**: `b.Loop()` (Go 1.24+) eliminates common benchmark pitfalls (compiler optimization, timer management)
 - **Three document sizes**: Small (~50B), medium (~2KB), large (~20KB) — covers cache-friendly and cache-busting scenarios
 - **Separate bench files**: `*_bench_test.go` keeps benchmarks isolated from unit tests; `make bench` uses `-run=^$` to skip unit tests
 - **`benchstat` comparison**: `make bench-save` captures baseline, `make bench-compare` detects regressions. Count=6 for statistical significance

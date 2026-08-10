@@ -82,7 +82,9 @@ create locale files.
 
 ### Built-in Translation Keys
 
-The default `en-US.yml` provides these keys:
+The default `en-US.yml` provides these 26 keys. `TestBuiltinTranslationKeysAreDocumented`
+(`cmd/gomddoc/locale_docs_test.go`) asserts this block and the shipped file name exactly the same
+set — a key added to one and not the other fails the build:
 
 ```yaml
 language_name: English
@@ -105,7 +107,15 @@ aria_toggle_theme: "Toggle dark mode"
 aria_breadcrumb: Breadcrumb
 aria_copy_code: "Copy code to clipboard"
 search_shortcut: "Search (Ctrl+K)"
+search_tag_tip: "Tip: tag:name filters by tag"
+tags_title: Tags
+tags_index_title: All tags
+tags_tagged_as: "Pages tagged %s"
+tags_empty: "No pages tagged %s"
+see_also: "See also"
 ```
+
+`tags_tagged_as` and `tags_empty` carry a single `%s`, which is substituted with the tag name.
 
 The `language_name` key is special — it provides the display name shown in the language switcher (e.g., "Français",
 "Español", "日本語").
@@ -119,35 +129,31 @@ Create locale files in `.gomddoc/locales/` named `{lang}.yml`:
 language_name: Français
 toc_title: "Sur cette page"
 edit_page: "Modifier cette page"
-go_to_homepage: "Aller à l'accueil"
 search_placeholder: "Rechercher..."
-search_no_results: "Aucun résultat"
-search_navigate: Naviguer
-search_open: Ouvrir
-search_close: Fermer
 copy: Copier
 copied: "Copié !"
-aria_toggle_nav: "Basculer la navigation"
-aria_site_nav: "Navigation du site"
-aria_search: "Rechercher dans la documentation"
-aria_toc: "Table des matières"
-aria_toggle_toc: "Basculer la table des matières"
-aria_toggle_theme: "Basculer le mode sombre"
-aria_breadcrumb: "Fil d'Ariane"
-aria_copy_code: "Copier le code"
-search_shortcut: "Rechercher (Ctrl+K)"
 ```
+
+Merging is per key, so this file is deliberately a fragment rather than a copy of all 26 — anything
+it omits keeps the built-in English. Start with the strings your readers see most and add the rest
+as you go; there is no "incomplete locale" error to avoid.
 
 ### Translation Layering
 
-Translations are loaded in a three-level override chain:
+Translations are loaded in a two-level override chain:
 
-1. **Built-in** — embedded `en-US.yml` provides baseline English strings
-2. **Theme-level** — themes can provide their own locale files (if a theme ships translations)
-3. **Site-level** — `.gomddoc/locales/*.yml` files override any key from the layers above
+1. **Built-in** — the embedded `en-US.yml` provides baseline English strings
+2. **Site-level** — `.gomddoc/locales/*.yml` files override any key from the layer above
 
-Each layer uses merge semantics: you only need to define the keys you want to override. Unspecified keys fall back to
-the layer below.
+The second layer uses merge semantics per language: you only need to define the keys you want to
+override, and unspecified keys fall back to the built-in file. Themes do **not** ship locale files —
+there is no theme-level layer, so a translation cannot vary by theme.
+
+> [!WARNING]
+> `.gomddoc/assets/locales/en-US.yml` is a different, sharper thing than `.gomddoc/locales/en-US.yml`.
+> The `assets/` path is part of the theme override filesystem, which resolves whole files: putting
+> `en-US.yml` there **replaces** the built-in baseline outright instead of merging into it, so every
+> key you did not copy across falls through to the key name itself. Use `.gomddoc/locales/`.
 
 ### Fallback Chain
 
@@ -379,8 +385,10 @@ To add French to an existing English documentation site:
    ```bash
    gomddoc preview
    ```
-   Visit `http://localhost:8080/` for English and `http://localhost:8080/fr-FR/` for French. The language switcher
-   appears automatically in the header.
+   `preview` binds an auto-assigned port (`--port` defaults to `:auto`) and prints the URL it chose,
+   e.g. `Preview: http://localhost:53412`. Visit `/` for English and `/fr-FR/` for French; the
+   language switcher appears automatically in the header. Pass `-p :8080` if you want a fixed port,
+   or use `gomddoc serve`, which defaults to `:8080`.
 
 5. **Build:**
    ```bash

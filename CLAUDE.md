@@ -34,6 +34,7 @@ docs/
 ├── roadmap.md              # Phased roadmap, deferred ideas
 ├── guide/                  # Feature documentation (agent + human audience)
 ├── specs/                  # Feature specifications (written before implementation)
+├── plans/                  # Task-by-task implementation plans derived from a spec
 └── skills/                 # Agent skills (SKILL.md + scripts/) — excluded from coverage
 ```
 
@@ -49,6 +50,10 @@ docs/
   correctly, but useful for humans too. Update when adding user-facing features.
 - **specs/** — complete feature specifications written _before_ implementation for non-trivial
   features. Written by agents, validated by the developer. Implementation follows the spec.
+- **plans/** — the task-by-task breakdown of a spec: goal, architecture, then `- [ ]` steps an
+  agent works through. A spec says what and why; a plan says in what order. Four plans had been
+  filed under `specs/` — the `-plan.md` suffix is the tell, but the reliable one is the checkbox
+  list, since half the plans predate the suffix convention.
 - **skills/** — Claude Code skills: one directory per skill, each a `SKILL.md` plus any `scripts/`
   it drives. Repo-agnostic engineering procedure, not product docs — keep business context out of
   them (that is what the gitignored `.agents/` is for). A skill's Go scripts are real packages in
@@ -64,8 +69,9 @@ docs/
 1. Features originate from `REVIEW.md` issues or user requests (roadmap additions)
 2. Write a spec in `docs/specs/`, asking the developer clarifying questions
 3. Developer validates the spec
-4. Implement the feature
-5. Update `docs/roadmap.md`, `docs/architecture.md`, `docs/decisions.md`, and `docs/guide/` as needed
+4. For a multi-step feature, break the spec into a plan in `docs/plans/` — not `docs/specs/`
+5. Implement the feature
+6. Update `docs/roadmap.md`, `docs/architecture.md`, `docs/decisions.md`, and `docs/guide/` as needed
 
 ## Project Structure
 
@@ -133,7 +139,7 @@ testsite/              # Lorem ipsum test site for quick testing
 
 ### Go Conventions
 
-- Modern Go 1.25+ patterns (`slices.Clone`, `strings.SplitSeq`, `b.Loop()`)
+- Modern Go 1.26+ patterns (`slices.Clone`, `strings.SplitSeq`, `b.Loop()`) — `go.mod` says 1.26
 - `any` over `interface{}`
 - Table-driven tests: `[]struct{...}` with `t.Parallel()`
 - Sentinel errors with `errors.Is()` for classification
