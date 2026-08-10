@@ -151,16 +151,7 @@ func pageFromFrontmatter(path string, fm map[string]any) PageInfo {
 			page.Description = s
 		}
 	}
-	if v, ok := fm["date"]; ok {
-		switch d := v.(type) {
-		case time.Time:
-			page.Date = d
-		case string:
-			if t, err := time.Parse(time.DateOnly, d); err == nil {
-				page.Date = t
-			}
-		}
-	}
+	page.Date = ParseFrontmatterDate(fm["date"])
 	if v, ok := fm["tags"]; ok {
 		if tags, ok := v.([]any); ok {
 			for _, tag := range tags {

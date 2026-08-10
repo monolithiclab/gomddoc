@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -107,13 +108,15 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 1. Read file + get MIME type
-	content, mimeType, err := h.provider.ReadFile(r.Context(), r.URL.Path)
+	// 1. Read file + get MIME type.
+	filePath := r.URL.Path
+	content, mimeType, err := h.provider.ReadFile(r.Context(), filePath)
 	if err != nil && errors.Is(err, provider.ErrNotFound) && h.resolver != nil {
 		// Try resolver for extensionless paths
 		cleanPath := strings.TrimPrefix(r.URL.Path, "/")
 		if realPath, found := h.resolver.Resolve(cleanPath); found {
-			content, mimeType, err = h.provider.ReadFile(r.Context(), "/"+realPath)
+			filePath = "/" + realPath
+			content, mimeType, err = h.provider.ReadFile(r.Context(), filePath)
 		}
 	}
 	if err != nil {
@@ -170,7 +173,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Vary", "Accept")
 	outputNormalized := negotiate.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
-		h.serveHTML(w, r, renderResult.Content, enrichment)
+		h.serveHTML(w, r, renderResult.Content, enrichment, filePath)
 	} else {
 		// Use the full MIME type from RenderResult if available, otherwise the selected output
 		serveMimeType := renderResult.MimeType
@@ -182,12 +185,28 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveHTML wraps HTML content in the site template and serves it.
-func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData) {
+// filePath is the file that produced htmlContent, which is not r.URL.Path when
+// strip_extensions is on.
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData, filePath string) {
+	// The only consumer is JSON-LD's dateModified, and seo.GenerateJSONLD emits
+	// nothing at all without a domain — so gate the stat on the same condition
+	// rather than spending a syscall per render on every site that has not
+	// configured one. Under the git provider the stat is a tree walk holding the
+	// exclusive tree lock, which makes the gate worth more than it looks.
+	// A failure is not an error: JSON-LD falls back to the frontmatter date.
+	var modTime time.Time
+	if h.siteConfig.Meta.Domain != "" {
+		if info, err := h.provider.Stat(r.Context(), filePath); err == nil {
+			modTime = info.ModTime()
+		}
+	}
+
 	context := tmpl.BuildPageContext(tmpl.PageContextInput{
 		Site:       h.siteConfig,
 		Path:       r.URL.Path,
 		Content:    template.HTML(htmlContent), // #nosec G203
 		Enrichment: enrichment,
+		ModTime:    modTime,
 		Renderer:   h.templateRenderer,
 		Lang:       h.lang,
 		TFunc:      h.tFunc,

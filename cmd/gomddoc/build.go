@@ -30,6 +30,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
+	"github.com/monolithiclab/gomddoc/internal/seo"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
@@ -456,6 +457,13 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("read %s: %w", filePath, err)
 	}
 
+	// Feeds JSON-LD's dateModified; gated on the domain for the same reason the
+	// request path gates it — without one, seo.GenerateJSONLD emits nothing.
+	var modTime time.Time
+	if bc.siteConfig.Meta.Domain != "" {
+		modTime = seo.StatModTime(contentRoot, filePath)
+	}
+
 	// Serve mode is handed a URL and resolves backwards to a file; build walks
 	// files, so it has to derive the URL. Passing the raw file path instead
 	// makes every path-keyed lookup miss: navigation and prev/next index on
@@ -478,6 +486,7 @@ func (b *BuildCmd) buildFile(
 		Path:       pagePath,
 		Content:    template.HTML(renderResult.Content), // #nosec G203
 		Enrichment: enrichment,
+		ModTime:    modTime,
 		Renderer:   bc.templateRenderer,
 		Lang:       bc.lang,
 		TFunc:      bc.tFunc,

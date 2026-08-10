@@ -1795,13 +1795,68 @@ already runs after `detectedLangs` is known; the directive should follow the sam
 `len(detectedLangs) > 1` condition the index file does. Serve has no index to point at, so it should
 keep the current line — which makes this one of the few places serve and build *should* differ.
 
-#### LOW: JSON-LD has no `datePublished`/`dateModified` — NEW (found while auditing D13)
+#### ~~LOW: JSON-LD has no `datePublished`/`dateModified`~~ ✅ FIXED
 
-`seo.JSONLDPage` carries `Title`/`Description`/`Author`/`Breadcrumbs` but no dates
+~~`seo.JSONLDPage` carries `Title`/`Description`/`Author`/`Breadcrumbs` but no dates
 (`renderer.go:592-606`), so the `TechArticle` node omits both. The data exists — `sitemap.xml` and
 `feed.xml` already read `ModTime()` through the provider, and the git provider returns commit time —
 so this is plumbing a value that is one `Stat` away, not a new capability. `dateModified` is the
-ranking signal the sitemap `<lastmod>` is already claiming.
+ranking signal the sitemap `<lastmod>` is already claiming.~~
+
+**`JSONLDPage.Date` already existed** — declared, read by `GenerateJSONLD`, and set by nothing but
+the package's own tests. So half the work was connecting a wire soldered at both ends and joined at
+neither, which is the failure mode the "a symbol whose only callers are `_test.go` files is dead"
+rule describes from the other direction: the *field* was live, its only *producer* was a test.
+
+`Modified` is new. It comes from a `Stat` on the file that was actually read — under
+`strip_extensions` that is not `r.URL.Path`, so `handler.go` now threads the resolved path out of
+the block that discarded it — and falls back to `Date`, matching `feed.xml`'s `<updated>` so the two
+documents cannot claim different freshness for the same page. A stat failure degrades to the
+frontmatter date on both the request path and the build path rather than failing either.
+
+Reading the frontmatter `date` key was a 9-line type switch in `metadata/index.go` and would have
+been a second copy in `template/renderer.go`; it is now `metadata.ParseFrontmatterDate`. Extracting
+it also fixed a bug in the original: it accepted only `time.DateOnly`, so a *quoted* RFC 3339
+timestamp — the natural way to write one, and the form goldmark-meta hands back as a `string`
+rather than a `time.Time` — was silently dropped, leaving the page with no date in the metadata
+index at all. That affects feed ordering, not just JSON-LD.
+
+Both wiring paths are pinned by tests that fail on the plausible mistake rather than on absence:
+the serve test requests the extensionless URL, so statting `r.URL.Path` produces no date; the build
+test asserts a `Z` that only holds because `seo.LastModified` normalizes — the raw mtime comes back
+in the machine's zone.
+
+The simplify pass turned up a third and fourth copy of the fold and folded all four into
+`seo.LastModified` / `seo.StatModTime`: feed stat'd + `.UTC()`d + fell back to `page.Date`, sitemap
+stat'd + `.UTC()`d with **no** fallback, and the two new sites did neither. Sitemap consequently
+omitted `<lastmod>` for a dated page whose stat failed while feed dated it — the exact disagreement
+the new comment claimed was impossible, one file over. What remains is the *source*, filed below.
+
+#### MEDIUM: four call sites stat content files for one answer an index already walked — NEW
+
+`internal/server/sitemap.go:121`, `internal/server/feed.go:100`, `cmd/gomddoc/build.go:463` and
+`internal/server/handler.go:198` each stat a content file to learn its modification time.
+`seo.LastModified`/`seo.StatModTime` now make them agree on the *rule*; they are still four
+independent reads of the same fact. `metadata.BuildIndex` already walks every markdown file with
+`fs.WalkDir` (`d fs.DirEntry` in hand) and reads each one, once at startup — a `PageInfo.ModTime`
+populated there turns all four into an O(1) `byPath` lookup and deletes the sitemap and feed stat
+loops along with their `RootFS` plumbing.
+
+The reason it is filed rather than done:
+
+- **`BuildIndex` skips files with no frontmatter**, so an index-sourced mtime would silently lose
+  `dateModified` for unindexed pages — a regression against what ships today.
+- **`Handler` has no `MetaIndex`** (`server.go` passes it to the sitemap and feed handlers only), so
+  the request path would need it plumbed in.
+
+Two costs sit under this and go away with it. The request-path stat is now gated on
+`Meta.Domain != ""` — without a domain `GenerateJSONLD` emits nothing, so an ungated stat was pure
+waste on every default deployment — but on a domain-configured **git** site it remains a
+`FindEntry` tree walk holding the *exclusive* tree lock (CLAUDE.md: "go-git reads are writes") to
+return `g.commitTime`, a per-clone constant. And when the URL is a directory, `filePath` is the
+directory while the bytes came from its `README.md`, so the stat answers about the wrong object.
+`buildFile` separately re-stats a path `walkAndBuildToDir` already held a `DirEntry` for
+(`build.go:390-407` discards `d`) — one syscall per page, and subsumed by the same fix.
 
 #### LOW: the heading-slug algorithm is documented nowhere and pinned by no test — NEW
 

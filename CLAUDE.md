@@ -218,7 +218,12 @@ testsite/              # Lorem ipsum test site for quick testing
   falls back to the Go field name, so an untagged `Link atomLink` emits `<Link>`, which is not the
   Atom element. A round-trip test through the same struct reads it back happily and cannot see it.
 - **Consistent behavior across code paths** — error/fallback paths must behave identically to happy
-  paths (e.g., if the fast path lowercases, the error path must too)
+  paths (e.g., if the fast path lowercases, the error path must too). When several documents answer
+  the same question about the same object, the *fallback* is part of the answer and belongs in one
+  function: "when was this page last modified" was hand-rolled four times, and sitemap's copy had no
+  frontmatter-date fallback, so a page whose stat failed was dated in `feed.xml` and undated in
+  `sitemap.xml`. `seo.LastModified` also folds in the `.UTC()` two of the four remembered, because a
+  normalization every caller must repeat is one some caller will not.
 - **An `init()` that writes a process-global registry belongs with the *consumers*, not the owner** —
   an `init()` only runs if its package is linked. `.md`'s `mime.AddExtensionType` sat in
   `renderer/markdown.go` because renderer owns the format, but `internal/resolve` calls
@@ -272,6 +277,12 @@ testsite/              # Lorem ipsum test site for quick testing
   `HTMLRenderer.ClearCache` made `TemplateCache.Clear()` test-only, which made both implementations'
   `Clear` test-only, which took the interface method. Corollary: an interface left with one real
   implementation and one no-op is storing a boolean — say so where it is constructed, or collapse it.
+  The same grep run the other way finds the inverse — a struct field with a live *consumer* and no
+  production *producer*, which reads as a supported feature and ships as a silent omission.
+  `seo.JSONLDPage.Date` was set only by `internal/seo`'s own tests, so `GenerateJSONLD` had a
+  `datePublished` branch that no page ever took. A field is only wired when something outside
+  `_test.go` assigns it, and the end-to-end test that would have caught it asserts the *output*
+  document, not the struct.
 - **One mutable object, one lock** — never guard the same value with two independent mutexes. If two
   types need it, give one type ownership and let the other borrow through it.
 - **A pooled buffer's slice header belongs to the pool, not the request** — `compressionWriter` wrote

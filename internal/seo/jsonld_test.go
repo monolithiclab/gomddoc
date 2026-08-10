@@ -54,6 +54,9 @@ func TestGenerateJSONLD(t *testing.T) {
 				if _, ok := article["datePublished"]; ok {
 					t.Error("datePublished should be omitted when zero")
 				}
+				if _, ok := article["dateModified"]; ok {
+					t.Error("dateModified should be omitted when both Modified and Date are zero")
+				}
 			},
 		},
 		{
@@ -171,6 +174,69 @@ func TestGenerateJSONLD(t *testing.T) {
 				ws := schemas[1]
 				if _, ok := ws["potentialAction"]; ok {
 					t.Error("potentialAction should be omitted when HasSearch is false")
+				}
+			},
+		},
+		{
+			// The two dates are independent signals: publication comes from
+			// frontmatter, modification from the file. Asserting only that both
+			// keys are present passes an implementation that emits the same
+			// value twice, so the row uses distinct times and checks each.
+			name: "modified is independent of published",
+			cfg:  baseCfg,
+			page: JSONLDPage{
+				Path:     "/guide/setup.md",
+				Date:     time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+				Modified: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			},
+			wantTypes: []string{"TechArticle"},
+			checkExtra: func(t *testing.T, schemas []map[string]any) {
+				t.Helper()
+				article := schemas[0]
+				if got, want := article["datePublished"], "2025-06-15T00:00:00Z"; got != want {
+					t.Errorf("datePublished = %v, want %q", got, want)
+				}
+				if got, want := article["dateModified"], "2026-01-02T03:04:05Z"; got != want {
+					t.Errorf("dateModified = %v, want %q", got, want)
+				}
+			},
+		},
+		{
+			// Git-backed sites and any provider whose Stat fails land here. The
+			// fallback matches feed.go's <updated>, so the two documents cannot
+			// claim different freshness for one page.
+			name: "modified falls back to published",
+			cfg:  baseCfg,
+			page: JSONLDPage{
+				Path: "/guide/setup.md",
+				Date: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+			},
+			wantTypes: []string{"TechArticle"},
+			checkExtra: func(t *testing.T, schemas []map[string]any) {
+				t.Helper()
+				if got, want := schemas[0]["dateModified"], "2025-06-15T00:00:00Z"; got != want {
+					t.Errorf("dateModified = %v, want %q", got, want)
+				}
+			},
+		},
+		{
+			// A page with no frontmatter date still has an mtime, and that is
+			// the ranking signal sitemap.xml's <lastmod> already publishes.
+			// datePublished stays absent rather than being invented from it.
+			name: "modified without published",
+			cfg:  baseCfg,
+			page: JSONLDPage{
+				Path:     "/guide/setup.md",
+				Modified: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			},
+			wantTypes: []string{"TechArticle"},
+			checkExtra: func(t *testing.T, schemas []map[string]any) {
+				t.Helper()
+				if _, ok := schemas[0]["datePublished"]; ok {
+					t.Error("datePublished should not be invented from the file mtime")
+				}
+				if got, want := schemas[0]["dateModified"], "2026-01-02T03:04:05Z"; got != want {
+					t.Errorf("dateModified = %v, want %q", got, want)
 				}
 			},
 		},

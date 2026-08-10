@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"maps"
 	"net/http"
+	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -19,6 +20,8 @@ type PageContextInput struct {
 	Path       string                   // Request path (serve) or "/"+filePath (build)
 	Content    template.HTML            // Rendered HTML body
 	Enrichment *enricher.EnrichmentData // Metadata, TOC, navigation, related docs
+
+	ModTime time.Time // Source file mtime; zero when unknown (see seo.LastModified)
 
 	// Renderer supplies the page data derived from Path — currently the
 	// breadcrumb trail. Passing the renderer rather than the trail keeps the two
@@ -68,6 +71,7 @@ func BuildPageContext(in PageContextInput) *TemplateContext {
 			NextPage:    in.Enrichment.NextPage,
 			RelatedDocs: in.Enrichment.RelatedDocs,
 			Breadcrumbs: breadcrumbs,
+			ModTime:     in.ModTime,
 		},
 	}
 	ctx.WithI18n(in.Lang, in.TFunc, in.Languages)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -92,7 +93,8 @@ func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // GenerateSitemap produces the sitemap XML bytes.
-// When prov is non-nil, each entry includes a <lastmod> from the file's modification time.
+// When prov is non-nil, each entry includes a <lastmod> from seo.LastModified —
+// the file's modification time, or the frontmatter date when it is unavailable.
 // When resolver is non-nil, URLs use extensionless paths.
 // pathPrefix is prepended to all page paths (e.g. "/fr-FR" for per-language sitemaps).
 func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver, pathPrefix string) ([]byte, error) {
@@ -117,11 +119,8 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 		loc := seo.PageURL(domain, pathPrefix+pagePath, "")
 		if loc != "" {
 			entry := sitemapURL{Loc: loc}
-			if contentRoot != nil {
-				statPath := strings.TrimPrefix(page.Path, "/")
-				if info, err := fs.Stat(contentRoot, statPath); err == nil {
-					entry.LastMod = info.ModTime().UTC().Format("2006-01-02")
-				}
+			if lastMod := seo.LastModified(seo.StatModTime(contentRoot, page.Path), page.Date); !lastMod.IsZero() {
+				entry.LastMod = lastMod.Format(time.DateOnly)
 			}
 			urls = append(urls, entry)
 		}

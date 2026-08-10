@@ -169,6 +169,41 @@ func TestGenerateSitemap_NilProvider(t *testing.T) {
 	}
 }
 
+// TestGenerateSitemap_LastModFallsBackToDate pins the half of seo.LastModified
+// the sitemap used to skip: with no mtime available it emitted no <lastmod> at
+// all, while feed.xml's <updated> for the same page fell back to the frontmatter
+// date — so the two documents disagreed about whether the page had a date. The
+// fixture above has no `date`, which is why the nil-provider case is still
+// bare; this one differs only in carrying one.
+func TestGenerateSitemap_LastModFallsBackToDate(t *testing.T) {
+	t.Parallel()
+
+	dated := fstest.MapFS{
+		"README.md": {Data: []byte("---\ntitle: Home\ndate: 2024-01-02\n---\n# Home\n")},
+	}
+	idx := buildTestIndex(t, dated)
+	data, err := GenerateSitemap(context.Background(), idx, "https://docs.example.com", "README.md", nil, nil, "")
+	if err != nil {
+		t.Fatalf("GenerateSitemap: %v", err)
+	}
+
+	var parsed urlSet
+	if err := xml.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("output is not valid XML: %v\n%s", err, data)
+	}
+	got := make(map[string]string, len(parsed.URLs))
+	for _, u := range parsed.URLs {
+		got[u.Loc] = u.LastMod
+	}
+	want := map[string]string{
+		"https://docs.example.com/":      "2024-01-02",
+		"https://docs.example.com/tags/": "",
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("urls = %v, want %v", got, want)
+	}
+}
+
 func TestGenerateSitemap_WithResolver(t *testing.T) {
 	t.Parallel()
 	idx := buildTestIndex(t, sitemapTestFS)

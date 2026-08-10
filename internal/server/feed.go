@@ -97,16 +97,7 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 			continue
 		}
 
-		var modTime time.Time
-		if contentRoot != nil {
-			statPath := strings.TrimPrefix(page.Path, "/")
-			if info, err := fs.Stat(contentRoot, statPath); err == nil {
-				modTime = info.ModTime().UTC()
-			}
-		}
-		if modTime.IsZero() && !page.Date.IsZero() {
-			modTime = page.Date
-		}
+		modTime := seo.LastModified(seo.StatModTime(contentRoot, page.Path), page.Date)
 
 		candidates = append(candidates, pageWithTime{page: page, modTime: modTime})
 	}

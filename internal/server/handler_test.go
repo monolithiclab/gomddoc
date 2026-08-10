@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -708,5 +709,59 @@ func TestHandlerResolverHonoursExclusions(t *testing.T) {
 		if strings.Contains(w.Body.String(), "CANARY") {
 			t.Errorf("GET %s leaked excluded content", path)
 		}
+	}
+}
+
+// TestHandlerServeHTML_ModTime pins the mtime plumbing that feeds JSON-LD's
+// dateModified. Two things can break independently and neither shows up in any
+// other test:
+//
+// no stat at all, or a stat of r.URL.Path rather than of the file that was
+// read. Requesting the extensionless URL is what separates them: under
+// strip_extensions /guide is not guide.md, so only the resolved path has an
+// mtime to find, and both mistakes produce the same undated output.
+func TestHandlerServeHTML_ModTime(t *testing.T) {
+	t.Parallel()
+
+	modTime := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	files := fstest.MapFS{
+		"guide.md": &fstest.MapFile{Data: []byte("# Guide"), ModTime: modTime},
+	}
+
+	resolver := resolve.Build(files, resolve.BuildOptions{
+		StripExtensions: []string{".md"},
+		HasRenderer:     func(mimeType string) bool { return mimeType == "text/markdown" },
+	})
+
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Meta.Domain = "docs.example.com"
+
+	jsonldFS := fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {
+			// Inside a script element, as the default theme's jsonld partial
+			// does: html/template HTML-escapes the payload anywhere else.
+			Data: []byte(`<html><body><script type="application/ld+json">{{ jsonLD .Page }}</script></body></html>`),
+		},
+	}
+	rend := tmpl.NewHTMLRenderer(&siteConfig, jsonldFS)
+
+	handler := NewHandler(HandlerConfig{
+		Provider:         newMemoryProvider(files, "README.md", false),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+		Resolver:         resolver,
+	})
+
+	req := httptest.NewRequest("GET", "/guide", nil)
+	w := httptest.NewRecorder()
+	handler.ServeContent(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if want := `"dateModified":"2026-03-04T05:06:07Z"`; !strings.Contains(w.Body.String(), want) {
+		t.Errorf("JSON-LD should carry the resolved file's mtime %s; got %s", want, w.Body.String())
 	}
 }

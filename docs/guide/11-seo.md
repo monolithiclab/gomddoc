@@ -87,7 +87,13 @@ discovered by the metadata index:
 
 Each entry includes a `<lastmod>` date derived from the file's modification time. For the
 filesystem provider, this is the OS file mtime. For the git provider, it reflects the commit
-timestamp. If a file cannot be stat'd, the `<lastmod>` is simply omitted for that entry.
+timestamp. If a file cannot be stat'd, `<lastmod>` falls back to the frontmatter `date`, and is
+omitted only when the page has neither.
+
+That fallback is one rule — `seo.LastModified` — shared with `feed.xml`'s `<updated>` and JSON-LD's
+`dateModified`, so the three documents cannot describe the same page's freshness differently. It
+also normalizes to UTC, which is why every generated timestamp ends in `Z` regardless of the
+serving machine's time zone.
 
 In `serve` mode, the sitemap is generated dynamically on first request and cached. In `build`
 mode, `sitemap.xml` is written as a static file in the output directory.
@@ -283,12 +289,24 @@ Every page gets a `TechArticle` schema with fields populated from frontmatter:
   "description": "How to install and configure the project",
   "author": {"@type": "Person", "name": "Alice"},
   "datePublished": "2025-06-15T00:00:00Z",
+  "dateModified": "2025-09-02T11:20:00Z",
   "url": "https://docs.example.com/guide/setup"
 }
 ```
 
 Fields are omitted when not present in frontmatter — only `url` and `mainEntityOfPage` are always
 included.
+
+The two dates come from different places:
+
+| Field           | Source                                                                        |
+| --------------- | ----------------------------------------------------------------------------- |
+| `datePublished` | Frontmatter `date`. A bare `2025-06-15` and a quoted RFC 3339 timestamp are both accepted. |
+| `dateModified`  | The source file's modification time, falling back to `date` when unavailable — `seo.LastModified`, the same rule `sitemap.xml`'s `<lastmod>` and `feed.xml`'s `<updated>` use. |
+
+With the Git provider, file modification times are the commit timestamp of the revision being
+served, so `dateModified` is per-repository rather than per-page. Set frontmatter `date` on pages
+where that distinction matters.
 
 ### BreadcrumbList (pages with navigation depth)
 

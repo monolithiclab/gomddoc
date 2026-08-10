@@ -19,7 +19,12 @@ type JSONLDPage struct {
 	Title       string
 	Description string
 	Author      string
-	Date        time.Time
+
+	// Date is the frontmatter `date` — when the page was published.
+	Date time.Time
+	// Modified is the source file's mtime; zero when unknown, see LastModified.
+	Modified time.Time
+
 	Breadcrumbs []BreadcrumbItem
 	IsIndex     bool
 }
@@ -68,7 +73,10 @@ func GenerateJSONLD(cfg JSONLDConfig, page JSONLDPage) string {
 		}
 	}
 	if !page.Date.IsZero() {
-		article["datePublished"] = page.Date.Format(time.RFC3339)
+		article["datePublished"] = page.Date.UTC().Format(time.RFC3339)
+	}
+	if modified := LastModified(page.Modified, page.Date); !modified.IsZero() {
+		article["dateModified"] = modified.Format(time.RFC3339)
 	}
 	schemas = append(schemas, article)
 

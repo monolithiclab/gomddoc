@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 
@@ -121,6 +122,7 @@ type PageContext struct {
 	NextPage    *enricher.PageLink      // Next page in navigation order
 	RelatedDocs []enricher.RelatedDoc   // Pages sharing frontmatter tags with this page
 	Breadcrumbs []breadcrumb.Breadcrumb // Trail from the site root to this page
+	ModTime     time.Time               // Source file mtime; zero when unknown (see seo.LastModified)
 }
 
 // Feature returns whether a named feature is enabled for this page.
@@ -608,6 +610,8 @@ func (h *HTMLRenderer) generateJSONLD(page PageContext) template.JS {
 		Path:        page.Path,
 		Breadcrumbs: breadcrumbs,
 		IsIndex:     isIndex,
+		Date:        metadata.ParseFrontmatterDate(page.Meta["date"]),
+		Modified:    page.ModTime,
 	}
 
 	// Extract metadata fields

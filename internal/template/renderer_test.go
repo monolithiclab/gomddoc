@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -1343,6 +1344,43 @@ func TestJSONLDFunction(t *testing.T) {
 		}
 		if !strings.Contains(output, `"Guide"`) {
 			t.Error("Expected headline")
+		}
+	})
+
+	// generateJSONLD is the only place the two date sources meet: frontmatter
+	// `date` (through metadata.ParseFrontmatterDate, so a quoted string works
+	// too) and PageContext.ModTime, which the serve handler and the build each
+	// stat for. Both were dead — seo.JSONLDPage.Date had no producer and
+	// Modified did not exist — so the schema shipped without either.
+	t.Run("dates come from frontmatter and mtime", func(t *testing.T) {
+		t.Parallel()
+
+		siteConfig := config.NewSiteConfig(".")
+		siteConfig.Meta.Domain = "docs.example.com"
+
+		r := NewHTMLRenderer(&siteConfig, testFS)
+		ctx := &TemplateContext{
+			Site: &siteConfig,
+			Page: PageContext{
+				Path:    "/guide.md",
+				Meta:    map[string]any{"title": "Guide", "date": "2024-01-02"},
+				ModTime: time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC),
+			},
+		}
+
+		result, err := r.Render(context.Background(), "jsonld.html.tmpl", ctx)
+		if err != nil {
+			t.Fatalf("Render failed: %v", err)
+		}
+
+		output := string(result)
+		for _, want := range []string{
+			`"datePublished":"2024-01-02T00:00:00Z"`,
+			`"dateModified":"2026-03-04T05:06:07Z"`,
+		} {
+			if !strings.Contains(output, want) {
+				t.Errorf("output should contain %s; got %s", want, output)
+			}
 		}
 	})
 

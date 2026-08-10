@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/locale"
@@ -1502,5 +1503,41 @@ func TestBuildCmd_writeSitemapIndex(t *testing.T) {
 				t.Errorf("sitemap-index.xml exists = %v, want %v (stat err = %v)", gotFile, tt.wantFile, statErr)
 			}
 		})
+	}
+}
+
+// TestBuildCmd_Run_JSONLDDates pins the two dates the static build feeds into
+// JSON-LD, which arrive by different routes: datePublished is parsed out of the
+// frontmatter the renderer already had, dateModified comes from a stat that
+// buildFile performs itself. Asserting only one of them passes a build that
+// dropped the other, and dateModified is the one with no other test — the serve
+// path's copy lives in internal/server and shares no code with this one.
+func TestBuildCmd_Run_JSONLDDates(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+	writeTestFile(t, srcDir, "README.md", "---\ntitle: Dated\ndate: 2024-01-02\n---\n# Dated")
+
+	modTime := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	if err := os.Chtimes(filepath.Join(srcDir, "README.md"), modTime, modTime); err != nil {
+		t.Fatalf("Chtimes() error = %v", err)
+	}
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir, Domain: "build.example.com"}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	html := readTestFile(t, outDir, "index.html")
+	// Both are Z regardless of the machine's zone: seo.LastModified normalizes,
+	// so that a page cannot be dated in one document and offset in another.
+	for _, want := range []string{
+		`"datePublished":"2024-01-02T00:00:00Z"`,
+		`"dateModified":"2026-03-04T05:06:07Z"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("index.html should carry %s; got:\n%s", want, html)
+		}
 	}
 }
