@@ -303,7 +303,9 @@ Each language gets its own independent:
   query a specific language's index.
 - **Sitemap** — each language has its own `sitemap.xml` (e.g., `/fr-FR/sitemap.xml`), served in both
   modes. When multiple languages exist, a `sitemap-index.xml` referencing them all is written at the
-  root — **in `build` mode only**; `serve` has no route for it.
+  root — **in `build` mode only**; `serve` has no route for it. `robots.txt` follows: a build that
+  writes the index points its `Sitemap:` directive at the index, `serve` always points at
+  `/sitemap.xml`.
 - **Atom feed** — each language has its own `feed.xml` (e.g., `/fr-FR/feed.xml`).
 - **Navigation tree** — sidebar navigation is built from each language's content independently.
 - **Metadata index** — tags, related documents, and page metadata are indexed per language.
@@ -347,8 +349,8 @@ build/site/
     └── 404.html            ← Spanish 404
 ```
 
-The `sitemap-index.xml` is only generated when more than one language is detected. Single-language sites produce a
-standard `sitemap.xml` at the root.
+The `sitemap-index.xml` is only generated when at least one translation directory is detected, so a
+single-language site produces a standard `sitemap.xml` at the root and a `robots.txt` naming it.
 
 ## Quick Start
 

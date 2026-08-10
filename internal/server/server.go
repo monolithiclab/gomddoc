@@ -112,8 +112,18 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	// and /api/search were all silently uncompressed and uncounted.
 	base := NewGroup(mux, "", Compression, Metrics)
 
+	// What robots.txt may advertise, decided once and consumed twice: here, and
+	// at the /sitemap.xml registration below. Two expressions would be the same
+	// drift build had between its sitemap-index.xml gate and its robots.txt.
+	// Serve publishes no sitemap index — it has no build step to write one
+	// during — so the answer is never /sitemap-index.xml.
+	sitemapPath := ""
+	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
+		sitemapPath = "/sitemap.xml"
+	}
+
 	// Robots handler is unauthenticated
-	robotsHandler := NewRobotsHandler(cfg.Site.Meta.Domain)
+	robotsHandler := NewRobotsHandler(cfg.Site.Meta.Domain, sitemapPath)
 	base.Handle("GET /robots.txt", robotsHandler)
 
 	// Assets handler is unauthenticated
@@ -194,9 +204,9 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		auth.Handle("/_mcp/", http.StripPrefix("/_mcp", maxBodySize(opts.MCPHandler, maxMCPBodyBytes)))
 	}
 
-	if opts.MetaIndex != nil && cfg.Site.Meta.Domain != "" {
+	if sitemapPath != "" {
 		sitemapHandler := NewSitemapHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, opts.Resolver, "")
-		auth.Handle("GET /sitemap.xml", sitemapHandler)
+		auth.Handle("GET "+sitemapPath, sitemapHandler)
 
 		feedHandler := NewFeedHandler(opts.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, opts.Provider, cfg.Site.Meta.Title, opts.Resolver, "")
 		auth.Handle("GET /feed.xml", feedHandler)

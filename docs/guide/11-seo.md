@@ -148,7 +148,18 @@ Sitemap: https://docs.example.com/sitemap.xml
 
 This tells search engine crawlers where to find your sitemap without requiring manual submission.
 
-In `build` mode, `robots.txt` is always generated in the output directory.
+In `build` mode, `robots.txt` is always generated in the output directory. When the build detects
+translation directories it also writes a `sitemap-index.xml`, and the directive names that instead:
+
+```
+Sitemap: https://docs.example.com/sitemap-index.xml
+```
+
+The directive always names a sitemap that was actually published: build derives it from writing the
+index, and `serve` from registering the route. Naming `/sitemap.xml` when an index exists would send
+crawlers to the default-language sitemap, which by design lists no translated page. `serve` writes no
+index — it has no build step to write one during — so its directive names `/sitemap.xml`, and omits
+the `Sitemap:` line entirely when no sitemap is served at all.
 
 ## Atom Feed
 

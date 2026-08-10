@@ -243,6 +243,18 @@ testsite/              # Lorem ipsum test site for quick testing
   deleted for the same reason. It lives on `(negotiate.MediaType).Specificity()`; a matcher returns
   that or 0. Ranking rules drift silently — nothing fails when two copies disagree, the wrong
   representation is just served.
+- **When one step must name what another step produced, have the producer return it — never a
+  predicate that forecasts it** — `robots.txt`'s `Sitemap:` directive has to name the sitemap the
+  build actually wrote, and build wrote `sitemap-index.xml` under `len(detectedLangs) > 0 && domain
+  != ""` while `GenerateRobotsTxt` hardcoded `/sitemap.xml`: multi-language sites advertised the
+  default-language sitemap, which by design lists no translated page. Sharing the *condition*
+  (an exported `HasSitemapIndex(langs)`) is still two things that can disagree, and it puts
+  build-mode knowledge in `internal/server`. `writeSitemapIndex` writes the file and returns the path
+  it published (`""` for none); `GenerateRobotsTxt` takes that string. Serve reaches the same shape
+  from the other side: one `sitemapPath` computed at route registration feeds both
+  `NewRobotsHandler` and the `auth.Handle("GET "+sitemapPath, …)` it gates — which is how the
+  *whether* axis got fixed too, serve having emitted the directive on `domain != ""` while
+  registering the route on `opts.MetaIndex != nil && domain != ""`.
 - **Counters over string-length comparisons** — detect "nothing written" with a counter, not by
   comparing buffer length against a magic string constant (breaks silently if format changes)
 - **`strings.ToLower` is not positionally aligned with its input, and can return something

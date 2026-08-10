@@ -1251,6 +1251,14 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 		t.Errorf("sitemap-index.xml should reference the fr-FR sitemap, got:\n%s", indexContent)
 	}
 
+	// ...and robots.txt must name it rather than the root sitemap asserted
+	// above, whose locs contain no French page. This is the end-to-end half of
+	// writeSitemapIndex's contract: the file written and the file advertised.
+	robots := readTestFile(t, outDir, "robots.txt")
+	if !strings.Contains(robots, "\nSitemap: https://build.example.com/sitemap-index.xml\n") {
+		t.Errorf("robots.txt should point at the sitemap index, got:\n%s", robots)
+	}
+
 	// Parity fix (REVIEW §9.2): the static 404 carries the language switcher,
 	// so the fr-FR code appears in the default 404 page.
 	if root404 := readTestFile(t, outDir, "404.html"); !strings.Contains(root404, "fr-FR") {
@@ -1451,5 +1459,48 @@ func TestBuildCmd_Run_DefaultThemeLinksAndHreflang(t *testing.T) {
 	frTagPage := readTestFile(t, filepath.Join(outDir, "fr-FR", "tags", "guide"), "index.html")
 	if !strings.Contains(frTagPage, `<a class="tag-result-title" href="/fr-FR/guides/beta">`) {
 		t.Errorf("fr-FR/tags/guide/index.html does not link into the fr-FR tree:\n%s", frTagPage)
+	}
+}
+
+// TestBuildCmd_writeSitemapIndex covers the two branches that write nothing and
+// so leave no artifact for TestBuildCmd_Run_MultiLanguage to inspect. The
+// return value is the whole point of the function — it is what robots.txt
+// advertises — so each row asserts the path *and* whether the file exists,
+// which is the pairing that can drift.
+func TestBuildCmd_writeSitemapIndex(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		domain   string
+		langs    []string
+		want     string
+		wantFile bool
+	}{
+		{"no domain publishes nothing", "", []string{"fr-FR"}, "", false},
+		{"no translations, plain sitemap", "https://x.example.com", nil, "/sitemap.xml", false},
+		{"translations, index", "https://x.example.com", []string{"fr-FR"}, "/sitemap-index.xml", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out := t.TempDir()
+			b := &BuildCmd{Output: out}
+
+			got, err := b.writeSitemapIndex(tt.domain, tt.langs)
+			if err != nil {
+				t.Fatalf("writeSitemapIndex() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("writeSitemapIndex() = %q, want %q", got, tt.want)
+			}
+
+			_, statErr := os.Stat(filepath.Join(out, "sitemap-index.xml"))
+			if gotFile := statErr == nil; gotFile != tt.wantFile {
+				t.Errorf("sitemap-index.xml exists = %v, want %v (stat err = %v)", gotFile, tt.wantFile, statErr)
+			}
+		})
 	}
 }

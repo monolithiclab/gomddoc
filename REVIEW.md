@@ -1747,9 +1747,45 @@ same description, which is the duplicate-content signal the canonical work was m
 fix is the three-line `if/else if` already sitting next to it. `06-auto-generated meta description`
 in the SEO analysis is a separate, larger item; this is the plain frontmatter path being dropped.
 
-#### MEDIUM: `robots.txt` points crawlers past the sitemap index — NEW (found while auditing D9)
+#### ~~MEDIUM: `robots.txt` points crawlers past the sitemap index — NEW (found while auditing D9)~~
 
-`GenerateRobotsTxt` (`robots.go:31`) always emits `Sitemap: <domain>/sitemap.xml`, and build calls it
+✅ **FIXED**, and not the way the finding proposed. Giving robots.txt a copy of the language condition
+would have made it *forecast* what build writes; the first attempt did exactly that (an exported
+`HasSitemapIndex`/`SitemapEntryPath` pair in `internal/server`) and the simplify pass rejected it — a
+predicate that must agree with a write is still two things that can disagree, and it parks build-mode
+knowledge in the package that serves.
+
+**`GenerateRobotsTxt(domain, sitemapPath string)` now takes the sitemap its caller actually published,
+and every caller obtains that value from the act of publishing.** Empty means "nothing published, omit
+the directive".
+
+- Build: `writeSitemapIndex(domain, langs) (entryPath, error)` writes `sitemap-index.xml` when it should
+  and returns `/sitemap-index.xml`, `/sitemap.xml` or `""`. It runs before `generateSEOFiles`, which
+  passes the string straight through. There is no second condition to keep in sync because there is no
+  second condition.
+- Serve: `sitemapPath` is computed once at route registration and consumed twice — by
+  `NewRobotsHandler` and by the `auth.Handle("GET "+sitemapPath, …)` it gates.
+
+That second half fixes a **latent drift the finding did not mention**: serve emitted the directive on
+`domain != ""` while it registered `/sitemap.xml` on `opts.MetaIndex != nil && domain != ""`. Both serve
+paths happen to set `EnableMetadata: true`, so the two never diverged in practice — but it is the same
+"two expressions must agree" shape, on the *whether* axis rather than the *which* axis.
+
+The finding's stated condition was also wrong: it says the index follows `len(detectedLangs) > 1`; the
+code has always used `> 0`. `detectedLangs` holds the *translation* languages, so one entry already means
+two languages on the site.
+
+Tests: `TestGenerateRobotsTxt` now varies `sitemapPath` directly (four rows, including "nothing published,
+no directive"), so the formatter is tested on its own parameter rather than through a helper. The
+langs→path mapping is `TestBuildCmd_writeSitemapIndex`, which asserts the returned path *and* whether the
+file exists — that pairing is the whole contract. `TestBuildCmd_Run_MultiLanguage` reads `robots.txt` back
+beside the `sitemap-index.xml` assertion it already made, matching on `"\n" + want + "\n"`: a bare
+`Contains` on the index case also passes a line reading `.../sitemap-index.xml.gz`, and `/sitemap.xml` is
+a suffix of `/sitemap-index.xml` under no delimiter at all. Both robots assertions were mutation-verified.
+Docs: `11-seo.md` §Robots.txt and `13-internationalization.md` (which also claimed the index needs "more
+than one language" without saying what was being counted).
+
+**Original finding:** `GenerateRobotsTxt` (`robots.go:31`) always emits `Sitemap: <domain>/sitemap.xml`, and build calls it
 with no knowledge of how many languages there are (`build.go:561`). So a multi-language build writes
 `sitemap-index.xml` — whose entire purpose is to be the single entry point — and then tells crawlers
 to read the default-language sitemap instead, which by design lists no translated page
@@ -2600,3 +2636,22 @@ owned by `negotiate`, consulted before `mime.TypeByExtension`, would depend on n
 the OS MIME database (some distros map `.md` to `text/x-markdown`), and would drop the two discarded
 `AddExtensionType` errors. Nothing outside our code reads the global registry — no
 `http.ServeFile`/`ServeContent`/`FileServer`/`TypeByExtension` calls anywhere.
+
+### 10.14 NEW — every translated page advertises the default-language feed
+
+#### MEDIUM: `<link rel="alternate">` names `/feed.xml`, never `/{lang}/feed.xml`
+
+`head-shared.html.tmpl:19` builds the feed link with `{{ $feedURL := canonicalURL "/feed.xml" }}`, and
+`canonicalURL` (`renderer.go` → `seo.PageURL`) does **not** apply the renderer's language prefix — unlike
+`contentURL`, which is prefixed precisely so a per-language pipeline's links stay inside its own tree.
+Build writes `{lang}/feed.xml` and serve registers `GET /{lang}/feed.xml`, so the per-language feeds exist
+and are correct; nothing links to them. A reader subscribing from any French page gets the English feed.
+
+Found by the altitude pass on the `robots.txt`/sitemap-index fix (§10.5), which is the same class one
+artifact over: a root-level SEO artifact that is actually per-language-scope, named by a helper that
+does not know about scopes. The fix is the same shape as `contentURL` versus `canonicalURL` — either
+derive the scope's artifact URLs in `BuildPageContext` (per CLAUDE.md, "anything more than one consumer
+reads is a `PageContext` field"), or bind a `seoURL` func to the renderer's own language prefix. Each
+per-language pipeline already has its own `TemplateRenderer`, so the prefix is in scope either way.
+
+Check `hreflang` and the JSON-LD `WebSite` node for the same omission while in there.

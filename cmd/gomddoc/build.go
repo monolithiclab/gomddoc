@@ -173,8 +173,18 @@ func (b *BuildCmd) Run() error {
 		}
 	}
 
+	// The sitemap index goes first because robots.txt has to name the sitemap a
+	// crawler starts from, and the only way it cannot name a file this build
+	// never wrote is for the writer to say what it produced. (The index lists
+	// the per-language sitemap URLs; it does not read those files, which the
+	// language loop writes further down.)
+	sitemapPath, err := b.writeSitemapIndex(cfg.Site.Meta.Domain, detectedLangs)
+	if err != nil {
+		return err
+	}
+
 	// Generate SEO files (robots.txt and sitemap.xml)
-	if err := b.generateSEOFiles(pipeline.MetaIndex, &cfg.Site, pipeline.Resolver, prov); err != nil {
+	if err := b.generateSEOFiles(pipeline.MetaIndex, &cfg.Site, pipeline.Resolver, prov, sitemapPath); err != nil {
 		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
@@ -273,17 +283,6 @@ func (b *BuildCmd) Run() error {
 			if tErr := b.emitTagPages(context.Background(), langPipe, lang, bundle.TFunc(lang)); tErr != nil {
 				slog.Warn("Failed to emit tag pages for language", slog.String("lang", lang), slog.Any("error", tErr))
 			}
-		}
-	}
-
-	// Generate sitemap-index.xml when multiple languages exist
-	if len(detectedLangs) > 0 && cfg.Site.Meta.Domain != "" {
-		indexData, err := server.GenerateSitemapIndex(cfg.Site.Meta.Domain, detectedLangs)
-		if err != nil {
-			return fmt.Errorf("generate sitemap-index.xml: %w", err)
-		}
-		if err := b.writeOutputFile("sitemap-index.xml", indexData); err != nil {
-			return fmt.Errorf("write sitemap-index.xml: %w", err)
 		}
 	}
 
@@ -574,10 +573,39 @@ func (b *BuildCmd) copyStaticAssets(staticFS fs.FS, stats *buildStats) error {
 	return g.Wait()
 }
 
-// generateSEOFiles generates robots.txt and optionally sitemap.xml in the output directory.
-func (b *BuildCmd) generateSEOFiles(idx *metadata.Index, siteConfig *config.SiteConfig, resolver *resolve.PathResolver, prov provider.Provider) error {
+// writeSitemapIndex writes sitemap-index.xml when translation trees exist and
+// returns the sitemap a crawler should start from — "" when this build
+// publishes none. Returning it, rather than letting robots.txt re-derive it
+// from the same inputs, is what keeps the two from drifting: naming
+// /sitemap.xml here would send crawlers to the default-language sitemap, which
+// by design lists no translated page, and naming an index that was never
+// written is a 404 on the one URL robots.txt hands them.
+//
+// Without a domain there is no sitemap.xml either (generateSEOFiles gates on
+// the same thing), so there is nothing to advertise.
+func (b *BuildCmd) writeSitemapIndex(domain string, langs []string) (string, error) {
+	if domain == "" {
+		return "", nil
+	}
+	if len(langs) == 0 {
+		return "/sitemap.xml", nil
+	}
+
+	data, err := server.GenerateSitemapIndex(domain, langs)
+	if err != nil {
+		return "", fmt.Errorf("generate sitemap-index.xml: %w", err)
+	}
+	if err := b.writeOutputFile("sitemap-index.xml", data); err != nil {
+		return "", fmt.Errorf("write sitemap-index.xml: %w", err)
+	}
+	return "/sitemap-index.xml", nil
+}
+
+// generateSEOFiles generates robots.txt and optionally sitemap.xml in the output
+// directory. sitemapPath comes from writeSitemapIndex.
+func (b *BuildCmd) generateSEOFiles(idx *metadata.Index, siteConfig *config.SiteConfig, resolver *resolve.PathResolver, prov provider.Provider, sitemapPath string) error {
 	// Always generate robots.txt
-	robotsTxt := server.GenerateRobotsTxt(siteConfig.Meta.Domain)
+	robotsTxt := server.GenerateRobotsTxt(siteConfig.Meta.Domain, sitemapPath)
 	if err := b.writeOutputFile("robots.txt", []byte(robotsTxt)); err != nil {
 		return fmt.Errorf("write robots.txt: %w", err)
 	}
