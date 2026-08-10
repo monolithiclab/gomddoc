@@ -379,6 +379,103 @@ GoReleaser's `{{ .Version }}` strips the `v`.
 - [ ] **Webhooks**: Endpoint to trigger `git fetch` on push events (cache invalidation).
 - [ ] **PR preview**: Serve content from PR branches for review.
 
+## Content Annotations → Agent Handoff
+
+_Select text in a rendered page, leave a note, and have an agent turn the accumulated notes into a
+branch of Markdown edits. Review, amendment and "we should also document X" all start from the page
+where the reader noticed the problem, instead of from a blank issue form._
+
+The pull is real: today a reader who spots a wrong sentence has to translate "third paragraph under
+*Caching*" into a file path, find the line, and write a diff — and the reader who spots it is usually
+not the person who can fix it. An annotation captures the observation at full fidelity at the moment
+it happens, and an agent is very good at turning "this contradicts the section above" into a patch.
+But the naive version of this feature breaks four things gomddoc has deliberately built, and the
+design below exists to survive them.
+
+### What it breaks, and what that forces
+
+1. **It is an editorial workflow, which is in Deferred (Not Planned).** "Editorial workflows (drafts,
+   reviews, scheduling) — use Git branches" rules out exactly this, and the Vision says "no CMS. The
+   'database' is Git". The line that keeps the feature honest: **an annotation is transport, not
+   state.** It is never a source of truth, never rendered as site content, and its whole lifecycle is
+   *captured → drained into a diff → deleted*. A comment thread that accumulates replies and outlives
+   the commit is a CMS and is out of scope. If the feature starts growing statuses, assignees or
+   resolution states, it has become the thing this repo declined to build.
+2. **Character offsets into rendered HTML do not address Markdown.** goldmark rewrites text on the way
+   through: `**bold**` contributes the four characters `bold`, an admonition contributes a title the
+   source never wrote, and `# Café Français` yields the id `caf-franais` (both pinned by
+   `TestHeadingSlugs`, `renderer/markdown_test.go:241`). So a `(line, char)` pair taken from the DOM addresses a document that exists
+   only in the browser. Worse, it is invalidated by the *next* commit even when the sentence it points
+   at is untouched. The anchor has to survive both translations.
+3. **It is the first untrusted input in the product.** CLAUDE.md's trusted content model — "no
+   untrusted user input reaches rendered output", which is why there is no sanitizer and no CSP, and
+   why reviewers are told to treat XSS findings as false positives — holds only because every string
+   in a page came from the author's git repo. An annotation body does not. That convention must either
+   be narrowed in writing (annotations are the documented exception) or preserved by never rendering
+   an annotation body into a page. **Prefer the second**: the reader's own note can be echoed
+   client-side without a server round-trip, and every other consumer is a CLI or an agent.
+4. **`AuthStore` is a shared password, not an identity.** Basic auth gates the content port with one
+   credential (`server.go:105`), so the server cannot attribute an annotation to anyone. An unsigned
+   note from nobody is not reviewable. Until there is real identity (Phase 11 OIDC), the author is
+   whatever the annotator types, and the design has to be honest that this is an internal-trust
+   feature, not a public "suggest an edit" widget.
+
+Two further limits worth stating before anyone plans around them: `gomddoc build` output is static
+files, so annotation capture is a `serve`/`preview` feature only — and static hosting is the largest
+deployment mode. And for a one-word typo the existing edit link already wins. Annotations earn their
+keep on the case the edit link is bad at: noticing something *without* knowing the fix, and
+accumulating a dozen small observations across a reading session into one coherent handoff.
+
+### The design that survives them
+
+- [ ] **Quote-based anchors, not offsets**: adopt the W3C Web Annotation Data Model's
+      `TextQuoteSelector` — `exact` plus ~32 characters of `prefix` and `suffix` — rather than
+      inventing a scheme. Resolution re-finds the quote in the **Markdown source**, so it tolerates
+      edits anywhere else in the file. Store alongside it: the real content path (not the URL —
+      `strip_extensions` means they differ), the commit SHA the reader was looking at, and the
+      language of the pipeline that served the page.
+- [ ] **`data-src-line` on block elements**: a goldmark extension in the shape of the existing
+      `ext_anchors.go` / `ext_admonition.go`, emitting each block node's source line span from
+      `node.Lines()`. That narrows quote resolution from the whole file to one block, which is what
+      makes it robust for a quote that appears more than once, and it costs one attribute per block.
+      A `TextPositionSelector` may ride along as a hint, never as the primary anchor.
+- [ ] **Three resolution outcomes, all reported**: `exact` (quote found once in the block), `fuzzy`
+      (found after normalizing whitespace, or found elsewhere in the file), `orphaned` (the text is
+      gone). Orphaned annotations are the interesting ones — the sentence was already rewritten — and
+      they must be surfaced rather than dropped. Reuse the existing search tokenizer for fuzzy
+      matching rather than adding a dependency.
+- [ ] **Append-only capture, off by default**: `annotations.enabled: false`. When on, `POST
+      /api/annotations` appends one JSON object per line to `.gomddoc/annotations/<lang>.ndjson`,
+      behind `http.MaxBytesReader` with capped field lengths. Append-only means no read-modify-write
+      and no lock beyond the file; NDJSON means a corrupt line costs one annotation. The directory is
+      gitignored by default — the notes are scaffolding, the commit is the artifact.
+- [ ] **The harness pulls; gomddoc never pushes**: no LLM client in the binary. Shipping one would put
+      an API key in a docs server's config, add egress from a process whose whole job is reading
+      files, couple the release to a vendor's API, and — the real problem — require granting the
+      server write access to the repository. Instead the agent comes to gomddoc, which it already can:
+      add read-only MCP tools (`list_annotations`, `resolve_annotation`) beside the existing six, so
+      any harness with the MCP server configured can enumerate annotations with their resolved source
+      spans. The agent runs where the developer already runs it, with the credentials they already
+      have, and produces a branch and a PR by the ordinary means.
+- [ ] **`gomddoc annotations` subcommand**: `list`, `export` (a prompt-ready bundle — annotation,
+      resolved span, surrounding source context), and `prune` (drop annotations whose quote no longer
+      resolves *and* whose target file changed since the recorded SHA). `export` is the escape hatch
+      for harnesses that do not speak MCP; `prune` is what keeps the store from becoming the archive
+      this design says it must not be.
+- [ ] **UI: capture only**: a selection popover that posts the annotation and confirms it, with the
+      reader's own pending notes held client-side. No sidebar of other people's comments, no threads,
+      no rendering of a stored body into the page — that is what keeps item 3 above from becoming a
+      sanitizer, a CSP and a review-convention rewrite. Behind a `.Feature` gate like every other
+      optional UI component, so themes opt in.
+
+**Sequencing.** The anchor is the whole feature; everything else is plumbing around it. Build
+`data-src-line` and the quote resolver *first*, with a `gomddoc annotations resolve` command and a
+test corpus of hand-written anchors against a file that then gets edited underneath them. If
+resolution is not reliable there, the UI is not worth building — an annotation that lands on the
+wrong paragraph is worse than no annotation, because an agent will confidently patch the wrong
+sentence. Realistically this follows Phase 11 identity work; without it the feature only makes sense
+for a team that already trusts everyone who can reach the port.
+
 ## Theme Configuration
 
 _Allow themes to ship sane defaults for features and variables, reducing site-level boilerplate._
@@ -564,7 +661,9 @@ These features were considered but deprioritized to keep gomddoc focused:
 
 - Database providers (PostgreSQL/SQLite) — Git is the database
 - REST/GraphQL APIs — gomddoc is a viewer, not a headless CMS
-- Editorial workflows (drafts, reviews, scheduling) — use Git branches
+- Editorial workflows (drafts, reviews, scheduling) — use Git branches. Content Annotations is the
+  one deliberate brush against this line: it is scoped to capture-and-drain precisely so it stays
+  transport rather than becoming the comment store this entry rules out.
 - Content versioning/revision history — use Git history
 - VS Code extension
 - Plugin architecture / dynamic renderer loading
