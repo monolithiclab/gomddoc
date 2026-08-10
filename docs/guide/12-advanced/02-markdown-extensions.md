@@ -227,6 +227,43 @@ Per-page frontmatter overrides the global setting. Hex codes inside fenced code 
 
 All headings with auto-generated IDs get clickable anchor links. The anchor (`#`) appears when you hover over a heading (or is always visible on touch devices). Clicking the anchor updates the URL hash for easy linking to specific sections.
 
+### How IDs are generated
+
+The ID is goldmark's, produced by `parser.WithAutoHeadingID()`. Because published anchors are an
+inbound-link contract, the rules are written down here and pinned by `TestHeadingSlugs`
+(`internal/renderer/markdown_test.go`) — the same test also checks that the rendered `id` attribute
+and the TOC's `href` agree, since they come from two separate goldmark instances.
+
+The heading's rendered text is taken (inline markup contributes its text only), then, character by
+character:
+
+1. ASCII letters and digits are kept, lowercased.
+2. A space, `-` or `_` becomes a single `-`. **Per character** — runs are not collapsed, so two
+   spaces produce `--`.
+3. Everything else is **dropped**, not replaced: `.`, punctuation, and every non-ASCII rune.
+4. Leading and trailing whitespace is trimmed first, so no ID starts or ends with a stray `-`.
+5. If that ID is already taken on the page, `-1`, `-2`, … is appended. The first occurrence stays bare.
+6. If nothing is left, the ID becomes `heading` (then `heading-1`, `heading-2`, …).
+
+| Heading                     | ID                      |                                          |
+| --------------------------- | ----------------------- | ---------------------------------------- |
+| `# Getting Started`         | `getting-started`       |                                          |
+| `# What's New?`             | `whats-new`             | apostrophe and `?` dropped               |
+| `# Go 1.25 — release-notes` | `go-125--release-notes` | `.` dropped; the em dash's two spaces each emit a `-` |
+| `# snake_case  and--more`   | `snake-case--and--more` | `_` folds to `-`; runs are not collapsed |
+| ``# The `Handler` **type**`` | `the-handler-type`      | inline markup contributes its text only  |
+| `# Setup` (second one)      | `setup-1`               |                                          |
+
+> [!WARNING]
+> Rule 3 applies to accented and non-Latin characters too: `# Café Français` becomes
+> `caf-franais`, and `# 日本語` has no ASCII left at all, so it falls back to `heading`. A page
+> written entirely in a non-Latin script gets `heading`, `heading-1`, `heading-2`… — anchors that
+> are stable but meaningless.
+>
+> There is currently no override: the `{#custom-id}` attribute syntax is **not** enabled, so
+> `# 日本語 {#japanese}` renders the braces as literal heading text and yields the ID `-japanese`.
+> Tracked in `REVIEW.md`.
+
 ## Table of Contents
 
 gomddoc automatically generates a table of contents from headings (h1-h3) in Markdown documents. The TOC appears as a sidebar on desktop and a toggleable panel on mobile. Heading IDs are auto-generated for anchor linking.

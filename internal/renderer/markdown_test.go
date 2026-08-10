@@ -2,6 +2,8 @@ package renderer
 
 import (
 	"context"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -193,5 +195,143 @@ func TestMarkdownRenderer_LargeContent(t *testing.T) {
 	outputStr := string(result.Content)
 	if !strings.Contains(outputStr, "<h2") {
 		t.Error("Render() output missing headings for large content")
+	}
+}
+
+// flattenTOCIDs returns the TOC node IDs in document order.
+func flattenTOCIDs(node *enricher.TOCNode) []string {
+	if node == nil {
+		return nil
+	}
+	var ids []string
+	if node.Level > 0 {
+		ids = append(ids, node.ID)
+	}
+	for _, child := range node.Children {
+		ids = append(ids, flattenTOCIDs(child)...)
+	}
+	return ids
+}
+
+var headingIDRe = regexp.MustCompile(`<h[1-6] id="([^"]*)"`)
+
+// headingIDs returns the id attribute of every <hN> element in html, in
+// document order. Deliberately a regexp over the output rather than a parse:
+// the anchor a reader's browser resolves is the literal attribute text.
+func headingIDs(html string) []string {
+	matches := headingIDRe.FindAllStringSubmatch(html, -1)
+	ids := make([]string, 0, len(matches))
+	for _, m := range matches {
+		ids = append(ids, m[1])
+	}
+	return ids
+}
+
+// TestHeadingSlugs pins goldmark's WithAutoHeadingID output. Anchor stability is
+// an inbound-link contract — #installation quietly becoming #installing breaks
+// every external link to it — and the algorithm is goldmark's choice, not ours,
+// so a dependency bump can change it with nothing in the tree going red.
+//
+// It also pins the two parsers against each other. The renderer writes the id
+// attribute and the enricher supplies the TOC's href, from separate goldmark
+// instances configured in separate packages (renderer/markdown.go,
+// enricher/markdown.go). Enabling WithAutoHeadingID in one and not the other
+// leaves every TOC link pointing at nothing, and neither package's own tests
+// can see it.
+func TestHeadingSlugs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{
+			name:  "lowercased, spaces become hyphens",
+			input: "# Getting Started",
+			want:  []string{"getting-started"},
+		},
+		{
+			name:  "punctuation is dropped, not replaced",
+			input: "# What's New?",
+			want:  []string{"whats-new"},
+		},
+		{
+			// The dot goes the way of the apostrophe — only ASCII letters and
+			// digits are kept. The em dash is dropped but its two surrounding
+			// spaces each still emit a hyphen, which is where the doubled one
+			// comes from: there is no run collapsing.
+			name:  "dots are dropped, hyphens survive, spaces do not collapse",
+			input: "# Go 1.25 — release-notes",
+			want:  []string{"go-125--release-notes"},
+		},
+		{
+			// The other half of that rule, stated on its own so a regression in
+			// either direction has a row: `_` folds to `-` rather than being
+			// kept, and a doubled space yields a doubled hyphen.
+			name:  "underscores fold to hyphens, runs are not collapsed",
+			input: "# snake_case  and--more",
+			want:  []string{"snake-case--and--more"},
+		},
+		{
+			name:  "duplicates get a numeric suffix, first occurrence bare",
+			input: "# Setup\n\n# Setup\n\n# Setup\n",
+			want:  []string{"setup", "setup-1", "setup-2"},
+		},
+		{
+			// Not transliterated and not preserved — dropped. goldmark's
+			// slugifier keeps ASCII alphanumerics only, so an accent takes its
+			// letter with it. Documented in
+			// docs/guide/12-advanced/02-markdown-extensions.md and filed in
+			// REVIEW.md; this row exists to make the loss visible rather than
+			// to bless it.
+			name:  "non-ASCII letters are dropped",
+			input: "# Café Français",
+			want:  []string{"caf-franais"},
+		},
+		{
+			name:  "inline markup contributes its text only",
+			input: "# The `Handler` **type**",
+			want:  []string{"the-handler-type"},
+		},
+		{
+			// Nothing is left to slugify, so goldmark falls back to a positional
+			// id rather than emitting an empty one.
+			name:  "a heading with no slugifiable text still gets an id",
+			input: "# !!!",
+			want:  []string{"heading"},
+		},
+		{
+			// The same rule taken to its conclusion: with no ASCII left there
+			// is nothing to slugify, so a non-Latin page's anchors are heading,
+			// heading-1, heading-2… — deduplicated like any other collision,
+			// which is what makes the loss above lossy rather than merely ugly.
+			name:  "fully non-ASCII headings collapse to deduplicated fallbacks",
+			input: "# 日本語\n\n# 한국어\n",
+			want:  []string{"heading", "heading-1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			enrich := enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{})
+			data, err := enrich.Enrich(context.Background(), []byte(tt.input), "/test.md")
+			if err != nil {
+				t.Fatalf("Enrich() error = %v", err)
+			}
+			if got := flattenTOCIDs(data.TOC); !slices.Equal(got, tt.want) {
+				t.Errorf("TOC anchor IDs = %v, want %v", got, tt.want)
+			}
+
+			result, err := NewMarkdownRenderer(MarkdownOptions{}).Render(context.Background(), []byte(tt.input), data)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			if got := headingIDs(string(result.Content)); !slices.Equal(got, tt.want) {
+				t.Errorf("rendered heading IDs = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

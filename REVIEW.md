@@ -1858,14 +1858,48 @@ directory while the bytes came from its `README.md`, so the stat answers about t
 `buildFile` separately re-stats a path `walkAndBuildToDir` already held a `DirEntry` for
 (`build.go:390-407` discards `d`) — one syscall per page, and subsumed by the same fix.
 
-#### LOW: the heading-slug algorithm is documented nowhere and pinned by no test — NEW
+#### ~~LOW: the heading-slug algorithm is documented nowhere and pinned by no test~~ ✅ FIXED
 
-Anchor stability is an inbound-link contract: `#installation` silently becoming `#installing`
+~~Anchor stability is an inbound-link contract: `#installation` silently becoming `#installing`
 breaks every external link to it, and nothing in the tree would go red. Both parsers enable
 goldmark's `parser.WithAutoHeadingID` (`renderer/markdown.go:83`, `enricher/markdown.go:65`), so the
 algorithm is goldmark's and is stable in practice — but it is *goldmark's choice*, not ours, and a
 dependency bump could change it. One table-driven test over the punctuation/unicode/duplicate cases
-plus a paragraph in the guide converts an implicit dependency into a stated one.
+plus a paragraph in the guide converts an implicit dependency into a stated one.~~
+
+`TestHeadingSlugs` (`internal/renderer/markdown_test.go`) is the table, and it pins a second
+contract the finding did not name: the rendered `id` attribute and the TOC's `href` come from **two
+goldmark instances configured in two packages**, so it asserts both against the same expectation.
+Removing `WithAutoHeadingID` from the enricher alone turns all nine rows red; before, it turned
+nothing red and left every TOC link pointing at nothing.
+
+Writing the rules down found the item below. `docs/guide/12-advanced/02-markdown-extensions.md`
+gained the five-rule algorithm, a worked table, and the warning.
+
+#### MEDIUM: heading anchors drop every non-ASCII character, on an i18n-capable server — NEW
+
+goldmark's slugifier keeps ASCII alphanumerics, folds space/`-`/`_` to a single `-` each, and
+**drops** everything else rather than transliterating it. `# Café Français` becomes
+`caf-franais`. A heading with no ASCII
+left falls back to a positional `heading`, so a page written in Japanese, Korean, Greek or Cyrillic
+gets `heading`, `heading-1`, `heading-2` — anchors that are stable, unguessable, and reorder
+themselves the moment a section is inserted. gomddoc ships per-language pipelines, per-language
+sitemaps and 26 translation keys, so non-Latin content is a supported case, not an edge one.
+
+There is no author-side escape hatch either: `parser.WithHeadingAttribute()` is not enabled, so the
+conventional `# 日本語 {#japanese}` renders the braces as literal heading text and yields the ID
+`-japanese` (the brace and hash are dropped, the leading space becomes a hyphen).
+
+Two independent fixes, either or both:
+
+- **`parser.WithHeadingAttribute()`** — one option on both goldmark instances, and the
+  `{#custom-id}` syntax authors already expect starts working. Cheap, and it is the standard escape
+  hatch for any slug the algorithm mangles, not just non-ASCII ones.
+- **A custom `parser.IDs` implementation** passed via `parser.WithIDs` — percent-encode the rune
+  instead of dropping it (GitHub's behaviour) so `# 日本語` yields a meaningful anchor by default.
+  Larger: it changes existing anchors, so it is a breaking change for any deployed site's inbound
+  links, and the two instances must be given the *same* implementation or `TestHeadingSlugs` goes
+  red — which is the point of that test.
 
 ### 10.6 Test coverage & quality
 
