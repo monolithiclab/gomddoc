@@ -1,3 +1,11 @@
+// Package search builds an inverted index over the content tree and ranks
+// queries against it with TF-IDF.
+//
+// BuildIndex appends postings one document at a time, so every posting list
+// comes out ascending by document index and a multi-token query is a linear
+// merge rather than a map rebuilt per query. Ranking ties are broken
+// deterministically in the final sort: the candidates arrive from map
+// iteration, so without one, serve and build disagree on equally-ranked hits.
 package search
 
 import (

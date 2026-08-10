@@ -1,3 +1,11 @@
+// Package assets layers a site's own files over the ones embedded in the
+// binary, so a site can override a theme file without forking the theme.
+//
+// Resolution is whole-file, and happens in provider.OverlayFS: Open returns
+// the copy from the highest-priority layer that has the name, so a site
+// dropping its own locales/en-US.yml replaces the baseline outright rather
+// than merging key by key. ReadDir is the exception — it unions the layers,
+// highest priority winning per name.
 package assets
 
 import (

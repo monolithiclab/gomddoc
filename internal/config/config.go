@@ -1,3 +1,10 @@
+// Package config loads and validates site configuration from four sources, in
+// descending precedence: CLI flags, environment variables, the site's YAML
+// file, and built-in defaults.
+//
+// Feature flags are the one thing that merges rather than overrides.
+// MergeFeatures folds each set of overrides onto the base in turn, so a page's
+// frontmatter can switch one feature off without restating the others.
 package config
 
 import (

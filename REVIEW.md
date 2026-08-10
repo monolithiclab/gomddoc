@@ -1780,8 +1780,48 @@ Website and themes edits are in their own repositories and are **not committable
 One new finding surfaced while writing the caching table, filed below: `/_assets/` is served
 `immutable` for a year on URLs that are not fingerprinted.
 
-**Godoc:** 21 of 22 packages have **no package doc comment** — only `internal/resolve/resolver.go:1`
-has one. There is no `.golangci.yml`, so no `revive`/`stylecheck` rule enforces it.
+**~~Godoc:~~ ✅ FIXED** — the count was 20 of 22, not 21: `docs/skills/favicons/scripts` had one
+too. All twenty now have a package comment, and the gap is closed at the linter rather than by
+hand.
+
+No `.golangci.yml` was needed. `make lint` already runs `staticcheck`, and **ST1000 is exactly this
+check** — it ships in staticcheck's default *exclusion* list, which is why a linter that could see
+the problem was silent about it. A twelve-line `staticcheck.conf` re-enables it and says why the
+other six default-off ST checks stay off (ST1020/21/22 would impose an opening-form rule on every
+exported symbol and rewrite existing good comments into worse ones). Mutation-verified: deleting
+`internal/seo/url.go`'s comment fails all three files in the package.
+
+The comments are not "Package x does x". Each states the job in a sentence, then the one contract
+that gets got wrong, taken from the conventions already in CLAUDE.md — `negotiate` owns the `.md`
+MIME registration because an `init()` writing a process-global registry has to live with its
+accessor; `metadata`'s slice accessors clone deeply or the iterator pair is pointless; `navigation`'s
+Generator must come from the pipeline or a request handler re-walks the tree and line-scans every
+file; `provider`'s not-found mapping runs both ways; `locale`'s language detection is deliberately
+narrower than BCP 47. CLAUDE.md gained the standard so the next package is held to it.
+
+Writing them from the conventions rather than from the code got **six of twenty wrong**, all caught
+by verifying each claim against the package before committing — which is the argument for the
+comments existing, since every one of these was a thing I believed about the codebase:
+
+- `main` — "every subcommand funnels through setupPipeline" is four of six; `info`, `init` and
+  `version` never touch a pipeline. And `setupPipeline` unconditionally builds only the resolver:
+  the index, generator and search index are behind `EnableMetadata`/`EnableNavigation`/`EnableSearch`.
+- `renderer` — heading anchors are **not** an AST transform. `ext_anchors.go:22` registers a node
+  renderer that re-implements goldmark's heading output; only admonitions and color chips register
+  `parser.WithASTTransformers`.
+- `breadcrumb` — the trail costs **one** provider `Stat`, for the target only
+  (`generator.go:62`); `generator.go:88` takes every intermediate segment as a directory without one.
+- `negotiate` — `Specificity` is the single implementation for *Accept* matching. `registry.go:154`
+  still hardcodes the identical `3/2/1` ladder for renderer **input**-type matching, so §10.12's
+  finding is one copy larger than it says.
+- `metadata` — one iterator accessor exists, not several. `AllPages` and `ByPath` clone deeply and
+  have no `iter.Seq` sibling, which is the already-open finding.
+- `assets` — the `Open`/`ReadDir` semantics described are real but belong to `provider.OverlayFS`;
+  package `assets` has neither method.
+
+`mcp`'s comment was also narrowed: `get_table_of_contents` takes a `Path` and never reads it
+(`tools.go:227`, filed at §10.1 and §10.9), so "every entry point that accepts a path checks it"
+would have been a claim the code does not support. It now says every entry point that *reads* one.
 
 #### MEDIUM: `/_assets/` promises `immutable` on URLs that never change name — NEW (found while writing the caching table)
 

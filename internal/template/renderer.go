@@ -1,3 +1,11 @@
+// Package template renders a PageContext through a theme's layouts and
+// partials, and caches the parsed templates.
+//
+// funcMap is bound at parse time and the parsed templates are shared across
+// concurrent renders, so there is no per-render seam where a memo could live.
+// Anything more than one consumer needs is therefore a PageContext field
+// derived once in BuildPageContext, not a template function — two callers in a
+// layout means the work happens twice per request, every request.
 package template
 
 import (

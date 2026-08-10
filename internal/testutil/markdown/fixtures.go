@@ -1,6 +1,8 @@
+// Package markdown holds the Markdown fixtures shared across the repository's
+// tests, so a test that needs "a file with valid frontmatter" reaches for the
+// existing one instead of hand-rolling a fourth slightly different spelling.
 package markdown
 
-// Standardized markdown fixtures for testing across the codebase.
 const (
 	// ValidFrontmatterWithBody is a standard markdown file with valid YAML frontmatter and content.
 	ValidFrontmatterWithBody = `---

@@ -1,3 +1,11 @@
+// Package metadata indexes frontmatter across the content tree and answers
+// queries against it: a page by path, the pages carrying a tag, the tag list.
+//
+// The index is immutable once built, which is what lets PagesByTag yield
+// pointers into it. The slice-returning accessors therefore clone deeply — a
+// bare struct copy still shares the Tags slice and the Meta map, which would
+// leave the iterator with nothing to be faster than. AllPages and ByPath clone
+// on the same terms but have no iterator sibling yet.
 package metadata
 
 import (

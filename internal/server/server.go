@@ -1,3 +1,11 @@
+// Package server is the HTTP layer: the mux, the middleware chain, and the
+// handlers for pages, tags, search, the XML endpoints and the probes.
+//
+// Routes are organized as RouteGroups, and a Subgroup inherits its parent's
+// chain. A cross-cutting concern therefore belongs on the highest group that
+// wants it: hung off a leaf, it is a concern every sibling silently opts out
+// of, and that every route added later opts out of by default. Exemptions are
+// legitimate but each carries its reason at the registration site.
 package server
 
 import (

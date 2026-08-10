@@ -1,3 +1,14 @@
+// Package negotiate implements HTTP content negotiation: parsing Accept
+// headers and mapping file extensions to MIME types.
+//
+// MediaType.Specificity is the single implementation of RFC 9110 §12.5.1's
+// exact > type/* > */* ladder for Accept-header matching; a matcher returns
+// that or zero. (The renderer registry still hardcodes the same ladder for
+// input-type matching — see REVIEW.md.) The .md MIME
+// registration lives here too, with DetectMIME rather than with the Markdown
+// renderer that owns the format: an init() writing a process-global registry
+// only runs if its package is linked, and the packages calling DetectMIME do
+// not import the renderer.
 package negotiate
 
 import (

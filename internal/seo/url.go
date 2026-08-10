@@ -1,3 +1,10 @@
+// Package seo builds the canonical URLs and structured data that the sitemap,
+// the feed and the head tags all have to agree on.
+//
+// LastModified is the single answer to "when was this page last modified",
+// frontmatter fallback and .UTC() normalization included. It was hand-rolled
+// four times before, and the sitemap's copy had no fallback — so a page whose
+// stat failed came out dated in feed.xml and undated in sitemap.xml.
 package seo
 
 import (

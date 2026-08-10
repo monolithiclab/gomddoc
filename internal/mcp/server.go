@@ -1,3 +1,14 @@
+// Package mcp exposes the content tree to agents over the Model Context
+// Protocol: six read-only tools, docs:// resources, and a set of prompts.
+//
+// Every entry point that reads a path runs it through
+// provider.IsRestrictedPath first, so a hidden or excluded file is as
+// unreachable here as it is over HTTP. get_table_of_contents is not an
+// exception to that: it reads no path, serving the pipeline's already
+// exclude-filtered tree. Cached objects — the navigation
+// generator above all — are taken from the pipeline rather than constructed
+// per call: a fresh generator re-walks the content and line-scans every file
+// for its title.
 package mcp
 
 import (

@@ -1,3 +1,12 @@
+// Package locale decides which language a request is for and what the UI
+// strings say in it.
+//
+// DetectLanguages accepts a content-root directory as a language only when its
+// name carries a script or region subtag. That is deliberately narrower than
+// BCP 47, which would also claim doc/, api/, css/, bin/, id/, is/, no/ and
+// it/ — and a false positive here does not merely mislabel a directory, it
+// gives it a pipeline of its own and excludes it from the default one, so the
+// site loses the content. See docs/decisions.md.
 package locale
 
 import (

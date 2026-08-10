@@ -1,3 +1,10 @@
+// Package text holds the small string utilities shared across packages: title
+// derivation and casing, frontmatter stripping, and log-value sanitization.
+//
+// Safe and SafeString exist for slog. A value interpolated into a log line can
+// carry newlines and control characters, which is how one log entry forges a
+// second; SafeString defers the scrub to slog.LogValuer, so a disabled level
+// costs nothing.
 package text
 
 import (

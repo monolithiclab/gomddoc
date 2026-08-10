@@ -1,3 +1,12 @@
+// Package renderer turns content bytes into a representation for the client:
+// Markdown to HTML through goldmark, or passthrough for formats served as-is.
+//
+// The extensions here work on goldmark's AST rather than on the finished HTML
+// string: admonitions and color chips as parser transforms, heading anchors as
+// a node renderer that emits the heading itself. meta.Meta is
+// not optional despite metadata extraction living in the enricher — it is what
+// strips the frontmatter from the output, so dropping it renders the
+// frontmatter as visible text at the top of every page.
 package renderer
 
 import (

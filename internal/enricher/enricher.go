@@ -1,3 +1,11 @@
+// Package enricher extracts everything a page needs that is not its rendered
+// body: frontmatter metadata, the table of contents, the navigation tree,
+// prev/next links and related documents.
+//
+// It runs ahead of the renderer and parses the Markdown itself. The pieces
+// that depend on the whole content tree arrive as injected functions
+// (NavBuilder, PrevNextBuilder) rather than being computed here, because the
+// indexes that can answer them belong to the pipeline.
 package enricher
 
 import "context"

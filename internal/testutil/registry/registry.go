@@ -1,3 +1,6 @@
+// Package registry constructs the renderer and enricher registries a test
+// needs, so a test exercising something else does not have to restate the
+// production wiring — and does not quietly drift from it.
 package registry
 
 import (

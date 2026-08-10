@@ -132,6 +132,13 @@ testsite/              # Lorem ipsum test site for quick testing
   `/{lang}` before the language handler runs, so `URLRedirectMap` **keys** stay content-root-relative
   while **values** must be absolute site paths. `BuildRedirectMap`'s and `ExtensionRedirect`'s
   `basePath` parameter applies to targets only.
+- **Every package carries a package comment, and it says the non-obvious thing** — `staticcheck.conf`
+  re-enables ST1000, which `make lint` had been running with off, so a new package now fails the
+  build until it has one. The bar is not "Package x does x": each comment states the package's job in
+  a sentence and then the one contract a caller gets wrong — why `negotiate` owns the `.md` MIME
+  registration, why `metadata`'s slice accessors clone deeply, why `navigation`'s Generator must come
+  from the pipeline. Most of those facts were already written down here, one section below; the
+  package comment is where someone reading the code finds them.
 - **Manual testing**: Use Chrome DevTools MCP, target `testsite/`
 - **Options struct pattern** or **functional options**, depending on the case
 - **`path` not `filepath`** for `fs.FS` operations (forward slashes per `io/fs` spec)

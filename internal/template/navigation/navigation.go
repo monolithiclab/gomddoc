@@ -1,3 +1,11 @@
+// Package navigation builds the sidebar tree over the content root.
+//
+// The walk happens once behind a sync.Once and is cached for the Generator's
+// lifetime, so the Generator belongs to the pipeline and is passed down — one
+// constructed inside a request handler re-walks the content and, lacking the
+// pipeline's title lookup, opens and line-scans every Markdown file to find
+// its heading. Entries sort alphabetically with directories and files
+// interleaved, not directories first.
 package navigation
 
 import (

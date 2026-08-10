@@ -1,3 +1,9 @@
+// Package breadcrumb derives the ancestor trail for a page path.
+//
+// Deciding whether the target is a directory costs a provider Stat — the
+// intermediate segments are taken as directories without one — and both the
+// breadcrumb bar and the JSON-LD partial want the trail, so it is built once
+// into PageContext rather than by each consumer.
 package breadcrumb
 
 // Breadcrumb represents a single breadcrumb item in the navigation trail

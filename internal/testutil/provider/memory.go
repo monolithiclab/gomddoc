@@ -1,3 +1,5 @@
+// Package provider offers an in-memory provider.Provider for tests that need
+// a content tree without a directory on disk or a git repository behind it.
 package provider
 
 import (
