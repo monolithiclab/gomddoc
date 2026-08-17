@@ -433,7 +433,21 @@ testsite/              # Lorem ipsum test site for quick testing
 - **Context cancellation tests**: use already-cancelled `context.WithCancel`, not nanosecond
   timeouts + `time.Sleep` (deterministic, no flakiness, no unnecessary delays)
 - **One canonical test helper per pattern** — don't duplicate helpers across test files; place the
-  shared helper in a `testhelpers_test.go` file
+  shared helper in a `testhelpers_test.go` file, or `internal/testutil/<name>` once a second package
+  needs it (`countfs` moved there the moment `navigation` wanted `mcp`'s counting `fs.FS`)
+- **Every lazy cache owes a cold-cache concurrency test** — a `sync.Once` or mutex populated on first
+  request is only ever *used* cold-and-concurrent, and that is the one state a sequential
+  call-it-twice test cannot reach. Go through `internal/testutil/fanout`.`Run(50, fn)`: the release
+  barrier is what makes it a race, because a bare `WaitGroup` lets the first goroutine finish before
+  the last is scheduled and the cache is warm by the time the contention was meant to happen. Assert
+  **pointer identity**, not equality, whenever the API returns one — `Tree()` and `PrevNext` hand out
+  pointers into the cached tree, so `==` on the pointer catches a rebuild that `reflect.DeepEqual`
+  would call correct, and `lazyBytes` compares `&b[0]` for the same reason. Count the underlying work
+  where you can: `countfs` measures one sequential walk, then requires the concurrent run to match it
+  exactly. Where the cached value is a pure function of already-held state no count can tell one build
+  from fifty — say so at the test, and fall back to `-race` (which `make test` runs, and which needs
+  the concurrent *execution* this test exists to provide) plus a zero-value check, since a caller
+  losing an `if x == ""` race returns the zero value.
 - **Assertions must be falsifiable** — before adding one, ask what production change would turn it
   red. `strings.Contains(body, "https://x.com/")` is dead when every URL in the fixture starts with
   that prefix; `len(r) > max` is dead when the fixture is smaller than `max`. Parse generated

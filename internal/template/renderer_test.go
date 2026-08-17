@@ -6,7 +6,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
@@ -17,6 +16,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
+	"github.com/monolithiclab/gomddoc/internal/testutil/fanout"
 )
 
 func TestNewHTMLRenderer(t *testing.T) {
@@ -1588,26 +1588,16 @@ func TestRender_SingleflightCoalescesConcurrentParsing(t *testing.T) {
 		Page: PageContext{Path: "/"},
 	}
 
-	// Launch many concurrent renders on a cold cache
+	// Launch many concurrent renders on a cold cache. fanout.Run releases them
+	// together; the bare WaitGroup this used to use let the first goroutine
+	// finish before the last was scheduled, so the cache could already be warm
+	// by the time the contention was meant to happen.
 	const numGoroutines = 50
-	var wg sync.WaitGroup
-	errs := make([]error, numGoroutines)
-
-	wg.Add(numGoroutines)
-	for i := range numGoroutines {
-		go func(idx int) {
-			defer wg.Done()
-			_, errs[idx] = renderer.Render(context.Background(), "default.html.tmpl", ctx)
-		}(i)
-	}
-
-	wg.Wait()
-
-	for i, err := range errs {
-		if err != nil {
-			t.Fatalf("goroutine %d: Render failed: %v", i, err)
+	fanout.Run(numGoroutines, func(i int) {
+		if _, err := renderer.Render(context.Background(), "default.html.tmpl", ctx); err != nil {
+			t.Errorf("goroutine %d: Render failed: %v", i, err)
 		}
-	}
+	})
 
 	// Without singleflight, all 50 goroutines would parse and call Set.
 	// With singleflight, only 1 should parse and call Set.

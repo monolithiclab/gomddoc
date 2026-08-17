@@ -7,10 +7,17 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/resolve"
+	"github.com/monolithiclab/gomddoc/internal/testutil/countfs"
+	"github.com/monolithiclab/gomddoc/internal/testutil/fanout"
 )
 
 // fnFS wraps an fstest.MapFS to record which files are opened, so tests can
 // assert the title lookup avoids opening files.
+//
+// Counting opens is countfs's job, not this one's. Embedding the concrete
+// fstest.MapFS promotes ReadDir, so fs.ReadDir satisfies fs.ReadDirFS and never
+// reaches this Open — harmless for an assertion that a named file *was* opened,
+// silently green for one that counts.
 type fnFS struct {
 	fstest.MapFS
 	onOpen func(string)
@@ -115,6 +122,61 @@ func TestTree_CachedAcrossCalls(t *testing.T) {
 
 	if first != second {
 		t.Errorf("Tree() should return the same cached pointer; got %p then %p", first, second)
+	}
+}
+
+// TestTree_ConcurrentFirstBuildIsSingleWalk points goroutines at a cold cache,
+// which is the state every served site starts in: the Generator is built during
+// setup and first walked by whichever HTTP handlers arrive together.
+//
+// Neither assertion alone pins the sync.Once. The open count alone passes a
+// build that hands losing goroutines a half-populated tree; pointer identity
+// alone passes one that walks the content fifty times and returns whichever
+// result won. PrevNext is called because cachedIndex and cachedPages are
+// published by the same Do but read by a different method, which a Tree-only
+// test leaves unobserved.
+func TestTree_ConcurrentFirstBuildIsSingleWalk(t *testing.T) {
+	t.Parallel()
+
+	content := fstest.MapFS{
+		"intro.md":       {Data: []byte("# Intro")},
+		"guide/setup.md": {Data: []byte("# Setup")},
+		"guide/usage.md": {Data: []byte("# Usage")},
+		"faq.md":         {Data: []byte("# FAQ")},
+	}
+
+	// What one cold walk costs, measured with nothing racing it. Measured rather
+	// than hardcoded so adding a fixture file cannot silently rot the assertion.
+	baseline := countfs.New(content)
+	NewGenerator(baseline, "README.md", nil, nil).Tree()
+	wantOpens := baseline.Opens()
+	if wantOpens == 0 {
+		t.Fatal("baseline walk opened nothing; the counter is not in the walk's path")
+	}
+
+	cfs := countfs.New(content)
+	gen := NewGenerator(cfs, "README.md", nil, nil)
+
+	const goroutines = 50
+	trees := make([]*NavNode, goroutines)
+	fanout.Run(goroutines, func(i int) {
+		trees[i] = gen.Tree()
+		if prev, _ := gen.PrevNext("/guide/usage.md"); prev == nil {
+			t.Errorf("goroutine %d: PrevNext found no page before /guide/usage.md; the cached index is empty", i)
+		}
+	})
+
+	if got := cfs.Opens(); got != wantOpens {
+		t.Errorf("%d concurrent cold callers opened %d files; one walk opens %d — the walk is not coalescing",
+			goroutines, got, wantOpens)
+	}
+	if trees[0] == nil {
+		t.Fatal("Tree() is nil; the fixture produced no renderable pages")
+	}
+	for i, tree := range trees {
+		if tree != trees[0] {
+			t.Fatalf("goroutine %d got tree %p, goroutine 0 got %p; callers see different trees", i, tree, trees[0])
+		}
 	}
 }
 

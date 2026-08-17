@@ -6,6 +6,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/testutil/fanout"
 )
 
 func TestBuildThemeVarsCSS(t *testing.T) {
@@ -204,6 +205,37 @@ func TestGenerateThemeVarsCSS_Caching(t *testing.T) {
 	if css1 != css2 {
 		t.Errorf("Cached CSS should be identical: %q vs %q", css1, css2)
 	}
+}
+
+// TestGenerateThemeVarsCSS_Concurrent covers the sync.Once from the state it is
+// actually used in: the renderer is shared by every handler and the vars CSS is
+// first built by whichever requests arrive together.
+//
+// buildThemeVarsCSS is a deterministic function of config the renderer already
+// holds, so no count can tell one build from fifty. What this test provides is
+// the concurrent execution that `make test`'s -race needs in order to flag the
+// unsynchronized write, and a zero-value check for the other half of the same
+// mutation — a caller losing an `if css == ""` race returns the zero value.
+func TestGenerateThemeVarsCSS_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	vars := map[string]string{"primary": "#2563eb", "dark-primary": "#60a5fa"}
+	// No layout in the FS: generateThemeVarsCSS reads Theme.Vars and never opens
+	// a file. Nothing here renders.
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Theme.Vars = vars
+	r := NewHTMLRenderer(&siteConfig, fstest.MapFS{})
+
+	want := buildThemeVarsCSS(vars)
+	if want == "" {
+		t.Fatal("fixture produced no CSS; the concurrent assertion below would be vacuous")
+	}
+
+	fanout.Run(50, func(i int) {
+		if got := r.generateThemeVarsCSS(); got != want {
+			t.Errorf("goroutine %d got %q, want %q", i, got, want)
+		}
+	})
 }
 
 func TestGenerateThemeVarsCSS_NoVars(t *testing.T) {

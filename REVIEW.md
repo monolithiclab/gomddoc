@@ -2207,7 +2207,7 @@ where per-language failures `slog.Warn; continue` while default-language failure
 build can exit 0 having produced no French site. (`build.go:221-223` also aggregates 3 of 4 counters,
 silently dropping `skippedFiles`.)
 
-#### HIGH: `navigation.Generator`'s lazy cache has zero concurrent coverage
+#### ✅ FIXED: `navigation.Generator`'s lazy cache has zero concurrent coverage
 
 `internal/template/navigation/navigation.go:60-63` — `cacheOnce sync.Once` guarding `cachedTree`/
 `cachedPages`/`cachedIndex`, populated lazily from concurrent HTTP handlers. `navigation_test.go`
@@ -2215,6 +2215,43 @@ contains no goroutines, so `-race` never observes it. Highest-risk untested conc
 the repo. Same gap, lower blast radius: `internal/server/lazybytes.go:17`,
 `internal/template/themevars.go:15`, `internal/seo/url.go:18`. The pattern to copy is
 `internal/template/renderer_test.go:1553` — 50 goroutines on a cold cache asserting exactly one `Set`.
+
+**Fixed.** Four cold-cache concurrency tests — `TestTree_ConcurrentFirstBuildIsSingleWalk`,
+`TestLazyBytes_ConcurrentFirstGet`, `TestGenerateThemeVarsCSS_Concurrent`, `TestAbsOutput_Concurrent`
+— written to the convention now in CLAUDE.md ("Every lazy cache owes a cold-cache concurrency test").
+Mutation-verified: replacing `cacheOnce.Do` with `if g.cachedTree != nil { return }` fires the race
+detector on the `cachedTree` write; removing the `Do` wrapper entirely fails the run outright. What
+the finding got wrong, and what the fix turned up:
+
+- **`internal/seo/url.go:18` has no `sync.Once`** — the citation is wrong; that file has no lazy
+  cache at all.
+- **The fourth cache is `cmd/gomddoc/build.go:47`** (`absOutputCache`), which the finding missed.
+  Both errgroup phases resolve every output path through it.
+- **Two helpers were extracted rather than copied.** `countfs` moved out of
+  `internal/mcp/server_test.go` (where it was a local `countingFS`) to `internal/testutil/countfs`
+  once `navigation` wanted it. `internal/testutil/fanout` came out of the *first* draft of this
+  commit, which hand-copied the same 11-line release-barrier scaffold into all four packages — the
+  exact duplication the `countfs` extraction was avoiding, two files away.
+- **`internal/template/renderer_test.go:1591` — the test this finding calls "the pattern to copy" —
+  had no release barrier.** A bare `wg.Add`/`go`/`Wait` lets the first goroutine finish before the
+  last is scheduled, so its cold cache could already be warm. Migrated to `fanout.Run`. Six other
+  hand-rolled fan-outs remain unmigrated and equally barrier-less: `internal/template/cache_test.go:68`,
+  `internal/renderer/registry_test.go:307`, `internal/enricher/registry_test.go:133`,
+  `internal/provider/git_test.go:1051` and `:1108`, `internal/server/requestid_test.go:146`.
+- **`absOutput`'s `Once` is unreachable in production** — `Run` warms it at `build.go:94` before any
+  worker exists. Resolving `Output` once into `buildContext` (which already carries the shared deps)
+  would delete the cache, one error branch in `resolveOutputPath`, and the new test. Not done here;
+  filed as LOW below.
+
+#### LOW: `absOutputCache` is a lazy cache for a value that is never lazily needed — NEW (found by the simplify pass on §10.6)
+
+`cmd/gomddoc/build.go:47` memoizes `filepath.Abs(b.Output)` behind a `sync.Once` for the errgroup
+workers in the render and copy phases. But `Run` calls `absOutput()` at `build.go:94`, before any
+goroutine exists, so the `Once` never actually arbitrates anything — it is a lazy cache for a value
+that is eagerly computed. `buildContext` already carries the shared per-build state; putting the
+resolved path there removes the cache, the `resolve output directory: %w` branch in
+`resolveOutputPath`, and `TestAbsOutput_Concurrent`. Low priority: the current code is correct, just
+one layer deeper than the problem.
 
 **MEDIUM:** MCP `ExcludePatterns` is never set in any MCP test (grep count: 0), so dropping it from
 all five call sites passes the suite — and `MCPCmd.Run` is at 0% with no `cmd/gomddoc/mcp_test.go`, so

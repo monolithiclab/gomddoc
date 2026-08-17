@@ -18,6 +18,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
+	"github.com/monolithiclab/gomddoc/internal/testutil/fanout"
 	registryutil "github.com/monolithiclab/gomddoc/internal/testutil/registry"
 )
 
@@ -1540,4 +1541,36 @@ func TestBuildCmd_Run_JSONLDDates(t *testing.T) {
 			t.Errorf("index.html should carry %s; got:\n%s", want, html)
 		}
 	}
+}
+
+// TestAbsOutput_Concurrent covers the sync.Once behind absOutput from the state
+// the render and copy phases put it in: both run an errgroup limited to NumCPU,
+// and every worker resolves its output path through it.
+//
+// Run() warms the cache at build.go:94 before any worker exists, so a cold
+// concurrent first call only happens if that early call is ever removed — which
+// is exactly when the Once stops being decoration.
+//
+// Output is relative on purpose: filepath.Abs early-returns Clean(path) for an
+// absolute input, so a t.TempDir() path would skip the os.Getwd branch, the only
+// one that can fail, and the error check below would be asserting against
+// something that cannot error.
+func TestAbsOutput_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	b := &BuildCmd{Output: "out"}
+	want, err := filepath.Abs(b.Output)
+	if err != nil {
+		t.Fatalf("filepath.Abs() error = %v", err)
+	}
+
+	fanout.Run(50, func(i int) {
+		got, err := b.absOutput()
+		switch {
+		case err != nil:
+			t.Errorf("goroutine %d: absOutput() error = %v", i, err)
+		case got != want:
+			t.Errorf("goroutine %d: absOutput() = %q, want %q", i, got, want)
+		}
+	})
 }

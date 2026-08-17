@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io/fs"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"testing/fstest"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
+	"github.com/monolithiclab/gomddoc/internal/testutil/countfs"
 )
 
 // testProvider is a minimal Provider backed by fstest.MapFS for testing.
@@ -393,23 +393,6 @@ func TestTools_GetTOC(t *testing.T) {
 	}
 }
 
-// countingFS counts Open calls, which is how a cached navigation tree is told
-// apart from one rebuilt per request.
-//
-// The embedded field must stay fs.FS, not the concrete fstest.MapFS: promoting
-// ReadDir would satisfy fs.ReadDirFS, and fs.ReadDir would then bypass Open
-// entirely — a per-request rebuild would walk the tree without touching the
-// counter and the assertion below would go permanently green.
-type countingFS struct {
-	fs.FS
-	opens atomic.Int64
-}
-
-func (c *countingFS) Open(name string) (fs.File, error) {
-	c.opens.Add(1)
-	return c.FS.Open(name)
-}
-
 // TestTools_GetTOC_SharedGenerator pins both halves of the fix for "MCP TOC
 // rebuilds the nav tree per call": the generator is the pipeline's, so its
 // sync.Once survives across calls, and its title lookup keeps buildTree from
@@ -430,7 +413,7 @@ func TestTools_GetTOC_SharedGenerator(t *testing.T) {
 		t.Fatalf("building metadata index: %v", err)
 	}
 
-	cfs := &countingFS{FS: testFS}
+	cfs := countfs.New(testFS)
 	navGen := navigation.NewGenerator(cfs, "README.md", nil, nil)
 	navGen.SetTitleLookup(metaIdx.TitleForPath)
 
@@ -460,9 +443,9 @@ func TestTools_GetTOC_SharedGenerator(t *testing.T) {
 		t.Errorf("TOC label came from extractTitle (file scan), not the index: %s", text)
 	}
 
-	afterFirst := cfs.opens.Load()
+	afterFirst := cfs.Opens()
 	callTOC()
-	if afterSecond := cfs.opens.Load(); afterSecond != afterFirst {
+	if afterSecond := cfs.Opens(); afterSecond != afterFirst {
 		t.Errorf("opens went %d → %d across two calls; the tree is being rebuilt per call",
 			afterFirst, afterSecond)
 	}
