@@ -182,6 +182,14 @@ testsite/              # Lorem ipsum test site for quick testing
   failed if it stopped: every test row fed pre-sorted input, so the contract was unwritten *and*
   unpinned. Fold it in (`mergeSpans` sorts, then merges) and the contract cannot be violated. If it
   genuinely cannot be folded, the test suite owes it a row that violates the precondition.
+- **An accumulator is passed down, never returned and folded** — `walkAndBuildToDir` returned a fresh
+  `*buildStats` per walk and the caller folded each language's into the total by hand: four atomic
+  counters, three `Add` lines. Every file excluded under a language directory went uncounted in the
+  "Build complete" summary, and a language that failed mid-walk discarded the totals for files it had
+  already written. Folding through a method (`add`) fixes the arithmetic and leaves the shape that
+  produced it; taking `stats *buildStats` as a parameter — which `buildFile`, `copyFile` and
+  `copyStaticAssets` in the same file already did — deletes the fold, the per-walk allocation and the
+  bug class together. A counter that is never copied cannot be forgotten.
 - **A predicate that auto-classifies user-named things must be narrower than the standard it comes
   from** — `isLanguageDir` runs against every directory at the content root and there is no
   `languages:` config to override it, so a false positive is not a mislabel: the directory becomes
@@ -434,7 +442,8 @@ testsite/              # Lorem ipsum test site for quick testing
   timeouts + `time.Sleep` (deterministic, no flakiness, no unnecessary delays)
 - **One canonical test helper per pattern** — don't duplicate helpers across test files; place the
   shared helper in a `testhelpers_test.go` file, or `internal/testutil/<name>` once a second package
-  needs it (`countfs` moved there the moment `navigation` wanted `mcp`'s counting `fs.FS`)
+  needs it (`countfs` moved there the moment `navigation` wanted `mcp`'s counting `fs.FS`;
+  `logcapture` replaced six hand-rolled copies of the slog `SetDefault`/restore dance)
 - **Every lazy cache owes a cold-cache concurrency test** — a `sync.Once` or mutex populated on first
   request is only ever *used* cold-and-concurrent, and that is the one state a sequential
   call-it-twice test cannot reach. Go through `internal/testutil/fanout`.`Run(50, fn)`: the release
@@ -459,6 +468,20 @@ testsite/              # Lorem ipsum test site for quick testing
   reach past the label into the wrapped error's own text.
 - **Tests over parallel write paths must read what was written, and deny the sibling's content** —
   `os.Stat` cannot see one page's HTML landing in another page's `index.html`
+- **A `slog.Warn(…); continue` branch is tested both ways** — the whole point of degrading instead of
+  failing is that the survivors survive, so asserting only that the bad input was dropped passes a run
+  that dropped *everything*. That is the exact shape of the §9.7 `fs.Sub`/`fs.StatFS` bug: every read
+  failed and the build still exited 0. Assert the skip, the survivor, and the warning that names which
+  one was skipped — a silent skip and a logged one are indistinguishable to the caller, so the log
+  line *is* the contract, and a skip logged at `Debug` does not have one (`metadata.BuildIndex`'s
+  unreadable-file branch was the §9.7 blind spot and is now `Warn`; malformed frontmatter stays at
+  `Debug`, being a property of the content rather than an anomaly). Go through
+  `internal/testutil/logcapture`: `log.Has(msg, attrs...)` matches message and attributes on the
+  *same* record, where scanning rendered output for each separately passes when two records in the
+  same loop supply one each. Before writing a fake, check the branch is reachable at all —
+  `setupPipeline`'s per-language failure and `build.go`'s "Skipping language with no pipeline" are
+  unreachable through any real provider, and REVIEW.md says so rather than pretending a test covers
+  them.
 
 ### After implementing changes
 

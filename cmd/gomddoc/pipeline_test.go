@@ -1,13 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -15,6 +14,8 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/server"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
+	"github.com/monolithiclab/gomddoc/internal/testutil/logcapture"
+	testprovider "github.com/monolithiclab/gomddoc/internal/testutil/provider"
 )
 
 func TestBuildGitConfig(t *testing.T) {
@@ -454,6 +455,11 @@ func TestSetupLanguagePipelines_DefaultPipelineExcludesLanguages(t *testing.T) {
 	}
 }
 
+// tagsCollisionMsg is warnTagsContentCollision's message. The three tests below
+// assert on it exactly, so a reworded warning fails here rather than silently
+// leaving the collision unreported.
+const tagsCollisionMsg = "Content path collides with auto-generated tag pages"
+
 func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_File(t *testing.T) {
 	// This test does NOT use t.Parallel() because it captures global slog output.
 
@@ -472,12 +478,7 @@ func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_File(t *testing.T) {
 	}
 	defer prov.Close()
 
-	// Capture slog output.
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	prev := slog.Default()
-	slog.SetDefault(logger)
-	defer slog.SetDefault(prev)
+	log := logcapture.Install(t, slog.LevelWarn)
 
 	// Call setupLanguagePipelines, which should trigger the warning.
 	_, err = setupLanguagePipelines(cfg, prov, PipelineOptions{
@@ -490,10 +491,8 @@ func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_File(t *testing.T) {
 		t.Fatalf("setupLanguagePipelines error: %v", err)
 	}
 
-	// Check that the warning contains "tags.md".
-	logOutput := buf.String()
-	if !strings.Contains(logOutput, "tags.md") {
-		t.Errorf("expected warning containing 'tags.md', got: %s", logOutput)
+	if !log.Has(tagsCollisionMsg, slog.String("path", "tags.md"), slog.String("kind", "file")) {
+		t.Errorf("no collision warning naming tags.md as a file; log:\n%s", log)
 	}
 }
 
@@ -515,12 +514,7 @@ func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_Directory(t *testing
 	}
 	defer prov.Close()
 
-	// Capture slog output.
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	prev := slog.Default()
-	slog.SetDefault(logger)
-	defer slog.SetDefault(prev)
+	log := logcapture.Install(t, slog.LevelWarn)
 
 	// Call setupLanguagePipelines, which should trigger the warning.
 	_, err = setupLanguagePipelines(cfg, prov, PipelineOptions{
@@ -533,13 +527,8 @@ func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_Directory(t *testing
 		t.Fatalf("setupLanguagePipelines error: %v", err)
 	}
 
-	// Check that the warning contains "tags" directory.
-	logOutput := buf.String()
-	if !strings.Contains(logOutput, "tags") {
-		t.Errorf("expected warning containing 'tags', got: %s", logOutput)
-	}
-	if !strings.Contains(logOutput, "directory") {
-		t.Errorf("expected warning mentioning 'directory', got: %s", logOutput)
+	if !log.Has(tagsCollisionMsg, slog.String("path", "tags"), slog.String("kind", "directory")) {
+		t.Errorf("no collision warning naming tags as a directory; log:\n%s", log)
 	}
 }
 
@@ -561,12 +550,7 @@ func TestSetupLanguagePipelines_NoWarningWhenNoCollision(t *testing.T) {
 	}
 	defer prov.Close()
 
-	// Capture slog output.
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	prev := slog.Default()
-	slog.SetDefault(logger)
-	defer slog.SetDefault(prev)
+	log := logcapture.Install(t, slog.LevelWarn)
 
 	// Call setupLanguagePipelines, which should NOT trigger the collision warning.
 	_, err = setupLanguagePipelines(cfg, prov, PipelineOptions{
@@ -579,9 +563,108 @@ func TestSetupLanguagePipelines_NoWarningWhenNoCollision(t *testing.T) {
 		t.Fatalf("setupLanguagePipelines error: %v", err)
 	}
 
-	// Check that the warning does NOT contain "tags.md" collision message.
-	logOutput := buf.String()
-	if strings.Contains(logOutput, "collides with auto-generated tag pages") {
-		t.Errorf("unexpected collision warning when there should be none, got: %s", logOutput)
+	if log.Has(tagsCollisionMsg) {
+		t.Errorf("collision warning on a site with no colliding path; log:\n%s", log)
+	}
+}
+
+// subFailFS makes fs.Sub fail for one named directory and delegates everything
+// else to the FS it wraps.
+//
+// fs.Sub only calls a filesystem's own Sub method when it implements fs.SubFS,
+// which is why this fake is needed at all: os.DirFS is not an fs.SubFS, and
+// fstest.MapFS.Sub fails only for a path fs.ValidPath already rejects — a name
+// DetectLanguages can never return. Wrapping the fs.FS interface rather than the
+// concrete MapFS also keeps MapFS's own Sub from being promoted over this one.
+type subFailFS struct {
+	fs.FS
+	failDir string
+}
+
+func (s subFailFS) Sub(dir string) (fs.FS, error) {
+	if dir == s.failDir {
+		return nil, &fs.PathError{Op: "sub", Path: dir, Err: fs.ErrPermission}
+	}
+	return fs.Sub(s.FS, dir)
+}
+
+// TestSetupLanguagePipelines_SkipsLanguageOnSubFSFailure covers the first of the
+// per-language "slog.Warn and continue" branches. These are the paths that hid
+// the fs.Sub/fs.StatFS bug in REVIEW.md §9.7: a language silently vanishing from
+// the site while the build reports success.
+//
+// The degradation is deliberate — one unreadable language must not take the site
+// down — so the assertions run both ways. Checking only that fr-FR is absent
+// would pass a build that skipped every language, which is the shape the §9.7 bug
+// actually had.
+func TestSetupLanguagePipelines_SkipsLanguageOnSubFSFailure(t *testing.T) {
+	// This test does NOT use t.Parallel(): it captures global slog output.
+
+	files := fstest.MapFS{
+		"README.md":      {Data: []byte("# Home")},
+		"fr-FR/guide.md": {Data: []byte("# Guide")},
+		"de-DE/guide.md": {Data: []byte("# Anleitung")},
+	}
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: t.TempDir(), Port: ":8080"})
+	if err != nil {
+		t.Fatalf("config error: %v", err)
+	}
+	prov := testprovider.NewMemoryProvider(
+		subFailFS{FS: files, failDir: "fr-FR"}, cfg.Site.DefaultIndex, cfg.Site.DirIndex)
+
+	log := logcapture.Install(t, slog.LevelWarn)
+
+	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{})
+	if err != nil {
+		t.Fatalf("setupLanguagePipelines error = %v; a failing language must not fail the site", err)
+	}
+
+	if got := slices.Sorted(maps.Keys(lp.ByLang)); !slices.Equal(got, []string{"de-DE"}) {
+		t.Errorf("built pipelines = %v, want [de-DE]: fr-FR must be skipped and de-DE must survive it", got)
+	}
+	if !log.Has("Failed to create sub-FS for language", slog.String("lang", "fr-FR")) {
+		t.Errorf("the skip left no warning naming fr-FR; log:\n%s", log)
+	}
+}
+
+// TestSetupLanguagePipelines_SkipsLanguageOnProviderFailure covers the second
+// branch. Unlike the sub-FS failure this one is reachable without a fake:
+// NewFilesystemProviderFromFS rejects an empty default index, and that is the
+// provider's only error, so every language fails and the site is left with just
+// its default pipeline — still a success, still silent apart from the warnings.
+func TestSetupLanguagePipelines_SkipsLanguageOnProviderFailure(t *testing.T) {
+	// This test does NOT use t.Parallel(): it captures global slog output.
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "guide.md", "# Guide")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatalf("config error: %v", err)
+	}
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatalf("provider error: %v", err)
+	}
+	defer prov.Close()
+
+	// Emptied after the provider is built, so the failure lands on the
+	// per-language provider rather than on the one passed in.
+	cfg.Site.DefaultIndex = ""
+
+	log := logcapture.Install(t, slog.LevelWarn)
+
+	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{})
+	if err != nil {
+		t.Fatalf("setupLanguagePipelines error = %v; a failing language must not fail the site", err)
+	}
+
+	if len(lp.ByLang) != 0 {
+		t.Errorf("built pipelines = %v, want none", slices.Sorted(maps.Keys(lp.ByLang)))
+	}
+	if !log.Has("Failed to create provider for language", slog.String("lang", "fr-FR")) {
+		t.Errorf("the skip left no warning naming fr-FR; log:\n%s", log)
 	}
 }

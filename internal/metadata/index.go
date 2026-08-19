@@ -99,7 +99,14 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, excludePatterns []string) (*I
 
 			content, readErr := fs.ReadFile(rootFS, p)
 			if readErr != nil {
-				slog.Debug("skipping unreadable file during index build", "path", p, "error", readErr)
+				// Warn, not Debug: the walk one phase up already listed this
+				// path, so failing to read it is an anomaly rather than a
+				// property of the content. At Debug the operator saw nothing —
+				// which is how the fs.Sub/fs.StatFS bug in REVIEW.md §9.7
+				// managed to fail *every* read and still report a built site.
+				// Malformed frontmatter below stays at Debug: that is a
+				// property of the content, and the page is still served.
+				slog.Warn("skipping unreadable file during index build", "path", p, "error", readErr)
 				return nil
 			}
 

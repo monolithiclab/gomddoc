@@ -281,8 +281,8 @@ func TestWalkAndBuild(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	bc := newTestBuildContext(t, siteConfig, templateRenderer)
 
-	stats, err := b.walkAndBuild(contentRoot, bc)
-	if err != nil {
+	stats := &buildStats{}
+	if err := b.walkAndBuild(contentRoot, bc, stats); err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
 
@@ -323,8 +323,8 @@ func TestWalkAndBuild_MixedContent(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	bc := newTestBuildContext(t, siteConfig, templateRenderer)
 
-	stats, err := b.walkAndBuild(contentRoot, bc)
-	if err != nil {
+	stats := &buildStats{}
+	if err := b.walkAndBuild(contentRoot, bc, stats); err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
 
@@ -356,8 +356,8 @@ func TestWalkAndBuild_IndexMDAndREADME(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	bc := newTestBuildContext(t, siteConfig, templateRenderer)
 
-	stats, err := b.walkAndBuild(contentRoot, bc)
-	if err != nil {
+	stats := &buildStats{}
+	if err := b.walkAndBuild(contentRoot, bc, stats); err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
 
@@ -409,6 +409,54 @@ func TestBuildCmd_Run(t *testing.T) {
 
 	// Static assets may or may not exist depending on theme config
 	// Just verify the command succeeded without error
+}
+
+// TestWalkAndBuildLang_CountsIntoSharedStats pins that a language walk adds into
+// the build's one buildStats rather than a private copy the caller has to fold
+// back by hand. The fold used to be three Add calls for a four-field struct, so
+// every file excluded under a language directory went uncounted in the "Build
+// complete" summary.
+//
+// Both counters are asserted from a struct the root walk has already written to,
+// because "the language walk added nothing" and "the language walk added
+// everything twice" look identical from a zeroed one.
+func TestWalkAndBuildLang_CountsIntoSharedStats(t *testing.T) {
+	t.Parallel()
+
+	b := &BuildCmd{Output: t.TempDir()}
+	contentRoot := fstest.MapFS{
+		"README.md":       &fstest.MapFile{Data: []byte("# Home")},
+		"fr-FR/README.md": &fstest.MapFile{Data: []byte("# Accueil")},
+		"fr-FR/secret.md": &fstest.MapFile{Data: []byte("# Secret")},
+	}
+
+	templateRenderer, siteConfig := newTestTemplateRenderer(t)
+	bc := newTestBuildContext(t, siteConfig, templateRenderer)
+	bc.exclude = []string{"fr-FR/"}
+
+	stats := &buildStats{}
+	if err := b.walkAndBuild(contentRoot, bc, stats); err != nil {
+		t.Fatalf("walkAndBuild failed: %v", err)
+	}
+	// The root walk skips fr-FR as a *directory*, and SkipWalkEntry's counter
+	// only fires for files, so nothing under it is counted yet.
+	if got := stats.skippedFiles.Load(); got != 0 {
+		t.Fatalf("root walk skippedFiles = %d, want 0; the fixture no longer isolates the language walk", got)
+	}
+
+	langBC := *bc
+	langBC.exclude = []string{"secret.md"}
+	langBC.lang = "fr-FR"
+	if err := b.walkAndBuildLang(contentRoot, &langBC, "fr-FR", stats); err != nil {
+		t.Fatalf("walkAndBuildLang failed: %v", err)
+	}
+
+	if got := stats.skippedFiles.Load(); got != 1 {
+		t.Errorf("skippedFiles = %d, want 1 (fr-FR/secret.md)", got)
+	}
+	if got := stats.markdownFiles.Load(); got != 2 {
+		t.Errorf("markdownFiles = %d, want 2 (one README per language)", got)
+	}
 }
 
 // The extension redirect stub is written at the *source* path, so the file is
@@ -694,8 +742,8 @@ func TestWalkAndBuild_HiddenDir(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	bc := newTestBuildContext(t, siteConfig, templateRenderer)
 
-	stats, err := b.walkAndBuild(contentRoot, bc)
-	if err != nil {
+	stats := &buildStats{}
+	if err := b.walkAndBuild(contentRoot, bc, stats); err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
 
@@ -833,7 +881,7 @@ func TestWalkAndBuild_WriteError(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	bc := newTestBuildContext(t, siteConfig, templateRenderer)
 
-	_, err := b.walkAndBuild(contentRoot, bc)
+	err := b.walkAndBuild(contentRoot, bc, &buildStats{})
 	if err == nil {
 		t.Error("walkAndBuild should fail when output dir is read-only")
 	}
@@ -849,8 +897,8 @@ func TestWalkAndBuild_EmptyFS(t *testing.T) {
 	templateRenderer, siteConfig := newTestTemplateRenderer(t)
 	bc := newTestBuildContext(t, siteConfig, templateRenderer)
 
-	stats, err := b.walkAndBuild(contentRoot, bc)
-	if err != nil {
+	stats := &buildStats{}
+	if err := b.walkAndBuild(contentRoot, bc, stats); err != nil {
 		t.Fatalf("walkAndBuild failed: %v", err)
 	}
 

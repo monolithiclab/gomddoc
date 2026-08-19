@@ -57,6 +57,14 @@ type BuildCmd struct {
 const sentinelFile = ".gomddoc-build"
 
 // buildStats tracks statistics for the build process.
+//
+// One instance per build, created in Run and passed down: every walk, including
+// each language's, adds into the same struct. The counters were once returned
+// per walk and folded at the call site, which hand-wrote three Adds for four
+// fields — every file excluded under a language directory went uncounted in the
+// "Build complete" summary, and a partial language failure discarded the totals
+// for files already written. A counter that is never copied cannot be forgotten.
+//
 // All fields use atomic types for safe concurrent updates during parallel builds.
 type buildStats struct {
 	markdownFiles atomic.Int64
@@ -162,8 +170,8 @@ func (b *BuildCmd) Run() error {
 		tFunc:            bundle.TFunc(cfg.Site.Language),
 	}
 
-	stats, err := b.walkAndBuild(contentRoot, bc)
-	if err != nil {
+	stats := &buildStats{}
+	if err := b.walkAndBuild(contentRoot, bc, stats); err != nil {
 		return err
 	}
 
@@ -236,14 +244,10 @@ func (b *BuildCmd) Run() error {
 		langBC.lang = lang
 		langBC.tFunc = bundle.TFunc(lang)
 
-		langStats, langErr := b.walkAndBuildLang(contentRoot, &langBC, lang)
-		if langErr != nil {
+		if langErr := b.walkAndBuildLang(contentRoot, &langBC, lang, stats); langErr != nil {
 			slog.Warn("Failed to build language", slog.String("lang", lang), slog.Any("error", langErr))
 			continue
 		}
-		stats.markdownFiles.Add(langStats.markdownFiles.Load())
-		stats.copiedFiles.Add(langStats.copiedFiles.Load())
-		stats.totalBytes.Add(langStats.totalBytes.Load())
 
 		// Generate per-language 404 page
 		langErrorContent, langErrPage := b.renderErrorPage(http.StatusNotFound, &langBC)
@@ -368,24 +372,22 @@ func isDirEmpty(dir string) (bool, error) {
 }
 
 // walkAndBuild walks the content root and generates the static site.
-func (b *BuildCmd) walkAndBuild(contentRoot fs.FS, bc *buildContext) (*buildStats, error) {
-	return b.walkAndBuildToDir(contentRoot, bc, "")
+func (b *BuildCmd) walkAndBuild(contentRoot fs.FS, bc *buildContext, stats *buildStats) error {
+	return b.walkAndBuildToDir(contentRoot, bc, "", stats)
 }
 
 // walkAndBuildLang builds a single non-default language into its subdirectory.
-func (b *BuildCmd) walkAndBuildLang(contentRoot fs.FS, bc *buildContext, lang string) (*buildStats, error) {
+func (b *BuildCmd) walkAndBuildLang(contentRoot fs.FS, bc *buildContext, lang string, stats *buildStats) error {
 	langFS, err := fs.Sub(contentRoot, lang)
 	if err != nil {
-		return nil, fmt.Errorf("create sub-FS for language %s: %w", lang, err)
+		return fmt.Errorf("create sub-FS for language %s: %w", lang, err)
 	}
-	return b.walkAndBuildToDir(langFS, bc, lang)
+	return b.walkAndBuildToDir(langFS, bc, lang, stats)
 }
 
 // walkAndBuildToDir is the shared implementation for walkAndBuild and walkAndBuildLang.
 // When outputPrefix is non-empty, all output files are written under that subdirectory.
-func (b *BuildCmd) walkAndBuildToDir(contentRoot fs.FS, bc *buildContext, outputPrefix string) (*buildStats, error) {
-	stats := &buildStats{}
-
+func (b *BuildCmd) walkAndBuildToDir(contentRoot fs.FS, bc *buildContext, outputPrefix string, stats *buildStats) error {
 	var filePaths []string
 	dirsWithIndexMD := make(map[string]bool)
 	err := fs.WalkDir(contentRoot, ".", func(filePath string, d fs.DirEntry, err error) error {
@@ -410,7 +412,7 @@ func (b *BuildCmd) walkAndBuildToDir(contentRoot fs.FS, bc *buildContext, output
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	g, ctx := errgroup.WithContext(context.Background())
@@ -431,11 +433,7 @@ func (b *BuildCmd) walkAndBuildToDir(contentRoot fs.FS, bc *buildContext, output
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	return stats, nil
+	return g.Wait()
 }
 
 // buildFile renders a file to HTML and writes it to the output directory.

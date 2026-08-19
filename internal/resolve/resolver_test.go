@@ -1,13 +1,13 @@
 package resolve
 
 import (
-	"bytes"
 	"errors"
 	"io/fs"
 	"log/slog"
-	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/testutil/logcapture"
 )
 
 // mockRenderer returns a RendererCheck that returns true for the given MIME types.
@@ -371,10 +371,7 @@ func (u unreadableDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
 //
 // No t.Parallel: slog's default logger is process-wide state.
 func TestResolver_UnreadableSubtreeIsLoggedAndSkipped(t *testing.T) {
-	var buf bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
-	defer slog.SetDefault(prev)
+	log := logcapture.Install(t, slog.LevelWarn)
 
 	fsys := unreadableDirFS{
 		FS: fstest.MapFS{
@@ -398,10 +395,8 @@ func TestResolver_UnreadableSubtreeIsLoggedAndSkipped(t *testing.T) {
 		t.Error("Resolve(\"secret/hidden\") mapped, want no mapping for an unreadable subtree")
 	}
 
-	logged := buf.String()
-	for _, want := range []string{"skipping unreadable path", "secret", errUnreadableDir.Error()} {
-		if !strings.Contains(logged, want) {
-			t.Errorf("log %q missing %q", logged, want)
-		}
+	if !log.Has("clean-URL index: skipping unreadable path",
+		slog.String("path", "secret"), slog.Any("error", errUnreadableDir)) {
+		t.Errorf("the skipped subtree left no warning naming it and the cause; log:\n%s", log)
 	}
 }

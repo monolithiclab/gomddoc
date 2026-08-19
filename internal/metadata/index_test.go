@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	"github.com/monolithiclab/gomddoc/internal/testutil/logcapture"
 	"github.com/monolithiclab/gomddoc/internal/testutil/markdown"
 )
 
@@ -524,5 +527,67 @@ func TestCountByTag(t *testing.T) {
 		if got, want := idx.CountByTag(tt.tag), len(idx.ByTag(tt.tag)); got != want {
 			t.Errorf("CountByTag(%q)=%d disagrees with len(ByTag)=%d", tt.tag, got, want)
 		}
+	}
+}
+
+// erroringFS fails Open for one named path and delegates everything else.
+//
+// It embeds the fs.FS interface, not the concrete fstest.MapFS: promoting
+// ReadFile would satisfy fs.ReadFileFS, and BuildIndex's fs.ReadFile would then
+// bypass this Open and read the file successfully — the test would pass against
+// a build that never took the branch it exists to cover.
+type erroringFS struct {
+	fs.FS
+	failPath string
+}
+
+func (e erroringFS) Open(name string) (fs.File, error) {
+	if name == e.failPath {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+	}
+	return e.FS.Open(name)
+}
+
+// TestBuildIndex_SkipsUnparseableFilesWithoutFailing pins the two skips in phase
+// 2: a file the walk listed but cannot be read, and one whose frontmatter is not
+// YAML. Both return nil, so the build succeeds with the page simply absent.
+//
+// That is the intended contract — one corrupt page must not blank a site — but
+// it is also the mechanism that hid the fs.Sub/fs.StatFS bug in REVIEW.md §9.7,
+// so the assertions run both ways and the read failure's warning is part of
+// them. Absence alone would pass an index that skipped everything, silently,
+// which is exactly what §9.7 did.
+func TestBuildIndex_SkipsUnparseableFilesWithoutFailing(t *testing.T) {
+	// No t.Parallel: logcapture installs the process-wide default logger.
+
+	log := logcapture.Install(t, slog.LevelWarn)
+
+	files := fstest.MapFS{
+		"good.md":       {Data: []byte("---\ntitle: Good\ntags:\n  - keep\n---\n# Good")},
+		"unreadable.md": {Data: []byte("---\ntitle: Unreadable\n---\n# Unreadable")},
+		"malformed.md":  {Data: []byte("---\ntitle: [unterminated\n---\n# Malformed")},
+	}
+	rootFS := erroringFS{FS: files, failPath: "unreadable.md"}
+
+	idx, err := BuildIndex(context.Background(), rootFS, nil)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v (a skipped file must not fail the build)", err)
+	}
+
+	got := make([]string, 0, len(files))
+	for _, p := range idx.AllPages() {
+		got = append(got, p.Path)
+	}
+	slices.Sort(got)
+	// Exhaustive, not "contains": a Contains check on the good page would pass
+	// an index that also kept a half-parsed unreadable.md.
+	if want := []string{"/good.md"}; !slices.Equal(got, want) {
+		t.Errorf("indexed pages = %v, want %v", got, want)
+	}
+	if !log.Has("skipping unreadable file during index build", slog.String("path", "unreadable.md")) {
+		t.Errorf("an unreadable file was dropped without a warning naming it; log:\n%s", log)
+	}
+	if tags := idx.AllTags(); !slices.Equal(tags, []string{"keep"}) {
+		t.Errorf("AllTags = %v, want [keep] — the surviving page's tags must still index", tags)
 	}
 }

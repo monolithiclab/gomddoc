@@ -2197,7 +2197,7 @@ per-language sitemap full of English URLs is invisible. `feed.xml` content is ne
 > That leak is now fixed (see the §10.3 finding below), and `wantRootLocs` asserts the corrected
 > behaviour — the root sitemap holds default-language URLs only.
 
-#### HIGH: silent-degradation branches untested
+#### ✅ FIXED: silent-degradation branches untested
 
 `cmd/gomddoc/pipeline.go:128-130,134-136,140-143` — all three `slog.Warn(...) + continue` paths are
 uncovered. These are the exact branches that hid the §9.7 `fs.Sub`/`fs.StatFS` bug. The bug was fixed;
@@ -2206,6 +2206,58 @@ uncovered. These are the exact branches that hid the §9.7 `fs.Sub`/`fs.StatFS` 
 where per-language failures `slog.Warn; continue` while default-language failures `return err` — a
 build can exit 0 having produced no French site. (`build.go:221-223` also aggregates 3 of 4 counters,
 silently dropping `skippedFiles`.)
+
+**Fixed.** The dropped counter was a real bug. The first fix folded all four fields through a
+`(*buildStats).add` method; the simplify pass took it a level deeper. `walkAndBuildToDir` now takes
+`stats *buildStats` — the shape `buildFile`, `copyFile` and `copyStaticAssets` in the same file
+already used — instead of returning a fresh one per walk, which deletes the aggregation site, the
+method and the bug class in one go. It also fixes a second symptom of the same shape: a language
+failing mid-walk used to discard the totals for files it had already written to disk.
+
+Tests, each mutation-verified:
+
+- `TestSetupLanguagePipelines_SkipsLanguageOnSubFSFailure` — the `fs.Sub` branch, driven by a
+  `subFailFS` fake. `fs.Sub` only consults a filesystem's own `Sub` method when it implements
+  `fs.SubFS`, so no real provider can reach this branch: `os.DirFS` is not an `fs.SubFS`, and
+  `fstest.MapFS.Sub` fails only for a path `fs.ValidPath` already rejects, which `DetectLanguages`
+  cannot return. The fake is still worth its keep — it is the only way to exercise the *contract*
+  (one language dropped, the rest built), which the provider-failure branch below cannot show
+  because its trigger is global.
+- `TestSetupLanguagePipelines_SkipsLanguageOnProviderFailure` — the `NewFilesystemProviderFromFS`
+  branch, reachable without a fake since an empty `DefaultIndex` is that constructor's only error.
+- `TestWalkAndBuildLang_CountsIntoSharedStats` — the counter fix, asserted directly on the struct
+  rather than by string-matching a `slog` record from a full `BuildCmd.Run`. The only excluded *file*
+  lives inside `fr-FR/`, because the root walk skips `fr-FR` as a directory and `SkipWalkEntry`'s
+  counter only fires for files.
+- `TestBuildIndex_SkipsUnparseableFilesWithoutFailing` — the two `index.go` skips.
+
+Both language tests assert **both ways** — the bad language absent *and* the good one still built.
+Asserting only the absence passes a run that skipped every language, which is the shape the §9.7 bug
+actually had. The metadata test follows the same principle and adds the piece the others already had:
+the unreadable-file skip logged at `Debug`, so an index that dropped every page was invisible at the
+default level — precisely the §9.7 failure. It is now `Warn` and the test asserts the record.
+Malformed frontmatter stays at `Debug`: a property of the content, not an anomaly, and the page is
+still served.
+
+The five hand-rolled `slog.SetDefault`/restore blocks these tests would have become the sixth through
+tenth of are now `internal/testutil/logcapture`. It captures `slog.Record`s rather than rendered text,
+so `log.Has(msg, attrs...)` matches message and attributes on the *same* record: the old
+`strings.Contains(out, "lang=fr-FR")` shape passes when two records in the same loop supply one each,
+and `strings.Contains(out, "skipped_files=1")` matches `skipped_files=10`. Converting the three
+pre-existing tag-collision tests turned three fuzzy substring checks into exact
+`path`/`kind` assertions.
+
+Two of the cited branches are **unreachable by construction, not coverage gaps**, and were documented
+rather than faked:
+
+- `pipeline.go`'s third branch (per-language `setupPipeline` failure) has exactly two error returns,
+  `prov.RootFS` and `ValidateDefaultTheme`. `FilesystemProvider.RootFS` never errors, and
+  `OverlayFS.Open` falls through to embedded assets on any error, so the default theme always
+  validates. Once the default pipeline succeeded, no language pipeline can fail here.
+- `build.go:218-223` ("Skipping language with no pipeline") is a legitimate guard —
+  `detectedLangs` is `lp.Languages` (every detected directory) while `lp.ByLang` holds only the ones
+  that built — but it can only fire if one of the two branches above fired first, which the CLI's
+  filesystem and git providers cannot do.
 
 #### ✅ FIXED: `navigation.Generator`'s lazy cache has zero concurrent coverage
 
@@ -2252,6 +2304,38 @@ that is eagerly computed. `buildContext` already carries the shared per-build st
 resolved path there removes the cache, the `resolve output directory: %w` branch in
 `resolveOutputPath`, and `TestAbsOutput_Concurrent`. Low priority: the current code is correct, just
 one layer deeper than the problem.
+
+#### MEDIUM: `LanguagePipeline.Languages` and `.ByLang` are allowed to disagree — NEW (found by the simplify pass on §10.6)
+
+`cmd/gomddoc/pipeline.go:150-186` — `Languages` holds every detected BCP 47 directory while `ByLang`
+holds only the ones whose pipeline built, so a skipped language stays in `Languages`. `build.go:232`
+nil-checks the gap; the three other consumers do not — `tmpl.BuildLanguageInfos` (`build.go:161`,
+which renders the language switcher), `writeSitemapIndex` (`build.go:196`) and serve's
+`AllLanguages` (`pipeline.go:491`). A skipped language therefore keeps a switcher entry and a
+sitemap-index entry pointing at content that was never built. Dropping failed languages from
+`Languages` at the point they are skipped makes the disagreement unrepresentable and lets
+`build.go:232`'s guard go. Currently unreachable in practice (see the two documented-unreachable
+branches above), which is why this is MEDIUM and not HIGH.
+
+#### LOW: build re-derives the language sub-FS the pipeline already built — NEW (found by the simplify pass on §10.6)
+
+`cmd/gomddoc/build.go:389` calls `fs.Sub(contentRoot, lang)` for a sub-FS `setupLanguagePipelines`
+already built at `pipeline.go:159` for the same language. That is the "a cached object is shared
+through the pipeline, never reconstructed at the consumer" convention, one call short of a violation
+that matters — it also means `walkAndBuildLang` carries an error branch that only exists because it
+re-derives. Publishing the language content root as a `Pipeline` field deletes both.
+
+#### LOW: three copies of the "fail one path" `fs.FS` fake — NEW (found by the simplify pass on §10.6)
+
+`internal/resolve/resolver_test.go` (`unreadableDirFS`, fails `ReadDir`), `internal/metadata/index_test.go`
+(`erroringFS`, fails `Open`) and `cmd/gomddoc/pipeline_test.go` (`subFailFS`, fails `Sub`) are the same
+fake against three methods, and each re-derives the same non-obvious contract in its doc comment:
+embed the `fs.FS` *interface*, never the concrete `fstest.MapFS`, or the promoted method satisfies the
+optional interface and `io/fs` routes around the fake. `internal/testutil/countfs` documents it a
+fourth time. An `internal/testutil/failfs` with three small types — deliberately not one type with
+three methods, which would always satisfy `fs.ReadDirFS` and `fs.SubFS` and reintroduce the trap —
+is where that reasoning gets written once. Deferred: three packages, and the extraction is worth its
+own commit.
 
 **MEDIUM:** MCP `ExcludePatterns` is never set in any MCP test (grep count: 0), so dropping it from
 all five call sites passes the suite — and `MCPCmd.Run` is at 0% with no `cmd/gomddoc/mcp_test.go`, so

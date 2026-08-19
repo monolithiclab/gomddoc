@@ -6,7 +6,6 @@ import (
 	"context"
 	"io/fs"
 	"strings"
-	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -14,15 +13,22 @@ import (
 
 // MemoryProvider implements provider.Provider using an in-memory filesystem
 type MemoryProvider struct {
-	fsys         fstest.MapFS
+	fsys         fs.FS
 	defaultIndex string
 	dirIndex     bool
 }
 
 var _ provider.Provider = (*MemoryProvider)(nil)
 
-// NewMemoryProvider creates a provider backed by fstest.MapFS (in-memory)
-func NewMemoryProvider(files fstest.MapFS, defaultIndex string, dirIndex bool) *MemoryProvider {
+// NewMemoryProvider creates a provider backed by an in-memory filesystem,
+// usually an fstest.MapFS.
+//
+// The field is the fs.FS interface rather than fstest.MapFS so a test can wrap
+// the tree — a fake that fails one path, a counting FS — and have the wrapper
+// reach RootFS and the read methods alike. Taking the concrete type instead
+// forces the caller to override RootFS, which leaves the provider reading a
+// tree that disagrees with the one it hands out.
+func NewMemoryProvider(files fs.FS, defaultIndex string, dirIndex bool) *MemoryProvider {
 	return &MemoryProvider{
 		fsys:         files,
 		defaultIndex: defaultIndex,
