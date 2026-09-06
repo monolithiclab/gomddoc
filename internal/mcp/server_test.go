@@ -58,6 +58,32 @@ func (f *testFixture) close(t *testing.T) {
 	f.cancel()
 }
 
+// testExcludes is the fixture's author-configured exclude list, wired exactly
+// as `gomddoc mcp` wires it: into every index *and* into ServerDeps. The
+// indexes are what keep excluded pages out of list_pages, search_docs and the
+// TOC; ServerDeps.ExcludePatterns is the only thing standing between an agent
+// and a page it names by path, which is why setupTest sets it rather than
+// leaving it nil.
+var testExcludes = []string{"private/", "*.draft.md"}
+
+// restrictedPaths are fixture paths that every MCP entry point taking a path
+// must refuse. Both halves of provider.IsRestrictedPath are represented:
+// dot-prefixed paths (IsHiddenPath, an unconditional invariant) and paths
+// matching testExcludes (IsExcludedPath, the author's configuration).
+//
+// The excluded two exist in the fixture tree and are readable through the
+// provider, so a handler that drops its guard serves them — which is what
+// makes these assertions falsifiable. docs/.secret/notes.md deliberately does
+// not exist: a hidden path must be refused before anything tries to read it.
+var restrictedPaths = []string{
+	".env",
+	".git/config",
+	".gomddoc/config.yml",
+	"docs/.secret/notes.md",
+	"private/notes.md",
+	"roadmap.draft.md",
+}
+
 // setupTest creates an MCP server with test content and a connected client.
 func setupTest(t *testing.T) *testFixture {
 	t.Helper()
@@ -71,15 +97,19 @@ func setupTest(t *testing.T) *testFixture {
 		".env":                &fstest.MapFile{Data: []byte("SECRET=hunter2")},
 		".gomddoc/config.yml": &fstest.MapFile{Data: []byte("theme: default")},
 		".git/config":         &fstest.MapFile{Data: []byte("[core]\nbare = false")},
+		// Excluded — present in the tree, absent from every index below, and
+		// reachable only by naming the path. See restrictedPaths.
+		"private/notes.md": &fstest.MapFile{Data: []byte("---\ntitle: Private Notes\ntags:\n  - go\n---\n# Private Notes\n\nInternal only.\n")},
+		"roadmap.draft.md": &fstest.MapFile{Data: []byte("---\ntitle: Roadmap Draft\ntags:\n  - go\n---\n# Roadmap Draft\n\n## Later\n\nUnannounced.\n")},
 	}
 
 	ctx := context.Background()
 
-	metaIdx, err := metadata.BuildIndex(ctx, testFS, nil)
+	metaIdx, err := metadata.BuildIndex(ctx, testFS, testExcludes)
 	if err != nil {
 		t.Fatalf("building metadata index: %v", err)
 	}
-	searchIdx, err := search.BuildIndex(ctx, testFS, metaIdx, nil)
+	searchIdx, err := search.BuildIndex(ctx, testFS, metaIdx, testExcludes)
 	if err != nil {
 		t.Fatalf("building search index: %v", err)
 	}
@@ -89,15 +119,16 @@ func setupTest(t *testing.T) *testFixture {
 	// Wired the way the pipeline wires it: one generator, titles from the
 	// metadata index. TestTools_GetTOC asserts on those titles, so a nil lookup
 	// (or a second generator) shows up as headings instead of frontmatter.
-	navGen := navigation.NewGenerator(testFS, "README.md", nil, nil)
+	navGen := navigation.NewGenerator(testFS, "README.md", testExcludes, nil)
 	navGen.SetTitleLookup(metaIdx.TitleForPath)
 
 	mcpServer := NewServer(ServerDeps{
-		Provider:     prov,
-		MetaIndex:    metaIdx,
-		SearchIndex:  searchIdx,
-		NavGenerator: navGen,
-		Version:      "test",
+		Provider:        prov,
+		MetaIndex:       metaIdx,
+		SearchIndex:     searchIdx,
+		NavGenerator:    navGen,
+		ExcludePatterns: testExcludes,
+		Version:         "test",
 	})
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -571,110 +602,85 @@ func TestPrompts_SummarizePage(t *testing.T) {
 	}
 }
 
-// TestTools_HiddenPathBlocking verifies that MCP tools reject hidden paths,
-// preventing access to .env, .git/, .gomddoc/ etc. via the MCP entry point.
-func TestTools_HiddenPathBlocking(t *testing.T) {
+// TestTools_RestrictedPathBlocking verifies that MCP tools reject hidden and
+// excluded paths, preventing access to .env, .git/, .gomddoc/ and anything the
+// author excluded via the MCP entry point.
+func TestTools_RestrictedPathBlocking(t *testing.T) {
 	t.Parallel()
 	f := setupTest(t)
 	defer f.close(t)
 
-	hiddenPaths := []string{
-		".env",
-		".git/config",
-		".gomddoc/config.yml",
-		"docs/.secret/notes.md",
+	// Every tool refuses the same way, so the name is all that varies —
+	// read_section aside, which needs a heading to look for. "later" is
+	// roadmap.draft.md's: a heading the file really has, so a read_section that
+	// lost its guard answers with the section instead of "not found".
+	tools := []struct {
+		name      string
+		headingID string
+	}{
+		{name: "read_page"},
+		{name: "read_section", headingID: "later"},
+		{name: "find_related"},
 	}
 
-	t.Run("read_page", func(t *testing.T) {
-		for _, p := range hiddenPaths {
-			result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
-				Name:      "read_page",
-				Arguments: map[string]any{"path": p},
-			})
-			if err != nil {
-				t.Fatalf("CallTool read_page(%s): %v", p, err)
+	for _, tc := range tools {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, p := range restrictedPaths {
+				args := map[string]any{"path": p}
+				if tc.headingID != "" {
+					args["heading_id"] = tc.headingID
+				}
+				result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
+					Name:      tc.name,
+					Arguments: args,
+				})
+				if err != nil {
+					t.Fatalf("CallTool %s(%s): %v", tc.name, p, err)
+				}
+				text := result.Content[0].(*mcp.TextContent).Text
+				// "not found" and nothing looser: find_related answers an
+				// unindexed page with "No tags found", which is what a
+				// dropped guard produces for an excluded path and must not
+				// be mistaken for a refusal.
+				if !strings.Contains(text, "not found") {
+					t.Errorf("%s(%q) should refuse a restricted path, got: %s", tc.name, p, text)
+				}
 			}
-			text := result.Content[0].(*mcp.TextContent).Text
-			if !strings.Contains(text, "not found") {
-				t.Errorf("read_page(%q) should block hidden path, got: %s", p, text)
-			}
-		}
-	})
-
-	t.Run("read_section", func(t *testing.T) {
-		for _, p := range hiddenPaths {
-			result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
-				Name:      "read_section",
-				Arguments: map[string]any{"path": p, "heading_id": "any"},
-			})
-			if err != nil {
-				t.Fatalf("CallTool read_section(%s): %v", p, err)
-			}
-			text := result.Content[0].(*mcp.TextContent).Text
-			if !strings.Contains(text, "not found") {
-				t.Errorf("read_section(%q) should block hidden path, got: %s", p, text)
-			}
-		}
-	})
-
-	t.Run("find_related", func(t *testing.T) {
-		for _, p := range hiddenPaths {
-			result, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{
-				Name:      "find_related",
-				Arguments: map[string]any{"path": p},
-			})
-			if err != nil {
-				t.Fatalf("CallTool find_related(%s): %v", p, err)
-			}
-			text := result.Content[0].(*mcp.TextContent).Text
-			if !strings.Contains(text, "not found") && !strings.Contains(text, "No tags found") {
-				t.Errorf("find_related(%q) should block hidden path, got: %s", p, text)
-			}
-		}
-	})
+		})
+	}
 }
 
-// TestPrompts_SummarizePage_HiddenPathBlocking verifies that summarize_page rejects hidden paths.
-func TestPrompts_SummarizePage_HiddenPathBlocking(t *testing.T) {
+// TestPrompts_SummarizePage_RestrictedPathBlocking verifies that summarize_page
+// rejects hidden and excluded paths.
+func TestPrompts_SummarizePage_RestrictedPathBlocking(t *testing.T) {
 	t.Parallel()
 	f := setupTest(t)
 	defer f.close(t)
 
-	hiddenPaths := []string{
-		".env",
-		".git/config",
-		".gomddoc/config.yml",
-	}
-
-	for _, p := range hiddenPaths {
+	for _, p := range restrictedPaths {
 		_, err := f.session.GetPrompt(context.Background(), &mcp.GetPromptParams{
 			Name:      "summarize_page",
 			Arguments: map[string]string{"path": p},
 		})
 		if err == nil {
-			t.Errorf("summarize_page(%q) should reject hidden path", p)
+			t.Errorf("summarize_page(%q) should reject a restricted path", p)
 		}
 	}
 }
 
 // TestResources_HiddenPathBlocking verifies that MCP page resources reject hidden paths.
-func TestResources_HiddenPathBlocking(t *testing.T) {
+func TestResources_RestrictedPathBlocking(t *testing.T) {
 	t.Parallel()
 	f := setupTest(t)
 	defer f.close(t)
 
-	hiddenURIs := []string{
-		"docs://site/page/.env",
-		"docs://site/page/.git/config",
-		"docs://site/page/.gomddoc/config.yml",
-	}
-
-	for _, uri := range hiddenURIs {
+	for _, p := range restrictedPaths {
+		uri := "docs://site/page/" + p
 		_, err := f.session.ReadResource(context.Background(), &mcp.ReadResourceParams{
 			URI: uri,
 		})
 		if err == nil {
-			t.Errorf("ReadResource(%q) should fail for hidden path", uri)
+			t.Errorf("ReadResource(%q) should fail for a restricted path", uri)
 		}
 	}
 }
