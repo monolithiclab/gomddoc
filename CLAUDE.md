@@ -12,17 +12,19 @@ with a stateless, git-native architecture. No databases, no CMS, no editorial wo
 ## Commands
 
 ```bash
-make ci                     # Full pipeline: codefix + format + lint + tests (USE THIS)
+make ci                     # Full pipeline: codefix + format + lint + tests (USE THIS; needs network, lint runs govulncheck)
 make test                   # Tests with coverage (target: 87%+)
-make lint -j8               # Parallelize linting
+make lint -j8               # Parallelize linting (includes govulncheck as lint-vulncheck)
 make build                  # Production binary → build/gomddoc
 make bench                  # Benchmarks
 make run                    # Run locally (go run ./cmd/gomddoc serve testsite)
-make vulncheck              # govulncheck dependency scan (needs network; not in `make ci`)
-FORCE_UPDATE=1 make lint    # Reinstall linters (same for vulncheck after a Go toolchain bump)
+FORCE_UPDATE=1 make lint    # Reinstall every linter, including govulncheck
 ```
 
-Always use Makefile targets. `make ci` is the single command to validate changes.
+Always use Makefile targets. `make ci` is the single command to validate changes. Every
+individual check lives under `lint-*` (`lint-vet`, `lint-staticcheck`, `lint-golangci-lint`,
+`lint-gosec`, `lint-gocritic`, `lint-vulncheck`) and is reachable directly by name
+(`make lint-vulncheck`) when you only want to re-run one; there is no bare `vulncheck` target.
 
 ## Documentation
 
@@ -59,10 +61,10 @@ docs/
   them (that is what the gitignored `.agents/` is for). A skill's Go scripts are real packages in
   this module, so they are vetted and linted like everything else, but they are tools, not product
   code, and both "what ships" filters exclude them by path prefix: `.covignore` drops `docs/skills/`
-  from the coverage total (same rationale as `internal/testutil/`) and `make vulncheck` scans
-  `./cmd/... ./internal/...` rather than `./...`. Both are prefix contracts — a script placed
-  anywhere but `docs/skills/<name>/scripts/` re-enters the coverage total and puts its imports back
-  in the product's vulnerability graph.
+  from the coverage total (same rationale as `internal/testutil/`) and `lint-vulncheck`
+  (`VULNCHECK_PACKAGES` in the Makefile) scans `./cmd/... ./internal/...` rather than `./...`.
+  Both are prefix contracts — a script placed anywhere but `docs/skills/<name>/scripts/`
+  re-enters the coverage total and puts its imports back in the product's vulnerability graph.
 
 **Feature workflow:**
 

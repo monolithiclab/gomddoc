@@ -1,8 +1,13 @@
 # Common Makefile targets for Go projects
-# 
+#
 # This file should be imported from each Makefile.
 
 default: help
+
+# Packages govulncheck scans. Override in the importing Makefile (after the
+# `include`) to scope out tooling/scripts that never ship in the built
+# binary — see gomddoc's Makefile for why that matters, not just how.
+VULNCHECK_PACKAGES ?= ./...
 
 .SILENT: help
 .PHONY: help
@@ -61,9 +66,16 @@ lint-gocritic:  # (no-help)
 	$$(go env GOPATH)/bin/gocritic check -enable="builtinShadow,importShadow" ./...
 
 
+.SILENT: lint-vulncheck
+.PHONY: lint-vulncheck
+lint-vulncheck:  ## (no-help)
+	((test -z "$$FORCE_UPDATE" && which govulncheck) || go install golang.org/x/vuln/cmd/govulncheck@latest) > /dev/null
+	$$(go env GOPATH)/bin/govulncheck $(VULNCHECK_PACKAGES)
+
+
 .SILENT: lint
 .PHONY: lint
-lint: lint-format lint-vet lint-staticcheck lint-golangci-lint lint-gosec lint-gocritic  ## Lint source code (use -j to parallelize, use FORCE_UPDATE=1 to reinstall linters)
+lint: lint-format lint-vet lint-staticcheck lint-golangci-lint lint-gosec lint-gocritic lint-vulncheck  ## Lint source code (use -j to parallelize, use FORCE_UPDATE=1 to reinstall linters; needs network for lint-vulncheck)
 
 
 .SILENT: codefix

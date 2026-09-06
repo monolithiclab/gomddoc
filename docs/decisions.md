@@ -586,3 +586,33 @@ De Morgan expansion is not always the first one a human reaches for (a subsequen
 still find another rewrite of the once-fixed expression, e.g. also inverting the inner
 relational operators — worth re-running `--fix` to a fixed point rather than accepting the
 first suggested form).
+
+## `govulncheck` Moved Into `make lint`, as `lint-vulncheck`
+
+**Chosen**: `vulncheck` is no longer its own top-level Makefile target. It is `lint-vulncheck`
+in `common-go.mk`, alongside `lint-vet`/`lint-staticcheck`/`lint-gosec`/`lint-gocritic`, and a
+prerequisite of `lint` — so `make ci` and `make lint` now require network access.
+
+**Why the reversal**: the original rationale (recorded in CLAUDE.md until this change) was that
+`vulncheck` needed network and therefore didn't belong in the always-run pipeline. In practice
+that meant it silently drifted: nobody ran `make vulncheck` on a normal change, and dependency
+CVEs (`GO-2026-6355`/`GO-2026-6354` in `golang.org/x/crypto/ssh`, `GO-2026-6214`/`GO-2026-6213`
+in `go-git`, all reachable from `internal/provider/git.go`'s clone path) sat unnoticed in
+`go.mod` until this was pointed out directly. A check that only runs on request is a check that
+mostly doesn't run. `make ci`/`make test` already assume network for `go install`-ing linters
+on a cold cache, so the network requirement was never actually a hard constraint — just one that
+had been applied inconsistently to this one check.
+
+**Why `VULNCHECK_PACKAGES` and not a hardcoded `./...` in common-go.mk**: `common-go.mk` is
+meant to be dropped into other Go repos as-is (see its header comment), and gomddoc's own scope
+exclusion (`./cmd/... ./internal/...`, skipping `docs/skills/`) is a gomddoc-specific "what
+ships" contract, not a general one. The shared file defines the target and defaults the
+variable to `./...`; gomddoc's own Makefile overrides the variable after the `include`, the same
+way it always scoped this scan, just moved from an inline flag to a variable so the recipe
+itself could live in the shared file.
+
+**Fallout fixed alongside**: bumping `golang.org/x/crypto` to v0.56.0 and
+`github.com/go-git/go-git/v5` to v5.19.2 (plus their transitive `go.mod` bumps via `go get` +
+`go mod tidy`) cleared all four called vulnerabilities. One uncalled, unfixed advisory remains
+(`GO-2026-5932`, `x/crypto/openpgp` is unmaintained) — `govulncheck` does not fail the build on
+vulnerabilities the code doesn't call, and there is no fixed version to move to.

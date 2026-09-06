@@ -5,6 +5,12 @@ ROOT_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
+# Scoped to what ships, for the same reason .covignore excludes docs/skills/:
+# nothing under docs/ reaches the binary, but govulncheck traces its imports
+# all the same, so an image/png CVE would red this job over a tool that is
+# never distributed. image/png enters the graph solely via favicon-check.go.
+VULNCHECK_PACKAGES := ./cmd/... ./internal/...
+
 
 build:  ## Build binary
 	go build $(LDFLAGS) -o build/gomddoc ./cmd/gomddoc
@@ -46,14 +52,5 @@ test:  ## Run unit tests with coverage and race detection
 	go tool cover -func cover.out
 
 
-vulncheck:  ## Scan dependencies for known vulnerabilities (needs network)
-	((test -z "$$FORCE_UPDATE" && which govulncheck) || go install golang.org/x/vuln/cmd/govulncheck@latest) > /dev/null
-	# Scoped to what ships, for the same reason .covignore excludes docs/skills/:
-	# nothing under docs/ reaches the binary, but govulncheck traces its imports
-	# all the same, so an image/png CVE would red this job over a tool that is
-	# never distributed. image/png enters the graph solely via favicon-check.go.
-	$$(go env GOPATH)/bin/govulncheck ./cmd/... ./internal/...
-
-
-.SILENT: bench bench-compare bench-save build deploy install run test vulncheck
-.PHONY: bench bench-compare bench-save build deploy install run test vulncheck
+.SILENT: bench bench-compare bench-save build deploy install run test
+.PHONY: bench bench-compare bench-save build deploy install run test
