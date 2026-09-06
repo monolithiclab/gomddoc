@@ -991,8 +991,7 @@ func TestGitProvider_EnsureCloned_AlreadyClosed(t *testing.T) {
 		t.Error("ReadFile() on closed provider should return error")
 	}
 
-	var pathErr *PathError
-	if !errors.As(err, &pathErr) {
+	if _, ok := errors.AsType[*PathError](err); !ok {
 		t.Errorf("error should be *PathError, got %T: %v", err, err)
 	}
 }

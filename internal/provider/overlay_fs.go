@@ -149,8 +149,7 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 	// Iterate through filesystems in reverse order so that
 	// earlier filesystems (higher priority) overwrite later ones
-	for i := len(o.filesystems) - 1; i >= 0; i-- {
-		filesystem := o.filesystems[i]
+	for i, filesystem := range slices.Backward(o.filesystems) {
 
 		var entries []fs.DirEntry
 		var err error

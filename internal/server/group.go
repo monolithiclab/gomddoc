@@ -40,8 +40,8 @@ func (g *RouteGroup) Subgroup(prefix string, mw ...func(http.Handler) http.Handl
 // group middleware are applied outermost-first.
 func (g *RouteGroup) Handle(pattern string, handler http.Handler) {
 	h := handler
-	for i := len(g.middleware) - 1; i >= 0; i-- {
-		h = g.middleware[i](h)
+	for _, v := range slices.Backward(g.middleware) {
+		h = v(h)
 	}
 	g.mux.Handle(g.prefixed(pattern), h)
 }
