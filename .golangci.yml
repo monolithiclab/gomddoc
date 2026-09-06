@@ -1,0 +1,29 @@
+# golangci-lint v2 config.
+#
+# The project ran bare `golangci-lint run ./...` under v1 with no config file,
+# relying on v1's built-in default issue exclusions (EXC0001 etc.) — the ones
+# that keep errcheck quiet about unchecked defer f.Close()/os.Remove()/
+# fmt.Fprint* returns, the idiomatic Go pattern this codebase uses throughout.
+# v2 dropped those defaults; this file is `golangci-lint migrate`'s output
+# against a v1 config equivalent to the old implicit defaults, so v2 lints the
+# same set of things v1 did. See docs/decisions.md.
+version: "2"
+linters:
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -168,7 +168,7 @@ func TestTagsIndexHandler(t *testing.T) {
 			t.Errorf("missing %q in %s", want, body)
 		}
 	}
-	if i, j, k := strings.Index(body, "docs"), strings.Index(body, "go"), strings.Index(body, "tutorial"); !(i < j && j < k) {
+	if i, j, k := strings.Index(body, "docs"), strings.Index(body, "go"), strings.Index(body, "tutorial"); i >= j || j >= k {
 		t.Errorf("not alphabetical: docs=%d go=%d tutorial=%d", i, j, k)
 	}
 }

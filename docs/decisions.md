@@ -553,3 +553,36 @@ translation tree with no locale file of its own is a legitimate setup that rende
 
 **Cost**: a site that wants `/fr/` rather than `/fr-FR/` cannot have it. That is the price of
 auto-detection, and the guide states it.
+
+## golangci-lint Pinned to v2, With a Config File It Never Needed Before
+
+**Chosen**: `common-go.mk`'s `lint-golangci-lint` target now installs
+`github.com/golangci/golangci-lint/v2/cmd/golangci-lint`, and the repo gained a `.golangci.yml`
+that restores v1's default issue exclusions via `linters.exclusions.presets`.
+
+**Why**: `github.com/golangci/golangci-lint` (no `/v2` suffix) is a dead module path — Go
+modules resolve `@latest` within one major-version line, and that line stopped at v1.64.8. Once
+the Go toolchain moved to a version whose compiler emits a newer export-data format, v1.64.8's
+bundled `x/tools` reader could no longer typecheck standard-library imports at all: every
+package importing `cmp`, `unicode`, `sync/atomic`, etc. failed with "export data version N is
+greater than maximum supported version 2", and the resulting cascade of "undefined" errors
+across dependent packages looked like widespread code breakage rather than one stale binary.
+v2 (a separate module path, `.../v2`) tracks current toolchains.
+
+**Config file was not optional**: the repo ran bare `golangci-lint run ./...` under v1 with no
+`.golangci.yml`, relying on v1's built-in default exclusions (its EXC0001-class rules, which
+keep `errcheck` quiet about unchecked `defer f.Close()`, `os.Remove`, `fmt.Fprint*` — the
+idiomatic pattern this codebase uses throughout). v2 dropped those defaults; without a config
+file restoring them, the upgrade would have surfaced ~24 pre-existing, intentional
+unchecked-error sites as new lint failures. The restoring config is `golangci-lint migrate`'s
+own output run against a v1 config equivalent to the old implicit defaults (`issues.exclude-use-
+default: true`) — not hand-authored, so it matches the tool's own notion of its old behavior.
+
+**What was real**: two `staticcheck` findings (QF1001, De Morgan's law simplifications in
+`internal/server/requestid.go` and `internal/server/tags_html_test.go`) survived past the
+exclusion presets — those were genuine, unrelated to the linter-version issue, and were fixed
+via `golangci-lint run --fix` rather than by hand, since the tool's own rewrite for a
+De Morgan expansion is not always the first one a human reaches for (a subsequent pass can
+still find another rewrite of the once-fixed expression, e.g. also inverting the inner
+relational operators — worth re-running `--fix` to a fixed point rather than accepting the
+first suggested form).

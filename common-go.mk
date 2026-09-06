@@ -32,7 +32,13 @@ lint-staticcheck:  ## (no-help)
 .SILENT: lint-golangci-lint
 .PHONY: lint-golangci-lint
 lint-golangci-lint:  ## (no-help)
-	((test -z "$$FORCE_UPDATE" && which golangci-lint) || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest) > /dev/null
+	# github.com/golangci/golangci-lint (no /v2) is a dead module path: its
+	# `@latest` can only ever resolve within the v1.x line, which stopped at
+	# v1.64.8 — a release whose bundled x/tools export-data reader predates the
+	# format newer Go toolchains emit, so it fails typechecking with
+	# "export data version N is greater than maximum supported version 2"
+	# instead of reporting lint issues. v2 lives at a different import path.
+	((test -z "$$FORCE_UPDATE" && which golangci-lint) || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest) > /dev/null
 	$$(go env GOPATH)/bin/golangci-lint run ./...
 
 
