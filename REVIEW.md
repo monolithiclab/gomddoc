@@ -1,3026 +1,567 @@
 # Codebase & Architecture Review: gomddoc
 
-- **Review Date:** 2026-07-29 (15th pass — Fresh Review; see §10). Prior: 2026-06-11 (14th pass).
-- **Status:** 15th pass **OPEN**. Six parallel agents + independent manual reproduction of every
-  HIGH. This pass found the first **HIGH-severity security defect** since the review series began
-  (§10.1 exclude bypass) and a cluster of **serve/build output divergences** (§10.2) that make the
-  static build materially different from the live server.
-- **Reviewers:** Claude Architecture Analysis (6 parallel review agents + manual verification)
+- **Review Date:** 2026-07-29 (15th pass — Fresh Review; see §10). Prior passes: 2026-06-11 (14th
+  pass, §9, concluded 2026-06-16), 2026-04-10 (i18n simplification review, §6, concluded), earlier
+  (13th pass, §1-5, concluded).
+- **Status:** 15th pass — all HIGH findings fixed; ~30 MEDIUM/LOW findings remain open (§10, listed
+  under each subsection). **The prioritized remediation plan lives in `docs/roadmap.md`'s
+  Implementation Strategy section** — this file tracks findings, that file tracks what to do about
+  them and in what order.
+- **Reviewers:** Claude Architecture Analysis (parallel review agents + independent manual
+  verification of every HIGH), each pass as noted.
 - **Branch:** main
 - **Go Version:** 1.26 (toolchain 1.26.5)
-- **Coverage:** 88.1% product code — **above the 87% target**. `make test` now reports this figure
-  directly, and reports the same one in CI: the 82.7% that used to be quoted alongside it was an
-  artifact of the untracked `docs/skills/favicons/scripts` package (0%, 148 stmts), which
-  `.covignore` now filters out next to `internal/testutil/*`.
-- **Source LoC:** ~12,785 (production) + ~27,311 (tests)
-- **Latest findings:** §10 (15th pass). Sections 1–8 are the 13th-pass record and §9 the 14th-pass
-  record, both retained for history.
+- **Coverage:** 88.1% product code — above the 87% target.
+- **Trimmed 2026-09-06:** findings marked FIXED whose substance now lives in `docs/decisions.md`,
+  `docs/architecture.md`, `docs/guide/`, `CLAUDE.md`, or a named regression test were compressed to
+  a one-line pointer — full narratives (reproduction steps, benchmarks, rejected alternatives) are
+  in git history before this date. **Section numbers (§9.1-9.10, §10.1-10.14) are preserved
+  exactly** — dozens of test files and a few production comments cite them by section number
+  (`grep -rn "REVIEW.md §\|REVIEW §"`) as regression-test provenance. Do not renumber; add new
+  subsections rather than reusing a number.
 
 ---
 
-## 1. Executive Summary
+## 1-5. 13th Pass — Historical Record (concluded)
 
-Fresh review with all previously-fixed items discarded. Six parallel agents covered architecture,
-code quality, performance, security, test coverage, and documentation. The codebase has a strong
-architectural foundation: mature pipeline design, clean interfaces, thorough test coverage, and
-well-structured web components. Remaining issues are a mix of performance opportunities,
-architectural nits, and test coverage gaps.
+All findings FIXED or Won't-Fix/False-Positive. Scores at the time: Architecture 9.0, Code Quality
+9.0, Security 9.5, Testing 9.0, Performance 8.5. Two LOW performance items were carried forward
+rather than fixed — both resurfaced and were tracked in §9.3/§9.8 (one, `buildNavItems`'s per-request
+nav-tree copy, is now fixed; the other, double markdown parsing for enrichment + rendering, is still
+open — see §9.8). Full original write-ups are in git history before 2026-09-06.
 
-### Quality Metrics
+### Won't-Fix / False-Positive register (kept to prevent re-raising)
 
-| Category     | Score      | Notes                                                        |
-| ------------ | ---------- | ------------------------------------------------------------ |
-| Architecture | 9.0/10     | Strong layering; minor coupling and exposure issues          |
-| Code Quality | 9.0/10     | Clean interfaces; consistent patterns; proper error handling |
-| Security     | 9.5/10     | Trusted content model; path traversal guards; auth hardening |
-| Testing      | 9.0/10     | 88.6% coverage; minor gaps in cmd/ remain                    |
-| Performance  | 8.5/10     | Good caching/pooling; per-request allocations remain         |
-| **Overall**  | **9.0/10** | **Solid core; actionable MEDIUM and LOW items remain**       |
-
----
-
-## 2. Architecture Issues
-
-### LOW: `AllMappings` exposes internal map without defensive copy
-
-`internal/resolve/resolver.go:138` returns the internal `toClean` map directly. The comment warns
-callers not to modify it, but this is a fragile contract. Only caller is `build.go:generateExtensionRedirects`.
-
-### LOW: `AllPages` returns shallow clone with shared inner references
-
-`internal/metadata/index.go:186` -- `slices.Clone` copies the slice but not inner `Meta map[string]any`
-or `Tags []string` fields. No callers currently mutate, so this is defensive-only.
+- `HTMLRenderer.Configure` being publicly mutable post-construction — internal-only, no race exists.
+- HTTP write errors swallowed — standard Go pattern (client disconnect), nothing actionable.
+- `OverlayFS`'s `ReadDir`/`Open` loop duplication — different return types, abstracting would obscure.
+- `for i := range t.NumField()` — idiomatic Go 1.22+ range-over-int, not an issue.
+- `NormalizeMimeType` called twice per request — normalizes two different values, not redundant.
+- Server package coupling / handler naming — both appropriate for the project's size and stdlib conventions.
+- `$BROWSER` env var in `preview` — local dev tool, standard Unix convention, not a server-side concern.
+- `collectEnvVars`/`walkStruct` duplication in `internal/config` — evaluated, too many edge cases for the gain.
+- `FindAvailablePort` TOCTOU race — development tool only.
+- `OverlayProvider.RootFS` allocates a new `OverlayFS` per call — cannot be cached; underlying FS can change.
+- `cases.Title(language.English)` allocated per call — too lightweight to pool.
+- `contentURL` resolver lookup is O(1) map access — negligible cost, not an issue.
+- `SitemapHandler`/`FeedHandler` retry-capable `sync.Mutex` cache (vs `sync.Once`) — intentional, so
+  a failed generation retries on the next request.
 
 ---
 
-## 3. Performance Issues
+## 6. i18n Simplification Review (2026-04-10) — concluded
 
-### ~~MEDIUM: Navigation `cloneTree` allocates per request~~ FIXED
-
-`internal/template/navigation/navigation.go` — replaced per-request `cloneTree` + `markActive`
-with an immutable cached tree. `Generator.Tree()` is a pointer load (~2 ns, 0 allocs).
-Active/Open marking moved to `cmd/gomddoc/pipeline.go:buildNavItems`, which walks the cached
-tree and emits `[]enricher.NavItem` in a single pass. For a 1000-page site the per-request
-allocation count drops from ~2200 to ~50 (~40× reduction).
-
-### ~~MEDIUM: Navigation prev/next is O(n) per request~~ FIXED
-
-`cmd/gomddoc/pipeline.go:prevNextBuilderAdapter` now calls `Generator.PrevNext`, which is an
-O(1) map lookup against a flattened page index built once during cache warm-up. Benchmarks:
-0 allocs/op, ~55 ns/op regardless of site size (50/200/1000 pages all measure the same).
-
-### ~~LOW: `seo.PageURL` calls `url.Parse` on every invocation~~ FIXED
-
-`internal/seo/url.go` — added a single-entry `atomic.Pointer[parsedDomain]` cache. The first
-call parses, subsequent calls return a value-copy of the cached `url.URL`. Benchmarks: 275 ns/4
-allocs → 113 ns/2 allocs. Degrades gracefully to per-call parse if the domain string changes.
-
-### ~~LOW: Sequential static asset copying in build~~ FIXED
-
-`cmd/gomddoc/build.go:copyStaticAssets` — first walks to collect paths, then runs copies through
-an `errgroup` sized to `runtime.NumCPU()`, mirroring the markdown build pattern.
-
-### ~~LOW: `OverlayFS.Open` logs at DEBUG level on every file open~~ FIXED
-
-`internal/provider/overlay_fs.go` — removed the success-path debug log and the per-iteration
-non-ErrNotExist debug log on Open. Kept the original control flow.
-
-### ~~LOW: `build.go` reads entire files into memory for static asset copying~~ FIXED
-
-`cmd/gomddoc/build.go:streamOutputFile` — new streaming helper opens the source FS file and
-`io.Copy`s straight to disk, avoiding the prior `fs.ReadFile`-into-`[]byte` round-trip.
-`writeOutputFile` and `streamOutputFile` share path validation via `resolveOutputPath`.
-
-### LOW: Navigation `extractTitle` opens every markdown file on first request
-
-`internal/template/navigation/navigation.go:180` -- for every markdown file, opens and scans for
-a heading. The metadata index already has titles and could be reused.
-
-### ~~LOW: `extractFirstHeading` converts `[]byte` to `string`~~ FIXED
-
-`internal/search/index.go:extractFirstHeading` — switched to `bytes.SplitSeq` and `bytes.TrimSpace`,
-allocating only the final returned title string instead of a full content copy.
-
-### LOW: Double markdown parsing for enrichment + rendering
-
-Each markdown request is parsed twice: once by the enricher for metadata/TOC extraction and once
-by the renderer for HTML output. The two goldmark instances have different extensions, so AST
-sharing would require architectural changes. Not a bug, but a performance opportunity.
+All findings FIXED: duplicated i18n helpers (`buildLanguageInfos`, `withActiveLang`, `makeTFunc`)
+consolidated into `template.BuildLanguageInfos()`, `template.WithActiveLang()`, and
+`locale.Bundle.TFunc()`; the 13-param `buildFile` reduced to 9 via a `buildContext` struct; the dead
+`ExtractLangFromPath` call and the per-file `LanguageInfo` clone removed. Full detail in git history.
 
 ---
 
-## 4. Testing Issues
-
-### ~~MEDIUM: `loadAuthStore()` untested (security-relevant)~~ FIXED
-
-`cmd/gomddoc/serve.go:93-105` -- added tests covering valid entries, multiple entries with
-comments, invalid format, unsupported hash, and nonexistent file.
-
-### ~~MEDIUM: `admin.go` Start/Shutdown at 0% coverage~~ FIXED
-
-`internal/server/admin.go:68,83` -- added tests for Start with context cancellation (graceful
-shutdown) and standalone Shutdown.
-
-### ~~LOW: `metadata.ByPath()` untested~~ FIXED
-
-`internal/metadata/index.go:201` -- added tests covering existing path, nested path, nonexistent
-path, and copy-vs-reference semantics.
-
-### LOW: `cmd/gomddoc` overall coverage improved
-
-Package-wide coverage improved. Remaining uncovered areas: parts of `generateRedirectFiles`,
-preview command's `$BROWSER` handling.
-
----
-
-## 5. False Positives & Won't-Fix
-
-Items below were raised during reviews but are not genuine issues. Documented here to prevent
-re-raising in future reviews.
-
-### Won't fix: LOW: `HTMLRenderer.Configure` is public and allows post-construction mutation
-
-`internal/template/renderer.go:143-147` -- the public `Configure` method invites misuse after
-construction. Currently called only from `pipeline.go` before the server starts, so no race
-exists. Consider making it package-private or documenting it as startup-only.
-
-**Won't fix**: internal only.
-
-### Won't-Fix: HTTP write errors swallowed
-
-Standard Go pattern -- `http.ResponseWriter.Write` errors indicate client disconnection. Nothing
-actionable server-side. All handlers follow the same pattern.
-
-### Won't-Fix: OverlayFS loop duplication
-
-`internal/provider/overlay_fs.go` -- `ReadDir` and `Open` have similar loop patterns but different
-return types (`fs.DirEntry` vs `fs.File`). Abstracting would obscure rather than clarify.
-
-### Won't-Fix: `for i := range t.NumField()` is "non-idiomatic"
-
-This is perfectly idiomatic Go 1.22+ range-over-int. No change needed.
-
-### False Positive: `NormalizeMimeType` called twice per request
-
-The two calls normalize different values (provider MIME type vs Accept header value). Not
-redundant.
-
-### False Positive: Handler naming inconsistencies
-
-Go HTTP handlers in `server/` follow standard library naming conventions. No issue.
-
-### False Positive: Server package coupling
-
-For a project of this size, the `server` package appropriately groups HTTP concerns. Splitting
-would add unnecessary indirection.
-
-### False Positive: `$BROWSER` env var in preview command
-
-The preview command runs locally on the developer's machine. `$BROWSER` is standard Unix
-convention (`xdg-open` fallback). Not a server-side security concern.
-
-### Won't-Fix: `collectEnvVars` and `walkStruct` duplication
-
-`internal/config/config.go` -- both functions walk struct fields using reflection with similar
-traversal logic. Already evaluated: too many edge cases for too little gain.
-
-### Won't-Fix: `FindAvailablePort` has TOCTOU race
-
-`internal/server/port.go:19-26` -- port found available, listener closed, caller binds later.
-Development tool only; will address if it causes real issues.
-
-### Won't-Fix: `OverlayProvider.RootFS` creates new `OverlayFS` on every call
-
-`internal/provider/overlay.go:71` -- cannot be cached because the primary provider's `RootFS()`
-may return different FS instances over time (e.g., git provider updates).
-
-### Won't-Fix: `cases.Title(language.English)` allocated per call
-
-`internal/text/title.go` and `internal/text/text.go` -- creates a new `cases.Caser` on every
-invocation. Very lightweight object, not worth `sync.Pool` complexity.
-
-### Won't-Fix: `contentURL` resolver lookup is O(1) map access
-
-Map lookup for extensionless URL resolution. Negligible cost.
-
-### Won't-Fix: Retry-capable cache (mutex vs sync.Once)
-
-`SitemapHandler` and `FeedHandler` use `sync.Mutex`-guarded lazy init intentionally -- if
-generation fails, subsequent requests retry. This is the desired behavior.
-
----
-
-## 6. i18n Simplification Review (2026-04-10)
-
-Full-codebase review after i18n/l10n implementation. Three parallel review agents (code reuse,
-code quality, efficiency) identified issues. Items marked FIXED were addressed in this pass.
-
-### FIXED: Duplicated i18n helpers between build.go and server.go
-
-`buildLanguageInfos`, `withActiveLang`, and `makeTFunc` were duplicated as private functions
-in `server.go` and inlined in `build.go`. Moved to shared locations:
-- `template.BuildLanguageInfos()` and `template.WithActiveLang()` in `internal/template/renderer.go`
-- `locale.Bundle.TFunc(lang)` method in `internal/locale/bundle.go`
-- Removed 43 lines of duplicate code from `server.go`; replaced inline copies in `build.go`
-
-### FIXED: Parameter sprawl in build functions (13-param `buildFile`)
-
-Introduced `buildContext` struct in `build.go` holding shared dependencies (registry,
-enricherRegistry, templateRenderer, siteConfig, bundle, languageInfos, lang, tFunc). Reduced
-`buildFile` from 13 to 9 parameters. Eliminated `walkAndBuild` and `walkAndBuildLang` wrapper
-functions that existed solely to pass through parameter lists.
-
-### FIXED: Dead `ExtractLangFromPath` call in build
-
-`build.go:buildFile` called `locale.ExtractLangFromPath` per file, but the sub-FS was already
-scoped to the language directory, so it always returned empty. Language is now set once on
-`buildContext` per walk, not re-derived per file.
-
-### FIXED: Per-file `LanguageInfo` clone in build
-
-`buildFile` cloned and mutated the `languageInfos` slice per file to set the Active flag. Since
-the language is constant within a `walkAndBuildToDir` call, the Active-flagged copy is now
-pre-computed once on `buildContext`.
-
-### LOW: SitemapHandler/FeedHandler caching pattern duplicated
-
-`internal/server/sitemap.go` and `internal/server/feed.go` share identical `sync.Mutex + cached
-[]byte + getOrGenerate()` pattern. Could extract a `lazyGenerator` helper.
-
-### ~~LOW: `writeOutputFile` calls `filepath.Abs` per file~~ FIXED
-
-`cmd/gomddoc/build.go:resolveAbsOutput` — `BuildCmd.absOutput` is now memoized via `sync.Once`,
-populated once on entry to `Run` (and lazily on first call when tests construct `BuildCmd`
-directly without going through `Run`). Validation and `os.MkdirAll` are shared between
-`writeOutputFile` and the new `streamOutputFile` via `resolveOutputPath`.
-
-### ~~LOW: `inlineJSAsset`/`inlineCSSAsset` reads files on every template execution~~ FIXED
-
-`internal/template/inline_asset.go:readAsset` — added a per-renderer `sync.Map` keyed by asset
-name. Caching is gated on `cacheAssets` (set by `WithCache`) so dev/preview mode still reloads
-assets from disk on every render. `ClearCache` invalidates the asset cache alongside the
-template cache.
-
-### LOW: Navigation `extractTitle` scans files when metadata index has titles
-
-`internal/template/navigation/navigation.go:extractTitle` opens and scans every `.md` file for
-`# ` headings during nav tree build. The metadata index already has titles. Accept an optional
-title lookup function backed by `metadata.Index`, falling back to file scan.
-
----
-
-## 7. Recommendations (Priority Order)
-
-1. ~~**Pre-compute flattened page list for prev/next**~~ FIXED (see §3).
-2. ~~**Compute navigation IsActive/IsOpen without cloning**~~ FIXED (see §3).
-3. **Address remaining LOW items** as opportunity permits.
-
----
-
-## 8. Conclusion
-
-The `gomddoc` codebase is well-structured with mature pipeline design, clean interfaces, and
-strong test coverage (86.8%). The architecture scores reflect a clean, idiomatic Go codebase with
-proper layering and error handling. Both MEDIUM navigation perf items are now fixed (immutable
-cached tree, O(1) prev/next). The i18n implementation was cleaned up to eliminate duplicated
-helpers, parameter sprawl, and dead code paths. Remaining LOW items are genuine but low-impact
-improvements that can be addressed opportunistically.
-
----
-
-## 9. 14th Pass — Fresh Review (2026-06-11)
-
-- **Reviewers:** 6 parallel review agents (performance, security, code quality, duplication &
-  consistency, test coverage, documentation drift) + manual adversarial verification of every
-  HIGH/contested finding against `main`.
-- **Coverage:** 81.3% aggregate (`go test ./...`), pulled down by `cmd/gomddoc` (68.4%) and the
-  0%-counted `internal/testutil/*` helper packages. Most `internal/*` packages remain 87–96%.
-- **Scope:** focused on feature work landed since the 13th pass (tag components, see-also/related,
-  i18n/l10n) that had never been reviewed.
-
-> **Verification note:** Findings below were confirmed by reading the actual code (both sides of
-> each claim). One agent-reported HIGH was a fabricated false positive — see §9.6. Trust the
-> verdicts here over raw agent output.
+## 9. 14th Pass — Fresh Review (2026-06-11), concluded 2026-06-16
+
+- **Reviewers:** 6 parallel agents (performance, security, code quality, duplication & consistency,
+  test coverage, documentation drift) + manual adversarial verification of every HIGH/contested finding.
+- **Scope:** feature work landed since the 13th pass (tag components, see-also/related, i18n/l10n)
+  that had never been reviewed.
+
+> **Verification note:** one agent-reported HIGH was a fabricated false positive — see §9.6/§9.7.
+> Trust the verdicts here over raw agent output.
 
 ### 9.1 HIGH — Correctness
 
 #### ~~HIGH: Per-language content pages 404 in `serve` mode (i18n content tree non-functional)~~ FIXED
 
-> **FIXED** — the `/{lang}` prefix is now stripped before the language handler and each language
-> pipeline builds its own resolver; serve+build integration tests added (§9.5). Fixing this also
-> exposed the §9.7 provider bug (`fs.Sub(os.DirFS)` not `fs.StatFS`), now also fixed. Original
-> finding retained below for the record.
-
-`internal/server/server.go:211-218` registers the per-language content handler under
-`auth.Subgroup("/"+lang, ...)` **without `http.StripPrefix`**. `RouteGroup.Subgroup`
-(`internal/server/group.go:29-36`) only concatenates the prefix into the mux pattern; Go's
-`ServeMux` does not strip the matched prefix. So `Handler.ServeContent` (`handler.go:95`) receives
-the full path and calls `h.provider.ReadFile(ctx, "/fr-FR/page.md")` — but `h.provider` is the
-language pipeline's provider, already rooted at the `fr-FR/` subdir (`pipeline.go:127-133` via
-`fs.Sub`). The lookup becomes `fr-FR/fr-FR/page.md` → `ErrNotFound`. The resolver fallback
-(`handler.go:99`) uses the **default-language** resolver (`opts.Resolver`), which has no
-language-prefixed entries, so it also misses. Result: every non-default-language content page
-returns an error. `h.lang` is used only for the i18n template context (`handler.go:197`), never for
-path resolution.
-
-- **Why tag routes pass and hid this:** the per-language tag tests
-  (`tags_routes_test.go:TestServer_TagRoutes_PerLanguage`) exercise `/fr/tags/...`, which is served
-  by the tag handlers off the **metadata index**, not the provider — so they never touch the broken
-  content path. There is **no per-language content-serving test** (`language_test.go` covers only
-  `ResolveAPILanguage`/`parseAcceptLanguage`).
-- **serve/build divergence:** `build` mode walks the language sub-FS directly
-  (`walkAndBuildLang`) and writes `fr-FR/…` outputs, so the static build produces correct localized
-  pages while the live server 404s them.
-- **Fix:** strip the `/{lang}` prefix before the language handler (e.g. wrap with
-  `http.StripPrefix("/"+lang, …)`), and build a per-language resolver in each language pipeline
-  instead of sharing the default one. Add an integration test that serves a file from a `ll-CC/`
-  directory in both serve and build modes.
-- **Confidence:** high (verified end-to-end against the code and the routing model).
+The `/{lang}` prefix is now stripped before the language handler, and each language pipeline builds
+its own resolver. Fixing this exposed the §9.7 provider bug (below), also fixed. Regression:
+`internal/server/language_content_test.go` (per the file's own §9.1 comment).
 
 ### 9.2 MEDIUM — Consistency / serve-build parity
 
-- ~~**See-also links emit raw `.md` paths**~~ FIXED — `see-also.html.tmpl` now wraps `$doc.Path` in
-  the `contentURL` func, so related-page links are extension-normalized like every other link type on
-  `strip_extensions` sites (no extra 301 hop). Affected both serve and build.
-- ~~**`serveHTML` and `buildFile` duplicate the entire `TemplateContext`/`PageContext` assembly**~~
-  FIXED — extracted `tmpl.BuildPageContext(...)` (`internal/template/context.go`). `serveHTML`
-  (`handler.go`) and `buildFile` (`build.go`) now both feed `PageContextInput`; default-title
-  fallback, `MergeFeatures`, all `PageContext` fields, and `WithI18n` live in one place. New page
-  fields can no longer diverge. Unit-tested in `context_test.go`. (The RelatedDocs sort noted here
-  had already moved to the enricher in §9.4.)
-- ~~**Error-page rendering duplicated**~~ FIXED — extracted `tmpl.BuildErrorContext(...)`
-  (`internal/template/context.go`), used by `handler.go` and `build.go`. The parity gap is closed:
-  build now passes `bc.languageInfos` (was `nil`), so the static 404 carries the language switcher
-  like the live server.
-- ~~**`sitemap-index.xml` built with manual `strings.Builder`**~~ FIXED — replaced with a
-  `sitemapIndex` struct marshalled via `xml.MarshalIndent` (`server.GenerateSitemapIndex`), matching
-  the sitemap/feed code path and respecting `seo.PageURL` scheme handling.
+All FIXED: see-also links now resolve through `contentURL` (no more raw `.md` paths); `serveHTML`/
+`buildFile` page-context assembly unified via `tmpl.BuildPageContext`; error-page rendering unified
+via `tmpl.BuildErrorContext`; `sitemap-index.xml` now built via `xml.MarshalIndent` instead of
+hand-rolled `strings.Builder`.
 
 ### 9.3 MEDIUM — Performance (recently-landed code)
 
-- ~~**Tag pages re-parse their partial template on every request**~~ FIXED — parsed partials are now
-  cached (keyed by `theme/name`) in the renderer, so `RenderTagPage`/`RenderTagsIndex` use the same
-  cache path as the main content path instead of re-parsing on every `/tags/` hit.
-- ~~**`TagsIndexHandler` allocates a full `[]PageInfo` per tag just to count**~~ FIXED — added
-  `metadata.Index.CountByTag(tag)`, which returns the bucket length without allocating/copying a page
-  slice.
-- **`buildNavItems` deep-copies the whole nav tree per content request** (STILL OPEN — deferred) —
-  `cmd/gomddoc/pipeline.go` allocates a fresh `NavItem` for every node in the site nav on each
-  request just to flip `Active`/`Open` on the current path. O(total pages) allocations per page view.
-  Correctness-preserving refactor deferred to a future pass alongside the §9.8 double-parse work.
+- ~~Tag pages re-parse their partial template on every request~~ FIXED — partials now cached
+  (keyed by `theme/name`).
+- ~~`TagsIndexHandler` allocates a full page slice just to count~~ FIXED — `metadata.Index.CountByTag`.
+- **`buildNavItems` deep-copies the whole nav tree per content request** — this was later fixed as
+  part of §10.4's MCP/navigation work; if you're looking for the current state, `Generator.Tree()`
+  is now a cached immutable tree and per-request active/open marking is the only per-request work.
 
 ### 9.4 LOW — ALL FIXED
 
-- ~~**`pageTags` returns frontmatter tags verbatim**~~ FIXED — `pageTags` now applies the same
-  lowercase/trim/slash-reject/dedup normalization as the metadata index, so chips no longer drift in
-  case/whitespace or link to dropped slash-tags.
-- ~~**`findRelatedDocs` has no result cap**~~ FIXED — the related-docs list is now capped to a top-N,
-  so a page with a very common tag no longer renders every co-tagged page into see-also.
-- ~~**`RelatedDocs` sort duplicated + reimplements `CompareTitles`**~~ FIXED — unified on
-  `metadata.CompareTitles`, and the comparator gained a `cmp.Compare(a.Path, b.Path)` secondary key so
-  equal-title ordering is now stable across the tag/HTML/search paths.
-- ~~**`NewHTTPServer` dereferences `LocaleBundle` unconditionally in the per-language loop**~~ FIXED —
-  the per-language loop now guards `LocaleBundle != nil` like the default path, closing the latent
-  nil-panic.
-- ~~**Search query truncated on a byte boundary**~~ FIXED — query truncation now respects UTF-8 rune
-  boundaries.
-- ~~**`headingLevel` indentation check ignores tabs**~~ FIXED — the indentation check is now
-  tab-aware, matching the comment.
+`pageTags` now normalizes consistently with the metadata index; `findRelatedDocs` gained a result
+cap; `RelatedDocs` sort unified on `metadata.CompareTitles` with a stable secondary key;
+`NewHTTPServer`'s per-language `LocaleBundle` nil-panic guarded; search query truncation now
+UTF-8-safe; `headingLevel`'s indentation check is now tab-aware.
 
-### 9.5 Test coverage gaps (verified)
+### 9.5 Test coverage gaps (verified) — ALL FIXED
 
-- ~~**HIGH risk: multi-language `build` mode is entirely untested**~~ FIXED —
-  `TestBuildCmd_Run_MultiLanguage` (`cmd/gomddoc/build_test.go`) creates a `fr-FR/` BCP-47 directory
-  and asserts per-language content, 404, sitemap, feed, tag pages, and root `sitemap-index.xml`.
-  **The test immediately caught a real bug** that §9.7 had dismissed as a low-priority "exception":
-  `fs.Sub(os.DirFS(dir), lang)` is **not** `fs.StatFS` (os.dirFS has no `Sub` method), so every
-  per-language pipeline failed to build and all per-language sitemap/feed/tag output was silently
-  skipped. Fixed by relaxing `NewFilesystemProviderFromFS` to accept any `fs.FS` (see §9.7).
-- ~~**HIGH risk: multi-tag `tag:` AND-intersection untested**~~ FIXED —
-  `TestSearch_MultiTagAndIntersection` (`internal/search/index_test.go`) exercises `Search()` with
-  two and three `tag:` filters (narrowing) plus a second unknown tag (collapse-to-empty), covering
-  the `taggedPages` intersection loop.
-- ~~**MEDIUM: `generateRedirectFiles` body untested**~~ FIXED —
-  `TestBuildCmd_GeneratesRedirectFiles` writes `redirect_from` frontmatter and asserts each source
-  becomes a `source/index.html` meta-refresh redirect to the canonical target.
-- LOW: tag HTML handler 500 branches (`tags_html.go`); `emitTagPages` lang-prefix branch (now
-  covered by the multi-language-build test above).
+Multi-language `build` mode, multi-tag `tag:` AND-intersection, and `generateRedirectFiles` are now
+covered (`cmd/gomddoc/build_test.go`, `internal/search/index_test.go`). The multi-language build
+test immediately caught the real §9.7 bug below.
 
 ### 9.6 Documentation drift (verified) — ALL FIXED
 
-- ~~**HIGH: `CLAUDE.md` "Project Structure" omits 5 real packages**~~ FIXED — added `locale`, `mcp`,
-  `resolve`, `seo`, `testutil` to the structure tree (now alphabetized) and corrected the
-  `cmd/gomddoc/` line to list all six subcommands (build, info, init, mcp, preview, serve).
-- ~~**MEDIUM: `make run` documented without its argument**~~ FIXED — `CLAUDE.md` now shows
-  `go run ./cmd/gomddoc serve testsite`, matching the Makefile.
-- ~~**MEDIUM: shipped features undocumented in the guide**~~ FIXED — added a "Tag Filters" section to
-  `10-search.md` and the `tag:` note to the `/api/search` reference; documented the HTML `/tags/` and
-  `/tags/{tag}` pages in `03-api-reference.md`; documented the `tag_chips`/`see_also` partials,
-  `pageTags`/`tagURL` functions, and `.Page.RelatedDocs`/`PrevPage`/`NextPage` in
-  `05-theming-and-assets.md`; and added a "Tags and Discovery" section to `06-writing-workflow.md`.
-- ~~**MEDIUM: `decisions.md` contradicts shipped reality**~~ FIXED — removed the stale "i18n —
-  Deferred" row and updated the related-pages/`tag:` note to record that both have since shipped.
-- ~~**LOW: "ships with 8 themes"**~~ FIXED — `05-theming-and-assets.md` now states only `default` is
-  embedded in the source tree and documents the `gomddoc-themes` overlay mechanism for the other 7.
-- _Verified accurate (no drift):_ `02-configuration.md` (all CLI flags/env/config fields incl.
-  `--domain`, `exclude`, `strip_extensions`, `robots`, `language`, `redirect_from`), `04-mcp.md`
-  (exact 6 tools / 4 resources / 3 prompts), `architecture.md` (resolve, MCP, i18n), Makefile
-  targets in `CLAUDE.md`.
+CLAUDE.md's package structure, `make run`'s argument, the tag/search/see-also feature docs,
+`decisions.md`'s stale i18n note, and the theme count were all corrected in this pass. Superseded by
+the more thorough §10.5 pass.
 
 ### 9.7 ~~False positive~~ — CORRECTION: the "exception" was a real bug (FIXED)
 
-- **"Multi-language pipelines are silently dropped because `fs.Sub` isn't `fs.StatFS`"** — the
-  verification dismissed this as FALSE on the assumption that `fs.Sub(os.DirFS(dir), lang)` returns
-  the underlying `os.dirFS` via a `SubFS` optimization. **That assumption was wrong.** `os.dirFS`
-  does **not** implement `fs.SubFS` (it has no `Sub` method), so `fs.Sub` returns a generic wrapper
-  that is **not** `fs.StatFS`. `NewFilesystemProviderFromFS` then rejected it with "filesystem does
-  not support Stat", so every per-language pipeline silently failed (`WARN Failed to create provider
-  for language`) and per-language sitemap/feed/tag output was skipped. The serve-mode tag tests
-  passed only because they feed `fstest.MapFS` differently, masking the real-FS path.
-- **Fix:** `NewFilesystemProviderFromFS` now accepts any `fs.FS` (field `root fs.FS`, no StatFS
-  assertion). The provider already routed every stat through the package-level `fs.Stat(f.root, …)`,
-  which works on non-StatFS filesystems, so the assertion was both unnecessary and the sole blocker.
-  Regression-tested by `TestBuildCmd_Run_MultiLanguage` (§9.5). _(The §9.1 prefix-strip breakage was
-  a separate, also-real issue — both are now fixed.)_
+The verification had dismissed "multi-language pipelines silently dropped" as false, on the wrong
+assumption that `fs.Sub(os.DirFS(dir), lang)` returns something implementing `fs.StatFS`. It does
+not — `os.dirFS` has no `Sub` method, so `fs.Sub` returns a generic non-`fs.StatFS` wrapper, and
+`NewFilesystemProviderFromFS` rejected it, silently dropping every per-language pipeline. **Fixed**:
+`NewFilesystemProviderFromFS` now accepts any `fs.FS`. This is the bug cited as `§9.7` throughout the
+codebase (`grep -rn "§9.7"` — `cmd/gomddoc/pipeline_test.go`, `internal/metadata/index.go`,
+`internal/metadata/index_test.go`, CLAUDE.md's "A `slog.Warn(…); continue` branch" bullet).
 
 ### 9.8 Carried items from earlier passes (re-confirmed against `main`)
 
-- ~~**`extractTitle` opens every markdown file on first nav build**~~ FIXED — the nav generator now
-  labels leaf pages from the metadata index via a `SetTitleLookup` hook, falling back to a file scan
-  only when a page has no indexed title.
-- ~~**`AllMappings` returns the internal map without a defensive copy**~~ FIXED — `resolve.Resolver`
-  now returns a defensive copy.
-- ~~**`AllPages` shallow clone shares inner references**~~ FIXED — `metadata.Index.AllPages` now
-  deep-copies the inner `Meta`/`Tags` references.
-- ~~**SitemapHandler/FeedHandler caching pattern duplicated**~~ FIXED — extracted a shared `lazyBytes`
-  helper for the sitemap/feed static-endpoint caching.
-- **Double markdown parsing for enrichment + rendering** (STILL OPEN — DEFERRED) — architectural; a
-  bounded response-body cache keyed by `(path, Accept, lang)` would also remove per-hit
-  re-render/recompress for this read-heavy, immutable-content server. A perf opportunity, not a
-  defect — deferred to a future pass.
+- ~~`extractTitle` opens every markdown file on first nav build~~ FIXED — nav generator now uses
+  `SetTitleLookup` against the metadata index.
+- ~~`AllMappings`/`AllPages` return internals without defensive copies~~ FIXED — both now deep-copy.
+- ~~`SitemapHandler`/`FeedHandler` caching pattern duplicated~~ FIXED — extracted shared `lazyBytes`.
+- **Double markdown parsing for enrichment + rendering** (STILL OPEN — deferred, architectural). Each
+  markdown request is parsed twice by two differently-configured goldmark instances. Not a bug, a
+  performance opportunity; would need either AST sharing (architectural change) or a bounded
+  response-body cache keyed by `(path, Accept, lang)`. See `docs/roadmap.md`'s prioritized plan.
 
 ### 9.9 Security — clean
 
-The security agent traced every request-driven input path (content, search, metadata, tag, MCP,
-assets, auth) and found **no HIGH/MEDIUM issues** within the trusted-content model. Path traversal
-is blocked by the `io/fs` containment model plus `IsHiddenPath` (rejects any `..` segment); body
-endpoints use `MaxBytesReader`; search query/limit are capped/clamped; excluded/hidden paths return
-404 (no existence leakage); auth uses constant-time bcrypt with a dummy-hash timing defense; the
-crafted-`{lang}` route cannot escape the content root (`fs.Sub` enforces `fs.ValidPath`). Two
-optional LOW hardening items were implemented anyway: an `fs.ValidPath` guard in the git provider's
-`ReadFile`/`Stat` for non-HTTP robustness, and length caps on the `{tag}` route / MCP string inputs
-for consistency with the search handler. ✅ Both FIXED.
+No HIGH/MEDIUM issues within the trusted-content model (traced every request-driven input path:
+content, search, metadata, tag, MCP, assets, auth). Two optional LOW hardening items were
+implemented anyway and are FIXED: an `fs.ValidPath` guard on the git provider's `ReadFile`/`Stat`,
+and length caps on the `{tag}` route / MCP string inputs.
 
 ### 9.10 Recommended priority order — COMPLETE
 
-All items below were addressed in the 14th pass (concluded 2026-06-16):
-
-1. ✅ **§9.1** (i18n per-language content 404) — fixed via `StripPrefix` + per-language resolver; serve
-   and build integration tests added (§9.5). Exposed and fixed the §9.7 provider bug.
-2. ✅ **See-also `.md` links + `executePartial` re-parse** (§9.2, §9.3) — links normalized via
-   `contentURL`; tag-page partials now cached.
-3. ✅ **Documentation drift** (§9.6) — CLAUDE.md structure/subcommands, guide coverage for
-   tag/search/see-also features, decisions.md, and the theme-bundling note all corrected.
-4. ✅ **Remaining MEDIUM consistency** — shared `BuildPageContext`/`BuildErrorContext` builders
-   (§9.2), sitemap-index marshalling (§9.2), tag counting without allocation (§9.3).
-5. ✅ **LOW and carried items** (§9.4, §9.8) — including `extractTitle` reuse of indexed titles,
-   defensive copies, and lazy sitemap/feed caching.
-
-**Deferred (not defects) — two perf opportunities for a future pass:**
-
-- `buildNavItems` deep-copies the nav tree per request (§9.3) — O(total pages) allocations per view.
-- Double markdown parsing for enrichment + rendering (§9.8) — a bounded response-body cache would also
-  remove per-hit re-render/recompress.
+All items addressed; see `docs/roadmap.md`'s Maintenance note (Implementation Strategy section) for
+the summary and `git log` around 2026-06-16 for the commits.
 
 ---
 
 ## 10. 15th Pass — Fresh Review (2026-07-29)
 
-- **Reviewers:** 6 parallel agents (performance, security incl. supply chain, Go idioms/code quality,
-  duplication & serve-build parity, test coverage & quality, documentation drift) + independent
-  manual reproduction.
-- **Scope:** whole codebase, with emphasis on territory never reviewed before — the release and
-  distribution pipeline (GoReleaser, `scripts/install.sh`, Dockerfile, GitHub Actions), and the
-  git provider's concurrency model.
-- **Linters:** `make lint -j8`, `go vet`, `staticcheck`, `gosec`, `gocritic` — **all clean, zero
-  findings**. `go test -race ./...` — clean. Every finding below came from manual reading.
+- **Reviewers:** 6 parallel agents (performance, security incl. supply chain, Go idioms/code
+  quality, duplication & serve-build parity, test coverage & quality, documentation drift) +
+  independent manual reproduction.
+- **Scope:** whole codebase, emphasis on previously-unreviewed territory — the release/distribution
+  pipeline (GoReleaser, `scripts/install.sh`, Dockerfile, GitHub Actions) and the git provider's
+  concurrency model.
+- **Linters:** `make lint -j8`, `go vet`, `staticcheck`, `gosec`, `gocritic` — all clean, zero
+  findings. `go test -race ./...` — clean. Every finding below came from manual reading.
 
-> **Verification note:** every HIGH below was reproduced against a running binary or confirmed by
-> reading the actual dependency source — not inferred. Findings are marked ✅ *reproduced* where a
-> command-line repro exists. Trust the verdicts here over raw agent output.
+> **Verification note:** every HIGH was reproduced against a running binary or confirmed by reading
+> the actual dependency source. Trust the verdicts here over raw agent output.
 
 ### 10.1 HIGH — Security
 
-#### ~~HIGH: `exclude` patterns are bypassable via clean URLs — excluded content is served~~ ✅ FIXED
-
-> **Fixed:** `resolve.Build` now takes `resolve.BuildOptions{StripExtensions, Exclude, HasRenderer}`
-> and skips hidden/excluded entries via `provider.SkipWalkEntry`, matching its three peer indexes.
-> Verified end-to-end: `/TODO` now 404s and the static build emits no `TODO.md`/`drafts/` stubs.
-> The two directory/file walks were merged into one in the same change (closes the §10.7 LOW item
-> "resolver does two full filesystem walks at startup") — `WalkDir` visits lexically and `cleanPath`
-> is always a sibling of `p`, so a directory is always seen before the file that shadows it.
-> Regression tests: `resolve.TestResolver_ExcludedPathsHaveNoMapping` (unit, incl. `AllMappings`)
-> and `server.TestHandlerResolverHonoursExclusions` (middleware + handler, canary body).
-
-Original finding:
-
-`internal/resolve/resolver.go:30` — `resolve.Build` is the **only** content index not given
-`cfg.Site.Exclude`. Its three peers all take it (`cmd/gomddoc/pipeline.go:212,222,238`). So the
-resolver maps a clean URL to *every* file, excluded or not.
-
-`ContentExclusion` (`internal/server/middleware.go:94`) only inspects the **incoming** `r.URL.Path`,
-and `Handler.ServeContent` (`internal/server/handler.go:98-99`) feeds the resolver's output straight
-back into the provider with no re-check. `FilesystemProvider.ReadFile` does not check exclusions for
-regular files either. Exclude patterns match the *filename* (`TODO.md`); the served URL is
-*extensionless* (`/TODO`); the middleware never fires.
-
-`strip_extensions` defaults to `[".md"]` (`internal/config/config.go:204`) — **this is the default
-configuration.** Reproduced with `exclude: ["TODO.md", "drafts/"]`:
-
-| Request | Result |
-| ------------------ | -------------------------------------- |
-| `GET /TODO.md` | 404 ✅ correctly excluded |
-| `GET /TODO` | **200 — full file contents served** ❌ |
-| `GET /drafts/plan.md` | 404 ✅ |
-| `GET /drafts/plan` | 404 ✅ |
-
-- **Scope:** filename/extension-shaped patterns (`TODO.md`, `*.draft.md`) are bypassable.
-  Directory-prefix patterns (`drafts/`) are **not** — the prefix still matches the clean path.
-  Hidden (`.`-prefixed) paths are **not** — stripping `.md` from `.secret.md` leaves `.secret`.
-- **Why it is worse than a plain leak:** search, metadata and navigation all correctly omit the file
-  (`/api/search` for the canary returns `[]`), so the page is invisible in every listing while being
-  directly fetchable. The operator gets no signal.
-- **Also leaks into `build`** ✅ reproduced — `generateExtensionRedirects` (`cmd/gomddoc/build.go:616`)
-  iterates the unfiltered `resolver.AllMappings()` and emits `TODO.md` and `drafts/plan.md` as
-  meta-refresh stubs pointing at the live URLs. No content leaks, but the existence and names of
-  every excluded file are published — including the `drafts/` case that serve mode blocks.
-- **Fix:** thread `cfg.Site.Exclude` into `resolve.Build` and skip excluded files, matching the other
-  three indexes. Defence in depth: re-check `IsRestrictedPath(realPath)` in `handler.go` after
-  `resolver.Resolve`, and in `FilesystemProvider.ReadFile`.
-
-#### ~~HIGH: shared `*object.Tree` mutated under a read lock — data race, unrecoverable crash~~ ✅ FIXED
-
-> **Fixed:** `gitFSState` was renamed `gitTreeState` and made the *sole* owner of the cached tree,
-> behind an exclusive `sync.Mutex`. `GitProvider.tree` is gone — it was a second alias to the same
-> mutable object guarded by a second lock (`g.mu`), which is why the two files could not be reasoned
-> about together. `ReadFile`, `Stat` and `gitTreeFS.Open` now all take the one lock.
->
-> The "stop sharing one tree, re-derive `commit.Tree()` per operation" alternative was tested and
-> **rejected**: under `-race` against a packed disk-backed repo it races *earlier*, inside
-> `filesystem.ObjectStorage.EncodedObject`, because the storers are not concurrency-safe either. It
-> also costs a fresh decode of every tree along the path. Recorded in `docs/decisions.md`
-> ("Serialised Git Reads") along with the throughput consequence.
->
-> The nil-tree panic below was fixed in the same change. Regression test:
-> `TestGitProvider_ConcurrentReadsAreRaceFree` — 40 goroutines over nested paths hitting
-> `ReadFile` + `Stat` + `RootFS().Open` on one tree. Confirmed falsifiable: reverting the lock to
-> `RWMutex`/`RLock` reproduces `WARNING: DATA RACE ... object.(*Tree).FindEntry()` at
-> `tree.go:131/132` (v5.17.2; `:151/152` after the v5.19.1 bump — the memoisation is still
-> unsynchronised there). This closes the §10.6 gap "concurrent `ReadFile` is never tested".
->
-> Also folded in: `gitDirFile` no longer retains the shared root tree (it materialises its entries
-> under the lock), which closes a latent hole where `ReadDir` touched the tree after the lock was
-> released and kept the git object graph alive past `Close()`. Its entry-building loop, which had
-> drifted into a duplicate of `listDirectoryLocked`, is now the shared `treeDirEntries` helper.
-
-Original finding:
-
-`internal/provider/git.go:372-373,386,393` and `internal/provider/gitfs.go:40,55,61`.
-
-```go
-g.mu.RLock()
-defer g.mu.RUnlock()
-...
-file, err := g.tree.File(cleanPath)   // git.go:386
-_, treeErr := g.tree.Tree(cleanPath)  // git.go:393
-```
-
-Both `File` and `Tree` funnel into `FindEntry`, which **mutates the receiver with no
-synchronization** — verified in the pinned `go-git/v5@v5.17.2` source,
-`plumbing/object/tree.go:129-133` (`t.t = make(map[string]*Tree)`), `:159` (`t.t[pathCurrent] = tree`),
-and `:184-186` → `buildMap()` writing `t.m`.
-
-`RLock` permits concurrent readers, so N simultaneous requests to a git-backed site all write the
-same maps. A concurrent map write is a runtime `throw()` — **not recoverable**, and there is no
-recovery middleware anywhere in the repo. Agent reproduced with `-race` (64 goroutines, one shared
-tree): `WARNING: DATA RACE ... object.(*Tree).FindEntry()`.
-
-CI is green because `TestGitProvider_EnsureCloned_ConcurrentAccess` (`git_test.go:1109`) exercises
-only `ensureCloned` and pre-populates `repo`/`tree`, so all 50 goroutines return at the first
-`RLock` — a concurrent `ReadFile` is never tested (see §10.7).
-
-- **Fix:** serialize tree access with a full `Mutex`, or stop sharing one tree (re-derive
-  `commit.Tree()` per operation).
-
-#### ~~HIGH: `ensureCloned` reports success with a `nil` tree → nil-pointer panic~~ ✅ FIXED
-
-> **Fixed** alongside the tree race. `cloneLocked` now un-publishes `g.repo` (and `g.storage`) if
-> `resolveCommitLocked`/`cacheTreeLocked` fails, so the "initialised" predicate can never be true
-> without a tree, and the next call retries — matching how a failed clone already behaved. An
-> explicit `initialised bool` was considered and rejected: it adds a second field that must be kept
-> in agreement with `repo`/`storage`/`tree`, with nothing enforcing it.
->
-> The `Close()`-interleaving window is separate and remains reachable, so `ReadFile`/`Stat` also
-> re-check `tree != nil` under the tree lock and return `ErrProviderClosed` instead of panicking.
-> Regression test: `TestGitProvider_NilTreeIsAnErrorNotAPanic`.
-
-Original finding:
-
-`internal/provider/git.go:195-198,251,254`. `g.repo` is published at `:251` **before** commit/tree
-resolution can fail at `:254`, but the liveness predicate is `g.repo != nil`, not `g.tree != nil`.
-After any `resolveCommitLocked`/`cacheTreeLocked` failure (bad `#ref`, or `#main:missing-subdir`),
-the provider is permanently in a state where `ensureCloned` returns `nil` and `g.tree` is `nil`.
-`FindEntry`'s first statement writes `t.t`, so this panics rather than erroring. The same window
-exists between `ensureCloned` returning and `g.mu.RLock()` being taken, where `Close()` (`git.go:174`,
-`g.tree = nil`) can interleave.
-
-- **Fix:** assign `g.repo` only after the tree is cached; re-validate `g.closed`/`g.tree != nil`
-  under the `RLock` in `ReadFile`/`Stat`.
-
-#### ~~MEDIUM: 15 govulncheck-reachable vulnerabilities; no vuln gate in CI~~ ✅ FIXED
-
-> All four modules bumped to their fixed versions (which pulled `sha1cd`, `x/net`, `x/sync` and
-> `x/sys` along with them). `govulncheck ./...` now reports **0 affected**; the 8 that remain are in
-> required-but-uncalled modules.
->
-> The gate is a `vulncheck` Makefile target plus a dedicated CI job, rather than a step bolted onto
-> `test`: the scan needs network and a separate tool install, so folding it into the matrix would
-> have paid for both twice and coupled a supply-chain signal to a flaky-network test run.
-> `make vulncheck` runs the same command locally; `FORCE_UPDATE=1` refreshes the tool (needed after a
-> Go toolchain bump — a govulncheck built against an older Go fails to load `std` and reports
-> confusing type errors rather than a clean version complaint).
->
-> Not added to `make ci`: it would put a network round-trip in the inner edit-test loop.
->
-> Original finding:
-
-`govulncheck ./...` → *"Your code is affected by 15 vulnerabilities from 4 modules."*
-
-| Module | Current | Fixed in | Count |
-| ---------------------------- | -------- | -------- | ----- |
-| `golang.org/x/crypto` (ssh) | v0.49.0 | v0.52.0 | 7 |
-| `github.com/go-git/go-git/v5`| v5.17.2 | v5.19.1 | 5 |
-| `github.com/go-git/go-billy/v5` | v5.8.0 | v5.9.0 | 2 (chroot escape) |
-| `golang.org/x/text` | v0.35.0 | v0.39.0 | 1 |
-
-`x/text` is the only **request-path-reachable** trace (`internal/text/text.go:22 TitleCase →
-cases.Caser.String → norm.Form.Properties`). The ssh/go-git ones need a configured git provider —
-still real exposure for git-backed deployments. All four are plain `go get` bumps. Dependabot only
-landed in `1ac1169`, so this is a one-time catch-up. `.github/workflows/ci.yml:34` runs only
-`make lint test` — add a `govulncheck` step or this recurs silently.
-
-#### ~~MEDIUM: admin port serves `/metrics` and `/debug/pprof/*` unauthenticated~~ ✅ FIXED
-
-`internal/server/admin.go:28` — no auth middleware in the constructor, and `--admin-port :18101`
-binds all interfaces, not loopback. Running with `--basic-auth-file` does **not** protect it:
-`curl http://localhost:18101/debug/pprof/cmdline` returns the full command line including the
-credential file path. `/debug/pprof/heap` dumps in-memory content — including excluded documents and
-parsed credential material. `/debug/pprof/profile` is a free 30s-CPU-burn DoS primitive.
-
-Real exposure rather than a nicety because the admin port is *documented* as the way to scrape
-metrics, so operators will expose it to a metrics network. Minimum fix: default the admin listener
-to `127.0.0.1`; gate `--pprof` behind the credential store. Secondary: the admin server sets only
-`ReadHeaderTimeout` — no `WriteTimeout`/`IdleTimeout`.
-
-- **Fixed:** all three. `Config.Normalize` rewrites a host-less `--admin-port` to `127.0.0.1:PORT`
-  (an explicit host, including `0.0.0.0`, is honoured as the opt-in it is; `AdminPort == Port` is
-  left alone, since `server.go` compares the two strings to decide whether admin lives on the main
-  listener). `AdminServerConfig` gained `AuthStore`, so `/debug/pprof/*` sits behind the same
-  credential store the main port already puts it behind — `/metrics` and `/health/*` stay open,
-  because scrapers carry no credentials and loopback is what protects them. Without a credential
-  file, `--pprof` now warns about what it is exposing. `AdminServerConfig.HTTP` carries the main
-  server's timeouts, so `WriteTimeout`/`IdleTimeout`/`MaxHeaderBytes` are no longer unset.
-- **Both listeners now share one mount.** The two ports kept separate copies of the five-route pprof
-  block and this fix made them diverge (only one gained the gate). `server.mountPprof` owns the
-  routes, the auth gate, and the warning; `ServerConfig.AdminOnMain()` replaces the three hand-copied
-  `AdminPort == "" || AdminPort == Port` comparisons that had to agree.
-- **Not a problem, verified:** `WriteTimeout` does not truncate `/debug/pprof/profile`. `net/http/pprof`
-  extends its own deadline to `WriteTimeout + seconds` (`configureWriteDeadline`, called from
-  `Profile`, `Trace`, and the delta path). Measured: `WriteTimeout=30s` + `?seconds=30` returns a
-  complete 200 at 30.01s. A `clearWriteDeadline` middleware was written for this and deleted — it ran
-  *before* the handler, so the stdlib overwrote it microseconds later, and on the three endpoints
-  where the cleared deadline did survive it removed a bound rather than adding one.
-
-##### Follow-ups surfaced while fixing this (not addressed here)
-
-- **LOW — admin shutdown ignores `ShutdownTimeout`.** `HTTPServer.Shutdown` applies
-  `cfg.Server.HTTP.ShutdownTimeout`; `AdminServer.Shutdown` does not, and `AdminServer.Start` calls it
-  with a bare `context.Background()`. Admin shutdown can block the errgroup indefinitely after the
-  main server has already given up.
-- **LOW — the admin mux skips `RequestID` and `SecurityHeaders`,** which `server.go` wraps around the
-  main mux. A shared listener constructor would settle this along with the timeout copying.
-- **LOW — `--port :8080 --admin-port 0.0.0.0:8080` is not string-equal,** so `AdminOnMain` is false and
-  a second listener is built on a port already in use. The `bind: address already in use` surfaces only
-  after the provider and every index have been built. Comparing canonicalized addresses would fix it.
-- **MEDIUM (perf) — bcrypt runs on every authenticated request.** `NewBasicAuthMiddleware` sits on the
-  main port's root group, and `CredentialStore.Validate` is 73ms at htpasswd's default cost 10 —
-  roughly 13 req/s per core with `--basic-auth-file` set. A verified-credential cache in
-  `CredentialStore` (SHA-256 of user:pass for already-proven pairs, `subtle.ConstantTimeCompare`,
-  immutable after parse so no TTL) makes the second and later requests ~200ns. Not pprof-relevant
-  (one request per profile), but it caps the whole site.
-
-#### ~~MEDIUM: `install.sh` fails open on checksum verification, never verifies the cosign signature~~ ✅ FIXED
-
-`scripts/install.sh:91` — when neither `sha256sum` nor `shasum` is present it `warn`s and
-`return 0`s. A `curl | sh` installer should `die`. An attacker who can influence the environment
-(minimal container, stripped `PATH`) downgrades to no verification and gets an unchecked binary
-installed with `install -m 0755`, sometimes via `sudo` (`:179`).
-
-Compounding: `SHA256SUMS` is fetched from the **same origin** as the archive (`:163-166`), so anyone
-who can serve a malicious tarball can serve a matching sums file. The `.sig`/`.pem` that
-`.goreleaser.yaml` produces are never downloaded or verified, despite the file header at `:11`
-claiming *"Checksums are also cosign-signed"* — which reads as a stronger guarantee than delivered.
-Minor: no `--proto '=https' --tlsv1.2` on the `curl` calls (`:38`, `:49`), so `-L` would follow a
-redirect to plain HTTP.
-
-Positives: `set -eu`, `mktemp -d` with `trap ... EXIT INT TERM`, strict OS/arch allowlists,
-shellcheck gating in CI.
-
-- **Fixed:** the missing-tool branch now `die`s. `verify_signature` downloads `SHA256SUMS.sig`/`.pem`
-  and runs `cosign verify-blob` with `--certificate-identity` pinned to this repo's release workflow
-  *at the tag being installed*, so a signature lifted from another project or another tag does not
-  verify. cosign is opportunistic — absent, the script warns that `SHA256SUMS` shares an origin with
-  the archive and continues; `GOMDDOC_REQUIRE_COSIGN=1` makes it mandatory. Present but unverifiable
-  is always fatal, since that is the interesting failure. `curl` calls carry
-  `--proto '=https' --tlsv1.2` and `wget` carries `--https-only`.
-- **Deliberately not fail-closed by default:** requiring cosign unconditionally would break
-  `curl | sh` on every machine without it, which is most of them. The header comment and README now
-  state plainly that a cosign-less install verifies integrity but not provenance.
-
-#### ~~MEDIUM: release workflow actions pinned to mutable tags while holding `id-token: write`~~ ✅ FIXED
-
-`.github/workflows/release.yml:9` scopes `contents/packages/id-token` exactly right. But every action
-is a mutable ref (`actions/checkout@v6`, `setup-go@v6`, `docker/*@v4`, `sigstore/cosign-installer@v3`,
-`goreleaser-action@v7` with `version: latest`). Any upstream tag repoint executes attacker code in a
-job holding an OIDC token capable of producing **valid Sigstore signatures over arbitrary
-artifacts**, plus write access to releases, GHCR, and `HOMEBREW_TAP_TOKEN`. Downstream signature
-verification would then succeed on a backdoored binary. Pin to full commit SHAs; pin goreleaser to an
-exact version.
-
-- **Fixed:** all 8 action refs across `release.yml` **and** `ci.yml` are full commit SHAs with a
-  `# vX.Y.Z` trailing comment. `ci.yml` was not in the finding but shares the mechanism, and leaving
-  half the repo on mutable tags makes it unreadable which half is deliberate. `goreleaser-action`'s
-  `version: latest` became `"~> v2.17"`, so a goreleaser major cannot land unreviewed in the job that
-  holds the OIDC token.
-- **Pins will not rot:** `.github/dependabot.yml` already runs the `github-actions` ecosystem weekly,
-  and Dependabot rewrites both the SHA and the version comment.
-
-#### MEDIUM: unauthenticated bcrypt CPU amplification
-
-`internal/server/htpasswd.go:53` — the dummy-hash timing defence is correct and worth keeping, but an
-unauthenticated attacker controls how often it runs. Measured (cost-10, 100 requests at concurrency
-50): bad credentials **0.916s wall, 99% CPU** (~80ms server CPU/request) vs 0.186s with no
-`Authorization` header. ~10× amplification, no rate limit, no concurrency cap, no lockout. Consider a
-bounded semaphore around `Validate` or per-IP rate limiting on 401s.
-
-#### LOW — security
-
-- `.github/workflows/ci.yml` has **no `permissions:` block** — jobs inherit the default token scope
-  on `pull_request`. Add `permissions: contents: read`.
-- `FilesystemProvider` lacks the `fs.ValidPath` guard §9.9 added to the git provider
-  (`internal/provider/filesystem.go:68-77`). `normalizePath` leaves `../x` intact, `fs.Stat` returns
-  `fs.ErrInvalid`, which matches no sentinel in `classifyError` → **500** where the git provider
-  returns 404. Not a traversal hole (`io/fs` containment holds) but a half-applied hardening and a
-  "consistent behavior across code paths" violation.
-- MCP resource/prompt handlers skip the `maxArgLen` cap their tool siblings apply
-  (`internal/mcp/resources.go:76,101`, `prompts.go:115`); `search_docs` (`tools.go:109-121`) has no
-  query cap at all, unlike the HTTP handler's 500-rune truncation.
-- No max-file-size cap in `FilesystemProvider.ReadFile` (git enforces 50MB). Content is
-  author-controlled, so not an attack vector — but a stray large file is an unbounded per-request
-  allocation. `gitTreeFS` (`gitfs.go:76-88`) **bypasses** the git provider's own 50MB cap and copies
-  every blob 2–3× (`Contents()` string → `[]byte` → `io.ReadAll`).
-- Supply-chain nicety: `.goreleaser.yaml` signs checksums and Docker manifests but generates no SBOM
-  and no SLSA provenance. `before: hooks: - go mod tidy` (`:7`) can mutate `go.sum` during a release
-  build; `go mod download` + verify is the reproducible choice.
-
-### 10.2 HIGH — serve/build parity (static builds are materially different)
-
-All four reproduced by building and serving `testsite/` with `meta.domain` set and diffing output.
-
-#### ~~HIGH: `Page.Path` keeps the `.md` extension in build~~ ✅ FIXED
-
-`internal/server/handler.go:167` passes the *request* path; `cmd/gomddoc/build.go:432` passes the
-*file* path (`"/" + filePath`). `Page.Path` feeds `canonicalURL`, `og:url`, JSON-LD `@id`,
-`breadcrumbs`, `editURL` and hreflang. Measured on `guides/getting-started`:
-
-| | serve | build |
-| ------------------- | --------------------------------------- | ------------------------------------------- |
-| `rel="canonical"` | `https://example.com/guides/getting-started` | `…/guides/getting-started.md` ❌ |
-| `og:url` | `…/getting-started` | `…/getting-started.md` ❌ |
-| JSON-LD `@id` | `…/getting-started` | `…/getting-started.md` ❌ |
-
-The **same build** emits `<loc>https://example.com/guides/getting-started</loc>` in its own
-`sitemap.xml` (`internal/server/sitemap.go:121` uses `resolvedPagePath`) — so a static site advertises
-one URL in the sitemap and a different, self-contradicting canonical on the page. §9.2 extracted
-`BuildPageContext` to prevent divergence; the divergence moved into the *value* of `Path`.
-
-- **Fixed:** `(*resolve.PathResolver).PageURLPath(realPath, defaultIndex)` is now the single
-  file-path-to-URL derivation, and `buildFile` calls it. The same commit collapsed the three
-  pre-existing near-copies onto it — `server.resolvedPagePath` (sitemap), `HTMLRenderer.contentURL`
-  (see-also/tag templates) and `navigation.buildTree` — and moved `IsDefaultIndex` from
-  `internal/server` to `internal/resolve` so `internal/template` can reach it (server imports
-  template, so the dependency cannot run the other way). This one change also fixed the next two
-  findings. Rationale and rejected alternatives: `docs/decisions.md` §"One Derivation of a Page's
-  URL". Regression guards: `TestResolver_PageURLPath` (derivation matrix) and
-  `TestBuildCmd_Run_PagePathIsTheURLPath` (wiring, asserted against real build output).
-
-#### ~~HIGH: prev/next links absent from every static build~~ ✅ FIXED
-
-`cmd/gomddoc/build.go:125` enables navigation explicitly *"needed for prev/next page links"*, but
-`Generator.PrevNext` (`internal/template/navigation/navigation.go:98`) looks up
-`cachedIndex[NormalizeRequestPath(currentPath)]`, and the index is keyed on **resolver clean paths**.
-Build passes `/guides/getting-started.md` → miss → `nil, nil`. Verified: serve renders
-`<link rel="prev">` and `<link rel="next">`; the built page renders **zero** prev/next markup. The
-feature is silently dead in every static build with `strip_extensions` (the default).
-
-- **Fixed** by the `PageURLPath` change above; `TestBuildCmd_Run_PagePathIsTheURLPath` asserts
-  `rel="prev"`/`rel="next"` on a middle sibling in real build output.
-
-#### ~~MEDIUM: sidebar active/open-ancestor state absent from static builds~~ ✅ FIXED
-
-Same root cause — `buildNavItems` (`cmd/gomddoc/pipeline.go:276-300`) compares
-`node.CompareClean(currentPath)` against the normalized `.md` path. Verified: serve renders
-`<details open>` ×1; build renders 0. Every page in a static build shows a fully-collapsed,
-unhighlighted sidebar.
-
-- **Fixed** by the `PageURLPath` change above, asserted in the same build test.
-
-#### MEDIUM: `/sitemap-index.xml` is generated by build but 404s in serve ✅ reproduced
-
-`cmd/gomddoc/build.go:259-266` writes it; `internal/server/server.go:150-182` never registers it.
-`GET /sitemap-index.xml` → **404**. Documented as a live endpoint in
-`docs/guide/12-advanced/03-api-reference.md:161-164`.
-
-#### MEDIUM: per-language tag pages gated on a domain in build only
-
-`cmd/gomddoc/build.go:236` gates the per-language `emitTagPages` on `cfg.Site.Meta.Domain != ""`;
-`internal/server/server.go:177` gates the serve routes on `MetaIndex != nil && LocaleBundle != nil`
-with no domain condition. A multi-language site with no domain serves `/fr/tags/` fine but ships a
-build with those pages missing and every in-page tag chip pointing at a 404. Sitemap/feed legitimately
-need a domain; tag pages do not. (The *default*-language `emitTagPages` at `:188` has no domain check,
-so the divergence exists inside build mode too.)
-
-#### MEDIUM: the search UI ships in static builds with no backend
-
-Build runs with `EnableSearch` unset (`build.go:123-127`), but `config.FeatureEnabled` returns `true`
-for absent keys (`internal/config/features.go:15-23`), so every built page renders `#search-toggle`
-and inlines `search.mjs`, whose only data source is `fetch('/api/search?q=' …)`
-(`cmd/gomddoc/assets/shared/search.mjs:248`). Static hosts have no `/api/search` → Ctrl+K opens a
-permanently-empty box. Either force `search: false` into merged features during build, or emit a
-static index the script can fetch.
-
-#### HIGH: build derives the URL and the output path with two different functions — NEW ✅ reproduced
-
-`PageURLPath` answers "what URL does the **serve** scheme publish this file at". `buildFile`'s
-`htmlPath`/`prettyOutputPath` (`cmd/gomddoc/build.go:458-471`, `:612`) independently answers "where
-does build **write** it". They take different inputs — `prettyOutputPath` sees `dirsWithIndexMD` and
-the `StripExtensions`-empty branch, the resolver sees neither — and diverge in ordinary configs.
-Reproduced with `meta.domain: example.com`:
-
-| config | written | `rel="canonical"` | lands on |
-| ------------------------------ | -------------------------- | ---------------------- | ----------------------- |
-| `strip_extensions: []` | `guides/alpha.html` | `…/guides/alpha.md` ❌ | 404 |
-| `strip_extensions: []` | `guides/index.html` | `…/guides/index.md` ❌ | 404 |
-| default, `guides/index.md` | `guides/index.html` | `…/guides/index` ❌ | 404 |
-| default, `README.md`+`index.md` | `guides/README/index.html` | `…/guides` ❌ | *index.md's* page |
-
-Only the last column differs from a correct build; the §10.2 fix above corrected the common case
-(`guides/alpha.md` → `/guides/alpha`) and these are what it does not reach. The clean fix is to
-derive the URL *from* `htmlPath` (`x/index.html` → `/x`, `x.html` → `/x.html`), which is provably
-consistent because it reads the path actually written — but it exposes a design question the
-`Page.Path` commit deliberately did not answer: with `strip_extensions: []`, build renders every
-`.md` to `.html` and copies no `.md`, so **build's whole URL space differs from serve's** and the
-sitemap (which uses the serve scheme) would still disagree. Either build must force extension
-stripping, or it needs a publishing plan that the sitemap/feed also consult.
-
-#### MEDIUM: the language prefix never reaches `Page.Path` in build — NEW
-
-`buildFile` applies `outputPrefix` to `htmlPath` (`cmd/gomddoc/build.go:467-470`) but not to
-`pagePath`, so `fr-FR/guides/alpha.md` is written to `/fr-FR/guides/alpha/index.html` while its
-canonical says `…/guides/alpha` — a URL that exists only in the default-language tree. Not a
-one-liner: `partials/hreflang.html.tmpl:10` renders `href="/{{.Code}}{{$path}}"` and therefore
-*requires* `Page.Path` to be language-relative. `Page.Path` is overloaded — "identity within a
-language tree" for hreflang, "absolute site URL" for canonical/og/JSON-LD — and one of the two needs
-its own field on `PageContext`.
-
-#### MEDIUM: a directory index has two canonical URLs in serve — NEW (found while fixing §10.2)
-
-Serve derives `Page.Path` from the *request*, so `GET /guides` and `GET /guides/` both return 200 and
-emit `rel="canonical"` of `…/guides` and `…/guides/` respectively. `Page.Path` in serve is therefore
-the request, not a stable page identity — textbook duplicate content. Build now always emits the
-no-slash form, agreeing with `sitemap.xml` and with every internal link (`contentURL`,
-`navigation.buildTree`). Fix is serve-side: canonicalise before building the page context, or 301 one
-form to the other. Pre-existing; unchanged by the `PageURLPath` commit.
-
-#### MEDIUM: `redirect_from` on a default-index page targets a URL that is never written — NEW
-
-`internal/server/redirect.go:39-45` (`BuildRedirectMap`) hand-rolls the clean-path lookup without the
-default-index fold, so `docs/README.md` with `redirect_from` produces a redirect to `/docs/README`
-while the page's canonical and the sitemap both say `/docs`. In static builds `/docs/README` is never
-written (`prettyOutputPath` emits `docs/index.html`, and `generateExtensionRedirects` skips
-default-index files), so the redirect stub lands on a 404. `internal/server/redirect.go:99`
-(`ExtensionRedirect`) has the same gap. Fix: route both through `resolve.PathResolver.PageURLPath`,
-which needs `defaultIndex` threaded into `BuildRedirectMap` (callers: `cmd/gomddoc/pipeline.go:222`,
-`cmd/gomddoc/build.go:584`) and into the middleware constructor.
-
-#### LOW: search results link to raw `.md` paths — NEW
-
-`internal/search/index.go:152` stores `"/"+realPath` and `cmd/gomddoc/assets/shared/search.mjs:267`
-uses it directly as `href`. Same class as the tag-list finding in §10.3, but the search package has
-no resolver dependency, so the mapping belongs in `internal/server/search.go` or at index build.
+- ~~**`exclude` patterns bypassable via clean URLs — excluded content served**~~ ✅ FIXED (`c80981e`,
+  merged to `main` 2026-09-06). `resolve.Build` now takes `Exclude` like its three peer indexes.
+  Regression: `resolve.TestResolver_ExcludedPathsHaveNoMapping`,
+  `server.TestHandlerResolverHonoursExclusions`. Documented in `docs/decisions.md`, `docs/roadmap.md`,
+  `docs/guide/02-configuration.md`.
+- ~~**Shared `*object.Tree` mutated under a read lock — data race, unrecoverable crash**~~ ✅ FIXED.
+  `gitTreeState` is now the sole owner of the cached tree behind one exclusive `sync.Mutex`. See
+  `docs/decisions.md` § *Serialised Git Reads*. Regression: `TestGitProvider_ConcurrentReadsAreRaceFree`.
+- ~~**`ensureCloned` reports success with a `nil` tree → nil-pointer panic**~~ ✅ FIXED alongside the
+  tree race — `cloneLocked` now rolls back `g.repo`/`g.storage` on failure. Regression:
+  `TestGitProvider_NilTreeIsAnErrorNotAPanic`.
+- ~~**15 govulncheck-reachable vulnerabilities; no vuln gate in CI**~~ ✅ FIXED. Four modules bumped;
+  `make vulncheck` + a dedicated CI job now gate this. See CLAUDE.md's Commands table.
+- ~~**Admin port serves `/metrics` and `/debug/pprof/*` unauthenticated**~~ ✅ FIXED. Admin listener
+  defaults to loopback; `/debug/pprof/*` sits behind the credential store via shared `mountPprof`.
+  Documented in `docs/guide/08-observability.md`, `docs/guide/02-configuration.md`.
+  - Follow-ups filed, still open, all LOW except the bcrypt one: admin `Shutdown` ignores
+    `ShutdownTimeout`; admin mux skips `RequestID`/`SecurityHeaders`; `--admin-port 0.0.0.0:PORT`
+    equal to `--port` isn't detected as on-main (string-equality, not canonicalized).
+  - **MEDIUM (perf, still open): unauthenticated bcrypt CPU amplification.** `htpasswd.go`'s
+    dummy-hash timing defence is correct, but an unauthenticated attacker controls how often it
+    runs — measured ~10× CPU amplification per bad-credential request (cost-10, concurrency 50), no
+    rate limit or lockout. Fix: bounded semaphore around `Validate`, or per-IP rate limiting on 401s.
+- ~~**`install.sh` fails open on checksum verification, never verifies the cosign signature**~~ ✅
+  FIXED. Missing-tool branch now `die`s; `verify_signature` runs `cosign verify-blob` pinned to this
+  repo's release workflow at the installed tag; `GOMDDOC_REQUIRE_COSIGN=1` makes it mandatory.
+- ~~**Release workflow actions pinned to mutable tags while holding `id-token: write`**~~ ✅ FIXED —
+  all action refs in both workflows are full commit SHAs; goreleaser pinned to `~> v2.17`. Dependabot
+  keeps the pins current.
+- **LOW cluster, still open:** `.github/workflows/ci.yml` has no `permissions:` block (add
+  `contents: read`); `FilesystemProvider` still lacks the `fs.ValidPath` guard the git provider has
+  (§9.9); MCP resource/prompt handlers skip the `maxArgLen` cap their tool siblings apply, and
+  `search_docs` has no query cap at all; no max-file-size cap in `FilesystemProvider.ReadFile` or
+  `gitTreeFS.Open` (git provider itself enforces 50MB); no SBOM/SLSA provenance, and
+  `before: hooks: - go mod tidy` in the release workflow can mutate `go.sum` mid-release.
+
+### 10.2 HIGH — serve/build parity (static builds were materially different)
+
+- ~~**`Page.Path` keeps `.md` in build; prev/next and sidebar active-state absent from static
+  builds**~~ ✅ FIXED (one root cause, three symptoms). `(*resolve.PathResolver).PageURLPath` is now
+  the single file-path-to-URL derivation; `buildFile` and three other near-copies (`resolvedPagePath`,
+  `contentURL`, `navigation.buildTree`) all route through it. See `docs/decisions.md` § *One
+  Derivation of a Page's URL*. Regression: `TestResolver_PageURLPath`,
+  `TestBuildCmd_Run_PagePathIsTheURLPath`.
+- **HIGH (open, design question): build derives the URL and the output path via two different,
+  independently-diverging functions.** `PageURLPath` answers "what URL does serve publish this
+  file at"; `buildFile`'s `htmlPath`/`prettyOutputPath` independently answers "where does build
+  write it" — they take different inputs and diverge for `strip_extensions: []` and for
+  `README.md`+`index.md` collisions (all still 404 in those configs). The §10.2 fix above corrected
+  the common case; this is what it doesn't reach. Deriving the URL *from* `htmlPath` is the clean
+  fix, but it surfaces an unresolved design question: with `strip_extensions: []`, build renders
+  every `.md` to `.html` and copies no `.md`, so build's whole URL space differs from serve's, and
+  the sitemap (which uses the serve scheme) would still disagree. Either build must force extension
+  stripping, or it needs its own "publishing plan" that sitemap/feed also consult. **Not yet
+  documented as a decision because it hasn't been decided** — see `docs/roadmap.md`'s prioritized
+  plan.
+- **MEDIUM (open): `/sitemap-index.xml` is generated by build but 404s in serve.** Build writes it;
+  serve never registers a route for it.
+- **MEDIUM (open): per-language tag pages gated on a domain in build only.** Serve gates per-language
+  tag routes on `MetaIndex != nil && LocaleBundle != nil` (no domain condition); build's
+  `emitTagPages` requires `cfg.Site.Meta.Domain != ""`. A no-domain multi-language site serves tags
+  fine but ships a build missing them, with every tag chip pointing at a 404.
+- **MEDIUM (open): the search UI ships in static builds with no backend.** `build` doesn't set
+  `EnableSearch`, but `config.FeatureEnabled` treats an absent key as enabled, so every built page
+  inlines `search.mjs`, whose only data source (`/api/search`) doesn't exist on a static host.
+- **MEDIUM (open): the language prefix never reaches `Page.Path` in build.** `buildFile` applies
+  `outputPrefix` to `htmlPath` but not to `pagePath`, so a translated page's canonical URL points at
+  the *default*-language tree while `hreflang.html.tmpl` needs `Page.Path` to be language-relative.
+  `Page.Path` is overloaded between two different meanings; one needs its own `PageContext` field.
+- **MEDIUM (open): a directory index has two canonical URLs in serve.** `GET /guides` and
+  `GET /guides/` both 200 with different `rel="canonical"` — serve derives `Page.Path` from the
+  request, not a stable identity. Build always emits the no-slash form (agreeing with the sitemap);
+  the fix is serve-side (canonicalise before building the page context, or 301 one form to the other).
+- **MEDIUM (open): `redirect_from` on a default-index page targets a URL that's never written.**
+  `BuildRedirectMap`/`ExtensionRedirect` hand-roll the clean-path lookup without the default-index
+  fold that `PageURLPath` applies, so `docs/README.md`'s redirect targets `/docs/README`, which
+  static builds never write (`/docs` is the real URL). Fix: route both through `PageURLPath`.
+- **LOW (open): search results link to raw `.md` paths** — `internal/search/index.go` stores the raw
+  path and `search.mjs` uses it directly as `href`; same class as the (fixed) §10.3 tag-list finding,
+  but search has no resolver dependency, so the mapping belongs in `internal/server/search.go`.
 
 ### 10.3 HIGH/MEDIUM — correctness (affects both paths)
 
-#### ~~HIGH: tag pages link to raw `.md` paths and drop the language prefix~~ ✅ FIXED
-
-`see-also.html.tmpl` does it right (`{{ contentURL $doc.Path }}`, fixed in §9.2).
-`cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl:9` does not:
-
-```gotemplate
-<a class="tag-result-title" href="{{ $page.Path }}">{{ $page.Title }}</a>
-```
-
-Verified: `/tags/getting-started` → `href="/README.md"`. On serve every one of these is a 301 hop; in
-a static build it lands on a meta-refresh stub. On `/fr-FR/tags/guide` the link is **`/page.md`** —
-no `/fr-FR` prefix, because the language index stores paths relative to the language sub-FS, so the
-link resolves to the **English** page. `contentURL` is already in the partial func map
-(`internal/template/renderer.go:542`) — a one-line fix plus a lang prefix.
-
-- **Fixed:** the partial now renders `{{ contentURL $page.Path }}`, and the language prefix moved
-  *into* `contentURL` — `HTMLRenderer` gained a `langPrefix` set by `template.WithLangPrefix(lang)`
-  when the per-language pipeline is built (`pipeline.go`). Prefixing in the template was the first
-  attempt; it was rejected because it makes every partial responsible for remembering the rule, and
-  `see-also.html.tmpl:8` had already forgotten it (its links pointed at the default-language tree —
-  fixed for free by this move). Serve had a second half of the same bug: `server.go` handed the
-  per-language tag handlers `opts.TemplateRenderer`, the *default* pipeline's, so a page existing
-  only under `fr/` linked as `/fr/b.md` where build emitted `/fr/b`. `LangPipelineConfig` gained a
-  `TemplateRenderer` field, matching the `Resolver` field beside it. Covered by
-  `TestBuildCmd_Run_DefaultThemeLinksAndHreflang` (build) and `TestServer_TagRoutes_PerLanguage`
-  (serve), both with a French-only page so the default resolver cannot accidentally satisfy them.
-
-#### ~~HIGH: the bundled `default` theme forks `head-meta` and loses hreflang~~ ✅ FIXED
-
-`cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl:1-7` exists explicitly *"to avoid
-duplicating the same ~20-line block in every head.html.tmpl"*, and **all 7** themes in
-`gomddoc-themes` call `{{ template "head-meta" . }}`. The bundled default theme does **not** —
-`partials/head.html.tmpl` re-implements canonical/feed/prev/next/og:*/twitter:* verbatim and is the
-only file in the repo that mentions neither `head-meta` nor `hreflang`. The one line it fails to copy
-is `{{ template "hreflang" . }}` (`head-shared.html.tmpl:30`), so the default theme — the one every
-new site starts on — emits **zero `<link rel="alternate" hreflang>` tags**. Deleting the duplicated
-block and calling `head-meta` fixes the SEO bug and removes ~20 duplicated lines.
-
-- **Fixed:** `head.html.tmpl` now calls `{{ template "head-meta" . }}`, matching all 7 external
-  themes; the duplicated canonical/feed/prev/next/og/twitter block and the redundant
-  viewport/description tags are gone (−24 lines). The same file's hand-inlined KaTeX stylesheet —
-  the last fork of a shared block in the bundled theme — now calls `{{ template "head-katex" . }}`,
-  so the pinned KaTeX version lives in one place again.
-  `TestBuildCmd_Run_DefaultThemeLinksAndHreflang` asserts the three hreflang links.
-
-#### MEDIUM: tag pages render with nil `Languages` and nil `Features` — NEW (found while fixing §10.3)
-
-`internal/template/renderer.go:338` (`RenderTagPage`) builds its context with `nil` languages and no
-feature map. Two consequences, both invisible until you look at a rendered tag page:
-
-- `head-meta`'s `hreflang` block is gated on `gt (len .Languages) 1`, so it emits **nothing** on
-  `/tags/*` — the fix above reaches content pages only.
-- `config.FeatureEnabled` returns `true` for a nil map (`internal/config/features.go:16-18`), so a
-  site with `theme.features.search: false` still ships `search.mjs` on every tag page.
-
-The natural fix — render tag pages against a real `TemplateContext` — has a trap:
-`tagPageData.Lang` is `""` for the default language, while `TemplateContext.Lang()` never returns
-`""` (it falls back to `Site.Language`, default `en-US`). Anything that switches to the latter and
-still derives a URL prefix from it produces `/en-US/...`. `TestServer_TagRoutes_PerLanguage` and
-`TestBuildCmd_Run_DefaultThemeLinksAndHreflang` both assert unprefixed default-language links, so
-they will catch it.
-
-#### LOW: two disagreeing answers to "when does a URL get a language prefix" — NEW (found while fixing §10.3)
-
-`tagURL` (`internal/template/renderer.go:655-660`) omits the prefix when `lang == "" || lang ==
-defaultLang`; `contentURL`'s `langPrefix` is set for every pipeline in `lp.ByLang`. They agree today
-only because `locale.DetectLanguages` never yields the default language as a *separate* pipeline in
-practice — but it does not exclude a directory matching `site.language` either
-(`internal/locale/detect.go:27-40`). With `site.language: en-US` **and** an `en-US/` content dir, the
-tag page is served at `/en-US/tags/{tag}` while `tagURL` links it as `/tags/{tag}`. Either make
-`DetectLanguages` skip the default language, or make both funcs consult one predicate.
-
-#### LOW: no structural guard that a theme calls the shared head/script blocks — NEW (found while fixing §10.3)
-
-The `head-meta` fork was caught by output assertions, i.e. only after it had shipped an observable
-loss. A ~15-line test over the **embedded** theme FS (`cmd/gomddoc/assets/themes/*/partials/`)
-asserting each `head.html.tmpl` contains `{{ template "head-meta" . }}` and `{{ template "head-katex"
-. }}`, and each `scripts.html.tmpl` contains `scripts-shared`, would fail at the moment of forking.
-Note it must **not** run against `assetsFS` or live in `ValidateDefaultTheme` — that FS is the
-overlay, where a site's own `.gomddoc/assets/.../head.html.tmpl` legitimately shadows the bundled
-one, and failing startup on a valid override would be worse than the bug.
-
-#### LOW: `/api/tags/{tag}` returns real file paths, undocumented as such — NEW (found while fixing §10.3)
-
-`internal/server/server.go:126-127` serves `metadata.PageInfo.Path` verbatim. That is deliberate —
-MCP and the metadata API are path-oriented — but nothing says so, and the tag *page* now emits URLs
-for the same data. One sentence in `docs/guide/` stating that API paths are file paths, not URLs, and
-that consumers wanting a link must resolve them.
-
-#### ~~HIGH: language directories are indexed into the *default* pipeline~~ ✅ reproduced — **FIXED**
-
-`metadata.BuildIndex` and `navigation.buildTree` filter only via `SkipWalkEntry`/`IsRestrictedPath`;
-neither skips BCP 47 dirs. With one `fr-FR/page.md`, identically on serve and build:
-
-- default `sitemap.xml` contains `https://example.com/fr-FR/page` — duplicated in `fr-FR/sitemap.xml`
-  (duplicate-content signal to crawlers); default `feed.xml` and `/tags/guide` likewise include it.
-- default sidebar shows a directory labelled `Fr-Fr`.
-- build reports `markdown_files=4` for 3 source files: `fr-FR/page.md` is rendered **twice**, both
-  writing `fr-FR/page/index.html`. Correctness currently depends on walk ordering.
-
-Two behaviours presently *depend* on this leak and will break when it is fixed: per-language
-`redirect_from` (only the default pipeline gets `URLRedirects` — `server.go:250` vs the per-language
-handler at `:208-219`; `generateRedirectFiles` likewise default-only, `build.go:178`) and
-per-language extension redirects in build. Fix the leak and wire those per-language in the same change.
-
-**Fixed.** Routed through the *existing* generic exclude mechanism rather than teaching four indexes
-about BCP 47: `setupLanguagePipelines` now detects languages **before** building the default pipeline
-and passes them down as `PipelineOptions.ExtraExclude` in `provider.IsExcludedPath`'s directory-prefix
-form (`"fr-FR/"`). `setupPipeline` merges that with `cfg.Site.Exclude` into one `Pipeline.Exclude`
-consumed by all four indexes *and* by build's static walk (`buildContext.exclude`) — the walk
-previously read `cfg.Site.Exclude` directly, which is what produced the double render. Build now
-reports `markdown_files=3` for 3 source files.
-
-Both free-riding behaviours were wired per language in the same commit. `BuildRedirectMap` gained a
-`basePath` parameter, matching the convention `ExtensionRedirect` already used: it prefixes the
-**targets** only, because `stripPathPrefix` removes `/{lang}` before the handler runs, so the
-**sources** must stay content-root-relative. `PipelineOptions.Lang` is the single input driving both
-that prefix and `template.WithLangPrefix` (previously a post-hoc `Configure` call in
-`setupLanguagePipelines`). `LangPipelineConfig.URLRedirects` carries the map to the per-language
-handler; build calls `generateRedirectFiles` and `generateExtensionRedirects` per language.
-
-MCP was deliberately left on `cfg.Site.Exclude` — an agent querying the site should see translations.
-See `docs/decisions.md` § *One Effective Exclude List per Pipeline*.
-
-#### HIGH: two declared-and-documented parameters are silently ignored ✅ verified
-
-- `internal/mcp/tools.go:227` — `handleGetTOC` never references `input`. `GetTOCInput.Path` is in the
-  generated JSON Schema (`tools.go:90-92`, `jsonschema:"subtree root path"`) and documented as
-  working in `docs/guide/04-mcp.md:187`. A client passing `path: "guide/"` gets the whole site back
-  with no error — the worst tool-contract failure mode, because the model believes it was scoped.
-- `cmd/gomddoc/pipeline.go` — `redirectFinderAdapter` ignores its path argument and calls
-  `navigation.FindFirstPage(navGen.Tree())`, a global DFS from the root. The contract
-  (`internal/server/handler.go:21-23`) is *"returns the first page path under **a directory**"*, so
-  `/guide/` with no index redirects to the **site's** first page, not the first page under `/guide/`.
-
-#### ~~HIGH: six advertised environment variables are inert~~ ✅ reproduced — **FIXED**
-
-`internal/config/config.go:144` calls `cfg.Site.ApplyEnvOverrides()` — the **site-only** walker.
-`(*Config).ApplyEnvOverrides` (`:232`) exists but its only callers are tests. Kong exposes no
-equivalent flags, so `GOMDDOC_SERVER_DEV_MODE` and all five `GOMDDOC_SERVER_HTTP_*` vars silently do
-nothing — while `cmd/gomddoc/info.go:31-42` advertises every one of them via `config.EnvVars()`, and
-`docs/guide/02-configuration.md:492-503` documents them as *"only configurable via environment
-variables"*. Fix: call `cfg.ApplyEnvOverrides()` (which walks nested structs including `Site`).
-
-**Fixed.** `NewFromServeArgs` now calls `cfg.ApplyEnvOverrides()` — but **before** the serve args,
-not after, which is where this review's suggested fix would have put it. Kong already folds `env:`
-tags into every flag it owns, so the args arrive carrying the resolved flag > env > default answer;
-a whole-Config env walk placed *after* them re-reads the environment and lets
-`GOMDDOC_SERVER_PORT` beat an explicit `--port`, inverting the documented precedence.
-`TestNewFromServeArgs_ArgsBeatEnv` guards that ordering (it fails if the call is moved down).
-
-`DevMode` is then OR'd rather than assigned, because it is the one field with no flag on any
-command: `args.DevMode` is false for `serve` even when the env var asked for dev mode. The first
-draft OR'd `Pprof` and `DirIndex` too; both were wrong. `GOMDDOC_SERVER_PPROF` *is* Kong-owned, so
-OR-ing it made `GOMDDOC_SERVER_PPROF=true gomddoc serve --no-pprof` enable pprof — the same
-precedence inversion the surrounding comment exists to prevent. `Site.DirIndex` was a provable
-no-op, since step 5 re-reads `GOMDDOC_SITE_DIR_INDEX` after the args and owns the field either way.
-`TestNewFromServeArgs_ArgsBeatEnv` now covers the `--no-pprof` case.
-
-Doc updates: `02-configuration.md` gained a `GOMDDOC_SERVER_DEV_MODE` row (it was advertised by
-`info` and referenced in the README, but the guide never documented it) and its loading-sequence
-line now shows the leading env pass with the reason.
-
-##### Follow-up surfaced while fixing this (not addressed here)
-
-- **`--dir-index` answers to two different env vars.** The Kong tag on `preview.DirIndex` is
-  `GOMDDOC_DIR_INDEX` (`cmd/gomddoc/preview.go:21`), while the struct tag on `SiteConfig.DirIndex`
-  makes it `GOMDDOC_SITE_DIR_INDEX`. Both now work, and `info` lists only the second. Same class as
-  `GOMDDOC_DOMAIN` vs `GOMDDOC_SITE_META_DOMAIN`. Pick one naming scheme per setting.
-
-#### MEDIUM: `findRelatedDocs` bypasses the documented single source of truth for tag normalization
-
-`internal/metadata/index.go:266-270` states `NormalizeTags` is *"the single source of truth … so
-chips, links, related docs, and the index always agree."* `internal/enricher/markdown.go:139-157`
-instead type-asserts `[]any` (missing the `[]string` shape) and passes raw strings to `ByTag`, which
-only lowercases without trimming. Reproduced with `tags: ["  Deployment  "]`: the tag chip and
-`/tags/deployment` work, but the see-also section is **absent** (control run with the untrimmed tag
-renders 7 matches).
-
-#### MEDIUM: index pages appear in their own "related docs" — serve only
-
-`internal/enricher/markdown.go:147-148` — `currentPath` is `r.URL.Path` verbatim, so for `/guide/` the
-self-exclusion key is `/guide/` while the index stores `/guide/README`. Build passes `"/"+filePath`
-and is correct, so serve and build render different see-also blocks for every index page.
-
-#### MEDIUM: synthetic tag pages ignore site feature config and have no i18n switcher
-
-`internal/template/renderer.go:332-340,371-381` build a `PageContext` with **no `Features`** and `nil`
-languages. Content pages go through `config.MergeFeatures` (`internal/template/context.go:46`).
-Because `FeatureEnabled` treats `nil` as "all on", a site that disables `search`/`toc`/`katex` in
-`theme.features` gets them **silently re-enabled on tag pages only**. `nil` languages also means no
-language switcher and no hreflang on `/tags/*`.
-
-#### MEDIUM: git submodules classified as directories → `build` aborts
-
-`internal/provider/git.go:474`, `gitfs.go:131` — `isDir := !entry.Mode.IsFile()`. go-git's
-`filemode.IsFile()` is true for `Regular`/`Deprecated`/`Executable`/`Symlink`; the only non-file modes
-are `Dir` **and `Submodule`**. A gitlink yields `isDir == true`, `fs.WalkDir` descends, both
-`tree.File` and `tree.Tree` fail, and `cmd/gomddoc/build.go:353-355` turns the `fs.ErrNotExist` into
-`return fmt.Errorf("walk %s: %w", …)`, **aborting the whole build**. Should be
-`entry.Mode == filemode.Dir`, skipping submodules.
-
-#### MEDIUM: `.well-known` silently dropped from git-backed sites
-
-`internal/provider/gitfs.go:128` and `git.go:470` apply a blanket `strings.HasPrefix(entry.Name, ".")`
-filter, while `IsHiddenPath` (`exclusion.go:20-22`) carves out `.well-known` as an explicit RFC 8615
-exception that the filesystem provider honours. `gomddoc build` therefore omits `.well-known`
-entirely from a git-backed site. Direct `ReadFile` still works, which makes the divergence silent.
-The filter is duplicated verbatim in two places that must stay in sync.
-
-#### MEDIUM: search results nondeterministically ordered on ties
-
-`internal/search/index.go:296-298,351-353` — `candidates` is seeded from map iteration (randomized),
-and `slices.SortFunc` is pdqsort (not stable) with no secondary key. Ties are common: title matches
-score `3.0 * idf` ignoring `freq`, and a term present in every document has `idf = 0`, tying **all**
-candidates. Exactly the defect §9.4 fixed for `CompareTitles`. Fix both halves: seed from the ordered
-`posts` slice and add a path tiebreak. Same class: `internal/server/feed.go:118` sorts by mtime with
-no secondary key — pages sharing an mtime (universal after a fresh `git clone`) reorder between
-requests, producing spurious feed churn.
-
-#### MEDIUM: snippet body truncated on a byte boundary → invalid UTF-8
-
-`internal/search/index.go:146-149` — `maxSnippetBody = 8192` is **bytes**; the cut lands mid-rune for
-any non-ASCII document, and neither `generateSnippet` nor `truncateAtWord` re-aligns, so the partial
-sequence reaches the JSON response as U+FFFD. Same class as §9.4's query-truncation fix, missed for
-the body.
-
-#### MEDIUM: canonical URLs for non-root index pages lack the trailing slash the build serves
-
-`internal/seo/url.go:37-42` — `normalizePagePath` reduces `/docs/README.md` to `/docs`; only the root
-becomes `/`. But build writes `docs/index.html`, i.e. the real URL is `/docs/`. Every non-root index
-page gets a canonical and a sitemap `<loc>` that redirect-hop. The slash should be added whenever
-`defaultIndex` was stripped, not only at the root.
-
-#### ~~MEDIUM: config loading is silently permissive~~ — **FIXED**
-
-`LoadFromFile` now decodes with `yaml.Decoder` + `KnownFields(true)`, so a `site:` wrapper, a
-top-level `features:`/`color_chips:`, or any misspelled key fails at startup with the offending
-line instead of applying nothing. Three things the fix had to get right beyond flipping the flag:
-
-- **`io.EOF` is not an error here.** yaml.v3 returns it from `Decode` for an empty *and* a
-  comment-only file; without the branch every `# …`-only config.yml became a hard failure.
-- **`Decode` reads one document.** A stray `---` parks the rest of the file in a second document
-  and drops it — the identical invisible failure through another door, so a second `Decode` must
-  see `io.EOF` or the load fails with the separator's line number.
-- **`testsite/.gomddoc/config.yml` was itself a victim**: it carried a top-level `color_chips: true`
-  that never reached `theme.features`. The project's own fixture would not have loaded under the
-  new rules. `docs/` and the website config were clean.
-
-Also `cmd/gomddoc/init_test.go`'s round-trip test decoded with a bare `yaml.Unmarshal`, which is
-exactly the leniency production dropped. `initConfig` hand-mirrors `SiteConfig`'s yaml tags with no
-compile-time link, so the test would have stayed green while `gomddoc init && gomddoc serve` started
-failing on a freshly scaffolded site. It now loads through `LoadFromFile`.
-
-Left open (same class, lower severity, deliberately *not* rolled into that commit):
-
-- `internal/locale/bundle.go:114` — site `.gomddoc/locales/*.yml` overrides decode into
-  `map[string]string` and `maps.Copy` over the base, so a typo'd key adds a dead entry and the
-  built-in string keeps winning. Themes contribute their own keys, so this wants a `slog.Warn`
-  against the known set, not an error.
-- `internal/config/features.go` — `ValidateFeatureKeys` checks the *shape* (`^[a-z][a-z0-9_]*$`),
-  not membership. `color_chip: true` (singular) passes and does nothing. Feature names are open by
-  design (`{{ .Feature "x" }}` works for names no Go code knows), so again: warn, don't reject.
-- The yaml.v3 error leaks the Go type name — `field x not found in type config.ThemeConfig` gives
-  no path back to the `theme:` key the user typed. Tolerable at the top level, worse when nested.
-- `filepath.Join(root, ConfigDirName, ConfigFileName)` is spelled out at seven sites with no
-  `ConfigFilePath` helper. Cosmetic until the filename gains a `.yaml` variant.
-
-#### MEDIUM: divergent frontmatter parsers
-
-`internal/text/frontmatter.go:11-17` vs `internal/metadata/index.go:326-363`. `extractFrontmatter`
-tolerates leading whitespace and an indented closing `---`; `StripFrontmatter` requires both at
-column 0. For those inputs the index extracts frontmatter but the stripper does not, so **raw YAML
-flows into the search corpus, the markdown passthrough response, and every MCP read path**.
+- ~~**Tag pages link to raw `.md` paths and drop the language prefix**~~ ✅ FIXED — `tags-list.html.tmpl`
+  now uses `contentURL`, and the language prefix moved *into* `contentURL` itself
+  (`template.WithLangPrefix`), fixing `see-also.html.tmpl` for free too.
+- ~~**The bundled `default` theme forks `head-meta` and loses hreflang**~~ ✅ FIXED — `head.html.tmpl`
+  now calls the shared `head-meta`/`head-katex` partials like all 7 external themes.
+  - **MEDIUM (open): tag pages render with nil `Languages` and nil `Features`.** `RenderTagPage`
+    builds its context without going through `config.MergeFeatures`, so a site with
+    `theme.features.search: false` still ships search on tag pages, and `hreflang` never appears
+    there. The natural fix (render through a real `TemplateContext`) has a trap: `tagPageData.Lang`
+    is `""` for the default language while `TemplateContext.Lang()` never returns `""`.
+  - **LOW (open): `tagURL` and `contentURL` disagree on when a URL gets a language prefix** if a
+    site's `site.language` matches a detected content directory name — currently only a latent risk,
+    since `locale.DetectLanguages` doesn't exclude the default language from directory detection.
+  - **LOW (open): no structural test guards that a theme calls the shared head/script blocks** — the
+    `head-meta` fork above was only caught by output assertions, after it had already shipped.
+  - **LOW (open): `/api/tags/{tag}` returns real file paths, undocumented as such** in `docs/guide/`.
+- ~~**Language directories indexed into the *default* pipeline**~~ ✅ FIXED — routed through the
+  generic exclude mechanism (`Pipeline.Exclude`) rather than teaching four indexes about BCP 47. See
+  `docs/decisions.md` § *One Effective Exclude List per Pipeline*.
+- **HIGH (open, verified): two declared-and-documented parameters are silently ignored.**
+  `handleGetTOC` (`internal/mcp/tools.go`) never reads `GetTOCInput.Path`, despite it being in the
+  generated JSON Schema and documented in `docs/guide/04-mcp.md` — a client asking for one subtree
+  gets the whole site with no error. `cmd/gomddoc/pipeline.go`'s `redirectFinderAdapter` ignores its
+  path argument and always does a global DFS from the root, so `/guide/` with no index redirects to
+  the site's first page, not the first page under `/guide/`.
+- ~~**Six advertised environment variables are inert**~~ ✅ FIXED — `NewFromServeArgs` now calls
+  `cfg.ApplyEnvOverrides()` at the right point in the precedence chain (before serve args, so Kong
+  flags still win). Regression: `TestNewFromServeArgs_ArgsBeatEnv`.
+  - **LOW (open): `--dir-index` answers to two different env var names** (`GOMDDOC_DIR_INDEX` on the
+    Kong flag vs `GOMDDOC_SITE_DIR_INDEX` on the struct tag) — same class as `GOMDDOC_DOMAIN` vs
+    `GOMDDOC_SITE_META_DOMAIN`. Pick one naming scheme.
+- **MEDIUM (open): `findRelatedDocs` bypasses the documented single source of truth for tag
+  normalization.** `internal/enricher/markdown.go` passes raw (untrimmed) tags to `ByTag`, so a tag
+  written as `"  Deployment  "` gets a working chip/listing but an empty see-also section.
+- **MEDIUM (open): index pages appear in their own "related docs" — serve only.** Serve's
+  self-exclusion key is the request path (`/guide/`); the index stores `/guide/README`. Build is
+  correct (uses the file path), so serve and build render different see-also blocks for index pages.
+- **MEDIUM (open): synthetic tag pages ignore site feature config and have no i18n switcher** — same
+  root cause as the nil-Features finding under §10.3's tag-page bullet above.
+- **MEDIUM (open): git submodules classified as directories → `build` aborts.** `isDir :=
+  !entry.Mode.IsFile()` is also true for `filemode.Submodule`; a gitlink causes `fs.WalkDir` to
+  descend, both `tree.File`/`tree.Tree` fail, and the whole build aborts. Should be
+  `entry.Mode == filemode.Dir`.
+- **MEDIUM (open): `.well-known` silently dropped from git-backed sites.** The git provider's hidden-file
+  filter is a blanket `strings.HasPrefix(name, ".")`, missing the RFC 8615 `.well-known` exception
+  the filesystem provider honours. Direct `ReadFile` still works, so the divergence is silent.
+- **MEDIUM (open): search results nondeterministically ordered on ties.** `candidates` seeds from map
+  iteration (randomized) with no secondary sort key; same class as the (fixed) §9.4 `CompareTitles`
+  finding, missed here. Related: `feed.go` sorts by mtime with no secondary key, causing spurious
+  feed reordering when mtimes tie (universal after a fresh clone).
+- **MEDIUM (open): snippet body truncated on a byte boundary → invalid UTF-8** in non-ASCII
+  documents (`maxSnippetBody = 8192` bytes, no rune-boundary re-alignment).
+- **MEDIUM (open): canonical URLs for non-root index pages lack the trailing slash the build
+  serves** — `normalizePagePath` only adds the slash at the root; build writes `docs/index.html`
+  (real URL `/docs/`) but the canonical says `/docs`.
+- ~~**Config loading is silently permissive**~~ ✅ FIXED — `LoadFromFile` now decodes with
+  `KnownFields(true)`, catching typo'd/misplaced keys at startup.
+  - **LOW cluster, still open (same class, lower severity):** locale override typos silently ignored
+    (`internal/locale/bundle.go`); `ValidateFeatureKeys` checks shape, not membership
+    (`color_chip: true` singular passes and does nothing); yaml.v3 error messages leak Go type names;
+    no `ConfigFilePath` helper (path spelled out at 7 call sites).
+- **MEDIUM (open): divergent frontmatter parsers.** `extractFrontmatter` tolerates leading whitespace
+  and an indented closing `---`; `StripFrontmatter` requires both at column 0 — so for those inputs,
+  raw YAML flows into the search corpus, the markdown-passthrough response, and every MCP read path.
 
 ### 10.4 MEDIUM/LOW — Performance
 
-#### ~~HIGH: `findRelatedDocs` is O(co-tagged pages) per request with a full `PageInfo` copy per tag~~ ✅ reproduced — **FIXED**
-
-`internal/enricher/markdown.go:133-184` + `internal/metadata/index.go:243-253`. `ByTag` materializes a
-full `[]PageInfo` (~104 B each) per tag; `findRelatedDocs` then builds a `seen` map over all of them,
-sorts the whole candidate list, and discards everything past index 9. Runs in `Enrich` on **every**
-markdown request and for **every file** in a static build (making builds O(n²) in co-tagged pages).
-
-| corpus | ns/op | B/op | allocs/op |
-| ------ | ------- | ------- | --------- |
-| baseline (no metaIndex) | 13,236 | 16,680 | 181 |
-| 100 pages | 39,257 | 56,209 | 420 |
-| 500 pages | 149,805 | 231,157 | 1,228 |
-| 2000 pages | 550,190 | 885,934 | 4,245 |
-
-At 2000 pages related-docs alone is ~40× the enrichment baseline and dominates request latency.
-**Fix:** add an allocation-free accessor mirroring the existing `CountByTag`, and keep a top-N heap
-instead of collect-all-then-sort-then-truncate.
-
-**Fixed.** Three changes, each removing one term of the growth:
-
-- `Index.PagesByTag` — an `iter.Seq[*PageInfo]` mirroring `CountByTag`, so a caller that reads two
-  fields no longer forces a `[]PageInfo` copy of the tag's whole page set.
-- `findRelatedDocs` keeps a sorted window of `maxRelatedDocs` instead of collecting every candidate.
-  A candidate ordered after the window's worst is dropped on sight, so the sort is bounded to ten
-  elements and only runs when a candidate actually improves the result. No heap: at N=10 a
-  `slices.SortFunc` on admission is smaller and cheaper than `container/heap`.
-- The `seen` set over the whole corpus is gone. A page carrying two of the current page's tags is
-  visited twice, but a page evicted from the window is by definition worse than the current worst
-  and gets rejected — so the *window itself* is the only place a duplicate can land, and dedup is a
-  scan of ten entries.
-
-`text.CompareTitles` was the last per-candidate allocation: `strings.Compare(ToLower(a), ToLower(b))`
-copies both strings whenever a title has an uppercase rune, which titles do. It now compares lowered
-runes in place. UTF-8 is order-preserving, so that is byte-identical to the old result; a differential
-test pins it against the old definition over every pair from a 38-string corpus. This is the shared
-title comparator, so the metadata index and search sorts get it too. (Previously 0% covered.)
-
-`BenchmarkMarkdownEnricher_RelatedDocs` now pins the scaling — allocations are flat across corpus
-sizes, which is the property that was broken:
-
-| corpus | ns/op | B/op | allocs/op |
-| ------ | ------- | ------- | --------- |
-| baseline (no metaIndex) | 11,420 | 16,064 | 167 |
-| 100 pages | 16,913 | 16,384 | 168 |
-| 500 pages | 29,502 | 16,384 | 168 |
-| 2000 pages | 71,281 (was 550,190) | 16,384 (was 885,934) | 168 (was 4,245) |
-
-The residual ns/op growth is the unavoidable single pass over the tag's page list.
-
-#### ~~HIGH: search builds a `map[int][]posting` over the entire posting list, per query token~~ ✅ reproduced — **FIXED**
-
-`internal/search/index.go:278-322`. Rebuilt from scratch on every query, for every token, over the
-**whole** posting list — including documents the AND-intersection immediately discards. pprof:
-`Search` accounts for **77.6%** of query allocations (2000 docs: 493µs, 591 KB, 4,824 allocs).
-
-The key fact: phase 3 of `BuildIndex` (`:194-211`) appends postings in ascending `docIdx` order, so
-posting lists are **already sorted** — intersection is a linear merge needing zero maps. Compute `df`
-by counting distinct `docIdx` transitions during the scan.
-
-**Fixed.** No map is built at query time, and no pass touches more than it has to:
-
-- `distinctDocs(posts)` walks a posting list's distinct documents — a `docIdx` change is a new
-  document. It gives both `df` and, for the seed token, the candidate set.
-- Candidates are seeded from the first token with the `tag:` restriction applied up front, so later
-  tokens intersect against the tag-filtered set rather than the corpus, and the seed slice is sized
-  `min(df, len(tagSet))`.
-- Intersection and scoring are both linear merges over the same `seekDoc` cursor primitive: a
-  posting for a document the intersection dropped is skipped, not looked up. Scores live in a
-  `[]float64` parallel to the candidates rather than a slice of pairs.
-- Ranking is a sorted top-N window (`rankTopN`), not sort-all-then-truncate — `limit` is 20 by
-  default and capped at 100, while a common term makes every document a candidate. This was the
-  largest remaining cost once the maps were gone.
-- `compareScored` breaks score ties by `docIdx`. Candidates used to come out of Go map iteration, so
-  equally-scored hits were ordered arbitrarily and could differ between serve and build.
-
-The ordering invariant `Search` depends on is documented on the `Index.inverted` field, where a
-reader of the data structure lands, and `TestBuildIndex_PostingsSorted` asserts it at the producer.
-`TestSearch_MergeMatchesReference` pins candidate selection and scoring against `referenceSearch`, a
-test-only map-based oracle, over 15 query shapes × 2 limits on a 60-document corpus — same paths,
-same order, same scores, same snippets. The oracle deliberately shares the tag preamble and result
-materialization (unchanged by this work) but ranks by sorting everything, so a broken window fails it.
-
-`BenchmarkSearch` (2000 docs, limit 10):
-
-| query | ns/op | B/op | allocs/op |
-| ---------------------------- | ------------------- | -------------------- | -------------- |
-| `common` (every doc; idf 0) | 24,160 (was 139,036) | 36,464 (was 264,786) | 57 (was 2,066) |
-| `alpha` (⅓ of docs, varied scores) | 19,192 (was 137,064) | 25,280 (was 156,776) | 87 (was 1,509) |
-| `common alpha` | 32,157 (was 278,856) | 35,888 (was 379,368) | 128 (was 3,559) |
-| `tag:t1 common` | 60,029 (was 180,312) | 68,760 (was 297,233) | 62 (was 2,071) |
-
-Allocation counts are flat across corpus sizes (identical at 50, 500 and 2000 docs); the residual
-byte growth is the candidate and score slices, both O(matching docs). Note `common` has
-`df == docCount`, so `idf == 0` and every score ties — it measures the posting-list scan, not the
-ranking. `alpha` is the one to watch for ranking changes.
-
-Measured follow-ups left on the table, in descending value:
-
-- **`df` is recomputed per query although it is static.** A full scan of the token's posting list per
-  token per query, ~4µs per 2000-posting list. Storing it beside the slice (`map[string]termEntry`)
-  computes it once in phase 3. Also unlocks intersecting tokens in ascending-`df` order, which is
-  result-neutral and shortens every merge.
-- **`taggedPages` copies `[]metadata.PageInfo` for the mixed path.** ~41.6 KB of the 68.8 KB in
-  `tag:t1 common` at 2000 docs, to read `p.Path` and discard the rest. `PagesByTag` fixes it, but
-  `tagOnlyResults` *writes* to the pages it is given, so the tag-only path must keep the copies —
-  it needs a separate `tagDocSet(tags)` entry point, not a swap.
-- **Three passes over the seed token's posting list** (df, candidates, scoring) where one would do,
-  once `df` is precomputed.
-- **Linear cursor advance in both merges.** Galloping or a binary search pays off past ~10⁴ docs,
-  when a one-candidate set is intersected against a whole-corpus token.
-- Measured and rejected, so nobody re-litigates it: shrinking `posting` from 24 to 12 bytes
-  (`int32` fields) does not move query latency — 3.990µs vs 3.993µs on a 2000-element scan. These
-  loops are branch-bound, not bandwidth-bound. Consider it for index memory, never for latency.
-
-#### ~~MEDIUM: the compression buffer pool is poisoned after the first request~~ ✅ FIXED
-
-Fixed at the root: `Write` now **decides before it copies**. It buffers only while
-`len(buf)+len(b) < minCompressionSize` and otherwise commits, flushes whatever prefix was buffered,
-and hands the write straight to the encoder. The buffer therefore can never reach
-`minCompressionSize`, so `bufPool` allocates exactly that (was 4096) and the slice is never
-reallocated — which in turn kills the poisoning: `returnBuf` no longer writes `cw.buf` back over the
-pool's slice header at all, it just hands the pointer back. A slice that somehow *did* grow is now
-dropped for free, so `maxPoolBufferSize` and its branch are gone rather than merely revived.
-
-Four collapses fell out of it: `decide()` + `flushBuffer`'s header-writing head became one
-`commit()`; the `compress bool` field went away (`gzw != nil` already carries the decision);
-`Close`'s two `!cw.decided` branches became one that calls `flushBuffer` instead of open-coding it;
-and `Write` now has a single return contract (the encoder's `n`) instead of two.
-
-Measured (`BenchmarkCompression`, median of 5, before → after):
-
-| Case | ns/op | B/op | allocs/op |
-|------|-------|------|-----------|
-| BelowThreshold_TextHTML (~500B) | 375 → 237 | 689 → 112 | 4 → 3 |
-| AboveThreshold_TextHTML_Gzip (~5KB) | 26061 → 25161 | 6001 → 291 | 5 → 4 |
-| AboveThreshold_PrefixThenBody_Gzip | 26584 → 25627 | 5852 → 291 | 6 → 4 |
-| AboveThreshold_ImagePNG_Skipped (~5KB) | 1384 → 234 | 6647 → 112 | 4 → 3 |
-| HEAD_LargeTextHTML | 93 → 96 | 32 → 32 | 2 → 2 |
-
-The benchmark itself had to be fixed first: it wrote into an `httptest` recorder and converted its
-payload from `string` per request, both of which cost more than the middleware and hid the change
-entirely (the same run against the *old* code reported 19KB/op either way). It now writes to a
-discarding `ResponseWriter` and reuses `[]byte` payloads, and covers the prefix-then-body case.
-
-Tests: `TestCompressionWriter_BufferHandback` is one table over the six ways a response ends, each
-asserting `cap(cw.buf)` — the response body is byte-identical whether the buffer survives or not, so
-capacity is the only observable. Both defects show up there: niling drops it to zero, appending a
-body reallocates it away from the pooled array. It replaces three tests, one of which
-(`ReturnBuf_OversizedDiscarded`) sent a request *without* `Accept-Encoding`, so the middleware
-returned before allocating a buffer and it asserted nothing at all.
-
-Measured follow-ups left on the table (from the efficiency pass, numbers pre-date this fix):
-
-- `&compressionWriter{}` heap-allocates 80 B per gzip-eligible request, including 304s with no body.
-  Pooling the struct with the buffer inline (`[minCompressionSize]byte`) removes that allocation
-  *and* the second pool round-trip, since the buffer is now a fixed size with no growth path. Only
-  safe because no handler here retains `w` past `ServeHTTP` — verify that before doing it.
-- `gzw.Reset` clears flate's ~640 KB of hash tables per request at `DefaultCompression`; levels 1–3
-  use the much smaller `deflateFast` tables. Unmeasured: sweep levels 1/4/5/6 for ns/op *and* output
-  size before touching it.
-- `shouldSkipContentType` lowercases before stripping `;` parameters, so `charset=UTF-8` allocates a
-  copy of the whole string. Nothing in-tree spells a content type with uppercase, so this is latent.
-
-Original finding:
-
-`internal/server/compression.go` — `flushBuffer` sets `cw.buf = nil` on both branches, and `Close`
-does the same, so by the time the deferred `returnBuf` runs `cw.buf` is **always** `nil`:
-
-```go
-if cap(cw.buf) <= maxPoolBufferSize {  // cap(nil) == 0, always true
-    *cw.bufPtr = cw.buf[:0]            // stores a nil slice back into the pool
-    bufPool.Put(cw.bufPtr)
-}
-```
-
-The pool is refilled with zero-capacity slices forever — every request re-grows from scratch, and
-`maxPoolBufferSize` is dead code. `New` allocates `make([]byte, 0, 4096)`, so the intent is clear.
-**Fix:** reset the length instead of niling (or nil *after* `returnBuf`). Separately, `Write` copies
-the entire body via `append` even though `serveWithETag` delivers it in a single call — skip
-buffering when the first `Write` already exceeds `minCompressionSize`.
-
-#### MEDIUM: breadcrumbs generated twice per request ✅ FIXED
-
-`cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl:20` called `breadcrumbs .Page.Path`, and
-`partials/head.html.tmpl:1018` → `{{ template "jsonld" . }}` → `jsonLD .Page` →
-`internal/template/renderer.go generateJSONLD` called `breadcrumbGen.Generate(page.Path)` again.
-That closure is a real provider `Stat` syscall (`cmd/gomddoc/pipeline.go:166-169`), plus
-`text.TitleCase` per segment. Measured: 2,158 ns / 2,184 B / 23 allocs per `Generate` *excluding* the
-syscall. (This also subsumes the `cases.Title` `sync.Pool` idea already marked Won't-Fix in §5 — that
-decision stands.)
-
-> **Correction to the original finding:** it claimed `Generate` calls `g.isDir()` **per path
-> segment**. It does not — `internal/template/breadcrumb/generator.go:64` calls it exactly once per
-> `Generate`, for the trailing segment only. Intermediate segments are known to be directories. The
-> per-request *doubling* was real; the per-segment syscall count was not.
-
-**Fix:** memoising inside the template function is structurally impossible — `funcMap` is bound at
-parse time and parsed templates are cached and shared across concurrent `Render` calls, so there is
-no per-render seam. Breadcrumbs moved instead to precomputed page data, where every other derived
-page value already lives (`TOC`, `Navigation`, `PrevPage`, `RelatedDocs`):
-
-- The `breadcrumbs` template function was **deleted** from `funcMap` (12 functions remain).
-- `Renderer` gained `Breadcrumbs(path) []breadcrumb.Breadcrumb`; `PageContext` gained a
-  `Breadcrumbs` field.
-- `BuildPageContext` is the single generation site. Callers pass `PageContextInput.Renderer`, not a
-  precomputed trail, so the trail and `Path` cannot disagree.
-- `generateJSONLD` maps `page.Breadcrumbs` to `[]seo.BreadcrumbItem` instead of regenerating.
-- All 8 theme layouts (default + the 7 in `gomddoc-themes`) now use `{{ range .Page.Breadcrumbs }}`.
-
-`BenchmarkPageWithBreadcrumbs` (context build + render of a layout with both the breadcrumb bar and
-JSON-LD), median of 5 at `-benchtime 2000x` on an Apple M1 Max:
-
-| | ns/op | B/op | allocs/op |
-|---|---|---|---|
-| before | 21548 | 15023 | 258 |
-| after | 19789 | 13140 | 236 |
-| | **−8.2%** | **−12.5%** | **−8.5%** |
-
-Plus one provider `Stat` per page that the benchmark's in-memory `isDir` closure does not model.
-
-**Behaviour change:** error pages no longer emit a JSON-LD `BreadcrumbList`. `BuildErrorContext`
-leaves the field nil; `error.html.tmpl` has no breadcrumb bar, so nothing visible changes, and error
-pages are `robots: noindex` anyway. Documented at the function and in `architecture.md`.
-
-Also fixed in passing: `breadcrumb.Generator` sized its `strings.Builder` with
-`Grow(len(filepath))`, one byte short of what the loop writes (`len(filepath)+1` — one `/` per
-segment, and `filepath` already holds `len(segments)-1` of them).
-
-**Left for later** (recorded here so they are not lost):
-
-- `RenderTagPage`/`RenderTagsIndex` (`internal/template/renderer.go`) hand-assemble a `PageContext`
-  literal instead of going through `BuildPageContext`, so they now assign `Breadcrumbs` by hand and
-  still skip `config.MergeFeatures` — a site that disables `toc` or `search` in `theme.features`
-  still gets them on `/tags/` and `/tags/{tag}` (this is the §10.3 "nil `Features` on tag pages"
-  finding, same root cause). Their trail is also fully static, so the generator's `Stat` for a
-  synthetic path is a guaranteed miss on every tag page — worst case under `GitProvider`, which
-  takes the exclusive tree mutex for both the failed file and failed directory lookup.
-- `Breadcrumbs` re-derives, with a second provider round trip, the directory-vs-file bit the
-  provider already knew when `ServeContent` read the page. Surfacing the resolved kind from the read
-  would remove the round trip on the hot path; it also uses `context.Background()`
-  (`cmd/gomddoc/pipeline.go:166-169`), so it is not cancellable with the request — see the
-  `request-scoped context.Background()` entry below.
-
-#### MEDIUM: `findBestWindow` lowercases ~50 substrings per search result ✅ FIXED
-
-`internal/search/snippet.go:112` — `strings.ToLower(content[pos:end])` inside a ~50-iteration sampling
-loop, allocating a fresh copy each time. **13.9%** of all search-query allocations. Fix: lower the
-document body once per doc, or store a pre-lowered snippet body in the index at build time.
-
-**Fix.** Lowered once per document and sliced per window — not stored in the index, which would
-double the 8 KB `maxSnippetBody` per document for a fold that only the queried results need.
-`strings.ToLower` returns its argument unchanged when there is nothing to fold, so an all-lowercase
-body now costs zero allocations instead of ~50.
-
-`highlightTerms` had the same shape one level down: it called `findTokenSpans` per query token, and
-each call re-lowered the same ~160-byte snippet. It now folds once and passes the copy down —
-`findTokenSpans` takes `lower` as a parameter, matching `findTokenSpansRunewise`'s existing signature.
-
-> **Sharp edge found while fixing.** Go's `strings.ToLower` uses *simple* case mapping: `İ` (U+0130,
-> 2 bytes) maps to `i` (1 byte), so the lowered copy can be **shorter** than the original, not longer.
-> `lower[pos:end]` then slices a region that is not `content[pos:end]` — and panics outright once
-> enough bytes have been lost. `findBestWindow` keeps the per-window lowering for those bodies,
-> guarded by a `len(lower) == len(content)` check, the same guard `findTokenSpans` already used.
-> The first draft evaluated `lower[pos:end]` before the guard; the new
-> `TestFindBestWindow/case_folding_changes_byte_length` case caught it as a panic.
-
-Measured (`BenchmarkGenerateSnippet`, new — `mergeCorpus`'s bodies are shorter than the 160-byte
-window, so `findBestWindow` returned 0 without ever entering the sampling loop and the existing
-benchmarks could not see this at all):
-
-| | before | after | |
-|---|---|---|---|
-| ns/op | 22450 | 19970 | −11.0% |
-| B/op | 10016 | 10048 | +0.3% |
-| allocs/op | 67 | 17 | **−74.6%** |
-
-Bytes are flat because one 8 KB fold replaces ~50 × 176 B ones; the win is allocation count and the
-GC pressure behind it. `BenchmarkSearch/docs=2000/common_alpha` picks up the `highlightTerms` half:
-128 → 118 allocs/op, 32230 → 30300 ns/op.
-
-#### MEDIUM: MCP TOC rebuilds the nav tree per call and re-opens every markdown file ✅ FIXED
-
-`internal/mcp/tools.go:233-234` constructs a fresh `navigation.NewGenerator` per call, making its
-`sync.Once` cache useless, and never installs `SetTitleLookup` — so `buildTree` falls through to
-`extractTitle`, which **opens and line-scans every `.md` file in the site** on every
-`get_table_of_contents` call. §9.8 eliminated exactly this for the HTTP path; the MCP path was left
-behind even though `s.deps.MetaIndex` is right there. (The pipeline's cached generator at
-`cmd/gomddoc/pipeline.go:222` is never passed into `ServerDeps`.)
-
-**Fix.** The pipeline's generator is published as `Pipeline.NavGenerator` and handed to
-`mcp.ServerDeps.NavGenerator`; `handleGetTOC` calls `Tree()` on it. `ServerDeps.DefaultIndex` and
-`.Resolver` existed only to feed the removed constructor and are gone. `gomddoc mcp` built its
-pipeline with `EnableNavigation: false`, so the fix required flipping it — the generator is lazy
-(bare `sync.Once`, `NewGenerator` only assigns fields), so this costs one struct allocation at
-startup and the first `get_table_of_contents` call does strictly less work than before.
-
-The title-lookup closure, previously written out at each site, is now
-`metadata.(*Index).TitleForPath` passed as a method value. It also drops `ByPath`'s defensive
-`PageInfo` copy (struct + `Tags` slice header) per navigation leaf.
-
-Behaviour note, deliberate: under `serve`, MCP receives the **default** pipeline's generator, whose
-exclude list hides every detected language directory. Translated pages are therefore absent from
-`get_table_of_contents` — consistent with `list_pages` and `search_docs`, which already read that
-pipeline's indexes, and better than the old TOC, which listed them with raw `.md` URLs the default
-resolver could not clean. They remain readable by path through `read_page`:
-`ServerDeps.ExcludePatterns` stays `cfg.Site.Exclude`, the author's access-control intent.
-
-`TestTools_GetTOC_SharedGenerator` pins both halves — leaf labels must come from the metadata index
-(frontmatter title, not the H1) and a `countingFS` must see no new `Open` calls on the second call.
-Restoring the per-call constructor turns both red. `setupPipeline`'s option table now asserts
-`NavGenerator` tracks `EnableNavigation`, which is the half no handler test can see.
-
-**Left open** (pre-existing, unrelated to the perf fix): `GetTOCInput.Path` is advertised in the tool
-schema as "subtree root path" and documented in `docs/guide/04-mcp.md` and
-`docs/guide/12-advanced/03-api-reference.md`, but `handleGetTOC` never reads it — an agent asking for
-one subtree gets the whole site. Now cheap to honour (a pointer walk into the cached tree) or delete.
-
-#### MEDIUM: compression and metrics cover only 2 of 8 route groups ✅ FIXED
-
-`internal/server/server.go:228,259` — the only two `Compression` occurrences, both content subgroups.
-Measured:
-
-```
-GET /guides/getting-started  Accept-Encoding: gzip → Content-Encoding: gzip
-GET /tags/                   Accept-Encoding: gzip → NOT COMPRESSED (51 KB HTML)
-GET /sitemap.xml             Accept-Encoding: gzip → NOT COMPRESSED
-```
-
-`/api/search`, `/tags/`, `/tags/{tag}`, `/sitemap.xml`, `/feed.xml`, `/_assets/` (CSS/JS) and
-`/robots.txt` are never gzipped — and per CLAUDE.md's own rule never get `Vary: Accept-Encoding`.
-These are the *most* compressible payloads on the site. `http_requests_total` likewise counts content
-requests only, under-reporting real traffic. `RouteGroup.Subgroup` composes cleanly; hang these off a
-subgroup carrying at least Compression + Metrics.
-
-**Fix.** `Compression` and `Metrics` moved off the two content subgroups onto a new
-`base := NewGroup(mux, "", Compression, Metrics)`, and every user-facing route now descends from it:
-`/robots.txt` and `/_assets/` directly, everything else through `auth := base.Subgroup("", authMW...)`.
-The two content subgroups keep only their own concerns (`stripPathPrefix`, MethodFilter,
-ContentExclusion, ExtensionRedirect). Attaching a cross-cutting concern to a leaf is what let six
-sibling groups opt out silently; on the parent, a route added later gets it without anyone
-remembering to.
-
-Two ordering consequences, both improvements:
-
-- BasicAuth is now *inside* Compression and Metrics, so 401s are counted.
-- Metrics now wraps MethodFilter/ContentExclusion/ExtensionRedirect, so their 405/403/301 responses
-  are counted too, not just handler hits.
-
-Three groups stay deliberately off `base`, each with the reason in a comment at the registration
-site: `/health/*` (probe traffic would swamp the counters; bodies are far below the 1 KB threshold),
-`/metrics` (`promhttp` negotiates its own encoding, and a scrape that increments the counter it is
-reporting feeds its own numbers back), and pprof (already-compressed binary, not user-facing).
-
-Tests: `internal/server/route_coverage_test.go` tables the eight routes and asserts, per route, a
-200, a `+1` delta on `httpRequestsTotal{GET,200}`, `Vary: Accept-Encoding`, `Content-Encoding: gzip`,
-and a gzip stream that decodes to ≥ `minCompressionSize`. Its fixture is 60 pages with a shared and a
-unique tag each, sized so `/tags/`, `/api/tags` and the rendered page all clear the threshold.
-`TestRobotsTxt_VaryWithoutCompression` covers the small-body half of the contract (Vary present,
-no `Content-Encoding`), and `TestMetricsEndpoint_NotSelfCounted` pins the `/metrics` exemption.
-Mutation-verified: moving either middleware back down to `content` turns all seven non-content cases
-plus the robots test red. No `t.Parallel` — `httpRequestsTotal` is a package-level Prometheus counter.
-
-This also partly resolves the `docs/01-http-behavior.md` MEDIUM drift entry ("overstates Cache-Control,
-ETag and compression as universal") — compression *is* now universal across user-facing routes.
-Cache-Control and ETag remain content-handler-only.
-
-#### ~~MEDIUM: git reads do redundant work under the (now serialised) tree lock~~ ✅ FIXED
-
-Surfaced while fixing the §10.1 tree race. All of these were on the critical path of a single
-exclusive lock, so they cost throughput on git-backed sites rather than just CPU:
-
-- **`Stat` decompresses an entire blob to read `file.Size`** (`internal/provider/git.go:509`).
-  `tree.File()` calls `GetBlob`, which loads and decodes the whole object; only `Mode` and `Size` are
-  used. On packfile-backed disk storage that is a full delta/zlib decode, discarded immediately —
-  and `cmd/gomddoc/pipeline.go:167` wires `prov.Stat` into the breadcrumb generator, so it runs on
-  every page request.
-- **Every path is resolved twice on a directory hit** — `git.go:393`+`400`, `git.go:509`+`522`,
-  `gitfs.go:63`+`69` each ran `FindEntry` for the same path once as a file and once as a tree. One
-  `FindEntry` then switching on `entry.Mode` does it in one pass. Worse on the filesystem storer,
-  where the failing `File()` attempt fully decodes the tree object before discarding it on the type
-  check.
-- **`file.Contents()` round-trips through a `bytes.Buffer` and a `string`** (`git.go:420`,
-  `gitfs.go:84`) — roughly 3N allocated and 4N copied for an N-byte page, given the trailing
-  `[]byte(content)`. `file.Reader()` + `io.ReadFull` into a `make([]byte, file.Size)` is one
-  exact-size allocation.
-
-**Fix.** `gitTreeState` now carries the tree's own object storer (`objects
-storer.EncodedObjectStorer`) beside the tree — published by `cloneLocked` and cleared by `Close`, both
-under the one lock that already guards the tree. `object.Tree` keeps its storer unexported, and that
-field is what lets a caller ask for an object by a hash the path walk already produced. Three helpers
-in `gitfs.go` now own the object access, and both surfaces (the `GitProvider` methods and the
-`gitTreeFS` handed out by `RootFS`) go through them:
-
-- `resolveTreeNode` walks a path once, switches on `entry.Mode`, and fetches through the hash
-  (`object.GetTree(objects, entry.Hash)` for a subtree, `tree.TreeEntryFile(entry)` for a blob) —
-  no probe, no second walk. It restores `file.Name` to the full path, which `TreeEntryFile` sets to
-  the base name alone.
-- `statTreeNode` answers a stat from the entry plus `objects.EncodedObjectSize(entry.Hash)`.
-  `tree.Size` was not enough: `Tree.FindEntry` only consults its subtree cache from three segments up
-  (`for i := len(pathParts) - 1; i > 1`), so a second lookup of `docs/guide.md` re-decodes the `docs`
-  tree. Verified against go-git v5.19.1.
-- `blobBytes` reads a blob into one exact-size allocation.
-
-The same defect had a second home the original entry missed: `gitTreeFS` implemented only `fs.FS`, so
-`fs.Stat` and `fs.ReadFile` fell back to `Open` — which decodes the whole blob. Sitemap and feed
-generation stat every page in the site (`internal/server/sitemap.go:130`, `feed.go:111`) for a
-`ModTime` that is the commit timestamp, the same constant for every file in the tree; the metadata and
-search index builds read every file in the repository through `fs.ReadFile`. `gitTreeFS` now
-implements `fs.StatFS` and `fs.ReadFileFS`.
-
-Measured on an ~8 KB page, in-memory storage (`BenchmarkGitProvider_*`, `BenchmarkGitTreeFS_*`, Apple
-M1 Max, `-count 3`). Memory storage understates the win — the deployed storer for `--git-storage-dir`
-is `filesystem.ObjectStorage`, where materialising an object is a packfile seek plus a delta and zlib
-decode rather than a map lookup:
-
-| Benchmark | Before | After |
-| --------------------- | ---------------------------- | -------------------------- |
-| `GitProvider.Stat` | 675 ns, 480 B, 11 allocs | 585 ns, 352 B, 9 allocs |
-| `GitProvider.ReadFile` | 11.0 µs, 49.3 KB, 19 allocs | 2.40 µs, 8.7 KB, 13 allocs |
-| `GitProvider` dir read | 1017 ns, 641 B, 21 allocs | 872 ns, 609 B, 19 allocs |
-| `fs.Stat` (RootFS) | 2469 ns, 8823 B, 16 allocs | 564 ns, 352 B, 9 allocs |
-| `fs.ReadFile` (RootFS) | 4190 ns, 17.0 KB, 17 allocs | 2363 ns, 8.7 KB, 13 allocs |
-
-Tests (`internal/provider/git_reads_test.go`) assert the object access itself, not the timing: a
-`countingStorer` separates `EncodedObject` (materialise) from `EncodedObjectSize` (header), and each
-assertion was mutation-verified — restoring the `tree.File` probe, `tree.Size`, `file.Contents()`, or
-removing either `fs.StatFS`/`fs.ReadFileFS` turns the relevant counter or the `cap(body) == len(body)`
-check red. The package's provider-construction helpers moved to `internal/provider/testhelpers_test.go`,
-where `newTestTreeState` pairs a tree with its storer so a hand-built `gitTreeState` cannot reach the
-`tree != nil, objects == nil` state the provider never produces.
-
-Whether the blob read can move *outside* the lock is a separate question — the blob looks detached
-from the tree once the file is resolved, but that depends on storer- and version-specific go-git
-internals (see `docs/decisions.md`, "Serialised Git Reads"). Do not change it without a benchmark
-justifying the risk. **Left open**, all raised during this fix's review and none of them regressions
-from it:
-
-- **The directory-index read bypasses `readFileLocked`'s guards** (`git.go:441`) — the closure
-  `handleDirectoryLocked` passes to `handleDirectory` reads the default index with
-  `dirTree.File(g.defaultIndex)` + `blobBytes`, so neither `maxFileSize` nor `isLFSPointer` applies.
-  An LFS-tracked `README.md` is rejected at `/README.md` and served as raw pointer text at `/`.
-- **`gitTreeFS.Open` applies no size cap at all** and `blobBytes` commits `make([]byte, f.Size)` from
-  a header-declared size, so the index builds will happily materialise a repo-sized blob.
-- **Depth-2 paths defeat go-git's subtree memo** — `FindEntry`'s cache is only consulted from three
-  segments up, so `/docs/guide.md`, the commonest URL shape on a docs site, re-decodes the `docs`
-  tree on every request. A `map[string]*object.Tree` beside `tree`/`objects` in `gitTreeState`
-  (immutable for the provider's lifetime, cleared by `Close`) would fix it.
-- **Three spellings of "this entry is a directory"** — `entry.Mode == filemode.Dir` in
-  `resolveTreeNode`/`statTreeNode`, `!entry.Mode.IsFile()` in `treeDirEntries`. They agree except on
-  submodule gitlinks, where behaviour is unchanged from before this fix.
-- **`git_test.go` still hand-rolls 22 `&GitProvider{…}` literals** that `gitProviderOver` (now in
-  `testhelpers_test.go`) covers; adding the `objects` field meant editing 11 of them.
-
-#### LOW — performance
-
-- **Inline-asset cache stores raw `[]byte`** (`internal/template/inline_asset.go:36-62`) — `readAsset`
-  caches bytes, then each call does `template.JS(data)`/`CSS`/`HTML`, a full copy per render
-  (~22.8 KB/page across 7 inlined JS assets). Cache the converted value.
-- ~~**Resolver does two full filesystem walks at startup**~~ **FIXED** — collapsed into one walk as
-  part of the §10.1 exclude fix.
-- **`HasTemplate` does an `fs.Stat` per request** (`internal/template/renderer.go:735-739`, via
-  `ResolveLayout` at `handler.go:175`). The template set is fixed after startup; memoize, gated on
-  `cacheAssets`.
-- **`emitTagPages` renders serially** (`cmd/gomddoc/build.go:733-772`) while the markdown walk is
-  parallel — a serial tail on a tag-heavy build. Wrap in an errgroup at `runtime.NumCPU()`.
-- **Tag pages rebuilt from scratch per request** (`internal/server/tags_html.go`) — `ByTag` copy +
-  sort + full render, uncapped and uncached, on an index that is immutable after startup.
-- **Corpus read twice at startup** — `metadata.BuildIndex` and `search.BuildIndex` each independently
-  `fs.ReadFile` every `.md`. Merging into one read pass would halve startup I/O.
-- **`request-scoped context.Background()`** (`cmd/gomddoc/pipeline.go:166-169`) — the breadcrumb
-  `isDir` closure runs on the request path but is uncancellable, because
-  `breadcrumb.IsDirFunc` drops the context. For a git provider this can block on a clone no client
-  can cancel. Relatedly, `internal/provider/git.go:202-247` runs the clone under the write lock driven
-  by a *request* context, so one client navigating away aborts a provider-global operation for
-  everyone queued behind `g.mu.Lock()`.
+All HIGH/MEDIUM items in this section are ✅ **FIXED** and documented in `CLAUDE.md`'s Go Conventions
+(each has a dedicated bullet) and/or `docs/decisions.md`:
+
+- `findRelatedDocs` O(co-tagged pages) with full-copy-per-tag → bounded top-N window + `iter.Seq`
+  accessor (`Index.PagesByTag`). CLAUDE.md: "Bounded results keep a sorted top-N window."
+- Search rebuilding a `map[int][]posting` per query token → sorted-merge over already-sorted
+  postings. CLAUDE.md: "Never build a map at query time over data an index already ordered."
+- Compression buffer pool poisoned after the first request → `Write` now decides before it copies.
+  CLAUDE.md: "A pooled buffer's slice header belongs to the pool, not the request."
+- Breadcrumbs generated twice per request → precomputed once in `BuildPageContext`. CLAUDE.md:
+  "Anything more than one consumer reads is a `PageContext` field, never a template function."
+- `findBestWindow` re-lowercasing ~50 substrings per search result → folds once per document.
+  CLAUDE.md: "`strings.ToLower` is not positionally aligned with its input."
+- MCP TOC rebuilding the nav tree per call → shared `Pipeline.NavGenerator`. CLAUDE.md: "A cached
+  object is shared through the pipeline, never reconstructed at the consumer."
+- Compression/metrics covering only 2 of 8 route groups → hoisted onto `base`. CLAUDE.md: "A
+  cross-cutting middleware goes on the highest `RouteGroup`."
+- Git reads doing redundant blob decodes / double path resolution under the (now serialised) tree
+  lock → `resolveTreeNode`/`statTreeNode`/`blobBytes` via one `FindEntry` + object-hash lookup;
+  `gitTreeFS` now implements `fs.StatFS`/`fs.ReadFileFS`. CLAUDE.md: "Resolve a git path once" and
+  "A read-only `fs.FS` wrapper owes `io/fs` its optional interfaces."
+
+**Still open (LOW, opportunistic):** inline-asset cache stores raw `[]byte` (copy per render);
+`HasTemplate` does an `fs.Stat` per request; `emitTagPages` renders serially; tag pages rebuilt from
+scratch per request (uncached); corpus read twice at startup (metadata + search index separately);
+request-scoped `context.Background()` in the breadcrumb `isDir` closure (uncancellable git clone).
+Git-read follow-ups, all LOW: directory-index reads bypass `maxFileSize`/LFS guards; `gitTreeFS.Open`
+has no size cap; depth-2+ paths defeat go-git's subtree memo; three slightly-inconsistent
+"is this a directory" checks remain.
 
 ### 10.5 Documentation drift
 
-§9.6's fixes **held** — CLAUDE.md's package tree still matches all 16 `internal/` packages, `make run`
-still shows its argument, MCP counts are still 6/4/3. One §9.6 fix was *incomplete rather than
-regressed*: the theme-count correction was applied to `05-theming-and-assets.md` only.
+All 15 lettered findings (D1-D15: stale `--dev` flag docs, wrong navigation template function
+references, admin-port health-endpoint claims, the dead custom-renderers doc, Docker/theme-count/
+binary-size/RAM claims, sitemap-index-as-live-endpoint, README.html-that-doesn't-exist, and more)
+are ✅ **FIXED**. Corrected files: `README.md`, `CLAUDE.md`, `docs/architecture.md`,
+`docs/decisions.md`, `docs/guide/*.md` (multiple), `docs/seo-competitive-analysis.md` (dated rather
+than rewritten). Two items were website/themes-repo-only and not committable from here (tracked
+there). Full detail in git history if needed.
 
-**HIGH — actively wrong; a new user following these fails immediately:**
+Two items surfaced *during* this pass and remain **open**:
 
-| # | Doc | Reality |
-| --- | ---------------------------------------- | ------------------------------------------------- |
-| D1 | `README.md:118,377` documents `serve --dev` | ~~✅ verified: `unknown flag --dev`~~ — **FIXED**. The flag table now matches `serve --help`, and both `--dev` call sites point at `preview` / `GOMDDOC_SERVER_DEV_MODE` |
-| D2 | `README.md:118` uses `-d ./testsite` as the directory | ~~✅ verified: `-d` is `--domain`~~ — **FIXED**. README uses the positional arg; the k8s manifest now passes `args: ["serve", "/content"]` |
-| D3 | `02-configuration.md:492-503` documents 5 `GOMDDOC_SERVER_HTTP_*` vars + `DEV_MODE` | ~~✅ verified inert~~ — **FIXED**, they now take effect; see §10.3 |
-| ~~D4~~ | ~~Six files document a `navigation` template function~~ | ✅ FIXED. The FuncMap had **12** entries and no `navigation`; a theme copying the documented example failed to parse. `architecture.md`'s table was rewritten from `renderer.go:funcMap` — it had also omitted `canonicalURL`, `jsonLD`, `tagURL` and `pageTags`, listed `.Feature` (a `PageContext` method, not a FuncMap entry) and claimed `assetURL` validates existence. The guide gained a **Rendering the Navigation Sidebar** section with the recursive `nav-item` markup, since deleting the function reference without a replacement leaves theme authors with nothing. `architecture.md` §7 also documented `NavNode` as the template-facing type: it is the cached generator tree (`Label`, no active state), while templates range over `enricher.NavItem` (`Title`/`Active`/`Open`) — both are now shown, one per side of the cache boundary. `decisions.md` records *why* it is a field and not a function (parse-time FuncMap binding on shared cached templates leaves nowhere to memoize — the same reason breadcrumbs moved in §10.4) |
-| ~~D5~~ | ~~`08-observability.md:26-27` — `--admin-port` removes health *"from the main port entirely"*~~ | ✅ FIXED. `/health/live` and `/health/ready` return 200 on **both** ports; only `/metrics` (`server.go:139-143`) and pprof (`:208-213`) are gated on `AdminOnMain()`. Both guides now say so *and* say why — probes target the service port, so moving health would break every one of them the moment the ports are split, which is what makes this the one place the three "admin endpoints" deliberately diverge. `03-api-reference.md:304` carried the same wrong claim. `TestHTTPServer_AdminPortSeparation` covered `/metrics` and pprof but not health, so the doc had nothing to drift against; it has two rows for it now |
-| ~~D6~~ | ~~`docs/custom-renderers.md` teaches `Renderer` with a dead interface~~ | ✅ FIXED. The 870-line legacy file is deleted and replaced by `docs/guide/12-advanced/04-custom-renderers.md`, written against the real `InputMimeTypes`/`OutputMimeTypes`/`Render(ctx, content, *enricher.EnrichmentData)` contract. Two things the old doc could not have said because they are structural: `internal/renderer` is **unimportable** from outside the module and registration lives in `cmd/gomddoc/pipeline.go` (`package main`), so *"Register in main.go"* meant forking gomddoc, not writing a plugin — the new page leads with that. And the registry's tie-break is load-bearing: the score is `inputScore*10 + outputScore`, so input specificity dominates and the `*/*` passthrough can never shadow anything, but **within** one input type the later registration wins — `MarkdownRenderer` is registered after `MarkdownPassthroughRenderer`, which is the only reason `Accept: */*` yields HTML instead of raw markdown. The nine non-compiling examples collapse to one (CSV → HTML table) plus the `mime.AddExtensionType` step without which a new extension is never routed. `README.md`'s inline example had the same dead interface and is rewritten; `architecture.md:842` now links the guide and records the ordering rule |
-| D7 | `09-deployment.md:105-118` — *"multi-stage Dockerfile"* | ~~verified~~ — **FIXED**. The section now leads with `docker pull ghcr.io/...`, states that the Dockerfile is not self-contained, and gives a `GOOS=linux` cross-compile before `docker build`. The bare-`gomddoc` run example gained the `serve` subcommand |
-| D8 | `02-configuration.md:88` — README.md generates *"both `README.html` and `index.html`"* | `prettyOutputPath` (`build.go:600-604`) emits only `<dir>/index.html`; `:616-622` explicitly skips the redirect stub |
-| ~~D9~~ | ~~`03-api-reference.md:161-164` lists `GET /sitemap-index.xml` as a live endpoint~~ | ✅ FIXED. The citation was right (`docs/guide/12-advanced/03-api-reference.md`; a first pass looked only at `docs/guide/` non-recursively and wrongly called it stale — commit `065f15a`'s message repeats that error). The `### GET /sitemap-index.xml` heading is gone: it now says *not an endpoint* and names build as the only writer. Two more files carried the same claim and were fixed in the same pass: `11-seo.md:107` presented `/sitemap-index.xml` as a URL immediately after a paragraph contrasting serve and build for `sitemap.xml`, and `13-internationalization.md:300` listed it under *Per-Language Features* beside genuinely-served URLs. Both now say build-only and name the consequence (that URL 404s on a live server). `TestServer_PerLanguageSitemaps_ButNoIndex` pins it; it asserts both per-language sitemaps 200 first, because the routes are gated on `meta.domain` and the 404 is otherwise a dead assertion. The build-side generation was already covered (`build_test.go:1247`) — only serve's *absence* was not |
-| ~~D8~~ | ~~`02-configuration.md:88` says `README.md` generates both `README.html` and `index.html`~~ | ✅ FIXED. Only `index.html` is written, in both branches of `buildFile:474-481`, and four `build_test.go` assertions already denied `README.html` — the tests were right and the prose was wrong. The bullet now states the real rule and, since it is the fact the wrong claim was reaching for, distinguishes the two layouts `strip_extensions` selects. The audit found the same error one level down: `generateExtensionRedirects`' own doc comment claimed `guide.html -> guide/`, when the stub is written at the *source* path (`guides/setup.md`, holding HTML that points at `/guides/setup`) and default-index files are skipped. Comment corrected, and `TestBuildCmd_Run_ExtensionRedirectStubs` now reads a stub back and denies both wrong shapes — nothing had, which is why the comment drifted |
-| ~~D10~~ | ~~*"8 built-in themes"* across the repo and 6 website files~~ | ✅ FIXED. `cmd/gomddoc/assets/themes/` contains only `default`; the other seven are a directory drop from `gomddoc-themes`. The guide's theme table gained a **Bundled** column, and `05-theming-and-assets.md`'s correct-but-buried footnote was promoted above the table. Where the count was incidental (*"works across all eight built-in themes"*) the phrasing now says *every theme*, which stays true if the count changes |
-| ~~D11~~ | ~~`gomddoc-website/docs/distribution.md:75-97` — wrong archive filenames; advertises Windows binaries~~ | ✅ FIXED (website edit only — that repo has no commits yet, so it is not committable from here). The Windows section is deleted: `.goreleaser.yaml` builds linux/darwin × amd64/arm64 and `install.sh:62` `die`s on anything else. The filename error is structural, not a typo — `name_template` embeds the version (`gomddoc_{{ .Version }}_{{ .Os }}_{{ .Arch }}`), so a `releases/latest/download/<fixed-name>` URL can **never** resolve, for any version. The manual-download section now says that outright and gives a `VERSION`/`OS`/`ARCH` example against `releases/download/v${VERSION}/`; the install script (which resolves the version itself) is promoted above it as the recommended path, with its `SHA256SUMS` + cosign verification, `GOMDDOC_REQUIRE_COSIGN=1`, `GOMDDOC_VERSION` and `GOMDDOC_INSTALL_DIR` documented |
-| ~~D12~~ | ~~Top-level `features:` documented in `02-markdown-extensions.md:205-210` + website~~ | ✅ FIXED, at both altitudes. The docs now nest under `theme.features` (the top-level `features:` blocks elsewhere in the guide are *frontmatter*, where it is correct — only the `config.yml` example was wrong), and `LoadFromFile` no longer accepts the misplaced key silently: see the `KnownFields` entry in §10.3. The website's inert `GOMDDOC_SITE_COLOR_CHIPS` is replaced by the real `GOMDDOC_SITE_THEME_FEATURES_COLOR_CHIPS`, which is what `applyEnvOverridesWithPrefix`'s `map[string]bool` branch actually reads |
-| ~~D13~~ | ~~`docs/seo-competitive-analysis.md:18-32` claims canonical URLs, OG, robots and sitemap are **absent**; `:605` recommends skipping hreflang~~ | ✅ FIXED by dating the document rather than rewriting it — the competitor survey and the per-recommendation rationale are still correct and still worth reading; only the verdicts on gomddoc went stale. A banner marks it pre-Phase-9 research, a new **Implementation Status** table audits all 18 against the tree (14 shipped, 2 partial, 2 not), the two inverted claims carry inline corrections, the Hreflang "skip" section is struck (i18n shipped, and the tags followed it), and `roadmap.md` Phase 9 is now named as the authoritative record. Two gaps the audit surfaced are recorded below: JSON-LD carries no dates, and the heading-slug algorithm is unpinned by any test |
-| ~~D14~~ | ~~`gomddoc-website/docs/distribution.md:36-38` shows plain `https://…git` as a Git source~~ | ✅ FIXED (website edit only, not committable from here). Verified empirically rather than from `config.IsGitURL` alone: `gomddoc serve "https://github.com/…"` fails with `directory validation failed: stat https://github.com/…: no such file or directory` — a bare `https://` URL is not rejected as a bad Git URL, it is taken as a **filesystem path**, which is why the error names `stat`. The Docker example now uses `git+https://`, followed by a line naming all three accepted schemes and that failure mode |
-| ~~D15~~ | ~~`gomddoc-themes/themes/CLAUDE.md:94,150,167` reference `color-chip.mjs`~~ | ✅ FIXED, and it was **not** doc drift. All seven external themes carried a `color-chip:not(:defined)` CSS rule (`academic:771`, `gitbook:732`, `material:829`, `midnight:830`, `minimal:217`, `nord:850`, `ocean:681`) — the element is `<gmd-color-chip>`, so the selector matched nothing and the anti-FOUC monospace rule was dead in every one of them. The in-repo `default` theme (`head.html.tmpl:755`) was already correct, which is exactly why nothing caught it. Selectors and `themes/CLAUDE.md` fixed (themes repo, not committable from here); the committable half is `docs/decisions.md:158,165,167,297`, which still described the component as `<color-chip>` loaded from `color-chip.mjs` even though `:399` records the `gmd-` rename right below it. `TestBundledThemes_NotDefinedSelectorsNameARealElement` is the guard: it collects every `customElements.define` name and every `:not(:defined)` selector from the embedded assets and asserts the second set is a subset of the first. It reads the **embedded** FS, not the overlay — a site's own `.gomddoc/assets/.../head.html.tmpl` legitimately shadows the bundled one, so failing on a valid override would be worse than the bug (same reasoning as the still-open guard at §10.7) |
+- **MEDIUM: `/_assets/` promises `immutable` caching for a year on URLs that are not
+  fingerprinted.** `assetURL` emits a plain `/_assets/<name>` path with no content hash. Nothing
+  in-tree trips over it (bundled/external themes all inline CSS/JS instead), but a site's own
+  `.gomddoc/static/` files referenced from Markdown hit exactly this. Options: fingerprint the URL,
+  downgrade to `cacheDynamic`, or key on presence of a `?v=` query. Documented as a known mismatch in
+  `docs/guide/12-advanced/01-http-behavior.md`; the code fix is still open.
+- **LOW: five more guide blocks transcribe a shipped data structure with nothing pinning them**
+  (only one — the translation-key list — got a doc-sync test, `TestBuiltinTranslationKeysAreDocumented`).
+  The other five: the 12 template functions, the `<gmd-*>` element table, the MCP tools/resources/
+  prompts list (duplicated in *two* guide pages), and the ~53 `GOMDDOC_*` env var names. Generalizing
+  to one table-driven test over `{docPath, anchor, extractor}` rows is the fix, not five one-off tests.
 
-~~**MEDIUM — incomplete or stale (abridged):** README's *"~8MB binary"*; `01-http-behavior.md`
-overstates Cache-Control, ETag and compression as universal; `13-internationalization.md` documents
-3 locale layers, 20 translation keys, and preview on `:8080`; `07-security.md:54` names a
-`BlockHiddenPaths` middleware and `provider.IsHiddenPath`; the website has no CLI reference page and
-omits the `.gomddoc/partials/` override layer; `gomddoc-themes` has no root README; stale "Go 1.25"
-references; `CLAUDE.md:29-36` omits `docs/plans/`, and four plan documents are misfiled under
-`docs/specs/`.~~ ✅ **FIXED.** Every claim was re-measured before rewriting, and three of the twelve
-did not survive contact:
+Also fixed in this pass: godoc coverage (every package now has a doc comment, gated by
+`staticcheck.conf` re-enabling ST1000); one shared `<meta name="description">` across all pages (now
+per-page); `robots.txt`'s `Sitemap:` directive now names whatever build actually published, via
+`writeSitemapIndex`'s return value rather than a forecasting predicate; JSON-LD `dateModified`/
+`datePublished` now wired end-to-end (`seo.LastModified`/`StatModTime`); the heading-slug algorithm
+is now documented and pinned (`TestHeadingSlugs`).
 
-- **README's binary size** — 33,816,466 bytes from `make build` and 23,531,842 with `-s -w`
-  (darwin/arm64), so "32 MB / 22 MB" was MiB and the README's "~8MB" was off by 4×. The neighbouring
-  *"<15MB RAM usage"* was wrong too (31 MB RSS serving `testsite`) and is gone rather than
-  re-measured: it depends on corpus size, so any single number is a claim the next site falsifies.
-  Same edit deleted *"hot reload"* from `make run` — there is no watcher, and what preview actually
-  re-reads per request is content and templates, **not** the resolver, navigation, metadata or
-  search index, so adding a file still needs a restart.
-- **`01-http-behavior.md`** — the two caching sections now share one scope statement, because
-  Cache-Control and ETag are written by the same helper (`serveWithETag`) and therefore have exactly
-  the same scope; documenting them as two independent facts is what let one drift. Compression's
-  exemptions (`/health/*`, `/metrics`) each carry their reason. The middleware-order list was four
-  entries and is now nine: it predated §10.4's hoist, so it still showed Metrics *below*
-  ContentExclusion and ExtensionRedirect — the exact ordering that commit changed, and the reason
-  405s and 301s are counted at all.
-- **`13-internationalization.md`** — 2 layers, not 3: there is no theme-level locale layer, and no
-  theme ships one. 26 keys, not 20 — the six missing were `search_tag_tip`, `tags_title`,
-  `tags_index_title`, `tags_tagged_as`, `tags_empty` and `see_also`, i.e. everything added since the
-  page was written. Rather than transcribe them again,
-  `TestBuiltinTranslationKeysAreDocumented` (`cmd/gomddoc/locale_docs_test.go`) parses the guide's
-  YAML fence and the embedded `en-US.yml` and asserts **set equality both ways**. One direction is
-  not enough: "every shipped key is documented" passes a page that also lists keys which no longer
-  exist, which is the failure a translator notices last — they translate a key the templates never
-  ask for and the string simply never appears. `preview` binds `:auto`, not `:8080`; the page now
-  says so and names `serve` as the fixed-port command.
-- **`07-security.md`** — both symbols were wrong, and the fix is not a rename. `IsRestrictedPath` is
-  `IsHiddenPath || IsExcludedPath`, so naming `IsHiddenPath` as *the* shared predicate understated
-  what MCP enforces: `exclude:` patterns, not just dotfiles. The paragraph now names the real
-  middleware (`ContentExclusion`), the real predicate, the five MCP entry points that call it, and
-  the 404-with-the-theme's-own-body rule from §10.4 — a 403 would confirm the file exists, and so
-  would a differently-worded 404.
-- **The website's CLI reference page already exists** and covers all six subcommands and every flag,
-  as does its config file listing (`language`, `exclude`, `strip_extensions`, `search.index`,
-  `theme.vars`, `theme.features`, `meta.robots`, `server.admin_port` are all present). That half of
-  the finding was fixed by an earlier §10.5 pass and never struck. The `.gomddoc/partials/` gap was
-  real: `configuration.md` documented partials only inside `.gomddoc/assets/themes/<name>/`, which
-  is the fork-a-theme path. The site-level layer is a third, higher-priority pass
-  (`renderer.go:540`) that overrides *any* theme's partial and survives a `theme.name` change —
-  now documented with the three-pass order and the distinction from the theme-scoped path.
-- **`gomddoc-themes` root README** — written: a seven-row catalogue (category, heading font, look),
-  the copy-into-`.gomddoc/assets/themes/` install, the `theme.vars` recolour path, and a pointer to
-  `themes/CLAUDE.md` for authoring. Every column was read out of the theme READMEs' frontmatter
-  rather than recalled. While there, `themes/CLAUDE.md`'s own tree was one level stale — it showed
-  the themes at the repo root, but they live under `themes/`, and it credited `midnight` to Fira
-  Code when that is its *mono* font (heading and body are Inter).
-- **Go version** — `README.md:274` and `CLAUDE.md:136` said 1.25 against a `go.mod` of 1.26.
-  `docs/decisions.md:226` attributed `b.Loop()` to 1.25; it landed in 1.24. The `Go 1.25+` lines in
-  `docs/plans/` and `docs/specs/` are deliberately left alone — those are dated records of what was
-  true when the feature was designed, and rewriting them would be falsifying a log.
-- **`docs/plans/`** — the four `-plan.md` files under `docs/specs/` moved (`git mv`, no inbound
-  links to fix). CLAUDE.md's tree and purpose list gained the directory, and the feature workflow
-  gained the step that produces one. The purpose entry names the *reliable* tell — a `- [ ]`
-  checkbox list — not the `-plan.md` suffix, because half the files in `docs/plans/` predate that
-  convention and a suffix rule would have sorted them wrong.
-
-Website and themes edits are in their own repositories and are **not committable from here**
-(`gomddoc-website` has no commits yet; `gomddoc-themes` likewise).
-
-One new finding surfaced while writing the caching table, filed below: `/_assets/` is served
-`immutable` for a year on URLs that are not fingerprinted.
-
-**~~Godoc:~~ ✅ FIXED** — the count was 20 of 22, not 21: `docs/skills/favicons/scripts` had one
-too. All twenty now have a package comment, and the gap is closed at the linter rather than by
-hand.
-
-No `.golangci.yml` was needed. `make lint` already runs `staticcheck`, and **ST1000 is exactly this
-check** — it ships in staticcheck's default *exclusion* list, which is why a linter that could see
-the problem was silent about it. A twelve-line `staticcheck.conf` re-enables it and says why the
-other six default-off ST checks stay off (ST1020/21/22 would impose an opening-form rule on every
-exported symbol and rewrite existing good comments into worse ones). Mutation-verified: deleting
-`internal/seo/url.go`'s comment fails all three files in the package.
-
-The comments are not "Package x does x". Each states the job in a sentence, then the one contract
-that gets got wrong, taken from the conventions already in CLAUDE.md — `negotiate` owns the `.md`
-MIME registration because an `init()` writing a process-global registry has to live with its
-accessor; `metadata`'s slice accessors clone deeply or the iterator pair is pointless; `navigation`'s
-Generator must come from the pipeline or a request handler re-walks the tree and line-scans every
-file; `provider`'s not-found mapping runs both ways; `locale`'s language detection is deliberately
-narrower than BCP 47. CLAUDE.md gained the standard so the next package is held to it.
-
-Writing them from the conventions rather than from the code got **six of twenty wrong**, all caught
-by verifying each claim against the package before committing — which is the argument for the
-comments existing, since every one of these was a thing I believed about the codebase:
-
-- `main` — "every subcommand funnels through setupPipeline" is four of six; `info`, `init` and
-  `version` never touch a pipeline. And `setupPipeline` unconditionally builds only the resolver:
-  the index, generator and search index are behind `EnableMetadata`/`EnableNavigation`/`EnableSearch`.
-- `renderer` — heading anchors are **not** an AST transform. `ext_anchors.go:22` registers a node
-  renderer that re-implements goldmark's heading output; only admonitions and color chips register
-  `parser.WithASTTransformers`.
-- `breadcrumb` — the trail costs **one** provider `Stat`, for the target only
-  (`generator.go:62`); `generator.go:88` takes every intermediate segment as a directory without one.
-- `negotiate` — `Specificity` is the single implementation for *Accept* matching. `registry.go:154`
-  still hardcodes the identical `3/2/1` ladder for renderer **input**-type matching, so §10.12's
-  finding is one copy larger than it says.
-- `metadata` — one iterator accessor exists, not several. `AllPages` and `ByPath` clone deeply and
-  have no `iter.Seq` sibling, which is the already-open finding.
-- `assets` — the `Open`/`ReadDir` semantics described are real but belong to `provider.OverlayFS`;
-  package `assets` has neither method.
-
-`mcp`'s comment was also narrowed: `get_table_of_contents` takes a `Path` and never reads it
-(`tools.go:227`, filed at §10.1 and §10.9), so "every entry point that accepts a path checks it"
-would have been a claim the code does not support. It now says every entry point that *reads* one.
-
-#### MEDIUM: `/_assets/` promises `immutable` on URLs that never change name — NEW (found while writing the caching table)
-
-`assets_handler.go:59` serves every static file with `cacheImmutable`
-(`public, max-age=31536000, immutable`), and `assetURL` (`renderer.go:574`) is
-`return "/_assets/" + name` — no content hash, no version query, no mtime. `immutable` tells the
-browser not to revalidate *even on a forced reload*, so a visitor who has fetched
-`/_assets/css/site.css` once will not see an edit to it for a year. The two halves are individually
-defensible and jointly wrong: `immutable` is correct only for a content-addressed URL, and this one
-is a plain path.
-
-Nothing in-tree trips over it today, which is why it survived: `grep -rn assetURL cmd/gomddoc/assets
-../gomddoc-themes` returns **nothing** — the bundled and external themes all inline their CSS and JS
-through `inlineCSSAsset`/`inlineJSAsset`, so `/_assets/` is reached only by a site's own
-`.gomddoc/static/` files, referenced by hand from Markdown or a custom partial. That is exactly the
-population that edits a file and expects to see it.
-
-Options, cheapest first:
-
-1. **Fingerprint in `assetURL`** — hash the file at first resolution and emit
-   `/_assets/css/site.css?v=<fnv>`; the handler ignores the query. Keeps `immutable` honest, costs
-   one read per asset per process, and does nothing for a path written by hand in Markdown.
-2. **Downgrade the handler to `cacheDynamic`** — one-word change, correct for every caller, gives up
-   the edge-cache win on files that genuinely never change.
-3. **Both, keyed on the query** — `immutable` when the request carries a `v=`, `cacheDynamic`
-   otherwise. Rewards the fingerprinted path without punishing the hand-written one.
-
-The documentation half is done: `12-advanced/01-http-behavior.md` carries a warning naming the
-mismatch and the manual `?v=` workaround. A test is owed either way — `assets_handler_test.go` pins
-the header value but nothing pins it *against* the URL shape, so option 2 would pass a test suite
-that never noticed the contradiction in the first place.
-
-#### LOW: five more guide blocks transcribe a shipped data file with nothing pinning them — NEW (found by the simplify pass on §10.5)
-
-`TestBuiltinTranslationKeysAreDocumented` fixes one instance of a class. The class is "a prose list
-that reproduces a data structure the compiler owns", and the survey turned up five more, all in sync
-today and all free to drift tomorrow:
-
-| Doc block | Source of truth |
-| --- | --- |
-| `05-theming-and-assets.md:117-234` — the 12 template functions | the `funcMap` in `template/renderer.go:564-587` |
-| `05-theming-and-assets.md:328-334` — the `<gmd-*>` element table | `cmd/gomddoc/assets/shared/gmd-*.mjs` |
-| `04-mcp.md:129-257` — tools, resources, prompts | `mcp/tools.go:23-58`, `resources.go:18-45`, `prompts.go:16-49` |
-| `12-advanced/03-api-reference.md:256-286` — **the same** tools, resources and prompts again | the same three files |
-| `02-configuration.md` — ~53 `GOMDDOC_*` names | the 29 `env:"…"` tags in `config/config.go:52-79` |
-
-The fourth row is the one that argues for generalizing rather than cloning the test: two guide pages
-transcribe the same three registries, so there are three copies of that list and a pairwise check
-between the two docs would pass while both drift away from the code together. The shape is one
-table-driven test over `{docPath, anchor, extractor}` rows, which makes each additional pin three
-lines instead of a new file — and CLAUDE.md already names this failure mode twice ("a predicate
-extracted so there is *one* list must be applied at *every* site").
-
-Two sub-decisions belong to that work, not to a per-doc clone: the anchor (matching literal heading
-text and "first ```yaml fence" is invisible to an author reformatting the page — an HTML-comment
-marker or a frontmatter key would be a contract rather than reverse-engineered prose), and whether
-the checker lives in the package that owns the embed or under `docs/skills/`, which is the existing
-carve-out for module code that is tooling rather than product.
-
-Explicitly *not* a row: the fr-FR example in `13-internationalization.md`. Locales merge per key, so
-a fragment is the correct thing to show. It was 20 of 26 keys with no indication it was partial —
-the same drift, wearing an example's clothes — and is now a deliberate six-key fragment that says it
-is one.
-
-#### ~~MEDIUM: every page shares one `<meta name="description">`~~ ✅ FIXED (found while auditing D13)
-
-The three tags now read one `$desc` derived once at the top of `head-meta`, so they cannot disagree
-again — the finding's proposed `if/else if` would have been a *third* copy of the same fallback. The
-tag is now conditional as well: `content=""` on a site with no `meta.description` is worse than no
-tag. `TestHeadMeta_DescriptionPrefersPageFrontmatter` renders through the **embedded** theme rather
-than a stub, because the defect lived in the partial; it reads the content back and denies the site
-description, since asserting the tag merely *exists* passed the whole time. Also applied to
-`gomddoc-website`'s `marketing` theme, which forks the tag in its own layout (not committable from
-here).
-
-`partials/head-shared.html.tmpl:29` emitted `<meta name="description" content="{{ .Site.Meta.Description }}">`
-unconditionally. Two lines above it, `og:description` and `twitter:description` both prefer
-`.Page.Meta.description` and fall back to the site's — so a page that sets `description:` in
-frontmatter gets it into the Open Graph tags and into `sitemap`/JSON-LD, but *not* into the one tag
-search engines actually read for the result snippet. Every page on the site therefore advertises the
-same description, which is the duplicate-content signal the canonical work was meant to avoid. The
-fix is the three-line `if/else if` already sitting next to it. `06-auto-generated meta description`
-in the SEO analysis is a separate, larger item; this is the plain frontmatter path being dropped.
-
-#### ~~MEDIUM: `robots.txt` points crawlers past the sitemap index — NEW (found while auditing D9)~~
-
-✅ **FIXED**, and not the way the finding proposed. Giving robots.txt a copy of the language condition
-would have made it *forecast* what build writes; the first attempt did exactly that (an exported
-`HasSitemapIndex`/`SitemapEntryPath` pair in `internal/server`) and the simplify pass rejected it — a
-predicate that must agree with a write is still two things that can disagree, and it parks build-mode
-knowledge in the package that serves.
-
-**`GenerateRobotsTxt(domain, sitemapPath string)` now takes the sitemap its caller actually published,
-and every caller obtains that value from the act of publishing.** Empty means "nothing published, omit
-the directive".
-
-- Build: `writeSitemapIndex(domain, langs) (entryPath, error)` writes `sitemap-index.xml` when it should
-  and returns `/sitemap-index.xml`, `/sitemap.xml` or `""`. It runs before `generateSEOFiles`, which
-  passes the string straight through. There is no second condition to keep in sync because there is no
-  second condition.
-- Serve: `sitemapPath` is computed once at route registration and consumed twice — by
-  `NewRobotsHandler` and by the `auth.Handle("GET "+sitemapPath, …)` it gates.
-
-That second half fixes a **latent drift the finding did not mention**: serve emitted the directive on
-`domain != ""` while it registered `/sitemap.xml` on `opts.MetaIndex != nil && domain != ""`. Both serve
-paths happen to set `EnableMetadata: true`, so the two never diverged in practice — but it is the same
-"two expressions must agree" shape, on the *whether* axis rather than the *which* axis.
-
-The finding's stated condition was also wrong: it says the index follows `len(detectedLangs) > 1`; the
-code has always used `> 0`. `detectedLangs` holds the *translation* languages, so one entry already means
-two languages on the site.
-
-Tests: `TestGenerateRobotsTxt` now varies `sitemapPath` directly (four rows, including "nothing published,
-no directive"), so the formatter is tested on its own parameter rather than through a helper. The
-langs→path mapping is `TestBuildCmd_writeSitemapIndex`, which asserts the returned path *and* whether the
-file exists — that pairing is the whole contract. `TestBuildCmd_Run_MultiLanguage` reads `robots.txt` back
-beside the `sitemap-index.xml` assertion it already made, matching on `"\n" + want + "\n"`: a bare
-`Contains` on the index case also passes a line reading `.../sitemap-index.xml.gz`, and `/sitemap.xml` is
-a suffix of `/sitemap-index.xml` under no delimiter at all. Both robots assertions were mutation-verified.
-Docs: `11-seo.md` §Robots.txt and `13-internationalization.md` (which also claimed the index needs "more
-than one language" without saying what was being counted).
-
-**Original finding:** `GenerateRobotsTxt` (`robots.go:31`) always emits `Sitemap: <domain>/sitemap.xml`, and build calls it
-with no knowledge of how many languages there are (`build.go:561`). So a multi-language build writes
-`sitemap-index.xml` — whose entire purpose is to be the single entry point — and then tells crawlers
-to read the default-language sitemap instead, which by design lists no translated page
-(§13-i18n: "the default language indexes **only** the content outside the language directories").
-Translated pages are discoverable only if the crawler guesses the index URL. `generateSEOFiles`
-already runs after `detectedLangs` is known; the directive should follow the same
-`len(detectedLangs) > 1` condition the index file does. Serve has no index to point at, so it should
-keep the current line — which makes this one of the few places serve and build *should* differ.
-
-#### ~~LOW: JSON-LD has no `datePublished`/`dateModified`~~ ✅ FIXED
-
-~~`seo.JSONLDPage` carries `Title`/`Description`/`Author`/`Breadcrumbs` but no dates
-(`renderer.go:592-606`), so the `TechArticle` node omits both. The data exists — `sitemap.xml` and
-`feed.xml` already read `ModTime()` through the provider, and the git provider returns commit time —
-so this is plumbing a value that is one `Stat` away, not a new capability. `dateModified` is the
-ranking signal the sitemap `<lastmod>` is already claiming.~~
-
-**`JSONLDPage.Date` already existed** — declared, read by `GenerateJSONLD`, and set by nothing but
-the package's own tests. So half the work was connecting a wire soldered at both ends and joined at
-neither, which is the failure mode the "a symbol whose only callers are `_test.go` files is dead"
-rule describes from the other direction: the *field* was live, its only *producer* was a test.
-
-`Modified` is new. It comes from a `Stat` on the file that was actually read — under
-`strip_extensions` that is not `r.URL.Path`, so `handler.go` now threads the resolved path out of
-the block that discarded it — and falls back to `Date`, matching `feed.xml`'s `<updated>` so the two
-documents cannot claim different freshness for the same page. A stat failure degrades to the
-frontmatter date on both the request path and the build path rather than failing either.
-
-Reading the frontmatter `date` key was a 9-line type switch in `metadata/index.go` and would have
-been a second copy in `template/renderer.go`; it is now `metadata.ParseFrontmatterDate`. Extracting
-it also fixed a bug in the original: it accepted only `time.DateOnly`, so a *quoted* RFC 3339
-timestamp — the natural way to write one, and the form goldmark-meta hands back as a `string`
-rather than a `time.Time` — was silently dropped, leaving the page with no date in the metadata
-index at all. That affects feed ordering, not just JSON-LD.
-
-Both wiring paths are pinned by tests that fail on the plausible mistake rather than on absence:
-the serve test requests the extensionless URL, so statting `r.URL.Path` produces no date; the build
-test asserts a `Z` that only holds because `seo.LastModified` normalizes — the raw mtime comes back
-in the machine's zone.
-
-The simplify pass turned up a third and fourth copy of the fold and folded all four into
-`seo.LastModified` / `seo.StatModTime`: feed stat'd + `.UTC()`d + fell back to `page.Date`, sitemap
-stat'd + `.UTC()`d with **no** fallback, and the two new sites did neither. Sitemap consequently
-omitted `<lastmod>` for a dated page whose stat failed while feed dated it — the exact disagreement
-the new comment claimed was impossible, one file over. What remains is the *source*, filed below.
-
-#### MEDIUM: four call sites stat content files for one answer an index already walked — NEW
-
-`internal/server/sitemap.go:121`, `internal/server/feed.go:100`, `cmd/gomddoc/build.go:463` and
-`internal/server/handler.go:198` each stat a content file to learn its modification time.
-`seo.LastModified`/`seo.StatModTime` now make them agree on the *rule*; they are still four
-independent reads of the same fact. `metadata.BuildIndex` already walks every markdown file with
-`fs.WalkDir` (`d fs.DirEntry` in hand) and reads each one, once at startup — a `PageInfo.ModTime`
-populated there turns all four into an O(1) `byPath` lookup and deletes the sitemap and feed stat
-loops along with their `RootFS` plumbing.
-
-The reason it is filed rather than done:
-
-- **`BuildIndex` skips files with no frontmatter**, so an index-sourced mtime would silently lose
-  `dateModified` for unindexed pages — a regression against what ships today.
-- **`Handler` has no `MetaIndex`** (`server.go` passes it to the sitemap and feed handlers only), so
-  the request path would need it plumbed in.
-
-Two costs sit under this and go away with it. The request-path stat is now gated on
-`Meta.Domain != ""` — without a domain `GenerateJSONLD` emits nothing, so an ungated stat was pure
-waste on every default deployment — but on a domain-configured **git** site it remains a
-`FindEntry` tree walk holding the *exclusive* tree lock (CLAUDE.md: "go-git reads are writes") to
-return `g.commitTime`, a per-clone constant. And when the URL is a directory, `filePath` is the
-directory while the bytes came from its `README.md`, so the stat answers about the wrong object.
-`buildFile` separately re-stats a path `walkAndBuildToDir` already held a `DirEntry` for
-(`build.go:390-407` discards `d`) — one syscall per page, and subsumed by the same fix.
-
-#### ~~LOW: the heading-slug algorithm is documented nowhere and pinned by no test~~ ✅ FIXED
-
-~~Anchor stability is an inbound-link contract: `#installation` silently becoming `#installing`
-breaks every external link to it, and nothing in the tree would go red. Both parsers enable
-goldmark's `parser.WithAutoHeadingID` (`renderer/markdown.go:83`, `enricher/markdown.go:65`), so the
-algorithm is goldmark's and is stable in practice — but it is *goldmark's choice*, not ours, and a
-dependency bump could change it. One table-driven test over the punctuation/unicode/duplicate cases
-plus a paragraph in the guide converts an implicit dependency into a stated one.~~
-
-`TestHeadingSlugs` (`internal/renderer/markdown_test.go`) is the table, and it pins a second
-contract the finding did not name: the rendered `id` attribute and the TOC's `href` come from **two
-goldmark instances configured in two packages**, so it asserts both against the same expectation.
-Removing `WithAutoHeadingID` from the enricher alone turns all nine rows red; before, it turned
-nothing red and left every TOC link pointing at nothing.
-
-Writing the rules down found the item below. `docs/guide/12-advanced/02-markdown-extensions.md`
-gained the five-rule algorithm, a worked table, and the warning.
-
-#### MEDIUM: heading anchors drop every non-ASCII character, on an i18n-capable server — NEW
-
-goldmark's slugifier keeps ASCII alphanumerics, folds space/`-`/`_` to a single `-` each, and
-**drops** everything else rather than transliterating it. `# Café Français` becomes
-`caf-franais`. A heading with no ASCII
-left falls back to a positional `heading`, so a page written in Japanese, Korean, Greek or Cyrillic
-gets `heading`, `heading-1`, `heading-2` — anchors that are stable, unguessable, and reorder
-themselves the moment a section is inserted. gomddoc ships per-language pipelines, per-language
-sitemaps and 26 translation keys, so non-Latin content is a supported case, not an edge one.
-
-There is no author-side escape hatch either: `parser.WithHeadingAttribute()` is not enabled, so the
-conventional `# 日本語 {#japanese}` renders the braces as literal heading text and yields the ID
-`-japanese` (the brace and hash are dropped, the leading space becomes a hyphen).
-
-Two independent fixes, either or both:
-
-- **`parser.WithHeadingAttribute()`** — one option on both goldmark instances, and the
-  `{#custom-id}` syntax authors already expect starts working. Cheap, and it is the standard escape
-  hatch for any slug the algorithm mangles, not just non-ASCII ones.
-- **A custom `parser.IDs` implementation** passed via `parser.WithIDs` — percent-encode the rune
-  instead of dropping it (GitHub's behaviour) so `# 日本語` yields a meaningful anchor by default.
-  Larger: it changes existing anchors, so it is a breaking change for any deployed site's inbound
-  links, and the two instances must be given the *same* implementation or `TestHeadingSlugs` goes
-  red — which is the point of that test.
+- **MEDIUM (open, surfaced while fixing the slug test): heading anchors drop every non-ASCII
+  character.** `# Café Français` → `caf-franais`; a heading with no ASCII left falls back to a
+  positional `heading-1`, `heading-2`, ... — unstable across edits, on an i18n-capable server where
+  non-Latin content is a supported case. No author-side escape hatch either
+  (`parser.WithHeadingAttribute()` isn't enabled, so `{#custom-id}` doesn't work). Two independent
+  fixes: enable `parser.WithHeadingAttribute()` (cheap, gives authors the standard escape hatch), or
+  a custom `parser.IDs` that percent-encodes instead of dropping (larger — changes existing anchors,
+  a breaking change for deployed sites' inbound links).
 
 ### 10.6 Test coverage & quality
 
-**The 87% target is already met** (88.1% product code) — see the header. No coverage-chasing work is
-needed; the debt is in test *quality*.
+**The 87% target is already met** (88.1% product code) — the debt here is test *quality*, not
+coverage volume.
 
-#### ~~The untracked `docs/skills/` package~~ ✅ FIXED
+✅ **FIXED:** `docs/skills/` committed and `.covignore`'d (closes the local/CI coverage-total
+mismatch); unfalsifiable sitemap/feed/search assertions replaced with exhaustive structural
+comparisons (surfaced a real Atom `<Link>` vs `<link>` bug, fixed); static-build tests now read
+their output and deny sibling cross-contamination; silent-degradation `slog.Warn; continue` branches
+now tested both ways (surfaced and fixed a dropped `skippedFiles` counter); `navigation.Generator`'s
+lazy cache and three others (`lazyBytes`, `themevars`, `absOutputCache` — the last missed by the
+original finding) now have cold-cache concurrency tests, per CLAUDE.md's "every lazy cache owes a
+cold-cache concurrency test."
 
-~~`docs/skills/favicons/scripts/favicon-check.go` is a standalone `package main` (484 lines) — Claude
-Code agent tooling, not product code — that **is** in the module: `go list ./...` includes
-`github.com/monolithiclab/gomddoc/docs/skills/favicons/scripts`, and its 148 uncovered statements are
-the sole reason aggregate coverage reads below target. Because CI checks out without the directory,
-local `make test` and CI compute permanently different totals.~~
+✅ **FIXED (this session, 2026-09-06):** MCP `ExcludePatterns` is now tested at both ends —
+`cmd/gomddoc/mcp_test.go` drives `MCPCmd.Run` over its real stdio transport and asserts `read_page`
+refuses an excluded path; `internal/mcp/server_test.go`'s fixture wires an exclude list into every
+index and `ServerDeps` the way `gomddoc mcp` really does.
 
-**Decision: committed, and `docs/skills/` added to `.covignore`.** Of the three dispositions, this is
-the only one that makes local and CI agree — gitignoring it would have left the local run still
-walking the directory, so the two totals would keep diverging, just silently and in the other
-direction. The `.agents/` precedent from `1ac1169` does not transfer: that directory was ignored
-because it held business-confidential product-marketing context, and a favicon procedure has none.
-Both runs now report **88.1%**.
+**Still open:**
 
-The tool stays a real package in the module, so `go vet`, `staticcheck`, `golangci-lint`, `gosec` and
-`gocritic` cover it — it is Go code in the repo and should compile and lint like the rest. What is
-scoped away is the two filters that answer "which packages ship": `.covignore` drops it from the
-coverage total (same rationale as `internal/testutil/`), and `make vulncheck` now scans
-`./cmd/... ./internal/...` instead of `./...`. That second one was not on the list. `image/png` enters
-this module's vulnerability graph *solely* through `favicon-check.go`'s `png.DecodeConfig`, and
-`make vulncheck` has a dedicated CI job — so an `image/png` CVE would have blocked the product over a
-tool that is never distributed (`.goreleaser.yaml` builds only `./cmd/gomddoc`; `.dockerignore`
-excludes `docs/`). Both filters are now prefix contracts on `docs/skills/`, recorded in `CLAUDE.md`.
-
-Two defects came out of committing it:
-
-- **`SKILL.md` never referenced its own script.** The "Verification checklist" hand-rolled a `curl`
-  loop plus `magick identify`, `file` and `python3 -m json.tool` — a strict subset of what
-  `favicon-check.go` already asserts, which is why nothing invoked the tool. The checklist now runs
-  it, and lists only the two rules it genuinely cannot check over HTTP (the maskable safe zone, and
-  DevTools manifest warnings).
-- **`attr()` matched attribute names inside longer ones.** Its regex anchored on `\b`, and a word
-  boundary also sits between the hyphen and the `s` of `data-sizes`, so `attr(tag, "sizes")` read a
-  `data-sizes` value as `sizes`. Found by the new test, not by inspection. Rather than tune the
-  anchor, `attr` was replaced by `attrs`, which parses *whole* names into a map: the value lands
-  under `data-sizes`, so a lookup of `sizes` misses by construction. That also retired the module's
-  only in-function `regexp.MustCompile` — `attr` recompiled per call, once per candidate tag.
-
-`favicon_check_test.go` covers the byte-level parsers — the ICO directory (including the width-byte-0
-means-256 encoding), the PNG colour-type and `tRNS` alpha detection, the chunk walk's overflow guard,
-the head-tag matchers and the manifest checks. `checkPNGSize` is left untested: it now takes a single
-`edge` (every favicon is square), so it is a comparison against what `png.DecodeConfig` returns with
-no width/height pair to transpose. The `.claude/settings.local.json` alongside the skill stays
-untracked — `.gitignore` already ignores `.claude/`, and it holds machine-local absolute paths.
-
-**Simplify pass — skipped findings**, each a real observation whose fix costs more than it returns:
-
-- The eight asset paths are written twice (fetch list, then per-asset checks). Deduplicating them
-  means restructuring `main()` around a table, well outside this diff.
-- `checkPNGNoAlpha` indexes the IHDR colour-type byte rather than reusing `png.DecodeConfig`. The
-  `color.Model` → colour-type mapping is not one-to-one, and the palette+`tRNS` path would still
-  need its own chunk walk.
-- `TestCheckPNGNoAlpha`'s three passing colour-type rows (0, 2, 3) look redundant with each other,
-  but they are the complete enumeration of PNG's non-alpha types — dropping any leaves a colour type
-  no test names.
-- Hand-built PNG/ICO fixtures could use `binary.Append`/`png.Encode`. Byte literals are what make the
-  offsets the checks index visible in the fixture.
-- The eight asset fetches run sequentially. They share one keep-alive client against one host; at a
-  50 ms RTT that is ~0.4 s for a command a human runs by hand.
-
-#### ~~HIGH: unfalsifiable assertions~~ ✅ FIXED
-
-- ~~`internal/server/sitemap_test.go:57,61` assert `Contains(body, "https://docs.example.com/")` and
-  `".../docs/"`, labelled *"README.md stripped"*. Both are **prefixes** of
-  `https://docs.example.com/docs/guide.md`, which line `:53` already proved is present. **Neither
-  assertion can ever fail.** Same defect at `:215` and `feed_test.go:46`.~~
-- ~~`internal/server/feed_test.go:103` — `TestGenerateFeed_LimitsEntries` asserts
-  `if count > feedMaxEntries`. **One-sided:** a feed emitting *zero* entries passes. Should be `!=`.~~
-- ~~`feed_test.go` never asserts entry **ordering** despite staggering ModTimes; reversing the sort is
-  invisible. Neither `TestGenerateSitemap` nor `TestGenerateFeed` `xml.Unmarshal`s its output, unlike
-  `TestGenerateSitemapIndex` (`:238`), which does it correctly.~~
-- ~~`internal/metadata/index_test.go:340` — `TestBuildIndex_CancelledContext` asserts
-  `if err != nil && !errors.Is(err, context.Canceled)`, so it **passes when `err == nil`**.~~
-
-> **Fixed.** `TestGenerateSitemap` and `TestGenerateFeed` now `xml.Unmarshal` into the production
-> `urlSet`/`atomFeed` and compare exhaustively — `maps.Equal` over loc→lastmod for the sitemap,
-> `slices.Equal` over ordered entry IDs for the feed. Every remaining raw-string check is delimited
-> (`<loc>…</loc>`, `<id>…</id>`). The finding named three sites; `grep` found five — `:140` and `:205`
-> carried the same dead root-URL assertion and were fixed too. Each fix was verified by mutation
-> (reverse the feed sort, `candidates = nil`, append to `tagURL`, drop the search cap).
->
-> Three things the exact comparisons surfaced that the substring sweeps had hidden:
-> 1. `GenerateSitemap` also emits tag pages — `/tags/` and `/tags/<tag>`, no `<lastmod>`. Never
->    mentioned by any assertion before.
-> 2. A folded index URL is `/docs`, **no trailing slash**, while the tag index is `/tags/` **with**
->    one. The old comment claimed `/docs/` and was in fact matching the `/docs/guide.md` entry.
->    Build mode writes `docs/index.html`, so its real URL is `/docs/` — see §10.2.
-> 3. `atomEntry.Link` had **no `xml` tag**, so `encoding/xml` fell back to the field name and every
->    entry shipped `<Link rel="alternate">`. RFC 4287 requires `<link>`; feed readers would not find
->    the alternate link. Unmarshalling through the production struct round-trips this happily, which
->    is why the raw-string `<Link` guard stays alongside the structural assertions. Fixed in
->    `feed.go` with `xml:"link"`.
->
-> Also folded in from the same class: `search_test.go`'s `TestSearchEndpoint_LimitCapped` asserted
-> `len(results) > maxSearchLimit` against a **three-document** fixture, so deleting
-> `min(parsed, maxSearchLimit)` left it green. It now indexes `maxSearchLimit+10` matching pages and
-> asserts `!= maxSearchLimit`.
->
-> Still open, same class, lower value: `tags_html_test.go:158` orders bare tag names
-> (`strings.Index(body, "go")`) rather than the delimited `go(1)` forms four lines above.
-
-#### ~~HIGH: static-build tests are existence-only, over a parallel write path~~ ✅ FIXED
-
-~~`cmd/gomddoc/build.go:376,510` write output from an errgroup; the tests never read what was written.
-`TestBuildCmd_EmitsTagPages` (`build_test.go:960`) makes three `os.Stat` calls and **zero byte reads**;
-`TestBuildCmd_Run_WithSubdirectories` (`:650`) five. If the errgroup raced and wrote one page's
-content into another's `index.html` — the canonical bug for parallel per-file rendering — green.
-`TestBuildCmd_Run_MultiLanguage` (`:990`) `os.Stat`s `fr-FR/sitemap.xml` but never inspects it, so a
-per-language sitemap full of English URLs is invisible. `feed.xml` content is never asserted anywhere.
-**This is precisely the failure class that shipped as a real bug in §9.5/§9.7.**~~
-
-> **Fixed.** All four tests now read their outputs, and each asserts the *sibling's* content is
-> absent so cross-contamination fails rather than passes:
-> - `TestBuildCmd_Run_WithSubdirectories` — each `api/*/index.html` must carry its own `<h1>` and not
->   the other's; `assets/logo.txt` compared byte for byte.
-> - `TestBuildCmd_EmitsTagPages` — `tags/go/` lists A and B, `tags/machine%20learning/` lists A and
->   **not** B, `tags/index.html` carries both links with counts `(2)`/`(1)`.
-> - `TestBuildCmd_Run_MultiLanguage` — `fr-FR/sitemap.xml` and `fr-FR/feed.xml` are parsed and their
->   full URL sets compared, so a per-language document full of default-language URLs now fails.
-> - `TestBuildCmd_Run_WithDomain` — replaced `Contains(sitemap, "build.example.com")` (true of any
->   non-empty sitemap) with exhaustive loc and feed-entry-ID comparisons. This is where `feed.xml`
->   content gets asserted at all for the first time.
->
-> Verified by mutation: `pagesPerTag[tag]` → `AllPages()`, `"/"+lang` → `""` for the per-language
-> sitemap/feed, and `fp` → `filePaths[0]` in the render errgroup each turn the suite red.
->
-> The multi-language test's root-sitemap assertion originally pinned the **language-directory leak**
-> as it stood: `sitemap.xml` listed `/fr-FR` and `/fr-FR/guide` alongside the default-language pages.
-> That leak is now fixed (see the §10.3 finding below), and `wantRootLocs` asserts the corrected
-> behaviour — the root sitemap holds default-language URLs only.
-
-#### ✅ FIXED: silent-degradation branches untested
-
-`cmd/gomddoc/pipeline.go:128-130,134-136,140-143` — all three `slog.Warn(...) + continue` paths are
-uncovered. These are the exact branches that hid the §9.7 `fs.Sub`/`fs.StatFS` bug. The bug was fixed;
-**the silent-failure mechanism that hid it was not tested.** Same class:
-`internal/metadata/index.go:92-101` (concurrent-parse silent skips) and `cmd/gomddoc/build.go:218-223`,
-where per-language failures `slog.Warn; continue` while default-language failures `return err` — a
-build can exit 0 having produced no French site. (`build.go:221-223` also aggregates 3 of 4 counters,
-silently dropping `skippedFiles`.)
-
-**Fixed.** The dropped counter was a real bug. The first fix folded all four fields through a
-`(*buildStats).add` method; the simplify pass took it a level deeper. `walkAndBuildToDir` now takes
-`stats *buildStats` — the shape `buildFile`, `copyFile` and `copyStaticAssets` in the same file
-already used — instead of returning a fresh one per walk, which deletes the aggregation site, the
-method and the bug class in one go. It also fixes a second symptom of the same shape: a language
-failing mid-walk used to discard the totals for files it had already written to disk.
-
-Tests, each mutation-verified:
-
-- `TestSetupLanguagePipelines_SkipsLanguageOnSubFSFailure` — the `fs.Sub` branch, driven by a
-  `subFailFS` fake. `fs.Sub` only consults a filesystem's own `Sub` method when it implements
-  `fs.SubFS`, so no real provider can reach this branch: `os.DirFS` is not an `fs.SubFS`, and
-  `fstest.MapFS.Sub` fails only for a path `fs.ValidPath` already rejects, which `DetectLanguages`
-  cannot return. The fake is still worth its keep — it is the only way to exercise the *contract*
-  (one language dropped, the rest built), which the provider-failure branch below cannot show
-  because its trigger is global.
-- `TestSetupLanguagePipelines_SkipsLanguageOnProviderFailure` — the `NewFilesystemProviderFromFS`
-  branch, reachable without a fake since an empty `DefaultIndex` is that constructor's only error.
-- `TestWalkAndBuildLang_CountsIntoSharedStats` — the counter fix, asserted directly on the struct
-  rather than by string-matching a `slog` record from a full `BuildCmd.Run`. The only excluded *file*
-  lives inside `fr-FR/`, because the root walk skips `fr-FR` as a directory and `SkipWalkEntry`'s
-  counter only fires for files.
-- `TestBuildIndex_SkipsUnparseableFilesWithoutFailing` — the two `index.go` skips.
-
-Both language tests assert **both ways** — the bad language absent *and* the good one still built.
-Asserting only the absence passes a run that skipped every language, which is the shape the §9.7 bug
-actually had. The metadata test follows the same principle and adds the piece the others already had:
-the unreadable-file skip logged at `Debug`, so an index that dropped every page was invisible at the
-default level — precisely the §9.7 failure. It is now `Warn` and the test asserts the record.
-Malformed frontmatter stays at `Debug`: a property of the content, not an anomaly, and the page is
-still served.
-
-The five hand-rolled `slog.SetDefault`/restore blocks these tests would have become the sixth through
-tenth of are now `internal/testutil/logcapture`. It captures `slog.Record`s rather than rendered text,
-so `log.Has(msg, attrs...)` matches message and attributes on the *same* record: the old
-`strings.Contains(out, "lang=fr-FR")` shape passes when two records in the same loop supply one each,
-and `strings.Contains(out, "skipped_files=1")` matches `skipped_files=10`. Converting the three
-pre-existing tag-collision tests turned three fuzzy substring checks into exact
-`path`/`kind` assertions.
-
-Two of the cited branches are **unreachable by construction, not coverage gaps**, and were documented
-rather than faked:
-
-- `pipeline.go`'s third branch (per-language `setupPipeline` failure) has exactly two error returns,
-  `prov.RootFS` and `ValidateDefaultTheme`. `FilesystemProvider.RootFS` never errors, and
-  `OverlayFS.Open` falls through to embedded assets on any error, so the default theme always
-  validates. Once the default pipeline succeeded, no language pipeline can fail here.
-- `build.go:218-223` ("Skipping language with no pipeline") is a legitimate guard —
-  `detectedLangs` is `lp.Languages` (every detected directory) while `lp.ByLang` holds only the ones
-  that built — but it can only fire if one of the two branches above fired first, which the CLI's
-  filesystem and git providers cannot do.
-
-#### ✅ FIXED: `navigation.Generator`'s lazy cache has zero concurrent coverage
-
-`internal/template/navigation/navigation.go:60-63` — `cacheOnce sync.Once` guarding `cachedTree`/
-`cachedPages`/`cachedIndex`, populated lazily from concurrent HTTP handlers. `navigation_test.go`
-contains no goroutines, so `-race` never observes it. Highest-risk untested concurrency primitive in
-the repo. Same gap, lower blast radius: `internal/server/lazybytes.go:17`,
-`internal/template/themevars.go:15`, `internal/seo/url.go:18`. The pattern to copy is
-`internal/template/renderer_test.go:1553` — 50 goroutines on a cold cache asserting exactly one `Set`.
-
-**Fixed.** Four cold-cache concurrency tests — `TestTree_ConcurrentFirstBuildIsSingleWalk`,
-`TestLazyBytes_ConcurrentFirstGet`, `TestGenerateThemeVarsCSS_Concurrent`, `TestAbsOutput_Concurrent`
-— written to the convention now in CLAUDE.md ("Every lazy cache owes a cold-cache concurrency test").
-Mutation-verified: replacing `cacheOnce.Do` with `if g.cachedTree != nil { return }` fires the race
-detector on the `cachedTree` write; removing the `Do` wrapper entirely fails the run outright. What
-the finding got wrong, and what the fix turned up:
-
-- **`internal/seo/url.go:18` has no `sync.Once`** — the citation is wrong; that file has no lazy
-  cache at all.
-- **The fourth cache is `cmd/gomddoc/build.go:47`** (`absOutputCache`), which the finding missed.
-  Both errgroup phases resolve every output path through it.
-- **Two helpers were extracted rather than copied.** `countfs` moved out of
-  `internal/mcp/server_test.go` (where it was a local `countingFS`) to `internal/testutil/countfs`
-  once `navigation` wanted it. `internal/testutil/fanout` came out of the *first* draft of this
-  commit, which hand-copied the same 11-line release-barrier scaffold into all four packages — the
-  exact duplication the `countfs` extraction was avoiding, two files away.
-- **`internal/template/renderer_test.go:1591` — the test this finding calls "the pattern to copy" —
-  had no release barrier.** A bare `wg.Add`/`go`/`Wait` lets the first goroutine finish before the
-  last is scheduled, so its cold cache could already be warm. Migrated to `fanout.Run`. Six other
-  hand-rolled fan-outs remain unmigrated and equally barrier-less: `internal/template/cache_test.go:68`,
-  `internal/renderer/registry_test.go:307`, `internal/enricher/registry_test.go:133`,
-  `internal/provider/git_test.go:1051` and `:1108`, `internal/server/requestid_test.go:146`.
-- **`absOutput`'s `Once` is unreachable in production** — `Run` warms it at `build.go:94` before any
-  worker exists. Resolving `Output` once into `buildContext` (which already carries the shared deps)
-  would delete the cache, one error branch in `resolveOutputPath`, and the new test. Not done here;
-  filed as LOW below.
-
-#### LOW: `absOutputCache` is a lazy cache for a value that is never lazily needed — NEW (found by the simplify pass on §10.6)
-
-`cmd/gomddoc/build.go:47` memoizes `filepath.Abs(b.Output)` behind a `sync.Once` for the errgroup
-workers in the render and copy phases. But `Run` calls `absOutput()` at `build.go:94`, before any
-goroutine exists, so the `Once` never actually arbitrates anything — it is a lazy cache for a value
-that is eagerly computed. `buildContext` already carries the shared per-build state; putting the
-resolved path there removes the cache, the `resolve output directory: %w` branch in
-`resolveOutputPath`, and `TestAbsOutput_Concurrent`. Low priority: the current code is correct, just
-one layer deeper than the problem.
-
-#### MEDIUM: `LanguagePipeline.Languages` and `.ByLang` are allowed to disagree — NEW (found by the simplify pass on §10.6)
-
-`cmd/gomddoc/pipeline.go:150-186` — `Languages` holds every detected BCP 47 directory while `ByLang`
-holds only the ones whose pipeline built, so a skipped language stays in `Languages`. `build.go:232`
-nil-checks the gap; the three other consumers do not — `tmpl.BuildLanguageInfos` (`build.go:161`,
-which renders the language switcher), `writeSitemapIndex` (`build.go:196`) and serve's
-`AllLanguages` (`pipeline.go:491`). A skipped language therefore keeps a switcher entry and a
-sitemap-index entry pointing at content that was never built. Dropping failed languages from
-`Languages` at the point they are skipped makes the disagreement unrepresentable and lets
-`build.go:232`'s guard go. Currently unreachable in practice (see the two documented-unreachable
-branches above), which is why this is MEDIUM and not HIGH.
-
-#### LOW: build re-derives the language sub-FS the pipeline already built — NEW (found by the simplify pass on §10.6)
-
-`cmd/gomddoc/build.go:389` calls `fs.Sub(contentRoot, lang)` for a sub-FS `setupLanguagePipelines`
-already built at `pipeline.go:159` for the same language. That is the "a cached object is shared
-through the pipeline, never reconstructed at the consumer" convention, one call short of a violation
-that matters — it also means `walkAndBuildLang` carries an error branch that only exists because it
-re-derives. Publishing the language content root as a `Pipeline` field deletes both.
-
-#### LOW: three copies of the "fail one path" `fs.FS` fake — NEW (found by the simplify pass on §10.6)
-
-`internal/resolve/resolver_test.go` (`unreadableDirFS`, fails `ReadDir`), `internal/metadata/index_test.go`
-(`erroringFS`, fails `Open`) and `cmd/gomddoc/pipeline_test.go` (`subFailFS`, fails `Sub`) are the same
-fake against three methods, and each re-derives the same non-obvious contract in its doc comment:
-embed the `fs.FS` *interface*, never the concrete `fstest.MapFS`, or the promoted method satisfies the
-optional interface and `io/fs` routes around the fake. `internal/testutil/countfs` documents it a
-fourth time. An `internal/testutil/failfs` with three small types — deliberately not one type with
-three methods, which would always satisfy `fs.ReadDirFS` and `fs.SubFS` and reintroduce the trap —
-is where that reasoning gets written once. Deferred: three packages, and the extraction is worth its
-own commit.
-
-**MEDIUM:** MCP `ExcludePatterns` is never set in any MCP test (grep count: 0), so dropping it from
-all five call sites passes the suite — and `MCPCmd.Run` is at 0% with no `cmd/gomddoc/mcp_test.go`, so
-the field has no coverage at either end of its wire. `ServeCmd.setup()`'s basic-auth branch
-(`serve.go:46-52`) is never exercised with `BasicAuthFile` set across 14 call sites — dropping
-`AuthStore:` from the options literal yields a silently unauthenticated server with a green suite.
-SSH auth: the `PublicKeysCallback` closure never runs (`TestSetupSSHAuth_WithValidKey` generates a
-real key and never reads it; it and the nonexistent-key test assert the *identical* thing), and
-`TestCreateHostKeyCallback_WithKnownHosts` never invokes the callback — so whether the fail-closed
-host-key control accepts a matching key and rejects a mismatched one is untested. `cloneLocked` is at
-16.7%; `TestGitProvider_EnsureCloned_ConcurrentAccess` pre-populates `repo`/`tree`, so the clone-once
-race is never exercised. (The *tree* race this hid is now covered by
-`TestGitProvider_ConcurrentReadsAreRaceFree`; `cloneLocked` itself still needs a network clone to
-reach, so its rollback path stays uncovered.)
-`internal/metadata/index.go:157-160` — the `case string:` date branch has **no test** (tests only use
-unquoted `date:`, which YAML decodes as `time.Time`); quoted `date: "2025-01-15"` is an ordinary
-frontmatter shape.
-
-**Tests that assert nothing** (recommend deleting rather than leaving as false confidence):
-`build_test.go:685` (`if err != nil { t.Logf("acceptable") }` — both branches pass),
-`preview_test.go:183` (constructs `&PreviewCmd{Open: true}`, asserts `cmd.Open`),
-`pipeline_test.go:80` (46 lines of setup, zero properties asserted),
-`mcp/server_test.go:437` (`Contains(text, "related")` — all three return paths contain it).
-
-**Helper duplication (CLAUDE.md violation):** the `.gomddoc/config.yml`-in-`t.TempDir()` pair is
-inlined 8× in `internal/config` (no `testhelpers_test.go`); the default-layout MapFS is re-inlined 37×
-in `internal/template`; `internal/server` *has* a canonical `setupTestRenderer` yet re-inlines its
-body 4× plus two near-duplicate named helpers. **Latent bug:** `server_test.go:55-57` and `:146-148`
-hand-roll the registry and **omit `NewMarkdownPassthroughRenderer()`**, so those two tests exercise a
-different registry than every other server test. ~~`mime.AddExtensionType(".md", …)` appears in 4
-`init()`s with **inconsistent values**~~ ✅ FIXED with §10.7's Misc bullet — all four crutch `init()`s
-deleted, the one registration lives in `negotiate/mime.go`.
-
-**Missing benchmarks on hot paths:** `metadata.BuildIndex` (runs at every startup; `search` has one,
-`metadata` does not), `provider` (no benchmarks at all), `resolve` lookup, `template/breadcrumb`,
-`locale.Bundle.T`. `make bench` works; 22 benchmarks across 10 packages; the §9.3 fixes are guarded
-(`BenchmarkTree` 2.16 ns, `BenchmarkPrevNext` 58 ns, 0 allocs, flat across 50/200/1000 pages).
+- **LOW: `absOutputCache` (`cmd/gomddoc/build.go`) is a lazy cache for a value that's computed
+  eagerly** — `Run` resolves it before any goroutine exists, so the `sync.Once` never actually
+  arbitrates. Moving the resolved path onto `buildContext` deletes the cache and its error branch.
+- **MEDIUM: `LanguagePipeline.Languages` and `.ByLang` are allowed to disagree** — a language whose
+  pipeline failed to build stays in `Languages` (used by the switcher and sitemap-index) but not in
+  `ByLang`. Currently unreachable in practice (both failure branches that would trigger it are
+  unreachable by construction — documented, not faked, in the test suite).
+- **LOW: build re-derives the language sub-FS the pipeline already built** — `fs.Sub(contentRoot,
+  lang)` in `build.go` duplicates work `setupLanguagePipelines` already did.
+- **LOW: three copies of the "fail one path" `fs.FS` test fake** across `internal/resolve`,
+  `internal/metadata`, `cmd/gomddoc` — candidate for an `internal/testutil/failfs` extraction.
+- **MEDIUM/LOW coverage gaps:** `ServeCmd.setup()`'s basic-auth branch untested across 14 call sites;
+  SSH auth callback (`PublicKeysCallback`) never actually invoked by its own test; known-hosts
+  callback never invoked either; `cloneLocked` at 16.7% (needs a network clone to reach further);
+  quoted-date frontmatter branch (`case string:`) has no test.
+- **Tests that assert nothing** (recommend deleting): `build_test.go` (`t.Logf("acceptable")` on both
+  branches), `preview_test.go` (constructs a value, asserts the field it just set), `pipeline_test.go`
+  (46 lines of setup, zero assertions), `mcp/server_test.go` (asserts a substring present in all
+  three possible return paths).
+- **Helper duplication** (CLAUDE.md "one canonical test helper per pattern"): `internal/config` has
+  no `testhelpers_test.go` (8 inline repeats); `internal/template` re-inlines a default-layout MapFS
+  37 times and has a latent bug where two tests hand-roll a registry missing
+  `NewMarkdownPassthroughRenderer()`, silently exercising a different registry than every other test
+  in the package.
+- **Missing benchmarks on hot paths:** `metadata.BuildIndex`, `internal/provider` (none at all),
+  `resolve` lookup, `template/breadcrumb`, `locale.Bundle.T`.
 
 ### 10.7 LOW — code quality (abridged)
 
-- ~~**Four different 404 shapes**: themed HTML (`handler.go:218-225`), plain-text *"File not found"*
-  (`middleware.go:99-105`), `http.NotFound` (`tags_html.go`, `assets_handler.go`), and Go's default
-  mux 404.~~ ✅ FIXED, and it was not a consistency nit. `ContentExclusion`'s own doc comment says
-  both hidden and excluded paths return 404 *"to avoid leaking the existence of excluded files"* —
-  but the statuses match by construction, so the **body is the leak**: plain-text `File not found`
-  where a genuinely missing page got the themed page told a client exactly which of the two it had
-  hit. The tag routes were a third shape (`net/http`'s default) from which the theme's 404 was
-  unreachable. The fix is therefore one shared writer, not four independently-tidied call sites:
-  `server.ErrorPage` (`internal/server/errors.go`). `Handler` **owns** its language scope's writer —
-  `NewHandler` builds it from the renderer, lang and `TFunc` the handler itself was given, so there
-  is no config field through which a caller could hand a scope a writer built from a different
-  renderer — and `ContentExclusion` and the tag routes borrow it via `Handler.ErrorPage()`.
-  `NewHTTPServer` builds each scope's handler before those routes; safe because Go 1.22+ `ServeMux`
-  matches by pattern specificity, not registration order, which also retired the stale "must be
-  registered before the catch-all" comment and let the two `LangPipelines` loops merge.
-  `handler.renderErrorPage` is gone, and `cmd/gomddoc/build.go`'s duplicate of the same
-  `BuildErrorContext` + `Render("error.html.tmpl")` sequence now calls the exported
-  `ErrorPage.Render` — that pair had already drifted once (§10.3: build passed `nil` languages where
-  serve passed the real list).
-  Exemptions, each with its reason at the call site: `/_assets/` (a sub-resource fetch; asset
-  existence is not a secret), the 406 in `ServeContent` (the client's `Accept` just excluded HTML,
-  and the available-types list has nowhere to go in the layout), `MethodFilter`'s bodyless 405 (a
-  body it does not have cannot leak), the XML endpoints (an HTML error body on `/sitemap.xml` is
-  worse than a plain one), and the admin listener's mux (no renderer to build a page from). Measured
-  cost of the trade: a themed 404 is ~49 KB uncompressed / 11 KB gzipped at ~1 ms, against 14 bytes
-  at ~111 µs, and `ContentExclusion`'s traffic is largely hidden-path scanning. Memoizing per
-  (scope, status) is the mitigation if it ever matters, but is only sound for themes whose error
-  layout ignores `Page.Path`, so it was not done.
-  `TestContentExclusion_IndistinguishableFromMissing` is the guard: it requests the **same** URL
-  against two sites — one where the file exists and is excluded, one where it never existed — and
-  compares the bodies byte-for-byte. Asserting each is "themed" would pass while they differ, and
-  comparing two *different* URLs would fail for a theme that prints the requested path.
-- ~~**`/api/tags/{tag}` and `/tags/{tag}` disagree on unknown tags** — 200 with `[]`
-  (`metadata.go:43-47`) vs 404 (`tags_html.go:37-41`). Same index, same question, two answers.~~
-  ✅ FIXED — there were **three** answers, not two: the MCP resource `docs://site/tag/{tag}`
-  succeeded with a body of JSON `null`. The HTML route was right — a tag enters the index only
-  because some page carries it, so an empty result can only mean "no such tag" — so the fix was not
-  to flip the API's status but to give the question one implementation:
-  `metadata.Index.LookupTag(tag) ([]PageInfo, bool)` owns the length bound (`MaxTagLength`, moved out
-  of `server`), the lookup, the emptiness verdict, and the title sort. All three callers now read the
-  same bool: `/tags/{tag}` → themed 404, `/api/tags/{tag}` → 404 `{"error": "unknown tag"}` (JSON, as
-  a client that asked the API for JSON expects), MCP → `ResourceNotFoundError`, matching what the
-  page resource eight lines above already did for an unknown path.
-  Two latent bugs fell out of the consolidation. `ByTag`/`PagesByTag`/`CountByTag` looked up with
-  `strings.ToLower` while `BuildIndex` keys with `normalizeTag` (lowercase **plus** trim), so
-  `/api/tags/%20go` missed an indexed `go`; all three now normalize. And the sort inside `LookupTag`
-  means the JSON array, the HTML page and the static build finally agree on order —
-  `emitTagPages` dropped its own duplicate `slices.SortFunc`.
-  `apiError`/`errUnknownTag` replace a per-request `map[string]string`: the 404 is now this
-  endpoint's most common answer, and a package-level struct value allocates nothing.
-  Skipped: `slices.Collect(PagesByTag)` on the JSON path (incompatible with returning a sorted
-  `[]PageInfo`); `CountByTag` as the existence check (`ByTag` returns `nil` before allocating on a
-  miss, so it would add a second map lookup and a second normalize on the hit path).
-- **Unmatched `/api/*` answers `text/plain`** — NEW (found while fixing the tag disagreement above).
-  The API group promises JSON, and every handler in it delivers JSON for both success and error, but
-  a path no pattern matches (`/api/nope`, or `/api/tags/` with an empty segment) falls through to
-  net/http's default 404: `404 page not found` as `text/plain`. A JSON client parsing the body of an
-  error it expects to be JSON gets a decode failure instead of `{"error": …}`. Registering
-  `api.Handle("/", …)` with a JSON 404 fixes it — deliberately left out of the tag commit to keep
-  that one atomic.
-- ~~**Cache headers only on some endpoints** — `/sitemap.xml`, `/feed.xml`, `/robots.txt` hand-roll
-  `Set`+`WriteHeader`+`Write` with no ETag and no Cache-Control, even though all three are
-  `lazyBytes`-cached immutable byte slices, i.e. ideal ETag candidates.~~
-  ✅ FIXED — all three now go through `serveWithETag` with `cacheDynamic`, so a crawler revalidates
-  instead of re-downloading a document that cannot have changed. The explicit `Content-Length` also
-  drops the chunked framing every body over net/http's 2 KB buffer was getting.
-  Rather than fix three call sites that happen to agree, the rule moved onto
-  `lazyBytes.serve(w, r, contentType)`: a fourth cached-body endpoint gets it by construction, and
-  the plain-text 500 (the XML-endpoint carve-out from the one-`ErrorPage`-per-scope rule) now has one
-  home and one comment instead of two. `RobotsHandler` generates eagerly and holds a plain `[]byte`,
-  so it calls `serveWithETag` directly.
-  `assertRevalidates` (`testhelpers_test.go`) is the guard and replaces three partial copies of the
-  conditional-GET dance: `TestAssetsHandler_ETagConditional` checked the empty 304 body but not
-  `Cache-Control`, `TestHandlerETagConditional` checked the 304's Content-Type but not the body, and
-  neither checked both. Which one caught a regression in `serveWithETag` was luck. It is falsifiable:
-  reverting `robots.go` to the hand-rolled write fails on the missing ETag and Cache-Control.
-  Measured and deliberately not done: precomputing the ETag beside the cached bytes. It is real
-  waste — FNV-64a re-runs per request, ~774 µs on a 5k-page sitemap — but it costs a second serve
-  entry point next to the one this fix exists to consolidate, on endpoints a crawler hits a handful
-  of times a day, and the 304s it buys skip a whole gzip pass over the same body.
-- **`/api/*` responses are neither cached nor revalidated** — NEW (found while fixing the item above).
-  `writeJSON` streams through a `json.Encoder`, so there is no byte slice to hash and `/api/tags`,
-  `/api/tags/{tag}` and `/api/search` re-encode the same immutable index on every request with no
-  ETag and no `Cache-Control`. Marshalling to bytes and handing them to `serveWithETag` fixes both
-  halves at once. Left out of the cache-header commit to keep it atomic; the exception is recorded in
-  CLAUDE.md and `docs/architecture.md` rather than left silent.
-- ~~**Dead code:** `navigation/flatten.go:5 FlattenPages` (duplicates `appendLeaves`),
-  `template/renderer.go:743 ClearCache`, `assets/overlay.go:14 NewOverlayFS` (zero callers in all
-  three repos), `locale/detect.go:43 ExtractLangFromPath` (last call site removed by §6),
-  `locale/bundle.go:38 DefaultLang`, `negotiate/accept.go:50 (MediaType).String()`,
-  `mcp/server.go:23 ServerDeps.SiteName` (populated by both call sites, never read),
-  `server/server.go:47 HTTPServer.handler` (assigned at `:284`, never read — pins the whole handler
-  graph for the server's lifetime).~~ **FIXED.** All eight deleted, plus four the sweep for them
-  turned up. One correction to the item as written: `provider.NewOverlayFS` is live — it is the
-  thin `internal/assets` wrapper of the same name that had no callers, and `internal/assets` is now
-  that constructor's sole consumer, so the package no longer re-exports its own dependency under a
-  colliding name. Deleting `ClearCache` made `TemplateCache.Clear()` test-only in turn, so the
-  interface method and both implementations' `Clear` went with it; no dev-mode reload path was
-  orphaned, because none exists (all three renderer caches are gated on `cacheAssets`, so dev mode
-  already re-reads). `(MediaType).String()` was verified unused by any `%v`/`%s` verb before
-  deletion — `accept_test.go` now composes `Type + "/" + Subtype` inline rather than keeping a
-  method alive for one assertion. The four extras, all the same class:
-  `negotiate.(MediaType).Matches` (test-and-benchmark-only, and a second implementation of the
-  RFC 9110 media-range match that `renderer/registry.go:155,178` already hand-rolls for production
-  — the documented, benchmarked, table-tested copy was the dead one), `locale.(*Bundle).Languages`
-  (`template.BuildLanguageInfos` takes its list from `locale.DetectLanguages`, not the bundle),
-  the `server.Server` interface (zero references — same shape of leftover as the `handler` field,
-  its only reader the `// HTTPServer implements Server` comment), and the passthrough cache test's
-  second `Set`/`Get` pair, which was added in this change to fill the hole `Clear()` left and
-  could not have gone red against any compiling implementation.
-- **`TemplateCache` models a boolean as a two-implementation interface** — NEW (found while fixing
-  the item above; both simplify agents raised it independently). `Clear()` was the one method that
-  made it a strategy; with it gone the interface is `Get`/`Set` over one real store and one no-op,
-  and that on/off bit is already stored three other ways along the same path (`EnableCache` in
-  `pipeline.go:225`, presence of the `WithCache` option, and `HTMLRenderer.cacheAssets` — which is
-  how the *sibling* asset and partial caches, plain `sync.Map` fields, get gated). Collapsing to a
-  `sync.Map` behind `cacheAssets` deletes `cache.go`, `cache_test.go` and three exported names.
-  `cache_test.go` is the reason to do it: post-deletion it asserts that `sync.Map` stores and loads,
-  that `sync.Map` is concurrency-safe, and that a `return nil` body returns nil — no production
-  change turns any of it red, and the real coverage comes through `renderer_test.go`. The one
-  genuine consumer is also a test: `countingCache` embeds `CachedTemplateStore` to count `Set` calls
-  and prove singleflight coalescing, so the collapse needs an unexported parse-counter seam instead.
-  Left out of the dead-code commit because it is a refactor, not a deletion.
-- ~~**Aliasing:** `metadata.ByPath`/`ByTag` return values aliasing the index's `Tags` slice and `Meta`
-  map — `clonePage` exists and is used by `AllPages` (§9.8) but not here, and
-  `search/index.go:381` documents the opposite. `template/context.go:32-38` — `meta` aliases
-  `in.Enrichment.Metadata`, so `meta["title"] = …` mutates the caller's `EnrichmentData`; safe only
-  because enrichment is per-request, and becomes a race the moment the §9.8 response cache lands.~~
-  **FIXED.** `ByPath` and `ByTag` go through `clonePage`, so all three `PageInfo`-returning
-  accessors now agree. The "documents the opposite" comment was `search/index.go`'s *"metadata.ByTag
-  returns a fresh slice, so the result is safe for the caller to mutate"* — true of the slice, false
-  of every `Tags` and `Meta` inside it, which is the sentence that would have licensed the bug.
-  `BuildPageContext` clones `in.Enrichment.Metadata`; the comment there gives the real reason rather
-  than the speculative one — `Meta` is the single enrichment field the function *writes*, so it is
-  the only one that needs an owned copy.
-  The clone is not paid where it is pure waste: `ByTag` is the owned-slice accessor and `PagesByTag`
-  is the zero-copy one, so the two call sites that read a field and discard the page moved to the
-  iterator (`search/index.go`'s multi-tag intersection, which only builds a path set, and
-  `mcp/tools.go handleRelatedPages`, which reads `Path` and `Title`). `search.taggedPages`' first
-  call keeps `ByTag` — it owns the slice through `slices.DeleteFunc` and `tagOnlyResults`' field
-  writes. `LookupTag` also keeps it: it is the request-facing accessor behind `/tags/{tag}`,
-  `/api/tags/{tag}` and the MCP tag resource, and ~1.3 µs on a 50-page tag is not worth handing
-  three transports an aliased index.
-  Tests: the two `AllPages`-specific copy tests collapsed into one table over AllPages/ByTag/ByPath/
-  LookupTag, each mutating `Title`, `Tags[0]` and `Meta[k]` and re-reading. `LookupTag` is listed
-  even though it delegates, so a later shallow-copy shortcut inside it cannot hide behind `ByTag`'s
-  row; `PagesByTag` is deliberately absent because it aliases by contract. Reverting either
-  `clonePage` call turns the matching subtests red, and reverting the `maps.Clone` turns the new
-  `BuildPageContext` subtest red — both verified by mutation.
-- **`AllPages` has no `iter.Seq` sibling** — NEW (found while fixing the item above). CLAUDE.md
-  requires one next to any slice-returning accessor, and `PagesByTag` is that sibling for `ByTag`,
-  but five read-only consumers still take a full-corpus deep copy: `server/sitemap.go`,
-  `server/feed.go`, `server/redirect.go`, `search.buildMetaLookup`, and `mcp/resources.go`. The
-  first four are one-shot; `mcp/resources.go` and `mcp/tools.go handleListPages` run per call.
-  `handleListPages` is also a collect-all-then-truncate — it clones every page of a 300-page tag to
-  keep 50, against CLAUDE.md's bounded-results rule.
-- **`mcp/tools.go handleRelatedPages` is a second implementation of `enricher.findRelatedDocs`** —
-  NEW. Same shared-tag algorithm, but unbounded and unsorted, so the MCP answer and the rendered
-  "related docs" block can disagree on the same page. The enricher's version is the one with the
-  sorted top-N window.
-- **`navigation.Generator.Tree()` hands its cached `*NavNode` root out directly** — NEW. The tree is
-  built once and shared, its `Children []*NavNode` are mutable, and both `mcp/tools.go` and
-  `navBuilderAdapter` receive the live root on every request. Every consumer reads today, so this is
-  an unenforced contract rather than a bug — but it is now the largest remaining "immutable cache
-  hands out an aliased mutable object" in the tree.
-- **`PageContext.Features` aliases the process-wide site config map** — NEW, lower. `MergeFeatures`
-  returns `base` unmodified when a page has no `features:` override (the common case), so
-  `ctx.Page.Features` is `Site.Theme.Features` itself. Unlike `Meta` this is documented
-  ("callers must not mutate the returned map") and nothing writes it, which is why it was left out
-  of the fix above rather than cloned alongside.
-- ~~**`fs` contract violations:** `provider/overlay_fs.go:53,84,125,185` return bare `fs.ErrNotExist`
-  where `io/fs` requires `*fs.PathError`, so `errors.As` consumers lose the path.
-  `gitfs.go:78` leaks a raw go-git error out of `Open`.~~
-  **FIXED.** Both halves, plus the mirror image of the second one. `OverlayFS`'s four
-  "nothing matched" returns are now `*fs.PathError`, and all four methods reject `!fs.ValidPath`
-  (the guard `FilesystemProvider` still lacks — see §9.9's open item above, which this does not
-  close). `gitTreeFS` routes every go-git failure through `treeErr`, which maps
-  `object.ErrEntryNotFound`/`ErrDirectoryNotFound`/`plumbing.ErrObjectNotFound` to `fs.ErrNotExist`
-  and lets everything else keep its own error: the raw leak out of `Open`/`ReadFile` was one defect,
-  and flattening a corrupt packfile into `ErrNotExist` — rendering a broken repository as an empty
-  site — would have been the other.
-  Construction is now single: `fsPathErr` in `errors.go` plus `opOpen`/`opReadFile`/`opStat`/
-  `opReadDir` constants. The fix's first draft had added a *third* `*fs.PathError` spelling to a
-  package that already had two, and pinned in a test the disagreement it should have removed —
-  `ReadFile` reported `Op: "open"` in `OverlayFS` and `Op: "read"` in `gitTreeFS`. `gitTreeFS`'s
-  three identical ValidPath→Lock→nil-tree preambles collapsed into `guard`.
-  Tests: `TestOverlayFS_PathErrorContract` (4 methods × 3 paths) asserts `Op`, `Path` and the
-  sentinel through `errors.As`, replacing an `errors.Is`-only test that could not see the missing
-  path. The not-found rows run against zero layers, the only configuration reaching `OverlayFS`'s
-  own returns; the invalid-path rows run against a *populated* overlay, where the op string is what
-  proves the guard fired before delegating rather than `fstest.MapFS` answering. `TestTreeErr`
-  covers the two-way mapping. Reverting either half turns the matching subtests red — verified by
-  mutation.
-- **`fstest.TestFS` is used nowhere in the repo, and both `fs.FS` implementations fail it** — NEW
-  (found while fixing the item above; reproduced in a scratch module). Two distinct defects:
-  `OverlayFS.Open(dir)` returns the *first* layer's directory handle, so `ReadDir` on it sees one
-  layer while `OverlayFS.ReadDir` merges all of them — the same directory has two answers depending
-  on how it was reached. And `treeDirEntries` never sets `gitDirEntry.size`, so `DirEntry.Info()`
-  reports 0 for every file while `gitTreeFS.Stat` reports the real size; the comment says a size
-  "would mean loading every blob", which stopped being true when `statTreeNode` started taking sizes
-  from the object header. `fstest.TestFS` is the canonical conformance check and would have caught
-  both.
-- **`template/inline_asset.go:31` discards the underlying error unconditionally** — NEW. A missing
-  asset and an unreadable one produce the same message, so a permission or I/O failure on a theme
-  asset reads as a typo in the template.
-- **`internal/template` has no `testhelpers_test.go`** — NEW (found while fixing the unwrapped-error
-  bullet below). The `config.NewSiteConfig(".")` + `Theme.Name` + `NewHTMLRenderer(&cfg, mapFS)`
-  construction repeats ~60 times across the package's tests, which is exactly the duplication
-  CLAUDE.md's "one canonical test helper per pattern" rule exists to prevent. Prior art:
-  `internal/server/testhelpers_test.go:57 setupTestRenderer`. Its own commit — the fix is a
-  mechanical migration of 60 call sites and does not belong inside a behavior change.
-- **`template/renderer.go:278,289` return a bare `ctx.Err()`** — NEW, lowest. Deliberately left that
-  way when the sibling execute failure gained context: `internal/server/errors.go:131,133` classify
-  cancellation with `errors.Is`, and a wrap that named the template would not change the response.
-  Filed only so the asymmetry reads as a decision rather than an oversight.
-- **The four content-index builders disagree on what an unreadable subtree means** — NEW (found
-  while fixing the ignored-errors bullet below). `metadata.BuildIndex` aborts the walk, and the
-  caller warns and continues with a nil index; `search.BuildIndex` does the same, and the site loses
-  search; `resolve.Build` warns and keeps a partial map; `navigation.go:146` swallows the `fs.ReadDir`
-  error entirely and returns a partial tree with no log at all; `build.go:377` aborts and fails the
-  CLI. Four policies for one event, none of them written down. `navigation.go:146` is the outlier
-  worth fixing on its own — a subtree silently missing from the sidebar has no symptom an operator
-  can trace. The general form is a `provider.WalkContent(fsys, exclude, fn)` owning both
-  `SkipWalkEntry` and the error policy, but that is a behavior change for at least two of the four
-  and needs its own decision, not a drive-by.
-- **`internal/testutil` has no slog-capture helper** — NEW. The
-  `slog.SetDefault(slog.New(slog.NewTextHandler(&buf, …)))` + restore-in-`t.Cleanup` block is copied
-  at five sites across three packages (`cmd/gomddoc/pipeline_test.go:477,520,566`, and the new
-  `internal/resolve` one). Same "one canonical test helper per pattern" rule as the
-  `internal/template` item above; same reason for its own commit.
-- **`gitfs.go:354` builds a raw `&fs.PathError{Op: "read", …}`** — NEW, lowest. The package has
-  `fsPathErr` for exactly this and every other site in the file uses it.
-- ~~**Latent panics:** `search/snippet.go:100-103` guards `pos > 0` instead of `pos < len(content)` —
-  brute-forced to `index out of range` with `content="あ", windowSize=1`; unreachable today but
-  `generateSnippet` takes `maxLen` as a parameter. `renderer/markdown.go:128` — unchecked
-  `doc.(*ast.Document)` assertion in the hot request path.~~
-  **FIXED.** The bug in `findBestWindow` was not a wrong bound so much as a *second* bound: the
-  same forward rune-alignment walk appeared twice in the function, once correctly bounded by
-  `len(content)` for the window end and once by `pos > 0` for the window start. Both call sites now
-  go through one `alignRuneStart`, so the divergence cannot recur.
-  `setDocFeatures` takes `ast.Node` instead of `*ast.Document`, which deletes the assertion rather
-  than guarding it — `SetAttributeString` is an `ast.Node` method, so the assertion bought nothing
-  and could only panic. A root that is not a `*ast.Document` now degrades to features-off through
-  `getDocFeatures`' `OwnerDocument` lookup instead of crashing the request.
-  Tests: the two boundary cases join `TestFindBestWindow`'s existing table rather than forming a
-  second one, and the invariants they check — an in-range start, on a rune boundary — moved into
-  the shared loop, so they now hold every row accountable including the pre-existing CJK case. The
-  name-string discriminator (`if tt.name == "content shorter than window"`) became a `pinPos`
-  field. Reverting `alignRuneStart`'s bound panics the new subtest — verified by mutation.
-- ~~**Unwrapped errors** (CLAUDE.md requires `%w`): `template/renderer.go:306-309,410-412,430-436`.
-  `:434-436` discards the *primary theme's* parse error entirely and surfaces only the fallback's, so
-  a broken theme partial reports as a missing default partial.~~ **FIXED.** The real defect was the
-  discarded error, and it is now a double-`%w`: `parse partial %q: theme %q: %w; default theme: %w`.
-  `errors.Join` was considered and rejected — it separates with `\n`, which mangles a single-line
-  slog field, and it has nowhere to put the `theme %q` / `default theme` labels that say which half
-  is which. The layout `ParseFS` failure gained `parse layout %s: %w` (the path, which names the
-  theme). The other two sites were left *deliberately unwrapped*, against the original finding:
-  `html/template`'s `ExecError` already embeds the template name, so `execute template %q: executing
-  "x" at <.Y>` prints the name three times and adds nothing. `Render`'s execute wrap was instead
-  repointed at the full asset path — genuinely absent from the exec error, and the only thing that
-  identifies which theme supplied the layout — and the pre-existing `parse template:` wrap around
-  the singleflight result was dropped, since `parse layout <path>` now names the real failure.
-  `executePartial` returns the `ExecError` bare; both its callers already prefix `render tags-list`.
-  Duplication removed on the way: `parsePartialFrom(theme, name)` replaces two copies of the
-  `template.New(…).Funcs(…).ParseFS(…)` chain. `TestRenderer_ErrorsCarryContext` covers all four
-  paths, including a row that pins the *unwrapped* one — if `ExecError` ever stops naming the
-  partial, that error loses its only identifying context and the row fails. Mutation-verified:
-  reverting the three wraps produces 6 missing-assertion failures.
-- ~~**Ignored errors:** `build.go:324` uses `err == io.EOF` not `errors.Is`;
-  `provider/git.go:118-121,318-321` collapse four distinct `parseGitURL` messages into a bare sentinel
-  (and this is the failure that produces §10.1's nil-tree state, so the cause matters);
-  `renderer/markdown_passthrough.go:49-56` drops a `yaml.Marshal` error with no log;
-  `resolve/resolver.go:48-51` silently tolerates an unreadable subtree (symptom: 404s on clean URLs,
-  no log line) where both peer index builders wrap and return.~~ **FIXED**, and the git half turned
-  out to be twice as large as filed. `NewGitProvider` now wraps both ways — `%w: %w` keeps
-  `ErrInvalidGitURL` for `errors.Is` *and* `parseGitURL`'s message, which is the only thing that tells
-  an operator what to change. `parseGitURL` itself was discarding two of its own errors on the way
-  (`errors.New("malformed URL")` over `net/url`'s diagnosis, same for the endpoint parse); both are
-  now `%w`. The mapping also runs the *other* way: `cacheTreeLocked` collapsed every subtree failure
-  to `ErrNotFound`, so a corrupt packfile reported as a typo in the URL fragment. `isMissingGitObject`
-  — the one list of go-git not-found sentinels, extracted out of `gitfs.go`'s `treeErr` — now
-  gates that. The review pass caught the extraction being applied to only 2 of its 4 sites: `ReadFile`
-  and `Stat` were flattening too, and they are the *per-request* path, so a corrupt repository served
-  a themed 404 on every page instead of a 500.
-  `markdown_passthrough.go` **propagates** rather than logs: nothing the pipeline can put in the
-  struct fails to marshal (`Metadata` comes back out of goldmark's frontmatter parse, so it
-  round-trips by construction), which makes the branch a bug, not a degradation — the old fallback
-  served a well-formed 200 with `related_docs` and prev/next quietly missing. Logging would also have
-  put `log/slog` into a package that has no logger calls.
-  `resolve.Build` keeps walking and now *says so*, which is the opposite call from the peer index
-  builders and deliberate: an absent resolver degrades every link and canonical on the site to a raw
-  `.md` path, while a partial map is fail-*closed* for the exclusion invariant (an unmapped page
-  404s). `fs.WalkDir` calls back with an error at most once per directory and does not descend, so
-  the log is bounded. `isDirEmpty`'s `errors.Is` is hygiene, not a fix — `os.File.Readdirnames`
-  returns `io.EOF` itself, and had it not, `==` was the fail-*closed* answer; it is not reachable
-  from a test.
-  Tests: `faultyStorer` (beside its twin `countingStorer` in `testhelpers_test.go`) fails one object
-  and passes the rest, so a storer fault is separable from a genuinely absent one. It overrides
-  *both* `EncodedObject` and `EncodedObjectSize` — `ReadFile` decodes the blob, `Stat` reads only
-  the header — and the provider is built with `gitProviderOver`, since a tree from `mustGetTree` is
-  baked over `repo.Storer` and `TreeEntryFile` would resolve straight through the wrapper. The
-  rejection-reason assertions live in `TestParseGitURL`, where all five rejections are, rather than in
-  `TestNewGitProvider`, which keeps one row to prove the wrap carries both halves. Mutation-verified:
-  reverting the four git wraps, the passthrough return and the resolver log produces failures in each
-  — including the `giturl.go` one, whose assertion reaches past the `malformed URL` label into
-  `net/url`'s text, because a `strings.Contains` on a label alone cannot tell `errors.New("x")` from
-  `fmt.Errorf("x: %w", err)`.
-- ~~**Misleading comments/naming:** `search/snippet.go:255` says *"using insertion sort"* over a
-  `slices.SortFunc` body (CLAUDE.md bans manual insertion sorts — the comment claims one exists);
-  `snippet.go:14` calls byte offsets "character range" in the one file where that distinction is the
-  entire difficulty; `search/tokenizer.go:60,68` says "shorter than 2 characters" over a byte check;
-  `template/renderer.go:647 filterTOCNodes(nodes, min, max)` shadows the `min`/`max` builtins CLAUDE.md
-  lists as target idioms; `mcp/section.go:27,104` shadows the imported `internal/text` package (the
-  enricher solved the same collision with `txt "…/internal/text"`).~~ **FIXED**, and the shadow half
-  is now a lint gate rather than five hand-edits: `make lint` runs `gocritic` with
-  `-enable="builtinShadow,importShadow"`, both off by default. That is what closes the class — fixing
-  the two listed sites by hand would have left `renderer.go:648 Breadcrumbs(path)` and
-  `renderer.go:704 ResolveLayout(…, metadata)` shadowing `path` and `internal/metadata` *five and six
-  lines away from the edit*, plus `server/errors.go:52`, `server/health.go:16`, `build.go:337`,
-  `mcp/section_test.go:74` (the same `text` shadow, in the package being fixed), 14 `fs :=` in
-  `navigation_test.go`, and 6 `real :=` in `resolver_test.go`. All are renamed and the repo is clean
-  under both checks.
-  On the comments: `sortSpans` was deleted rather than re-documented — one caller, and its test
-  asserted that `slices.SortFunc` sorts, which no production change could falsify. The sort moved
-  *into* `mergeSpans`, because it was that function's unwritten precondition and deleting the wrapper
-  would have traded a misleading comment for a missing one. `TestMergeSpans` gained the suite's only
-  unsorted-input row; mutation-verified as the only row that fails when the sort is removed.
-  `span`'s doc says byte range; the type was *not* renamed to `byteSpan` (~13 edits of churn for a
-  distinction one sentence carries, and `start`/`end` would still not say bytes on the fields).
-  `tokenize` gained `minTokenBytes` and a comment that states the rule it actually implements —
-  bytes is a *proxy* for "drop single ASCII letters", lenient enough that a two-byte Cyrillic
-  stopword survives, and index and query both go through it so they agree whichever way it errs;
-  the CJK-only version of that comment was the first draft and flattered the design. A CJK row in
-  `TestTokenize` pins it, and `parse.go:16`'s "2-char minimum" — a second, contradicting statement of
-  the same threshold — now names the constant. Dedup on the way: `findTokenSpansRunewise` had two
-  byte-identical rune-offset walks, now one `runeOffsetTable`.
-  Deliberately not done: `filterTOCNodes` still starts `result` at nil rather than preallocating, and
-  `headingLevel` still takes a `string` converted per line — both pre-existing, neither in this item.
-- ~~**`locale.IsBCP47Dir` accepts only `ll-CC`** (`detect.go:8-23`) — `fr`, `en`, `zh-Hans`, `es-419`
-  are all valid BCP 47 and all rejected. The name promises more than the implementation delivers.
-  Since `ExtractLangFromPath` was deleted its only callers are `DetectLanguages` and the in-package
-  test, so whatever fixes the predicate should also unexport it.~~ **FIXED, with the premise
-  half-rejected.** Renamed to `isLanguageDir` and broadened to `zh-Hans`, `es-419`, `sr-Latn-RS`,
-  `zh-Hant-TW` and three-letter primaries (`abc-DE`); newly *tightened* against `zz-ZZ`/`xx-XX`
-  (well-formed, not a language — the old check invented a pipeline for them) and against
-  non-canonical spellings, so `en-US` and `en-us` cannot become two pipelines for one language.
-  But `fr` and `en` stay rejected, deliberately. Detection is automatic — no `languages:` config —
-  so the predicate runs against every directory at the content root, and `language.Parse` accepts
-  `doc`, `api`, `css`, `bin`, `id`, `is`, `no` and `it` as languages. Honouring the finding as filed
-  would turn a `doc/` directory into its own pipeline and, per §10.6's exclude invariant, drop it
-  from the default one: the fix would delete content from the site. A script and/or region subtag is
-  now required. Rationale and the four alternatives are in `docs/decisions.md`.
-  Nothing downstream assumed the five-character shape — verified across route registration
-  (`server.go:275`), `stripPathPrefix` (`redirect.go:67-71`), the sitemap index (`sitemap.go:68-72`),
-  build output paths (`build.go:243,258,265`), bundle filenames (`bundle.go:85`), the hreflang
-  partial, all 7 external themes and the website theme; every one is string-keyed.
-  Implementation: `language.Parse`, then `tag.Raw()` for the script/region test (`Script()`/`Region()`
-  *infer* the subtags that were not written, `Raw()` does not), then `language.Compose(base, script,
-  region).String() == name`. The recompose is load-bearing rather than decorative: `Compose` keeps
-  only those three subtags, and a plain `tag.String() == name` round-trip accepts `en-US-x-foo`,
-  `en-US-u-co-phonebk`, `ca-ES-valencia` and `de-CH-1901` — the four rows that mutation-verify it.
-  `is-a-test` is caught one step earlier, by the bare-subtag rule: Parse reads it as Icelandic plus
-  an extension singleton, and an extension is not a region. Cost measured at +80 bytes of binary
-  (`golang.org/x/text` was already a direct dependency via `internal/text`) and 336 ns/272 B per hit,
-  on a path that runs once per startup over top-level entries only.
-- ~~**Misc:** `.md`/`.markdown` MIME types are registered in `internal/renderer` (`markdown.go:28-29`),
-  a package `resolve` does not import — so the entire clean-URL feature depends on `internal/renderer`
-  happening to be linked in; move them next to the `.mjs` registration in `negotiate/mime.go`.
-  `exclusion.go:81-86`'s trailing-`/` branch uses `HasPrefix`, so `drafts/*/` matches nothing and
-  **fails open**, contradicting its own doc comment. `negotiate/accept.go:83-85` sorts by `q` only,
-  ignoring RFC 9110 §12.5.1 specificity, so `Accept: */*, text/markdown` resolves at `*/*`.
-  `build.go:286-289 guardOutputDir` returns `nil` on *any* stat error, so a permission error reads as
-  "nothing to guard". No `*.test` entry in `.gitignore` (a 19 MB `template.test` artifact appeared in
-  the working tree during this review).~~ ✅ **FIXED — all five.**
-  - **MIME.** Moved to `negotiate/mime.go`, next to `.mjs`. The finding understated it: *two* test
-    files (`resolve/resolver_test.go`, `negotiate/mime_test.go`) carried crutch `init()`s to paper
-    over the missing link, which is the tell that ownership is not what decides where an
-    `AddExtensionType` belongs — the consumers are. Also removed the two remaining copies tracked
-    separately at §9.4, including `navigation_test.go`'s, which registered `text/markdown` **without
-    charset** and, because test-file inits run after imported-package inits, overwrote the canonical
-    value for that whole test binary. `.markdown` had never been exercised; it has a row now.
-  - **Exclusion.** New `matchDirPrefix`. `path.Match`'s `*` never crosses `/`, so only the prefix
-    with the pattern's segment count can match — one `Match`, not one per segment (measured 1.5x
-    faster at two segments, 3x at four, on a predicate that runs per request and per file across
-    five index walks). Reverting to `HasPrefix` fails five of the eight new rows.
-  - **Accept.** Specificity now breaks the `q` tie. The ladder moved to
-    `(negotiate.MediaType).Specificity()` rather than becoming a third copy —
-    `renderer/registry.go`'s `outputMatchScore` had hand-rolled the same `exact=3, type/*=2, */*=1`
-    ranking, and a `(MediaType).Matches` method was deleted once before for exactly this. See
-    §10.12 for the part of RFC 9110 §12.5.1 this does *not* fix.
-  - **`guardOutputDir`.** Distinguishes absent from could-not-tell, and the sentinel stat below it
-    now does too — it refused safely but reported "not created by gomddoc build", asserting a fact
-    it did not have.
-  - **`.gitignore`.** `*.test` added.
+✅ **FIXED, all documented in CLAUDE.md's Go/HTTP conventions or `docs/decisions.md`:** four
+disagreeing 404 shapes unified into one `server.ErrorPage` per language scope; the three-way
+"is this tag known" disagreement (`/tags/{tag}` 404 vs `/api/tags/{tag}` 200-empty vs MCP null)
+unified via `metadata.Index.LookupTag`; XML endpoints (`/sitemap.xml`, `/feed.xml`, `/robots.txt`)
+now revalidate via `serveWithETag` instead of hand-rolled writes; 12 dead symbols deleted; `fs`
+contract violations fixed (`*fs.PathError` via `fsPathErr`, `gitTreeFS`'s not-found mapping now runs
+both ways); two latent panics fixed (`findBestWindow`'s dual rune-alignment bound, an unchecked
+`ast.Document` type assertion); unwrapped errors now carry context via double-`%w`; several
+ignored-error and misleading-comment/shadowing findings fixed (the shadowing class is now a
+`gocritic -enable="builtinShadow,importShadow"` lint gate, not five hand-edits); `isLanguageDir`
+narrowed to require a script/region subtag (see `docs/decisions.md` § *A Language Directory Needs a
+Script or a Region Subtag*); five Misc findings (MIME registration ownership, exclusion pattern
+matching, Accept-header specificity tiebreak, `guardOutputDir`'s absent-vs-unknown conflation,
+missing `*.test` gitignore entry) all fixed.
+
+**Still open:**
+
+- **NEW: unmatched `/api/*` routes answer `text/plain`, not JSON** — a JSON client parsing an
+  unexpected-path error gets a decode failure instead of `{"error": ...}`. Fix: register
+  `api.Handle("/", ...)` with a JSON 404.
+- **NEW: `/api/*` responses are never cached or revalidated** — `writeJSON` streams through
+  `json.Encoder` with no byte slice to hash. Marshalling to bytes first and handing to
+  `serveWithETag` fixes both cache headers and revalidation at once. Documented as a known exception
+  in CLAUDE.md's HTTP Conventions.
+- **NEW: `TemplateCache` models a boolean as a two-implementation interface** — with `Clear()`
+  deleted (dead code sweep above), the interface is just `Get`/`Set` over one real store and one
+  no-op; the on/off bit is already tracked three other ways along the same path. Refactor candidate,
+  not a defect.
+- **NEW: `AllPages` has no `iter.Seq` sibling** — 5 read-only consumers still deep-copy the whole
+  corpus (`sitemap.go`, `feed.go`, `redirect.go`, `search.buildMetaLookup`, `mcp/resources.go`); MCP's
+  `handleListPages` also collect-all-then-truncates against CLAUDE.md's bounded-results rule.
+- **NEW: `mcp/tools.go handleRelatedPages` reimplements `enricher.findRelatedDocs`** without the
+  bound or sort, so the MCP answer and the rendered "related docs" block can disagree.
+- **NEW: `navigation.Generator.Tree()` hands out its cached, mutable `*NavNode` root directly** —
+  unenforced contract; every consumer currently only reads.
+- **NEW, lowest priority:** `PageContext.Features` aliases the site-config map (documented, nothing
+  writes it); `fstest.TestFS` conformance is never run and both `fs.FS` implementations would fail
+  it (`OverlayFS.Open(dir)` disagrees with `OverlayFS.ReadDir`; git tree entries report size 0 via
+  `Info()`); `inline_asset.go` discards the underlying read error, so a permission failure reads as
+  a missing-asset typo; `internal/template` has no `testhelpers_test.go` despite ~60 duplicated
+  constructions; the four content-index builders (`metadata`, `search`, `resolve`, `navigation`)
+  disagree on what an unreadable subtree means, with `navigation.go` the worst (swallows the error
+  with no log at all); a few call sites still hand-roll slog capture instead of using
+  `internal/testutil/logcapture`; one raw `&fs.PathError{}` construction remains in `gitfs.go`
+  instead of the package's `fsPathErr` helper.
 
 ### 10.8 `docs/architecture.md` drift
 
-| Line | Claim | Reality |
-| ---- | -------------------------------------------- | ------------------------------------------- |
-| ~~230, 264~~ | ~~`navigation` template func~~ | ✅ FIXED with D4 |
-| ~~238~~ | ~~`assetURL` *"(validates existence)"*~~ | ✅ FIXED — the whole FuncMap table was rewritten from `renderer.go:funcMap` |
-| ~~386~~ | ~~ContentExclusion *"uses `provider.IsHiddenPath()`"*~~ | ✅ FIXED — names `IsRestrictedPath()`, and notes why the middleware alone cannot enforce exclusion |
-| ~~391-398~~ | ~~Route table~~ | ✅ FIXED. Also removed a phantom `auth → mcp` subgroup — `/_mcp/` is a plain handler on `auth` — and recorded that the per-language sitemap/feed/tag routes hang off `auth`, not the language subgroup |
-| ~~404~~ | ~~*"8 bundled themes"*~~ | ✅ FIXED with D10 — split into a one-row bundled table and a seven-row downloadable one |
-| ~~505~~ | ~~sitemap-index~~ | ✅ FIXED — the SEO list now states it is build-only, so a multi-language site behind `serve` has per-language sitemaps and nothing indexing them |
+✅ **FIXED** — all 5 identified drift items (navigation template function, `assetURL` claims, the
+route table, theme count, sitemap-index) corrected; see the file's current content.
 
 ### 10.9 Verified clean
 
-- **All linters clean** — `gofmt`, `go vet`, `staticcheck`, `golangci-lint`, `gosec`, `gocritic`, zero
-  findings repo-wide. `go test -race ./...` clean (602 test functions, one conditional skip).
-  No `TODO`/`FIXME`/`XXX`/`HACK` in any non-test file.
-- **Path containment** — `..`, `%2e%2e`, `..%2f`, double-encoded and backslash variants all 404 or
-  redirect within the root. `IsHiddenPath` 100% covered, `SkipWalkEntry` 100%, `IsRestrictedPath`
-  100%. `fs.ValidPath` guards on the git provider; `os.DirFS`+`fs.Sub` used correctly; `path` not
-  `filepath` throughout `fs.FS` code (`filepath` appears only for genuine OS operations).
-- **`io/fs` spec compliance** — `gitDirFile.ReadDir` is fully correct: `n <= 0` returns all remaining
-  with `nil` error (never `io.EOF`), `n > 0` returns `io.EOF` only when exhausted, both branches
-  `slices.Clone`.
-- **goldmark concurrency** — sharing one `goldmark.Markdown` across requests is safe in both the
-  renderer and the enricher: fresh `parser.Context` and `text.Reader` per call, no per-request write
-  to a shared field.
-- **Template caching** — `sync.Map` + `singleflight` with a correct double-check inside the flight;
-  pooled buffers reset before `Put`, `slices.Clone` before return. The §5 `Configure` Won't-Fix holds.
-- **Index build concurrency** — both `BuildIndex` implementations pre-size results and have each
-  goroutine write a distinct index. No shared map writes, no slice growth, no race. Only `Search`'s
-  candidate seeding leaks map order (§10.3).
-- **Auth** — bcrypt cost and the dummy-hash constant-time path are correct; 401s verified on `/`,
-  `/_mcp/`, `/api/search`, `/sitemap.xml`, `/tags/`. Unauthenticated by design and appropriately so:
-  `/health/*`, `/robots.txt`, `/_assets/`.
-- **Git provider** — no `exec.Command` anywhere (pure go-git); scheme allowlist; shallow single-branch
-  clone with a 60s timeout; `createHostKeyCallback` **fails closed** when known_hosts is unavailable.
-- **Container** — distroless `static-debian12:nonroot`, binary only, no secrets in layers, non-root by
-  default. Absent `HEALTHCHECK` is correct for distroless. Release workflow permissions are scoped
-  exactly to need, and the tap-token preflight is a genuinely good failure-mode design.
-- **Metrics cardinality** — labels are `{method, status}` only, and `MethodFilterMiddleware` is
-  chained *outside* `Metrics`, so unbounded method strings cannot reach the label set.
-- **Sorting/idioms** — every sort uses `slices.SortFunc`/`SortStableFunc` with `cmp.Compare`/
-  `time.Compare`; no manual insertion sorts. Modern Go is genuinely current throughout
-  (`slices`/`maps`/`cmp`, `SplitSeq`/`FieldsSeq`, `atomic.Pointer[T]`, range-over-int, `b.Loop()`,
-  `slog`). Zero `interface{}`. `yaml.Marshal` for all YAML output. Pointer receivers consistent on
-  every type. No package-level mutable state outside sentinels, pools and immutable regexps.
-- **Sentinel errors** — all classified with `errors.Is`, `Unwrap` wired so `errors.As` works
-  end-to-end. `classifyCloneError` prefers typed matching, falling back to strings only for the two
-  cases go-git does not export.
-- **serve/build parity that *does* hold** (byte- or field-compared on `testsite/` and an i18n
-  fixture): `robots.txt`; `sitemap.xml` `<loc>` sets, ordering and `<lastmod>`; `feed.xml` entry ids,
-  ordering and 20-entry cap; per-language sitemap/feed when a domain is set; `/tags/` and `/tags/{tag}`
-  HTML; the 404 page (shared `BuildErrorContext`); rendered markdown body, heading anchors,
-  admonitions, colour chips, `<gmd-*>` components; TOC markup; tag chips on content pages; see-also
-  ordering and cap; inline theme CSS/JS and `_assets/` copy; extension redirects; `redirect_from`
-  including the language case; the language switcher.
-- **CLAUDE.md testing conventions: substantially compliant** — zero `t.Setenv`/`t.Parallel`
-  collisions across 10 sites; the single `AllocsPerRun` site is correctly non-parallel; every
-  Prometheus before/after-delta test correctly omits `t.Parallel()`; all six cancellation tests use
-  already-cancelled `context.WithCancel`, not sleep/timeout patterns.
-- **Extensive documentation verified accurate** — the `02-configuration.md` CLI tables match the Kong
-  structs exactly (including `-d, --domain`); config precedence, `theme.features` shape and key
-  pattern, theme-var sanitization, `dir_index` behaviour, git URL schemes; weak-ETag semantics, gzip
-  threshold/skip-list/`Vary`, Accept negotiation incl. 406, resolver-after-provider-miss ordering;
-  the full route table; SEO scheme defaulting, robots body, sitemap `noindex` exclusion, feed cap and
-  RFC3339, JSON-LD shape; i18n fallback chain, URL prefixing, `LanguageInfo` ordering, per-language
-  index/sitemap/feed/nav/404; the GFM/admonition/colour-chip/KaTeX extension set; exactly 6 MCP tools,
-  4 resources and 3 prompts with documented names and limits; the three-layer asset overlay and
-  partial precedence; search UX keybindings and TF-IDF boosts. The release pipeline itself
-  (`.goreleaser.yaml` ↔ README ↔ `install.sh` archive naming and checksum flow) is internally
-  consistent.
+- **All linters clean** repo-wide (gofmt, go vet, staticcheck, golangci-lint, gosec, gocritic).
+  `go test -race ./...` clean. No `TODO`/`FIXME`/`XXX`/`HACK` in any non-test file.
+- **Path containment** — traversal variants all blocked; `IsHiddenPath`/`SkipWalkEntry`/
+  `IsRestrictedPath` fully covered.
+- **`io/fs` spec compliance**, **goldmark concurrency**, **template caching concurrency**, **index
+  build concurrency** — all correct, no races.
+- **Auth** — bcrypt constant-time path correct (see the CPU-amplification finding under §10.1 for
+  the one open gap); 401s verified across content, MCP, search, sitemap, tags.
+- **Git provider** — no `exec.Command` (pure go-git); scheme allowlist; shallow clone with timeout;
+  `createHostKeyCallback` fails closed.
+- **Container** — distroless, non-root, no secrets in layers; release workflow permissions scoped
+  exactly to need.
+- **Metrics cardinality**, **sorting/idioms**, **sentinel errors** — all clean/idiomatic.
+- **serve/build parity that *does* hold** (byte- or field-compared): `robots.txt`; sitemap/feed
+  `<loc>`/ordering/cap; per-language sitemap/feed; `/tags/` HTML; the 404 page; rendered markdown
+  body incl. anchors/admonitions/colour-chips; TOC markup; tag chips; see-also ordering/cap; inline
+  theme CSS/JS; extension redirects; `redirect_from`; the language switcher.
+- **CLAUDE.md testing conventions** — substantially compliant across the whole suite.
+- **Extensive documentation verified accurate** — config tables, precedence rules, HTTP semantics
+  (ETag/gzip/Accept negotiation), the route table, SEO/i18n behavior, exactly 6 MCP tools/4
+  resources/3 prompts, the asset-overlay precedence, search UX. The release pipeline is internally
+  consistent end-to-end.
 
 ### 10.10 Recommended priority order
 
-1. ~~**§10.1 exclude bypass**~~ — **DONE.** `cfg.Site.Exclude` threaded into `resolve.Build`; the
-   build-mode path disclosure went with it.
-2. ~~**§10.1 git tree data race + nil-tree panic**~~ — **DONE.** `gitTreeState` is now the sole owner
-   of the cached tree behind one exclusive mutex; `cloneLocked` rolls back on failure.
-   `TestGitProvider_ConcurrentReadsAreRaceFree` closes the §10.6 coverage gap.
-3. ~~**§10.1 `govulncheck`**~~ — **DONE.** Four modules bumped to fixed versions; `make vulncheck`
-   plus a CI job gates against recurrence.
-4. ~~**§10.2 `Page.Path` resolution in build**~~ — **DONE.** `resolve.PathResolver.PageURLPath` is
-   now the only file-path-to-URL derivation; the four hand-rolled copies were collapsed onto it.
-   Fixes canonical/og/JSON-LD/breadcrumbs **and** prev/next **and** sidebar state. Surfaced three
-   new findings in §10.2 (serve's two canonical forms, `redirect_from` on index pages, search hrefs).
-5. ~~**§10.3 tag-list `.md` links + default-theme `head-meta`/hreflang**~~ — **DONE.** The default
-   theme no longer forks `head-meta` or `head-katex`; the language prefix moved into `contentURL`
-   (`template.WithLangPrefix`), which also fixed `see-also`'s links, and per-language pipelines now
-   carry their own `TemplateRenderer` on serve. Surfaced four new findings in §10.3 (nil
-   `Languages`/`Features` on tag pages, the `tagURL`/`contentURL` prefix disagreement, the missing
-   theme-contract test, and the undocumented raw paths in `/api/tags/{tag}`).
-6. **§10.1 admin port to loopback; `install.sh` fail-closed; pin actions to SHAs.**
-7. ~~**§10.3 inert env vars**~~ — **DONE.** `NewFromServeArgs` runs the whole-Config env walk, placed
-   *before* the serve args so Kong-resolved flags still win, with the three opt-in booleans OR'd
-   instead of assigned. Surfaced the `GOMDDOC_DIR_INDEX` vs `GOMDDOC_SITE_DIR_INDEX` dual-naming
-   drift (see §10.3).
-8. ~~**§10.5 D1/D2/D7**~~ — **DONE.** README's `serve` flag table was rebuilt from `serve --help`
-   (it listed a non-existent `-d, --dir` and `--dev`, and omitted `--admin-port`, `--pprof`,
-   `--basic-auth-file`, `--git-storage-dir`); `GOMDDOC_SERVER_DIR_INDEX` in the usage block was
-   corrected to `GOMDDOC_SITE_DIR_INDEX`; the Docker section no longer claims a multi-stage build.
-9. ~~**§10.6 unfalsifiable assertions**~~ — **DONE.** Sitemap/feed tests unmarshal and compare
-   exhaustively, the remaining raw-string checks are delimited, the search-limit cap is tested
-   against a fixture larger than the cap, and the four static-build tests read their outputs with
-   sibling-content denials. Surfaced a real Atom bug (`<Link>` instead of `<link>`), the
-   `/docs` vs `/docs/` index-URL split (§10.2), and tag pages nothing had ever asserted.
-10. ~~**§10.3 language-directory leak**~~ — **DONE.** The default pipeline now excludes every
-    detected BCP 47 directory via one `Pipeline.Exclude` list shared by all four indexes and build's
-    walk; `URLRedirects` and `generateExtensionRedirects` are wired per language in the same commit,
-    with redirect *targets* language-prefixed and *sources* left content-root-relative. Build stopped
-    rendering translated pages twice. A language whose pipeline failed to build is now skipped
-    outright instead of rendered with the default resolver (which emitted raw `.md` links).
-11. **§10.4 performance** — ~~`findRelatedDocs` top-N~~ (DONE), ~~search merge-intersection~~ (DONE),
-    ~~compression pool nil~~ (DONE), ~~double breadcrumb generation~~ (DONE),
-    ~~compression/metrics route coverage~~ (DONE), ~~`findBestWindow` re-lowercasing~~ (DONE),
-    ~~MCP TOC nav rebuild~~ (DONE), ~~git-read blob decompression~~ (DONE) — §10.4 complete.
-12. ~~**Decide `docs/skills/`**~~ (§10.6) — **DONE.** Committed and added to `.covignore`, so
-    `make test` reports 88.1% both locally and in CI. Committing it surfaced two defects in the
-    script it had been hiding: `SKILL.md` duplicated the tool's checks instead of invoking it, and
-    `attr()`'s `\b` anchor matched attribute names inside longer ones (`data-sizes` read as `sizes`).
-    `make vulncheck` is now scoped to `./cmd/... ./internal/...` for the same "what ships" reason —
-    `image/png` reached the product's vuln graph only through this script.
-13. **§10.5 remaining doc drift, §10.7 LOW cleanups** — opportunistic.
+Superseded. The prioritized remediation plan for every open finding in this file now lives in
+`docs/roadmap.md`'s Implementation Strategy section, alongside the roadmap's own unimplemented
+features — one list, ranked together, rather than two lists that can drift apart.
 
 ### 10.11 NEW — language-code handling (found while fixing §10.7's language-directory predicate)
 
-Tightening `isLanguageDir` put a name rule on one end of the i18n pipeline. These are the other
-ends, where a language code arrives from a source that has no rule at all.
+All still **open**:
 
-#### MEDIUM: `SiteConfig.Validate` never validates `language`
-
-`config.go:410` checks theme, dir-index and the rest, but `Language` passes through untouched.
-`language: english` is accepted and then flows into `<html lang>`, the locale bundle key,
-`LanguageInfo.Code` and the `x-default` hreflang — four places where it is served to a client as a
-BCP 47 tag. A `language.Parse` call in `Validate` is the whole fix.
-
-Worse in one specific case: `BuildLanguageInfos` (`renderer.go:68-82`) unconditionally prepends the
-default language and then appends every detected directory, with no dedup. A site whose content
-root contains `en-US/` while `cfg.Site.Language` is `en-US` — the default value — gets the code
-twice in the switcher and **two `<link rel="alternate" hreflang="en-US">` with different hrefs**
-(`hreflang.html.tmpl:7` and `:10`). Either `Validate` rejects the collision or `BuildLanguageInfos`
-skips a detected language equal to the default.
-
-#### LOW: `?lang=` is an exact, case-sensitive lookup
-
-`ResolveAPILanguage` (`language.go:11-29`) tests `known[lang]`, so `?lang=fr-fr` and
-`?lang=FR-FR` fall back to the default silently. The parameter is documented as a bare "BCP 47
-code" (`docs/guide/10-search.md:113`, `docs/guide/12-advanced/03-api-reference.md:72`), which reads
-as case-insensitive because BCP 47 is. Same lookup serves `Accept-Language`, where a client
-sending `fr-fr` is entirely ordinary. Canonicalise through `language.Parse` before the lookup, or
-key `known` by folded code.
-
-#### LOW: no test runs detection → pipelines → serve
-
-`internal/server/language_content_test.go:110-116`, `sitemap_test.go:256-257`,
-`renderer_test.go:1955-1956,2033` and the comment at `build.go:430` all key `LangPipelines` by a
-bare `fr`/`de`. Those fixtures are hand-built, so they pass — but they model a site
-`DetectLanguages` cannot produce, and now never could have. Nothing in the suite runs a content
-root through detection and then serves from the pipelines it produced, which is the seam where a
-predicate change would show up.
-
-#### LOW: `docs/plans/2026-04-10-i18n-l10n.md` still carries the deleted `IsBCP47Dir`
-
-Lines 23, 393-420 and 508-563 contain the removed function, its test, and "must be `ll-CC`"
-comments. It is a frozen plan document, so leaving it is defensible — noted because it is what a
-future grep for `IsBCP47Dir` finds first.
+- **MEDIUM: `SiteConfig.Validate` never validates `language`.** `language: english` is accepted and
+  flows into `<html lang>`, the locale bundle key, `LanguageInfo.Code`, and `x-default` hreflang. A
+  `language.Parse` call in `Validate` is the whole fix. Worse case: a site whose content root
+  contains a directory equal to the (default) `site.language` value gets that code twice in the
+  switcher and two conflicting `hreflang` tags for it.
+- **LOW: `?lang=` is an exact, case-sensitive lookup** — `?lang=fr-fr` silently falls back to the
+  default even though BCP 47 codes are case-insensitive and the parameter is documented as such.
+- **LOW: no test runs detection → pipelines → serve end-to-end** — existing fixtures hand-build
+  `LangPipelines` with codes `DetectLanguages` could never actually produce.
+- **LOW: a frozen plan doc (`docs/plans/2026-04-10-i18n-l10n.md`) still shows the deleted
+  `IsBCP47Dir`** — defensible to leave (it's a dated record), noted so a future grep isn't surprised.
 
 ### 10.12 NEW — RFC 9110 §12.5.1 is evaluated globally, not per candidate
 
-Surfaced while fixing §10.7's Accept ordering. Both are LOW: they need a client that sends a
-wildcard *and* a deprioritised specific type, which browsers and LLM clients do not.
+Both **open**, both LOW-probability (need a client sending a wildcard *and* a deprioritized specific
+type, which browsers/LLM clients don't do):
 
-#### MEDIUM: `registry.Get` early-returns at the first matching accepted range
-
-`internal/renderer/registry.go:96-121` walks `accepted` in sorted order and returns at the first
-entry that matches anything. §12.5.1 precedence is per *candidate representation* — for each output
-type, find the most specific range matching **that type** and use **its** q — so a sorted
-`[]MediaType` is not a sufficient interface, and the ordering fix hardens the illusion that it is.
-Measured against the real registry with input `text/markdown`:
-
-| `Accept` | served | §12.5.1 |
-| ---- | ---- | ---- |
-| `*/*, text/markdown` | `text/markdown` | `text/markdown` ✅ |
-| `*/*, text/html;q=0.1` | `text/html` | `text/markdown` ❌ |
-| `text/html;q=0.9, */*` | `text/html` | `text/markdown` ❌ |
-
-Fix: drop the early return; for each resolved output type pick the max-scoring matching range, then
-maximise on `(that range's q, outputScore, inputScore, order)`.
-
-#### MEDIUM: `ParseAccept` drops `q=0`, so a hard refusal cannot carve an exception
-
-`accept.go:42`. Dropping is right under "q=0 means not acceptable" read in isolation, but a `q=0` on
-a *specific* range exists precisely to except it from a broader one: `Accept: */*, text/html;q=0`
-means "anything except HTML", and gomddoc serves HTML. Coupled to the item above — the fix needs the
-q=0 entries present to know what to exclude.
+- **MEDIUM: `registry.Get` early-returns at the first matching accepted range** instead of, per
+  §12.5.1, finding the most-specific range *for each candidate output type* and maximising on that
+  range's `q`. Fix: drop the early return, maximise on `(that range's q, outputScore, inputScore, order)`.
+- **MEDIUM: `ParseAccept` drops `q=0` entries**, so `Accept: */*, text/html;q=0` (meaning "anything
+  except HTML") can't be honoured — the exclusion information is discarded before the matcher sees it.
 
 ### 10.13 NEW — `Pipeline.Exclude` consumers that still read `cfg.Site.Exclude`
 
-The CLAUDE.md convention this branch's §10.6 fix created, violated in three live places. All LOW
-(the only thing currently added to `Pipeline.Exclude` is the language directories, and translated
-content is public), but they are the same shape as the bug that made `build` render every translated
-page twice.
+All LOW (only language directories are currently added to `Pipeline.Exclude`, and translated content
+being reachable isn't a leak) — **open**:
 
-- `cmd/gomddoc/pipeline.go:455` and `cmd/gomddoc/mcp.go:59` — `MCPDeps.ExcludePatterns:
-  cfg.Site.Exclude`, while the sibling fields in the same literal (`MetaIndex`, `SearchIndex`,
-  `NavGenerator`) all come from `lp.Default`. So MCP's `IsRestrictedPath` gate
-  (`internal/mcp/tools.go:150,249,269`, `resources.go:82`, `prompts.go:120`) does not know about the
-  language directories its own indexes were built to exclude, and `mcp_read_page("fr/x.md")` passes
-  it. `Pipeline.Exclude` is in scope at both call sites.
-- `internal/server/server.go:287` — the default content scope's `ContentExclusion(cfg.Site.Exclude,
-  …)` has the same gap; `NewHTTPServer` is never handed `Pipeline.Exclude` at all. Reachable when a
-  language pipeline fails to build: `pipeline.go` logs and `continue`s, so `/fr/` has no subgroup and
-  falls through to the default scope, which carries no `fr/` pattern. Line 277 (lang scope) is fine.
-- `internal/provider/gitfs.go:314` — `strings.HasPrefix(entry.Name, ".")` is `IsHiddenPath` without
-  its `.well-known` exception. A directory-listing disagreement, not a leak.
+- `MCPDeps.ExcludePatterns` (both `cmd/gomddoc/pipeline.go` and `mcp.go`) reads `cfg.Site.Exclude`
+  directly instead of `lp.Default`'s effective list, so MCP's restricted-path gate doesn't know about
+  excluded language directories.
+- `internal/server/server.go`'s default content scope has the same gap — reachable if a language
+  pipeline fails to build and falls through to the default scope.
+- `internal/provider/gitfs.go`'s directory-listing filter duplicates `IsHiddenPath` without its
+  `.well-known` exception.
 
-#### LOW: the three exclusion branches want one compiled representation
-
-`internal/provider/exclusion.go:99-138` re-derives each pattern's structure on every call
-(`strings.Contains(pattern, "/")`, `CutSuffix`, `strings.Count(dir, "/")`) from strings that came
-from config and cannot change. The branches are now visibly one operation — match a segment list
-against a segment window: `*.bak` matches any one segment, `docs/*.md` matches all N, `drafts/*/`
-matches the first N. A `compiledPattern{segs, anchored, prefix}` built once at pipeline construction
-covers all three and deletes `matchDirPrefix`'s index arithmetic, which is where a fourth branch
-(`**`) would otherwise land.
-
-#### LOW: `DetectMIME` depends on a process-global registry
-
-`internal/negotiate/mime.go`. The `init()` is correctly placed *today* only because every
-`DetectMIME` caller imports `negotiate` — a property of the current layout, not an invariant, and one
-that four crutch `init()`s in test files had already been quietly violating. A `map[string]string`
-owned by `negotiate`, consulted before `mime.TypeByExtension`, would depend on neither init order nor
-the OS MIME database (some distros map `.md` to `text/x-markdown`), and would drop the two discarded
-`AddExtensionType` errors. Nothing outside our code reads the global registry — no
-`http.ServeFile`/`ServeContent`/`FileServer`/`TypeByExtension` calls anywhere.
+Also open, both LOW: the three exclusion-pattern branches re-derive their structure per call instead
+of compiling once at pipeline construction; `DetectMIME`'s process-global registry works today only
+because every caller happens to import `negotiate` — not an enforced invariant.
 
 ### 10.14 NEW — every translated page advertises the default-language feed
 
-#### MEDIUM: `<link rel="alternate">` names `/feed.xml`, never `/{lang}/feed.xml`
-
-`head-shared.html.tmpl:19` builds the feed link with `{{ $feedURL := canonicalURL "/feed.xml" }}`, and
-`canonicalURL` (`renderer.go` → `seo.PageURL`) does **not** apply the renderer's language prefix — unlike
-`contentURL`, which is prefixed precisely so a per-language pipeline's links stay inside its own tree.
-Build writes `{lang}/feed.xml` and serve registers `GET /{lang}/feed.xml`, so the per-language feeds exist
-and are correct; nothing links to them. A reader subscribing from any French page gets the English feed.
-
-Found by the altitude pass on the `robots.txt`/sitemap-index fix (§10.5), which is the same class one
-artifact over: a root-level SEO artifact that is actually per-language-scope, named by a helper that
-does not know about scopes. The fix is the same shape as `contentURL` versus `canonicalURL` — either
-derive the scope's artifact URLs in `BuildPageContext` (per CLAUDE.md, "anything more than one consumer
-reads is a `PageContext` field"), or bind a `seoURL` func to the renderer's own language prefix. Each
-per-language pipeline already has its own `TemplateRenderer`, so the prefix is in scope either way.
-
-Check `hreflang` and the JSON-LD `WebSite` node for the same omission while in there.
+**MEDIUM, open:** `<link rel="alternate">` for the feed is built via `canonicalURL`, which — unlike
+`contentURL` — doesn't apply the renderer's language prefix. Per-language feeds exist and are
+correct (build writes them, serve serves them); nothing links to them, so a reader subscribing from
+any French page gets the English feed. Same class as the (fixed) §10.3 tag-link findings, one
+artifact over. Check `hreflang` and the JSON-LD `WebSite` node for the same omission while fixing it.
