@@ -616,3 +616,38 @@ itself could live in the shared file.
 `go mod tidy`) cleared all four called vulnerabilities. One uncalled, unfixed advisory remains
 (`GO-2026-5932`, `x/crypto/openpgp` is unmaintained) — `govulncheck` does not fail the build on
 vulnerabilities the code doesn't call, and there is no fixed version to move to.
+
+## `go.mod` Gets a `toolchain` Line, Not a Pinned `go` Patch Version
+
+**Chosen**: `go.mod` keeps `go 1.26.0` as the minimum language version and adds a separate
+`toolchain go1.26.8` line. Bumping the `go` line itself to chase a patch release is the wrong
+move — see why below.
+
+**Why this surfaced as a CI failure, not a code review**: an earlier `go get`/`go mod tidy` run
+(fixing the `golang.org/x/crypto`/`go-git` CVEs above) silently rewrote `go 1.26` to `go 1.26.0`
+— Go's own normalization of a two-component directive into three, logged at the time as
+`go: upgraded go 1.26 => 1.26.0` and treated as cosmetic. It is not cosmetic: `actions/setup-go`
+with `go-version-file: go.mod` installs *exactly* the version the `go` directive names when no
+`toolchain` line exists, rather than "at least that version." CI started building with the exact
+toolchain `go1.26.0`, frozen at whatever the 1.26 branch looked like on the day 1.26.0 shipped,
+and every later 1.26.x patch's stdlib fixes — 15 of them by the time this was caught, spanning
+`net/url`, `html/template`, `crypto/tls`, `net/http`, `encoding/xml`, `encoding/asn1`,
+`net/textproto`, `crypto/x509`, `golang.org/x/net/idna` — were findable by `govulncheck` but
+absent from the running toolchain. These are not dependency CVEs; `go.sum` has nothing to do with
+them. `go vet`/`make test` never catch this class, because the toolchain being vulnerable doesn't
+make the code wrong, only the binary it produces.
+
+**Why `toolchain`, not editing `go` back down or forward**: the `go` line is a language-version
+floor — the minimum a downstream `go install ./...` needs to even parse this module. The
+`toolchain` line is Go's purpose-built answer to "which exact patch actually builds this," and
+`GOTOOLCHAIN=auto` (the default since Go 1.21) enforces it *everywhere this module is built*,
+independent of CI configuration: verified by installing a bare `go1.26.0` binary locally and
+running it inside this module — it downloaded and re-executed as `go1.26.8` on its own, no
+`actions/setup-go` involved. `actions/setup-go` v6 also reads `toolchain` directly when resolving
+`go-version-file`, so CI gets it twice over, from two independent mechanisms.
+
+**How to apply**: when `govulncheck` reports a stdlib finding (`Standard library`, `Found in:
+pkg@goX.Y`) rather than a `Module:` finding, do not touch `go.sum` — bump `toolchain` to the
+latest patch of the same minor line (`go env GOTOOLCHAIN` / `go mod edit -toolchain=goX.Y.Z`) and
+confirm every finding's `Fixed in` version is at or below it. Re-check periodically: this line
+will need bumping again as new stdlib CVEs land, same as any dependency.

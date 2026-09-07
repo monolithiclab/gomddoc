@@ -2,6 +2,8 @@ module github.com/monolithiclab/gomddoc
 
 go 1.26.0
 
+toolchain go1.26.8
+
 require (
 	github.com/alecthomas/kong v1.15.0
 	github.com/go-git/go-billy/v5 v5.9.0
