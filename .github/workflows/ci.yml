@@ -19,19 +19,10 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - run: shellcheck -s sh scripts/install.sh
 
-  # Dependency CVEs shipped silently until a review caught four of them at once.
-  # govulncheck is call-graph aware, so this only fails on vulnerabilities the
-  # code actually reaches.
-  vulncheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: make vulncheck
-
+  # `make lint` includes `lint-vulncheck` (govulncheck, call-graph aware — only
+  # fails on vulnerabilities the code actually reaches), so there is no
+  # separate vulncheck job here. It runs once per OS in this matrix rather
+  # than once overall; accepted redundancy for reusing setup-go's cache.
   test:
     strategy:
       fail-fast: false
