@@ -718,15 +718,20 @@ section tracks *what to do about it and in what order*.
 
 ### Tier 0 — Ship blocking
 
-1. **Ship `v0.1.2` (security)** — every released version (`v0.1.0`, `v0.1.1`) has a HIGH-severity
-   `exclude` bypass: with `strip_extensions` active (the default), a file excluded as `SECRET.md`
-   was still served in full at `/SECRET` while search, navigation and metadata correctly omitted
-   it, so the bypass produced no visible signal (`build` additionally emitted redirect stubs
-   disclosing every excluded file's name). Fixed by `c80981e`, now on `main` — see REVIEW.md §10.1
-   for the full writeup and regression tests. What's left is delivery, not code: (a) tag `v0.1.2`
-   and call out the bypass in the release notes so operators pinned to `v0.1.1` can judge their own
-   exposure and rotate anything sensitive that was exposed, (b) update
-   `monolithiclab/homebrew-tap` so `brew install` stops shipping the vulnerable build.
+1. **Ship `v0.1.2` (security + canonical URLs)** — every released version (`v0.1.0`, `v0.1.1`) has
+   a HIGH-severity `exclude` bypass: with `strip_extensions` active (the default), a file excluded
+   as `SECRET.md` was still served in full at `/SECRET` while search, navigation and metadata
+   correctly omitted it, so the bypass produced no visible signal (`build` additionally emitted
+   redirect stubs disclosing every excluded file's name). Fixed by `c80981e`, now on `main` — see
+   REVIEW.md §10.1 for the full writeup and regression tests. `v0.1.1` also ships static builds
+   whose `rel="canonical"`/`og:url`/JSON-LD `@id` keep the `.md` extension, contradicting the same
+   build's own `sitemap.xml` (found live on monolithiclab.fr, pinned to `v0.1.1`); fixed by
+   `5dfc253`, landed two days after the `v0.1.1` tag — see REVIEW.md §10.2. What's left for both is
+   delivery, not code: (a) tag `v0.1.2` and call out the exclude bypass in the release notes so
+   operators pinned to `v0.1.1` can judge their own exposure and rotate anything sensitive that was
+   exposed, (b) update `monolithiclab/homebrew-tap` so `brew install` stops shipping the vulnerable
+   build, (c) bump the `GOMDDOC_VERSION` pin in downstream sites built from this repo
+   (`monolithiclab/website`).
 
 ### Tier 1 — Correctness (serve/build parity and tag/i18n bugs, REVIEW.md §10.2/§10.3/§10.14)
 
