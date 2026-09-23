@@ -447,14 +447,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 
 	pipeline := lp.Default
 
-	mcpServer := mcp.NewServer(mcp.ServerDeps{
-		Provider:        prov,
-		MetaIndex:       pipeline.MetaIndex,
-		SearchIndex:     pipeline.SearchIndex,
-		NavGenerator:    pipeline.NavGenerator,
-		ExcludePatterns: cfg.Site.Exclude,
-		Version:         version,
-	})
+	mcpServer := siteMCPServer(prov, pipeline, cfg.Site.Exclude)
 
 	// Build per-language pipeline configs for the server.
 	langPipelineConfigs := make(map[string]server.LangPipelineConfig, len(lp.ByLang))
@@ -550,4 +543,18 @@ func prevNextBuilderAdapter(navGen *navigation.Generator) enricher.PrevNextBuild
 		}
 		return prev, next
 	}
+}
+
+// siteMCPServer builds the MCP server serve mounts at /_mcp/. SelfDocs stays
+// nil: the gomddoc:// namespace is for the operator's agent over stdio
+// (`gomddoc mcp`), not for the site's readers.
+func siteMCPServer(prov provider.Provider, pipeline *Pipeline, exclude []string) *mcp.MCPServer {
+	return mcp.NewServer(mcp.ServerDeps{
+		Provider:        prov,
+		MetaIndex:       pipeline.MetaIndex,
+		SearchIndex:     pipeline.SearchIndex,
+		NavGenerator:    pipeline.NavGenerator,
+		ExcludePatterns: exclude,
+		Version:         version,
+	})
 }

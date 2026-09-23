@@ -7,6 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/alecthomas/kong"
+
+	"github.com/monolithiclab/gomddoc/docs"
+	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/provider"
@@ -20,7 +24,7 @@ type MCPCmd struct {
 }
 
 // Run executes the mcp command (stdio transport).
-func (m *MCPCmd) Run() error {
+func (m *MCPCmd) Run(app *kong.Application) error {
 	cfg, err := config.NewFromDir(m.Dir)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -51,12 +55,20 @@ func (m *MCPCmd) Run() error {
 		return fmt.Errorf("setup pipeline: %w", err)
 	}
 
+	// gomddoc's own namespace, describing this site: built once, served as-is.
+	contentRoot, err := prov.RootFS(context.Background())
+	if err != nil {
+		return fmt.Errorf("content root: %w", err)
+	}
+	report := capabilities.Describe(capabilitiesInput(app, m.Dir, cfg, nil, contentRoot))
+
 	mcpServer := mcp.NewServer(mcp.ServerDeps{
 		Provider:        prov,
 		MetaIndex:       pipeline.MetaIndex,
 		SearchIndex:     pipeline.SearchIndex,
 		NavGenerator:    pipeline.NavGenerator,
 		ExcludePatterns: cfg.Site.Exclude,
+		SelfDocs:        &mcp.SelfDocs{Report: report, Guide: docs.Guide},
 		Version:         version,
 	})
 

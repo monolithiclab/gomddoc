@@ -28,7 +28,7 @@ type CLI struct {
 	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
 	Info    InfoCmd          `cmd:"" help:"Describe gomddoc: settings, env vars, flags, theme features and guide pages (--json for agents)."`
 	Init    InitCmd          `cmd:"" help:"Initialize a .gomddoc/ directory with default configuration."`
-	MCP     MCPCmd           `cmd:"" help:"Start MCP server for AI model integration (stdio transport)."`
+	MCP     MCPCmd           `cmd:"" help:"Start MCP server for AI model integration (stdio). Also serves gomddoc's own guide and capabilities under gomddoc://."`
 	Preview PreviewCmd       `cmd:"" help:"Quick local preview with auto-port and browser open."`
 	Schema  SchemaCmd        `cmd:"" help:"Print the JSON Schema for .gomddoc/config.yml."`
 	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`

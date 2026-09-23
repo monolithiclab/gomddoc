@@ -2,11 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/monolithiclab/gomddoc/internal/capabilities"
+	"github.com/monolithiclab/gomddoc/internal/config"
+	gmcp "github.com/monolithiclab/gomddoc/internal/mcp"
+	"github.com/monolithiclab/gomddoc/internal/provider"
 )
 
 // TestMCPCmd_Run_ServesConfiguredContentOverStdio drives MCPCmd.Run end to end
@@ -36,7 +43,8 @@ func TestMCPCmd_Run_ServesConfiguredContentOverStdio(t *testing.T) {
 	swapFile(t, &os.Stdout, serverOut)
 
 	runErr := make(chan error, 1)
-	go func() { runErr <- (&MCPCmd{Dir: dir}).Run() }()
+	app := testModel(t)
+	go func() { runErr <- (&MCPCmd{Dir: dir}).Run(app) }()
 
 	ctx := context.Background()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0.0.1"}, nil)
@@ -66,6 +74,26 @@ func TestMCPCmd_Run_ServesConfiguredContentOverStdio(t *testing.T) {
 		t.Errorf("read_page(private/notes.md) = %q, want a refusal: .gomddoc/config.yml excludes private/", got)
 	}
 
+	// gomddoc's own namespace rides along on stdio, describing this site.
+	res, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: capabilities.CapabilitiesURI})
+	if err != nil {
+		t.Fatalf("reading %s: %v", capabilities.CapabilitiesURI, err)
+	}
+	var report capabilities.Report
+	if err := json.Unmarshal([]byte(res.Contents[0].Text), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Config.Dir != dir || !report.Config.FileFound || report.Theme.Source != "template-scan" || len(report.Guide) < 15 {
+		t.Errorf("capabilities over stdio: config=%+v theme=%+v guide pages=%d", report.Config, report.Theme.ThemeInfo, len(report.Guide))
+	}
+	tools, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(tools.Tools, func(tl *mcp.Tool) bool { return tl.Name == "gomddoc_guide" }) {
+		t.Error("gomddoc_guide missing over stdio")
+	}
+
 	if err := session.Close(); err != nil {
 		t.Errorf("closing client session: %v", err)
 	}
@@ -79,7 +107,7 @@ func TestMCPCmd_Run_ServesConfiguredContentOverStdio(t *testing.T) {
 func TestMCPCmd_Run_MissingDirectory(t *testing.T) {
 	t.Parallel()
 	cmd := &MCPCmd{Dir: t.TempDir() + "/absent"}
-	err := cmd.Run()
+	err := cmd.Run(testModel(t))
 	if err == nil {
 		t.Fatal("MCPCmd.Run() = nil, want an error for a directory that does not exist")
 	}
@@ -107,4 +135,59 @@ func swapFile(t *testing.T, std **os.File, f *os.File) {
 	prev := *std
 	*std = f
 	t.Cleanup(func() { *std = prev })
+}
+
+// listTools connects an in-memory client to s and returns its tool names.
+func listTools(t *testing.T, s *gmcp.MCPServer) []string {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	t1, t2 := mcp.NewInMemoryTransports()
+	if _, err := s.Server().Connect(ctx, t1, nil); err != nil {
+		t.Fatal(err)
+	}
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, t2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	res, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tl := range res.Tools {
+		names = append(names, tl.Name)
+	}
+	return names
+}
+
+// TestSiteMCPServer_NoSelfDocs: the MCP endpoint serve mounts at /_mcp/ is the
+// site's, for its readers' agents; it must not carry gomddoc's own namespace.
+func TestSiteMCPServer_NoSelfDocs(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "README.md", "# Home\n")
+	cfg, err := config.NewFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov, err := provider.NewProvider(dir, cfg.Site.DefaultIndex, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prov.Close()
+	pipeline, err := setupPipeline(cfg, prov, PipelineOptions{EnableMetadata: true, EnableSearch: true, EnableNavigation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := listTools(t, siteMCPServer(prov, pipeline, nil))
+	if !slices.Contains(tools, "search_docs") {
+		t.Fatalf("site MCP server has no search_docs: %q", tools)
+	}
+	for _, name := range tools {
+		if strings.HasPrefix(name, "gomddoc_") {
+			t.Errorf("site MCP server exposes %s", name)
+		}
+	}
 }
