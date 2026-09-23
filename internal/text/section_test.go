@@ -1,11 +1,9 @@
-package mcp
+package text
 
 import (
 	"errors"
 	"slices"
 	"testing"
-
-	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 func TestSlugifyHeading(t *testing.T) {
@@ -208,7 +206,7 @@ Questions and answers.
 	}
 }
 
-func TestStripFrontmatter(t *testing.T) {
+func TestStripFrontmatter_BeforeSections(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -225,9 +223,9 @@ func TestStripFrontmatter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := string(text.StripFrontmatter([]byte(tt.content)))
+			got := string(StripFrontmatter([]byte(tt.content)))
 			if got != tt.want {
-				t.Errorf("text.StripFrontmatter() = %q, want %q", got, tt.want)
+				t.Errorf("StripFrontmatter() = %q, want %q", got, tt.want)
 			}
 		})
 	}

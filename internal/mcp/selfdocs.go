@@ -197,10 +197,10 @@ func (s *MCPServer) guideReadResult(p, section string) *mcp.CallToolResult {
 		return errorResult(fmt.Sprintf("Unknown guide page %q. Pages: %s", truncateArg(p), strings.Join(paths, ", ")))
 	}
 	if section != "" {
-		body, err := ExtractSection(content, section)
-		if errors.Is(err, ErrSectionNotFound) || len(section) > maxArgLen {
+		body, err := text.ExtractSection(content, section)
+		if errors.Is(err, text.ErrSectionNotFound) || len(section) > maxArgLen {
 			return errorResult(fmt.Sprintf("No section %q in %s. Sections: %s",
-				truncateArg(section), p, strings.Join(HeadingIDs(content), ", ")))
+				truncateArg(section), p, strings.Join(text.HeadingIDs(content), ", ")))
 		}
 		if err != nil {
 			return errorResult(err.Error())

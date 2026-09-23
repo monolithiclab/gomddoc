@@ -255,7 +255,7 @@ func (s *MCPServer) handleReadSection(ctx context.Context, _ *mcp.CallToolReques
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
-	section, err := ExtractSection(content, input.HeadingID)
+	section, err := text.ExtractSection(content, input.HeadingID)
 	if err != nil {
 		return textResult(fmt.Sprintf("Section %q not found in %s.", input.HeadingID, input.Path)), nil, nil
 	}

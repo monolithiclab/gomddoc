@@ -1,4 +1,4 @@
-package mcp
+package text
 
 import (
 	"bytes"
@@ -6,8 +6,6 @@ import (
 	"slices"
 	"strings"
 	"unicode"
-
-	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // ErrSectionNotFound is returned when the requested heading ID does not exist.
@@ -49,7 +47,7 @@ type heading struct {
 // a YAML or shell example is code, and treating it as a level-1 heading ends
 // the enclosing section at the comment.
 func scanHeadings(content []byte) ([][]byte, []heading) {
-	lines := bytes.Split(text.StripFrontmatter(content), []byte("\n"))
+	lines := bytes.Split(StripFrontmatter(content), []byte("\n"))
 	var heads []heading
 	var fence string // the open fence's run of ` or ~; "" outside a block
 	for i, line := range lines {
