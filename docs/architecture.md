@@ -929,7 +929,8 @@ Kong model ──► commandsFromKong ─┐
 metadata.FrontmatterFields ──────┤
 template.ThemeFeatures ──────────┼──► capabilities.Describe ──► Report ──► `gomddoc info [--json]`,
 docs.Guide (frontmatter) ────────┘                                         gomddoc://capabilities, gomddoc_capabilities
-docs.Guide ──► lazy search index ──► gomddoc_guide, gomddoc://guide/{+path}, learn_gomddoc
+docs.Guide ──► internal/guide (topics, sections, lazy search) ──► gomddoc help, gomddoc_guide,
+                                                                  gomddoc://guide/{+path}, learn_gomddoc
 ```
 
 - `internal/capabilities` assembles one `Report`; `Report.JSON()` is its only serialization, so `info --json` and the

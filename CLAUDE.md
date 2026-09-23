@@ -78,11 +78,15 @@ docs/
 ## Project Structure
 
 ```
-cmd/gomddoc/           # CLI (Kong): build, info, init, mcp, preview, serve subcommands
+cmd/gomddoc/           # CLI (Kong): build, doctor, help, info, init, mcp, preview, schema, serve subcommands
 internal/
 ├── assets/            # Overlay filesystem for theme overrides
-├── config/            # Config loading (CLI > env > YAML > defaults), validation
+├── capabilities/      # Self-description report (settings, commands, theme, guide) for info and MCP
+├── config/            # Config loading (CLI > env > YAML > defaults), validation, Schema/JSONSchema, Inspect
+├── diag/              # Finding type + code catalogue; producers return findings, callers log them
+├── doctor/            # Site checks behind `gomddoc doctor` and gomddoc_doctor
 ├── enricher/          # Pre-rendering extraction (metadata, TOC, navigation, related docs)
+├── guide/             # Embedded guide (docs.Guide) as topics: list, read, section, search
 ├── locale/            # i18n: BCP 47 language detection, locale bundles, translation lookup
 ├── mcp/               # Model Context Protocol server (tools, resources, prompts)
 ├── metadata/          # Frontmatter indexing, tag API
