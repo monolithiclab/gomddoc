@@ -59,6 +59,18 @@ func (s *MCPServer) registerSelfDocs() {
 		Annotations: readOnlyAnnotations,
 	}, s.handleGuideTool)
 
+	if s.deps.SelfDocs.Doctor != nil {
+		mcp.AddTool(s.server, &mcp.Tool{
+			Name:  "gomddoc_doctor",
+			Title: "gomddoc Doctor",
+			Description: "Check the served site's configuration and content, reloaded from disk on every call: " +
+				"unknown or invalid config keys, env vars, theme toggles, exclude patterns, frontmatter types, redirect conflicts. " +
+				"Each finding has a code, severity, file, line and fix. Call it after editing .gomddoc/config.yml or pages. " +
+				"verbose adds info findings (missing descriptions, unused theme vars).",
+			Annotations: readOnlyAnnotations,
+		}, s.handleDoctorTool)
+	}
+
 	s.server.AddPrompt(&mcp.Prompt{
 		Name:        "learn_gomddoc",
 		Title:       "Learn gomddoc",
@@ -255,7 +267,8 @@ func (s *MCPServer) handleLearnGomddoc(_ context.Context, _ *mcp.GetPromptReques
 		"- Use the gomddoc_guide tool (query, or path + section) for anything not covered here.\n" +
 		"- Put secrets and deployment-specific values (ports, domain, auth file) in env vars or flags; " +
 		"site identity (title, theme, exclude) in config.yml.\n" +
-		"- After writing a config, run `gomddoc info` in the site directory: it reports whether the config loads and why not.\n")
+		"- After editing .gomddoc/config.yml or pages, call gomddoc_doctor (or run `gomddoc doctor --json`): " +
+		"it reports every problem with its file, line and fix.\n")
 
 	return &mcp.GetPromptResult{
 		Description: "Learn gomddoc",
@@ -264,4 +277,13 @@ func (s *MCPServer) handleLearnGomddoc(_ context.Context, _ *mcp.GetPromptReques
 			Content: &mcp.TextContent{Text: b.String()},
 		}},
 	}, nil
+}
+
+// DoctorInput is the input for gomddoc_doctor.
+type DoctorInput struct {
+	Verbose bool `json:"verbose,omitempty" jsonschema:"include info findings (missing descriptions, unused theme vars)"`
+}
+
+func (s *MCPServer) handleDoctorTool(ctx context.Context, _ *mcp.CallToolRequest, in DoctorInput) (*mcp.CallToolResult, any, error) {
+	return jsonTextResult(s.deps.SelfDocs.Doctor(ctx, in.Verbose)), nil, nil
 }

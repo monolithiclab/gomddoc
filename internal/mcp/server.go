@@ -23,6 +23,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
+	"github.com/monolithiclab/gomddoc/internal/doctor"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/search"
@@ -65,6 +66,11 @@ type ServerDeps struct {
 type SelfDocs struct {
 	Report capabilities.Report
 	Guide  fs.FS
+
+	// Doctor checks the served site afresh — config and content reloaded
+	// from disk, or the provider's clone for a Git source — on every call.
+	// Nil leaves gomddoc_doctor unregistered.
+	Doctor func(ctx context.Context, verbose bool) doctor.Report
 }
 
 // MCPServer wraps the MCP SDK server with gomddoc-specific handlers.

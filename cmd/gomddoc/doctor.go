@@ -75,24 +75,26 @@ func (d *DoctorCmd) Run(app *kong.Application) error {
 }
 
 // runDoctor loads dir fresh — config, provider, pipelines — and checks it.
-// The CLI and the gomddoc_doctor MCP tool share it, so both always see the
-// site as it is on disk (or, for a Git URL, as the provider's clone has it).
 func runDoctor(ctx context.Context, app *kong.Application, dir string, gitCfg provider.GitProviderConfig, environ []string, verbose bool) doctor.Report {
 	ins := config.Inspect(dir)
 	cfg := ins.Config
-	in := doctor.Input{Target: dir, Inspection: ins, Environ: environ, KnownEnvs: knownEnvVars(app)}
-	if config.IsGitURL(dir) {
-		in.Note = "Git source: checked the provider's clone of the repository"
-	}
-
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, gitCfg)
 	if err != nil {
+		in := doctorInput(app, dir, ins, environ)
 		in.Unreachable = err
 		return doctor.Run(ctx, in, doctor.Options{Verbose: verbose})
 	}
 	defer func() { _ = prov.Close() }()
+	return runDoctorWith(ctx, app, dir, ins, prov, environ, verbose)
+}
 
-	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{EnableMetadata: true, ReportOnly: true})
+// runDoctorWith checks dir through an open provider. gomddoc_doctor calls it
+// with the MCP server's provider: a filesystem provider reads the disk live,
+// and a Git provider's clone is reused rather than re-cloned on every call.
+// The configuration and every index are rebuilt each time.
+func runDoctorWith(ctx context.Context, app *kong.Application, dir string, ins config.Inspection, prov provider.Provider, environ []string, verbose bool) doctor.Report {
+	in := doctorInput(app, dir, ins, environ)
+	lp, err := setupLanguagePipelines(ins.Config, prov, PipelineOptions{EnableMetadata: true, ReportOnly: true})
 	if err != nil {
 		in.Producer = []diag.Finding{diag.New("target.read-error", "", 0, "", "could not build the site: "+err.Error(),
 			"fix the problems above, then run doctor again")}
@@ -106,6 +108,14 @@ func runDoctor(ctx context.Context, app *kong.Application, dir string, gitCfg pr
 		in.Pipelines = append(in.Pipelines, doctor.PipelineView{Lang: lang, Root: p.ContentRoot, Exclude: p.Exclude})
 	}
 	return doctor.Run(ctx, in, doctor.Options{Verbose: verbose})
+}
+
+func doctorInput(app *kong.Application, dir string, ins config.Inspection, environ []string) doctor.Input {
+	in := doctor.Input{Target: dir, Inspection: ins, Environ: environ, KnownEnvs: knownEnvVars(app)}
+	if config.IsGitURL(dir) {
+		in.Note = "Git source: checked the provider's clone of the repository"
+	}
+	return in
 }
 
 // knownEnvVars is every variable gomddoc reads: config settings (a map

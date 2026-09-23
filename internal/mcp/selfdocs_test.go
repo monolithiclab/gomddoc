@@ -15,6 +15,8 @@ import (
 	"github.com/monolithiclab/gomddoc/docs"
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/diag"
+	"github.com/monolithiclab/gomddoc/internal/doctor"
 	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/testutil/fanout"
 )
@@ -319,8 +321,9 @@ func TestLearnGomddocPrompt(t *testing.T) {
 		"gomddoc://capabilities",
 		"gomddoc://schema/config", // where the schema is
 		"gomddoc_guide",           // where depth is
+		"gomddoc_doctor",          // how to check an edit
 		"serve: Serve the site",   // a command
-		"gomddoc info",            // how to check a written config
+		"gomddoc doctor --json",   // the CLI form of the check
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("prompt lacks %q", want)
@@ -328,5 +331,48 @@ func TestLearnGomddocPrompt(t *testing.T) {
 	}
 	if strings.Contains(msg, "title: Guide") {
 		t.Error("README frontmatter must be stripped")
+	}
+}
+
+func TestDoctorTool(t *testing.T) {
+	t.Parallel()
+	var calls []bool
+	sd := newSelfDocs(selfDocsGuide)
+	sd.Doctor = func(_ context.Context, verbose bool) doctor.Report {
+		calls = append(calls, verbose)
+		return doctor.Report{Target: "site", Summary: doctor.Summary{Errors: len(calls)}, Findings: []diag.Finding{}}
+	}
+	f := connect(t, NewServer(ServerDeps{Provider: &testProvider{fsys: fstest.MapFS{}, defaultIndex: "README.md"}, SelfDocs: sd}))
+	defer f.close(t)
+
+	for _, verbose := range []bool{false, true} {
+		res, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{Name: "gomddoc_doctor", Arguments: map[string]any{"verbose": verbose}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var r doctor.Report
+		if err := json.Unmarshal([]byte(res.Content[0].(*mcp.TextContent).Text), &r); err != nil || res.IsError {
+			t.Fatalf("report: %v isError=%v", err, res.IsError)
+		}
+		if r.Target != "site" || r.Summary.Errors != len(calls) {
+			t.Errorf("report %+v after %d calls", r, len(calls))
+		}
+	}
+	// Every call re-runs the checks; verbose is passed through.
+	if !slices.Equal(calls, []bool{false, true}) {
+		t.Errorf("calls = %v", calls)
+	}
+}
+
+func TestDoctorTool_AbsentWithoutDoctor(t *testing.T) {
+	t.Parallel()
+	f := setupSelfDocs(t, true) // SelfDocs without a Doctor func
+	defer f.close(t)
+	tools, err := f.session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(tools.Tools, func(tl *mcp.Tool) bool { return tl.Name == "gomddoc_doctor" }) {
+		t.Error("gomddoc_doctor registered without a Doctor func")
 	}
 }

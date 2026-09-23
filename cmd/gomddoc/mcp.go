@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/diag"
+	"github.com/monolithiclab/gomddoc/internal/doctor"
 	"github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
@@ -70,8 +72,14 @@ func (m *MCPCmd) Run(app *kong.Application) error {
 		SearchIndex:     pipeline.SearchIndex,
 		NavGenerator:    pipeline.NavGenerator,
 		ExcludePatterns: cfg.Site.Exclude,
-		SelfDocs:        &mcp.SelfDocs{Report: report, Guide: docs.Guide},
-		Version:         version,
+		SelfDocs: &mcp.SelfDocs{
+			Report: report,
+			Guide:  docs.Guide,
+			Doctor: func(ctx context.Context, verbose bool) doctor.Report {
+				return runDoctorWith(ctx, app, m.Dir, config.Inspect(m.Dir), prov, os.Environ(), verbose)
+			},
+		},
+		Version: version,
 	})
 
 	sigCtx, sigCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

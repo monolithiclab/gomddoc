@@ -12,6 +12,8 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/diag"
+	"github.com/monolithiclab/gomddoc/internal/doctor"
 	gmcp "github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
@@ -189,5 +191,56 @@ func TestSiteMCPServer_NoSelfDocs(t *testing.T) {
 		if strings.HasPrefix(name, "gomddoc_") {
 			t.Errorf("site MCP server exposes %s", name)
 		}
+	}
+}
+
+// TestMCPCmd_DoctorSeesEditsOnDisk: gomddoc_doctor re-reads the site on each
+// call, so an agent can edit config.yml and check again without restarting.
+func TestMCPCmd_DoctorSeesEditsOnDisk(t *testing.T) {
+	// No t.Parallel: replaces os.Stdin and os.Stdout.
+	dir := t.TempDir()
+	writeTestFile(t, dir, "README.md", "---\ntitle: Home\ndescription: Welcome\n---\n# Home\n")
+
+	serverIn, clientW := testPipe(t)
+	clientR, serverOut := testPipe(t)
+	swapFile(t, &os.Stdin, serverIn)
+	swapFile(t, &os.Stdout, serverOut)
+	runErr := make(chan error, 1)
+	app := testModel(t)
+	go func() { runErr <- (&MCPCmd{Dir: dir}).Run(app) }()
+
+	ctx := context.Background()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).
+		Connect(ctx, &mcp.IOTransport{Reader: clientR, Writer: clientW}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func() doctor.Report {
+		t.Helper()
+		res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "gomddoc_doctor", Arguments: map[string]any{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var r doctor.Report
+		if err := json.Unmarshal([]byte(res.Content[0].(*mcp.TextContent).Text), &r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	if r := check(); r.Summary.Errors != 0 {
+		t.Errorf("clean site reported errors: %+v", r.Findings)
+	}
+	writeTestFile(t, dir, ".gomddoc/config.yml", "meta:\n  titel: x\n")
+	r := check()
+	if !slices.ContainsFunc(r.Findings, func(f diag.Finding) bool { return f.Code == "config.unknown-key" && f.Line == 2 }) {
+		t.Errorf("edit on disk not seen: %+v", r.Findings)
+	}
+
+	if err := session.Close(); err != nil {
+		t.Errorf("closing client session: %v", err)
+	}
+	if err := <-runErr; err != nil {
+		t.Errorf("MCPCmd.Run returned %v", err)
 	}
 }
