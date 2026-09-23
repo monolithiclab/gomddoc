@@ -98,5 +98,14 @@ func Run(ctx context.Context, in Input, opts Options) Report {
 	return r
 }
 
-// extraChecks runs the theme, exclude and content checks (later tasks).
-func extraChecks(_ context.Context, _ Input) []diag.Finding { return nil }
+// extraChecks runs the theme, exclude and content checks.
+func extraChecks(_ context.Context, in Input) []diag.Finding {
+	scan := scanTheme(in.Inspection, in.Assets)
+	findings := themeChecks(in.Inspection, scan)
+	for _, p := range in.Pipelines {
+		if p.Lang == "" {
+			findings = append(findings, excludeMatchesNothing(in.Inspection, p.Root)...)
+		}
+	}
+	return findings
+}

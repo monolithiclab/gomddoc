@@ -91,3 +91,16 @@ func TestInspect_EnvFindingOnce(t *testing.T) {
 		t.Errorf("findings = %q", got)
 	}
 }
+
+func TestInspection_Line(t *testing.T) {
+	t.Parallel()
+	ins := Inspect(siteDir(t, new("meta:\n  title: x\ntheme:\n  features:\n    toc: false\n")))
+	for key, want := range map[string]int{"meta.title": 2, "theme.features.toc": 5, "theme.features.nope": 4, "exclude": 0} {
+		if got := ins.Line(key); got != want {
+			t.Errorf("Line(%q) = %d, want %d", key, got, want)
+		}
+	}
+	if got := (Inspection{}).Line("meta"); got != 0 {
+		t.Errorf("no node: %d", got)
+	}
+}

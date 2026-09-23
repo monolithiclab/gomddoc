@@ -190,3 +190,12 @@ func keyAtLine(node *yaml.Node, line int) string {
 	}
 	return ""
 }
+
+// Line is the config.yml line of the key at a dotted file-key path (or its
+// deepest existing ancestor), 0 when the file does not set it.
+func (ins Inspection) Line(key string) int {
+	if ins.Node == nil {
+		return 0
+	}
+	return keyLine(ins.Node, key)
+}
