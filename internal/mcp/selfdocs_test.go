@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"io/fs"
 	"slices"
 	"strings"
@@ -10,8 +11,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/monolithiclab/gomddoc/docs"
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/search"
+	"github.com/monolithiclab/gomddoc/internal/testutil/fanout"
 )
 
 var selfDocsGuide = fstest.MapFS{
@@ -88,6 +92,7 @@ func TestSelfDocs_RegisteredOnlyWhenSet(t *testing.T) {
 			name string
 		}{
 			{toolNames, "gomddoc_capabilities"},
+			{toolNames, "gomddoc_guide"},
 			{uris, "gomddoc://capabilities"},
 			{uris, "gomddoc://schema/config"},
 			{templates, "gomddoc://guide/{+path}"},
@@ -159,5 +164,133 @@ func TestSelfDocs_GuideResource(t *testing.T) {
 		if _, err := f.session.ReadResource(ctx, &mcp.ReadResourceParams{URI: bad}); err == nil {
 			t.Errorf("%s: want not-found error", bad)
 		}
+	}
+}
+
+func callGuide(t *testing.T, f *testFixture, args map[string]any) (string, bool) {
+	t.Helper()
+	res, err := f.session.CallTool(context.Background(), &mcp.CallToolParams{Name: "gomddoc_guide", Arguments: args})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	return res.Content[0].(*mcp.TextContent).Text, res.IsError
+}
+
+func TestGuideTool(t *testing.T) {
+	t.Parallel()
+	f := setupSelfDocs(t, true)
+	defer f.close(t)
+
+	t.Run("list", func(t *testing.T) {
+		out, isErr := callGuide(t, f, map[string]any{})
+		var got []capabilities.GuidePage
+		if err := json.Unmarshal([]byte(out), &got); isErr || err != nil {
+			t.Fatalf("list: isErr=%v err=%v out=%s", isErr, err, out)
+		}
+		if !slices.Equal(got, f.server.deps.SelfDocs.Report.Guide) || len(got) != 3 {
+			t.Errorf("list = %+v", got)
+		}
+	})
+	t.Run("search", func(t *testing.T) {
+		// "priority" occurs only in 02-configuration.md.
+		out, isErr := callGuide(t, f, map[string]any{"query": "priority"})
+		var hits []struct{ Path, Title, Snippet string }
+		if err := json.Unmarshal([]byte(out), &hits); isErr || err != nil {
+			t.Fatalf("search: isErr=%v err=%v out=%s", isErr, err, out)
+		}
+		if len(hits) != 1 || hits[0].Path != "02-configuration.md" || hits[0].Title != "Configuration" {
+			t.Errorf("hits = %+v", hits)
+		}
+	})
+	t.Run("search no hits", func(t *testing.T) {
+		out, isErr := callGuide(t, f, map[string]any{"query": "zzzqqq"})
+		if isErr || out != "[]" {
+			t.Errorf("no hits: isErr=%v out=%q, want []", isErr, out)
+		}
+	})
+	t.Run("page", func(t *testing.T) {
+		out, isErr := callGuide(t, f, map[string]any{"path": "02-configuration.md"})
+		want := "---\ntitle: Configuration\ndescription: Settings\n---\n\n# Configuration\n"
+		if isErr || !strings.HasPrefix(out, want) || strings.Count(out, "title: Configuration") != 1 || !strings.Contains(out, "Flags win.") {
+			t.Errorf("page: isErr=%v out=%q", isErr, out)
+		}
+	})
+	t.Run("section", func(t *testing.T) {
+		out, isErr := callGuide(t, f, map[string]any{"path": "02-configuration.md", "section": "priority-order"})
+		if isErr || out != "## Priority order\n\nFlags win." {
+			t.Errorf("section: isErr=%v out=%q", isErr, out)
+		}
+	})
+
+	errs := []struct {
+		name string
+		args map[string]any
+		want []string // every substring must appear in the error text
+	}{
+		{"unknown page", map[string]any{"path": "nope.md"}, []string{"nope.md", "02-configuration.md", "README.md"}},
+		{"traversal", map[string]any{"path": "../go.mod"}, []string{"02-configuration.md"}},
+		{"leading slash", map[string]any{"path": "/02-configuration.md"}, []string{"02-configuration.md"}},
+		{"directory", map[string]any{"path": "12-advanced"}, []string{"README.md"}},
+		{"unknown section", map[string]any{"path": "02-configuration.md", "section": "nope"},
+			[]string{"nope", "environment-variables", "priority-order"}},
+		{"section without path", map[string]any{"section": "priority-order"}, []string{"path"}},
+		{"query and path", map[string]any{"query": "x", "path": "README.md"}, []string{"query", "path"}},
+		{"oversized path", map[string]any{"path": strings.Repeat("a", maxArgLen+1)}, []string{"README.md"}},
+		{"oversized query", map[string]any{"query": strings.Repeat("a", maxArgLen+1)}, []string{"query"}},
+	}
+	for _, tt := range errs {
+		t.Run(tt.name, func(t *testing.T) {
+			out, isErr := callGuide(t, f, tt.args)
+			if !isErr {
+				t.Fatalf("want IsError, got %q", out)
+			}
+			for _, w := range tt.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("error %q lacks %q", out, w)
+				}
+			}
+		})
+	}
+}
+
+// TestGuideSearch_ColdConcurrent: the lazy guide index is first used cold and
+// concurrently; exactly one build must win and every caller gets it. The
+// index is a pure function of the embedded guide, so no count can tell one
+// build from fifty — pointer identity plus -race (make test) is the check.
+func TestGuideSearch_ColdConcurrent(t *testing.T) {
+	t.Parallel()
+	s := NewServer(ServerDeps{
+		Provider: &testProvider{fsys: fstest.MapFS{}, defaultIndex: "README.md"},
+		SelfDocs: newSelfDocs(selfDocsGuide),
+	})
+	got := make([]*search.Index, 50)
+	fanout.Run(50, func(i int) {
+		idx, err := s.guideSearch()
+		if err != nil {
+			t.Errorf("guideSearch: %v", err)
+		}
+		got[i] = idx
+	})
+	for i, idx := range got {
+		if idx == nil || idx != got[0] {
+			t.Fatalf("call %d returned a different index (%p vs %p)", i, idx, got[0])
+		}
+	}
+}
+
+// TestGuideTool_RealEmbed: the shipped guide indexes and answers a real query.
+func TestGuideTool_RealEmbed(t *testing.T) {
+	t.Parallel()
+	s := NewServer(ServerDeps{
+		Provider: &testProvider{fsys: fstest.MapFS{}, defaultIndex: "README.md"},
+		SelfDocs: newSelfDocs(docs.Guide),
+	})
+	idx, err := s.guideSearch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits := idx.Search("environment variable naming precedence", 10)
+	if !slices.ContainsFunc(hits, func(h search.SearchResult) bool { return strings.TrimPrefix(h.Path, "/") == "02-configuration.md" }) {
+		t.Errorf("real guide search missed 02-configuration.md: %+v", hits)
 	}
 }

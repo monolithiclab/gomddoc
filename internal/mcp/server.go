@@ -18,6 +18,7 @@ import (
 	"context"
 	"io/fs"
 	"net/http"
+	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -70,6 +71,11 @@ type SelfDocs struct {
 type MCPServer struct {
 	server *mcp.Server
 	deps   ServerDeps
+
+	// guideSearch builds the guide's search index on first use and shares
+	// it: sync.OnceValues, so a cold burst of gomddoc_guide calls builds it
+	// once. nil unless SelfDocs is set.
+	guideSearch func() (*search.Index, error)
 }
 
 // NewServer creates a new MCP server wired to gomddoc internals.
@@ -92,6 +98,8 @@ func NewServer(deps ServerDeps) *MCPServer {
 	s.registerTools()
 	s.registerPrompts()
 	if deps.SelfDocs != nil {
+		guide := deps.SelfDocs.Guide
+		s.guideSearch = sync.OnceValues(func() (*search.Index, error) { return buildGuideSearch(guide) })
 		s.registerSelfDocs()
 	}
 	return s

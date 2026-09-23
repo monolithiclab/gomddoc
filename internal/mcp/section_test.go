@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/monolithiclab/gomddoc/internal/text"
@@ -244,4 +245,21 @@ func stringContains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestHeadingIDs: every ID listed is one ExtractSection accepts, in document
+// order, frontmatter excluded.
+func TestHeadingIDs(t *testing.T) {
+	t.Parallel()
+	content := []byte("---\ntitle: x\n---\n# Top\n\nText.\n\n## Environment variables\n\nMore.\n\n### Priority order\n\nEnd.\n")
+	got := HeadingIDs(content)
+	want := []string{"top", "environment-variables", "priority-order"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("HeadingIDs = %q, want %q", got, want)
+	}
+	for _, id := range got {
+		if _, err := ExtractSection(content, id); err != nil {
+			t.Errorf("ExtractSection(%q): %v", id, err)
+		}
+	}
 }

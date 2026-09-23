@@ -133,3 +133,16 @@ func slugifyHeading(heading string) string {
 	s := b.String()
 	return strings.TrimRight(s, "-")
 }
+
+// HeadingIDs lists the anchor IDs ExtractSection accepts for content, in
+// document order. It uses ExtractSection's own heading parser, so every ID it
+// returns is extractable.
+func HeadingIDs(content []byte) []string {
+	var ids []string
+	for line := range bytes.SplitSeq(text.StripFrontmatter(content), []byte("\n")) {
+		if _, heading, ok := headingLevel(string(line)); ok {
+			ids = append(ids, slugifyHeading(heading))
+		}
+	}
+	return ids
+}
