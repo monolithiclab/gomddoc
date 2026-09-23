@@ -13,6 +13,7 @@ package main
 
 import (
 	"embed"
+	"errors"
 	"log/slog"
 	"os"
 
@@ -26,6 +27,7 @@ var embeddedAssets embed.FS
 type CLI struct {
 	Version kong.VersionFlag `name:"version" help:"Show version and exit."`
 	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
+	Doctor  DoctorCmd        `cmd:"" help:"Check a site's configuration and content; report every problem with a fix."`
 	Info    InfoCmd          `cmd:"" help:"Describe gomddoc: settings, env vars, flags, theme features and guide pages (--json for agents)."`
 	Init    InitCmd          `cmd:"" help:"Initialize a .gomddoc/ directory with default configuration."`
 	MCP     MCPCmd           `cmd:"" help:"Start MCP server for AI model integration (stdio). Also serves gomddoc's own guide and capabilities under gomddoc://."`
@@ -52,6 +54,10 @@ func main() {
 	// Binding the model lets a command's Run take *kong.Application (info and
 	// mcp describe the CLI); commands whose Run takes nothing are unaffected.
 	if err := ctx.Run(ctx.Model); err != nil {
+		// A command that already printed its result (doctor) only sets the status.
+		if exit, ok := errors.AsType[exitCodeError](err); ok {
+			os.Exit(int(exit))
+		}
 		slog.Error("Fatal error", slog.Any("error", err))
 		os.Exit(1)
 	}

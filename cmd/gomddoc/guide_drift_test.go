@@ -2,7 +2,6 @@ package main
 
 import (
 	"io/fs"
-	"os"
 	"path"
 	"regexp"
 	"slices"
@@ -23,30 +22,14 @@ func testModel(t *testing.T) *kong.Application {
 	return kong.Must(&CLI{}, parserOptions()...).Model
 }
 
-// knownEnvs is every variable gomddoc reads: config settings, Kong flag and
-// argument envs, and the install script's own variables (the quickstart
-// documents them). Map settings contribute their prefix
-// ("GOMDDOC_SITE_THEME_FEATURES_"), since the key is the author's.
+// knownEnvs splits knownEnvVars into exact names and map-setting prefixes.
 func knownEnvs(t *testing.T) (exact, prefixes []string) {
 	t.Helper()
-	install, err := os.ReadFile("../../scripts/install.sh")
-	if err != nil {
-		t.Fatal(err)
-	}
-	exact = envMention.FindAllString(string(install), -1)
-	for _, s := range config.Schema() {
-		if p, ok := strings.CutSuffix(s.Env, "<KEY>"); ok {
-			prefixes = append(prefixes, p)
-		} else if s.Env != "" {
-			exact = append(exact, s.Env)
-		}
-	}
-	for _, n := range testModel(t).Children {
-		for _, f := range n.Flags {
-			exact = append(exact, f.Envs...)
-		}
-		for _, p := range n.Positional {
-			exact = append(exact, p.Tag.Envs...)
+	for _, k := range knownEnvVars(testModel(t)) {
+		if strings.HasSuffix(k, "_") {
+			prefixes = append(prefixes, k)
+		} else {
+			exact = append(exact, k)
 		}
 	}
 	return exact, prefixes
