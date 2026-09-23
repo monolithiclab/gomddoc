@@ -1,0 +1,59 @@
+package template
+
+import (
+	"io/fs"
+	"os"
+	"slices"
+	"testing"
+	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/provider"
+)
+
+func TestThemeFeatures(t *testing.T) {
+	t.Parallel()
+	// Same assets/themes/default/ layout as the binary's embed.
+	embedded := os.DirFS("../../cmd/gomddoc")
+	overlay := provider.NewOverlayFS(fstest.MapFS{
+		"assets/themes/default/partials/banner.html.tmpl": {Data: []byte(`{{ if .Feature "banner" }}<div style="color: var(--theme-banner-fg)"></div>{{ end }}`)},
+	}, embedded)
+
+	wantDefault := ThemeInfo{
+		Name:   "default",
+		Source: ThemeSourceTemplateScan,
+		Features: []string{"admonitions", "code_copy", "color_chips", "dark_mode", "heading_anchors", "katex",
+			"mermaid", "search", "see_also", "tag_chips", "toc"},
+		Vars: []string{"bg", "dark-bg", "dark-primary", "dark-text", "primary", "text"},
+	}
+	withBanner := wantDefault
+	withBanner.Features = slices.Insert(slices.Clone(wantDefault.Features), 1, "banner")
+	withBanner.Vars = slices.Insert(slices.Clone(wantDefault.Vars), 0, "banner-fg")
+	unavailable := func(name string) ThemeInfo {
+		return ThemeInfo{Name: name, Source: ThemeSourceUnavailable, Features: []string{}, Vars: []string{}}
+	}
+
+	tests := []struct {
+		name   string
+		assets fs.FS
+		theme  string
+		want   ThemeInfo
+	}{
+		{"embedded default", embedded, "default", wantDefault},
+		{"site overlay adds a feature and a var", overlay, "default", withBanner},
+		{"missing theme", embedded, "nord", unavailable("nord")},
+		{"theme dir without templates", fstest.MapFS{"assets/themes/empty/static/x.css": {Data: []byte("a{color:var(--theme-x)}")}}, "empty", unavailable("empty")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := ThemeFeatures(tt.assets, tt.theme)
+			if got.Name != tt.want.Name || got.Source != tt.want.Source ||
+				!slices.Equal(got.Features, tt.want.Features) || !slices.Equal(got.Vars, tt.want.Vars) {
+				t.Errorf("got  %+v\nwant %+v", got, tt.want)
+			}
+			if got.Features == nil || got.Vars == nil {
+				t.Error("lists must be non-nil so they marshal as [] not null")
+			}
+		})
+	}
+}
