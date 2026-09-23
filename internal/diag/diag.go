@@ -71,7 +71,7 @@ var Catalogue = []CodeInfo{
 	{"content.missing-description", Info, "a page with no description"},
 	{"exclude.matches-nothing", Warning, "an exclude pattern that matches no file or directory"},
 	{"target.unreachable", Error, "the content directory or repository could not be opened"},
-	{"target.read-error", Error, "a file could not be read while checking"},
+	{"target.read-error", Warning, "a file could not be read, so it was skipped"},
 }
 
 // New builds a finding, taking its severity from Catalogue. An unknown code

@@ -93,7 +93,7 @@ server. For a Git source the server's clone is checked. The tool is not on the H
 | `content.missing-description` | info | A page without a `description` | Add `description:` to the frontmatter |
 | `exclude.matches-nothing` | warning | An `exclude` pattern that matches no file or directory — usually a typo that leaves content published | Check the pattern's form |
 | `target.unreachable` | error | The directory or repository could not be opened; nothing else is checked | Check the path, URL or credentials |
-| `target.read-error` | error | A file could not be read while checking, or the site could not be built | Check permissions; fix the other findings first |
+| `target.read-error` | warning | A file could not be read while checking, or the site could not be built | Check permissions; fix the other findings first |
 
 Content checks walk every language directory's pages with that language's exclusions; a translated page's findings are
 reported under its directory (`fr-FR/guide.md`). Broken links and anchors are not checked yet.

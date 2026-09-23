@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/monolithiclab/gomddoc/internal/diag"
 )
 
 // mockRenderer returns a RendererCheck that returns true for the given MIME types.
@@ -393,7 +395,8 @@ func TestResolver_UnreadableSubtreeIsReportedAndSkipped(t *testing.T) {
 	}
 
 	got := r.Findings()
-	if len(got) != 1 || got[0].Code != "target.read-error" || got[0].File != "secret" ||
+	// Warning, as the slog.Warn it replaced: serve's log level must not change.
+	if len(got) != 1 || got[0].Code != "target.read-error" || got[0].Severity != diag.Warning || got[0].File != "secret" ||
 		!strings.Contains(got[0].Message, errUnreadableDir.Error()) {
 		t.Errorf("the skipped subtree must be reported with its path and cause; findings = %+v", got)
 	}
