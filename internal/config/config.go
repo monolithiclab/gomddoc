@@ -62,11 +62,11 @@ type Config struct {
 
 // ServerConfig holds server-side settings
 type ServerConfig struct {
-	Port      string     `env:"PORT"`
-	AdminPort string     `env:"ADMIN_PORT"`
-	DevMode   bool       `env:"DEV_MODE"`
-	Dir       string     `env:"DIR"`
-	Pprof     bool       `env:"PPROF"`
+	Port      string     `env:"PORT" doc:"HTTP listen address (host:port or :port). ':auto' (serve, preview) picks the first free port from 8080."`
+	AdminPort string     `env:"ADMIN_PORT" doc:"Listen address for health, metrics and pprof. Empty or equal to port serves them on the main listener; a bare :port binds 127.0.0.1."`
+	DevMode   bool       `env:"DEV_MODE" doc:"Disables the render cache so content and template edits show on reload. Always on for preview."`
+	Dir       string     `env:"DIR" doc:"Content root: a local directory or a git://, git+ssh:// or git+https:// URL."`
+	Pprof     bool       `env:"PPROF" doc:"Exposes /debug/pprof/ on the admin listener."`
 	HTTP      HTTPConfig `env:"HTTP"`
 }
 
@@ -82,50 +82,50 @@ func (s ServerConfig) AdminOnMain() bool {
 
 // HTTPConfig holds HTTP server tuning parameters
 type HTTPConfig struct {
-	ShutdownTimeout   time.Duration `env:"SHUTDOWN_TIMEOUT"`
-	ReadHeaderTimeout time.Duration `env:"READ_HEADER_TIMEOUT"`
-	WriteTimeout      time.Duration `env:"WRITE_TIMEOUT"`
-	IdleTimeout       time.Duration `env:"IDLE_TIMEOUT"`
-	MaxHeaderMB       int           `env:"MAX_HEADER_MB"`
+	ShutdownTimeout   time.Duration `env:"SHUTDOWN_TIMEOUT" doc:"Grace period for in-flight requests on SIGINT/SIGTERM."`
+	ReadHeaderTimeout time.Duration `env:"READ_HEADER_TIMEOUT" doc:"Maximum time to read request headers; non-positive or out-of-range values fall back to the default." max:"1m"`
+	WriteTimeout      time.Duration `env:"WRITE_TIMEOUT" doc:"Maximum time to write a response; non-positive or out-of-range values fall back to the default." max:"5m"`
+	IdleTimeout       time.Duration `env:"IDLE_TIMEOUT" doc:"Keep-alive idle timeout; non-positive or out-of-range values fall back to the default." max:"10m"`
+	MaxHeaderMB       int           `env:"MAX_HEADER_MB" doc:"Maximum request header size in MiB; non-positive or out-of-range values fall back to the default." max:"10"`
 }
 
 // SiteConfig holds site-specific settings (loadable from file)
 type SiteConfig struct {
-	DefaultIndex    string          `env:"DEFAULT_INDEX" yaml:"default_index"`
-	DirIndex        bool            `env:"DIR_INDEX" yaml:"dir_index"`
-	EditURL         string          `env:"EDIT_URL" yaml:"edit_url"`
-	Language        string          `env:"LANGUAGE" yaml:"language"`
+	DefaultIndex    string          `env:"DEFAULT_INDEX" yaml:"default_index" doc:"File served for a directory URL (/docs/ serves docs/README.md with the default). Must not be empty."`
+	DirIndex        bool            `env:"DIR_INDEX" yaml:"dir_index" doc:"Renders an auto-generated listing for directories that have no default_index file."`
+	EditURL         string          `env:"EDIT_URL" yaml:"edit_url" doc:"Base URL for 'Edit this page' links; the page's path is appended. http or https only."`
+	Language        string          `env:"LANGUAGE" yaml:"language" doc:"BCP 47 language of the default content tree (<html lang>, UI strings). Frontmatter lang overrides it per page."`
 	Meta            MetaConfig      `env:"META" yaml:"meta"`
 	Theme           ThemeConfig     `env:"THEME" yaml:"theme"`
 	Highlighting    HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
 	Search          SearchConfig    `env:"SEARCH" yaml:"search"`
-	Exclude         []string        `yaml:"exclude"`
-	StripExtensions []string        `yaml:"strip_extensions"`
+	Exclude         []string        `yaml:"exclude" doc:"Glob patterns (content-root relative) hidden from every route, index, navigation and build output. A trailing / matches a directory."`
+	StripExtensions []string        `yaml:"strip_extensions" doc:"Extensions removed from served URLs (/guide instead of /guide.md); the extension-ful URL redirects. Each must start with a dot."`
 }
 
 // SearchConfig holds search settings
 type SearchConfig struct {
-	Index bool `env:"INDEX" yaml:"index"`
+	Index bool `env:"INDEX" yaml:"index" doc:"Builds the full-text search index at startup. Disable to skip the build on large sites; search is then unavailable."`
 }
 
 // MetaConfig holds site metadata
 type MetaConfig struct {
-	Title       string `env:"TITLE" yaml:"title"`
-	Description string `env:"DESCRIPTION" yaml:"description"`
-	Domain      string `env:"DOMAIN" yaml:"domain"`
-	Robots      string `env:"ROBOTS" yaml:"robots"`
+	Title       string `env:"TITLE" yaml:"title" doc:"Site title used in <title>, Open Graph tags and feeds." default_doc:"the content directory's name, title-cased"`
+	Description string `env:"DESCRIPTION" yaml:"description" doc:"Site description; the fallback <meta name=description> for pages without one."`
+	Domain      string `env:"DOMAIN" yaml:"domain" doc:"Bare host (docs.example.com, no scheme or path). Enables canonical URLs, sitemap.xml, feed.xml and the robots.txt Sitemap line."`
+	Robots      string `env:"ROBOTS" yaml:"robots" doc:"Site-wide <meta name=robots> value, e.g. noindex. Frontmatter robots overrides it per page."`
 }
 
 // ThemeConfig holds theme settings
 type ThemeConfig struct {
-	Name     string            `env:"NAME" yaml:"name"`
-	Vars     map[string]string `yaml:"vars"`
-	Features map[string]bool   `env:"FEATURES" yaml:"features"`
+	Name     string            `env:"NAME" yaml:"name" doc:"Theme directory under assets/themes/. Only 'default' is bundled; others must be installed in .gomddoc/assets/themes/<name>/ or rendering falls back to default."`
+	Vars     map[string]string `yaml:"vars" doc:"Free-form map emitted as --theme-<key> CSS custom properties. Which keys a theme reads is theme-specific; see the capabilities report's theme.vars."`
+	Features map[string]bool   `env:"FEATURES" yaml:"features" doc:"Feature toggles keyed by name, all true unless set. Keys must match ^[a-z][a-z0-9_]*$; the capabilities report's theme.features lists the keys the active theme reads. Frontmatter features override per page."`
 }
 
 // HighlightConfig holds syntax highlighting settings
 type HighlightConfig struct {
-	Theme string `env:"THEME" yaml:"theme"`
+	Theme string `env:"THEME" yaml:"theme" doc:"Chroma style name for fenced code blocks, e.g. github, monokai, dracula."`
 }
 
 // ServeArgs holds all serve/preview command arguments that feed into config
@@ -522,61 +522,6 @@ func (h HTTPConfig) MaxHeaderBytes() int {
 // MaxHeaderBytes returns the maximum header size in bytes.
 func (c *Config) MaxHeaderBytes() int {
 	return c.Server.HTTP.MaxHeaderBytes()
-}
-
-// EnvVar describes an available environment variable.
-type EnvVar struct {
-	Name         string
-	Type         string
-	DefaultValue string
-}
-
-// EnvVars returns all environment variables recognized by the config system.
-func EnvVars() []EnvVar {
-	cfg := New()
-	var vars []EnvVar
-	collectEnvVars(reflect.ValueOf(cfg).Elem(), reflect.TypeFor[Config](), "GOMDDOC", &vars)
-	return vars
-}
-
-// collectEnvVars recursively walks a struct and collects env var metadata.
-func collectEnvVars(v reflect.Value, t reflect.Type, prefix string, vars *[]EnvVar) {
-	for i := range t.NumField() {
-		field := v.Field(i)
-		fieldType := t.Field(i)
-
-		if !field.CanSet() {
-			continue
-		}
-
-		envTag := fieldType.Tag.Get("env")
-
-		kind := field.Kind()
-		if kind == reflect.Struct {
-			newPrefix := prefix
-			if envTag != "" {
-				newPrefix = prefix + "_" + envTag
-			}
-			collectEnvVars(field, field.Type(), newPrefix, vars)
-			continue
-		}
-
-		if envTag == "" {
-			continue
-		}
-
-		envVarName := prefix + "_" + envTag
-		typeName := field.Type().String()
-		if field.Type() == reflect.TypeFor[time.Duration]() {
-			typeName = "duration"
-		}
-
-		*vars = append(*vars, EnvVar{
-			Name:         envVarName,
-			Type:         typeName,
-			DefaultValue: fmt.Sprintf("%v", field.Interface()),
-		})
-	}
 }
 
 // applyEnvOverridesWithPrefix applies env overrides to any struct with env tags

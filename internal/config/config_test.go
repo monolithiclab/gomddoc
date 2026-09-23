@@ -766,45 +766,6 @@ theme:
 	}
 }
 
-func TestEnvVars(t *testing.T) {
-	t.Parallel()
-
-	vars := EnvVars()
-	if len(vars) == 0 {
-		t.Fatal("EnvVars() returned empty slice")
-	}
-
-	// Build a set for lookup
-	names := make(map[string]bool)
-	for _, v := range vars {
-		names[v.Name] = true
-	}
-
-	required := []string{
-		"GOMDDOC_SERVER_PORT",
-		"GOMDDOC_SERVER_DIR",
-		"GOMDDOC_SERVER_DEV_MODE",
-		"GOMDDOC_SITE_META_TITLE",
-		"GOMDDOC_SITE_THEME_NAME",
-		"GOMDDOC_SITE_HIGHLIGHTING_THEME",
-	}
-	for _, name := range required {
-		if !names[name] {
-			t.Errorf("Expected env var %q in EnvVars() output", name)
-		}
-	}
-
-	// Verify each var has non-empty Name and Type
-	for _, v := range vars {
-		if v.Name == "" {
-			t.Error("EnvVar has empty Name")
-		}
-		if v.Type == "" {
-			t.Errorf("EnvVar %q has empty Type", v.Name)
-		}
-	}
-}
-
 func TestComputeDynamicDefaults(t *testing.T) {
 	t.Parallel()
 

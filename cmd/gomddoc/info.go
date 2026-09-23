@@ -29,15 +29,17 @@ func (i *InfoCmd) Run() error {
 
 // writeEnvVarsHelp writes the environment variables help section to w.
 func writeEnvVarsHelp(w io.Writer) {
-	vars := config.EnvVars()
 	fmt.Fprintln(w, "Environment variables:")
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	for _, v := range vars {
-		def := v.DefaultValue
-		if def == "" {
+	for _, s := range config.Schema() {
+		if s.Env == "" {
+			continue
+		}
+		def := fmt.Sprintf("%v", s.Default)
+		if s.Default == nil || def == "" {
 			def = "(empty)"
 		}
-		fmt.Fprintf(tw, "  %s\t%s\t(default: %s)\n", v.Name, v.Type, def)
+		fmt.Fprintf(tw, "  %s\t%s\t(default: %s)\n", s.Env, s.Type, def)
 	}
 	tw.Flush() // #nosec G104
 }
