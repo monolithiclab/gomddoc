@@ -3,6 +3,7 @@ package config
 import (
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1356,5 +1357,23 @@ func TestNormalize_AdminAddrBindsLoopback(t *testing.T) {
 				t.Errorf("AdminPort = %q, want %q", cfg.Server.AdminPort, tt.want)
 			}
 		})
+	}
+}
+
+// TestNewFromDir_TitleFromContentDir: the default title comes from the content
+// directory, not from wherever the process happens to run — what
+// site.meta.title's default_doc tells agents.
+func TestNewFromDir_TitleFromContentDir(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "handbook-docs")
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := NewFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := titleFromDir(dir); cfg.Site.Meta.Title != want || want == titleFromDir(".") {
+		t.Errorf("title = %q, want %q (from the content dir, not the cwd)", cfg.Site.Meta.Title, want)
 	}
 }

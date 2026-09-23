@@ -211,8 +211,18 @@ func New() *Config {
 				MaxHeaderMB:       DefaultMaxHeaderMB,
 			},
 		},
-		Site: NewSiteConfig("."), // Initialize with default "."
+		Site: newDefaultSiteConfig(),
 	}
+}
+
+// newDefaultSiteConfig is NewSiteConfig without a title: the title default
+// depends on Server.Dir, which is not known yet, and ComputeDynamicDefaults
+// only derives it when the field is empty. Pre-filling it from "." titled
+// every site after the process's working directory.
+func newDefaultSiteConfig() SiteConfig {
+	sc := NewSiteConfig(".")
+	sc.Meta.Title = ""
+	return sc
 }
 
 // NewSiteConfig creates a new SiteConfig with default values
