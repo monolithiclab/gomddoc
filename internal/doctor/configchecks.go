@@ -10,6 +10,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/diag"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // keyTree is config.yml's key structure, derived from config.Schema: the
@@ -90,7 +91,7 @@ func unknownKeyFix(key, parent string, tree keyTree) string {
 		}
 	}
 	siblings := tree.children[parent]
-	if best, ok := closest(key, siblings, 2); ok {
+	if best, ok := text.Closest(key, siblings, 2); ok {
 		return fmt.Sprintf("did you mean `%s`?", best)
 	}
 	return "valid keys here: " + strings.Join(siblings, ", ")
@@ -125,43 +126,11 @@ func unknownEnv(environ, known []string) []diag.Finding {
 			continue
 		}
 		fix := "see `gomddoc info` for the variables gomddoc reads"
-		if best, ok := closest(name, exact, 6); ok {
+		if best, ok := text.Closest(name, exact, 6); ok {
 			fix = fmt.Sprintf("did you mean %s?", best)
 		}
 		findings = append(findings, diag.New("env.unknown", "", 0, name,
 			fmt.Sprintf("%s is set but gomddoc does not read it", name), fix))
 	}
 	return findings
-}
-
-// closest is the candidate nearest to s within maxDist edits; ties go to the
-// first in candidates' order.
-func closest(s string, candidates []string, maxDist int) (string, bool) {
-	best, bestDist := "", maxDist+1
-	for _, c := range candidates {
-		if d := levenshtein(s, c); d < bestDist {
-			best, bestDist = c, d
-		}
-	}
-	return best, bestDist <= maxDist
-}
-
-func levenshtein(a, b string) int {
-	prev := make([]int, len(b)+1)
-	for j := range prev {
-		prev[j] = j
-	}
-	for i := 1; i <= len(a); i++ {
-		cur := make([]int, len(b)+1)
-		cur[0] = i
-		for j := 1; j <= len(b); j++ {
-			cost := 1
-			if a[i-1] == b[j-1] {
-				cost = 0
-			}
-			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
-		}
-		prev = cur
-	}
-	return prev[len(b)]
 }

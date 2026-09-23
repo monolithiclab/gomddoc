@@ -11,6 +11,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // scanTheme is the active theme's template scan, or an unavailable one when
@@ -49,7 +50,7 @@ func themeChecks(ins config.Inspection, scan template.ThemeInfo) []diag.Finding 
 		}
 		key := "theme.vars." + k
 		fix := "the theme's CSS reads: " + strings.Join(scan.Vars, ", ")
-		if best, ok := closest(k, scan.Vars, 2); ok {
+		if best, ok := text.Closest(k, scan.Vars, 2); ok {
 			fix = fmt.Sprintf("did you mean `%s`?", best)
 		}
 		findings = append(findings, diag.New("theme.unknown-var", configFileIf(ins, key), ins.Line(key), key,
@@ -65,7 +66,7 @@ func unknownFeature(k string, scan template.ThemeInfo, file string, line int, ke
 		return diag.Finding{}, false
 	}
 	fix := "the theme reads: " + strings.Join(scan.Features, ", ")
-	if best, ok := closest(k, scan.Features, 2); ok {
+	if best, ok := text.Closest(k, scan.Features, 2); ok {
 		fix = fmt.Sprintf("did you mean `%s`?", best)
 	}
 	return diag.New("theme.unknown-feature", file, line, key,
