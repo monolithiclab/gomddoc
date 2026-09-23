@@ -588,3 +588,16 @@ strip them in one place for both tools.
 `ExtractSection` (read_section, and now gomddoc_guide) treated a `# comment` line in a fenced YAML/shell block as a
 level-1 heading, returning half a section. Fixed with a fence-aware `scanHeadings` shared with `HeadingIDs`.
 
+
+### 11.4 LOW — `--domain` bypasses the domain validation
+
+**Open.** `--domain` is applied after `NewFromServeArgs` has validated the config (`pipeline.go`, `build.go`), and the
+re-validation there runs `Site.Validate`, but the value never goes through the same path as `meta.domain` from the
+file. Confirm `--domain https://x/y` is rejected with the "bare host" message `site.meta.domain`'s doc tag promises;
+fold the flag into `NewFromServeArgs` like `--dir-index` if not.
+
+### 11.5 LOW — duplicate heading anchors
+
+**Open.** goldmark suffixes duplicate heading IDs (`setup`, `setup-1`); `slugifyHeading` does not, so
+`read_section`/`gomddoc_guide` can only reach the first of two same-named sections, and `HeadingIDs` lists the
+duplicate twice.
