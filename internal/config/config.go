@@ -173,6 +173,7 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 
 	// 4. Load from File (.gomddoc/config.yml)
 	if err := cfg.Site.LoadFromFile(cfg.Server.Dir); err != nil {
+		diag.Log(diag.Dedupe(envFindings)) // the file's error must not swallow what the env pass found
 		return nil, fmt.Errorf("load config file: %w", err)
 	}
 

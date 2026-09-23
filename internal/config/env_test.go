@@ -2,6 +2,8 @@ package config
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -54,5 +56,25 @@ func TestNewFromServeArgs_LogsEnvFindingOnce(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("logged %d times, want once:\n%s", n, log)
+	}
+}
+
+// TestNewFromServeArgs_LogsEnvFindingOnFileError: a config file that fails to
+// load must not swallow the env warning found before it.
+func TestNewFromServeArgs_LogsEnvFindingOnFileError(t *testing.T) {
+	t.Setenv("GOMDDOC_SERVER_HTTP_IDLE_TIMEOUT", "bogus")
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ConfigDirName), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte("bogus: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	log := logcapture.Install(t, slog.LevelDebug)
+	if _, err := NewFromServeArgs(ServeArgs{Dir: dir, Port: DefaultPort}); err == nil {
+		t.Fatal("want the unknown key to fail loading")
+	}
+	if !log.HasContaining(slog.LevelWarn, "Invalid duration format", slog.String("key", "GOMDDOC_SERVER_HTTP_IDLE_TIMEOUT")) {
+		t.Errorf("env warning lost when config.yml failed; log:\n%s", log)
 	}
 }
