@@ -115,7 +115,9 @@ func settingDefault(fv reflect.Value) any {
 	if d, ok := fv.Interface().(time.Duration); ok {
 		return d.String()
 	}
-	if fv.Kind() == reflect.Map && fv.IsNil() {
+	// A typed nil (map or slice) boxed in an interface is not == nil, so it
+	// would slip past callers' Default != nil checks and emit "default": null.
+	if (fv.Kind() == reflect.Map || fv.Kind() == reflect.Slice) && fv.IsNil() {
 		return nil
 	}
 	return fv.Interface()

@@ -320,3 +320,20 @@ func TestJSONSchema_ReturnsCopy(t *testing.T) {
 		t.Error("JSONSchema returns the cached slice")
 	}
 }
+
+// TestJSONSchema_NoNullDefaults: a "default": null on a typed property violates
+// that property's own type, and editors flag it.
+func TestJSONSchema_NoNullDefaults(t *testing.T) {
+	t.Parallel()
+	var walk func(node map[string]any, at string)
+	walk = func(node map[string]any, at string) {
+		if d, has := node["default"]; has && d == nil {
+			t.Errorf("%s: default is null", at)
+		}
+		props, _ := node["properties"].(map[string]any)
+		for k, v := range props {
+			walk(v.(map[string]any), at+"."+k)
+		}
+	}
+	walk(loadSchema(t), "")
+}
