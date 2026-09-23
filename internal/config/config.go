@@ -13,11 +13,13 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -426,45 +428,67 @@ func (c *Config) Validate() error {
 	return c.validateServer()
 }
 
-// Validate validates site config separately. Does not mutate; call Normalize first.
+// Validate validates site config separately. Does not mutate; call Normalize
+// first. It returns the first problem; ValidateAll reports all of them.
 func (sc *SiteConfig) Validate() error {
+	if errs := sc.validationErrors(); len(errs) > 0 {
+		return errs[0].err
+	}
+	return nil
+}
+
+// fieldError is a validation failure and the config key it concerns.
+type fieldError struct {
+	key string
+	err error
+}
+
+// validationErrors is every site validation failure, in the order Validate
+// has always checked them — Validate's first error must not change.
+func (sc *SiteConfig) validationErrors() []fieldError {
+	var errs []fieldError
+	add := func(key string, err error) { errs = append(errs, fieldError{key, err}) }
+
 	if sc.DefaultIndex == "" {
-		return fmt.Errorf("default_index must not be empty")
+		add("default_index", fmt.Errorf("default_index must not be empty"))
 	}
 
 	if sc.EditURL != "" {
 		u, err := url.Parse(sc.EditURL)
-		if err != nil {
-			return fmt.Errorf("invalid edit_url: %w", err)
-		}
-		if u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https" {
-			return fmt.Errorf("edit_url must use http or https scheme, got %q", u.Scheme)
+		switch {
+		case err != nil:
+			add("edit_url", fmt.Errorf("invalid edit_url: %w", err))
+		case u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https":
+			add("edit_url", fmt.Errorf("edit_url must use http or https scheme, got %q", u.Scheme))
 		}
 	}
 
 	if sc.Meta.Domain != "" {
-		if strings.Contains(sc.Meta.Domain, "://") {
-			return fmt.Errorf("domain should not include protocol: %s", sc.Meta.Domain)
-		}
-		if strings.Contains(sc.Meta.Domain, "/") {
-			return fmt.Errorf("domain should not include path: %s", sc.Meta.Domain)
-		}
-		if _, err := url.Parse("//" + sc.Meta.Domain); err != nil {
-			return fmt.Errorf("invalid domain: %w", err)
+		switch {
+		case strings.Contains(sc.Meta.Domain, "://"):
+			add("meta.domain", fmt.Errorf("domain should not include protocol: %s", sc.Meta.Domain))
+		case strings.Contains(sc.Meta.Domain, "/"):
+			add("meta.domain", fmt.Errorf("domain should not include path: %s", sc.Meta.Domain))
+		default:
+			if _, err := url.Parse("//" + sc.Meta.Domain); err != nil {
+				add("meta.domain", fmt.Errorf("invalid domain: %w", err))
+			}
 		}
 	}
 
-	if err := ValidateFeatureKeys(sc.Theme.Features); err != nil {
-		return err
+	for _, key := range slices.Sorted(maps.Keys(sc.Theme.Features)) {
+		if !featureKeyPattern.MatchString(key) {
+			add("theme.features."+key, fmt.Errorf("invalid feature key %q: must match pattern ^[a-z][a-z0-9_]*$", key))
+		}
 	}
 
 	for _, ext := range sc.StripExtensions {
 		if ext == "" || ext[0] != '.' {
-			return fmt.Errorf("strip_extensions: %q must start with a dot", ext)
+			add("strip_extensions", fmt.Errorf("strip_extensions: %q must start with a dot", ext))
 		}
 	}
 
-	return nil
+	return errs
 }
 
 // IsGitURL checks if a string is a Git URL.
@@ -476,55 +500,69 @@ func IsGitURL(s string) bool {
 }
 
 func (c *Config) validateServer() error {
-	// Validate Port
-	_, portStr, err := net.SplitHostPort(c.Server.Port)
-	if err != nil {
-		return fmt.Errorf("invalid port format: %w", err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port < 1 || port > 65535 {
-		return fmt.Errorf("port must be between 1 and 65535, got: %s", portStr)
-	}
-
-	// Validate AdminPort (if set)
-	if c.Server.AdminPort != "" {
-		_, adminPortStr, err := net.SplitHostPort(c.Server.AdminPort)
-		if err != nil {
-			return fmt.Errorf("invalid admin port format: %w", err)
-		}
-		adminPort, err := strconv.Atoi(adminPortStr)
-		if err != nil || adminPort < 1 || adminPort > 65535 {
-			return fmt.Errorf("admin port must be between 1 and 65535, got: %s", adminPortStr)
-		}
-	}
-
-	// Validate Dir (skip if Git URL)
-	if !IsGitURL(c.Server.Dir) {
-		info, err := os.Stat(c.Server.Dir)
-		if err != nil {
-			return fmt.Errorf("directory validation failed: %w", err)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("path is not a directory: %s", c.Server.Dir)
-		}
-	}
-
-	// Validate Site
-	if err := c.Site.Validate(); err != nil {
-		return err
-	}
-
-	// Validate HTTP timeouts (Normalize should be called first to fix up values)
-	if c.Server.HTTP.ShutdownTimeout < 0 {
-		return fmt.Errorf("shutdown timeout cannot be negative: %v", c.Server.HTTP.ShutdownTimeout)
+	if errs := c.validationErrors(true); len(errs) > 0 {
+		return errs[0].err
 	}
 	if c.Server.HTTP.ShutdownTimeout > 60*time.Second {
 		slog.Warn("Shutdown timeout is very long",
 			slog.Duration("timeout", c.Server.HTTP.ShutdownTimeout),
 			slog.Duration("recommended_max", 60*time.Second))
 	}
-
 	return nil
+}
+
+// validationErrors is every config validation failure in Validate's order.
+// checkDir adds the content-directory check, which ValidateAll leaves to
+// doctor's target check: a missing directory is not a config value.
+func (c *Config) validationErrors(checkDir bool) []fieldError {
+	var errs []fieldError
+	add := func(key string, err error) { errs = append(errs, fieldError{key, err}) }
+
+	if _, portStr, err := net.SplitHostPort(c.Server.Port); err != nil {
+		add("server.port", fmt.Errorf("invalid port format: %w", err))
+	} else if port, err := strconv.Atoi(portStr); err != nil || port < 1 || port > 65535 {
+		add("server.port", fmt.Errorf("port must be between 1 and 65535, got: %s", portStr))
+	}
+
+	if c.Server.AdminPort != "" {
+		if _, adminPortStr, err := net.SplitHostPort(c.Server.AdminPort); err != nil {
+			add("server.admin_port", fmt.Errorf("invalid admin port format: %w", err))
+		} else if adminPort, err := strconv.Atoi(adminPortStr); err != nil || adminPort < 1 || adminPort > 65535 {
+			add("server.admin_port", fmt.Errorf("admin port must be between 1 and 65535, got: %s", adminPortStr))
+		}
+	}
+
+	if checkDir && !IsGitURL(c.Server.Dir) {
+		if info, err := os.Stat(c.Server.Dir); err != nil {
+			add("server.dir", fmt.Errorf("directory validation failed: %w", err))
+		} else if !info.IsDir() {
+			add("server.dir", fmt.Errorf("path is not a directory: %s", c.Server.Dir))
+		}
+	}
+
+	errs = append(errs, c.Site.validationErrors()...)
+
+	if c.Server.HTTP.ShutdownTimeout < 0 {
+		add("server.http.shutdown_timeout", fmt.Errorf("shutdown timeout cannot be negative: %v", c.Server.HTTP.ShutdownTimeout))
+	}
+	return errs
+}
+
+// ValidateAll reports every invalid value as a config.invalid-value finding,
+// where Validate stops at the first. Site keys are config.yml keys (File is
+// the config file); server keys are flags and env vars (no File).
+func (c *Config) ValidateAll() []diag.Finding {
+	errs := c.validationErrors(false)
+	findings := make([]diag.Finding, 0, len(errs))
+	for _, e := range errs {
+		file := ConfigFile
+		if strings.HasPrefix(e.key, "server.") {
+			file = ""
+		}
+		findings = append(findings, diag.New("config.invalid-value", file, 0, e.key, e.err.Error(),
+			"see `gomddoc info` for the setting's accepted values"))
+	}
+	return findings
 }
 
 // MaxHeaderBytes returns the maximum header size in bytes.

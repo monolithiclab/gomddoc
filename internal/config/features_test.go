@@ -219,7 +219,8 @@ func TestMergeFeatures(t *testing.T) {
 	}
 }
 
-func TestValidateFeatureKeys(t *testing.T) {
+// TestValidate_FeatureKeys: the feature-key pattern, checked through Validate.
+func TestValidate_FeatureKeys(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -302,9 +303,11 @@ func TestValidateFeatureKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := ValidateFeatureKeys(tt.features)
+			sc := NewSiteConfig(".")
+			sc.Theme.Features = tt.features
+			err := sc.Validate()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateFeatureKeys() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

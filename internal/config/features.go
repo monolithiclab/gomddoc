@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -72,20 +71,4 @@ func MergeFeatures(base map[string]bool, overrides ...map[string]bool) map[strin
 		maps.Copy(result, m)
 	}
 	return result
-}
-
-// ValidateFeatureKeys validates that all feature keys match the pattern ^[a-z][a-z0-9_]*$.
-// Returns an error for the first invalid key found.
-func ValidateFeatureKeys(features map[string]bool) error {
-	if features == nil {
-		return nil
-	}
-
-	for _, key := range slices.Sorted(maps.Keys(features)) {
-		if !featureKeyPattern.MatchString(key) {
-			return fmt.Errorf("invalid feature key %q: must match pattern ^[a-z][a-z0-9_]*$", key)
-		}
-	}
-
-	return nil
 }
