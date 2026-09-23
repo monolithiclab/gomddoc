@@ -683,3 +683,20 @@ theme (`"source": "template-scan"`). A `theme.yml` manifest was designed and par
 missed it. Kong exposes arbitrary struct tags via `Tag.Get`. Unifying the env var names is a separate, user-visible
 change (REVIEW.md §11.1).
 
+## `doctor`'s Findings Come From the Code That Detects Each Problem
+
+**Context**: `gomddoc doctor` must report every configuration problem and the cheap content problems
+(`docs/specs/2026-09-23-doctor-design.md`). Several of them were already detected at runtime and only logged —
+or silently dropped.
+
+**Decision**: producers (`config` normalize/validate/env, `resolve.Build`, `server.BuildRedirectMap`, the tag-route
+collision check) return `diag.Finding`s and their callers log them; doctor collects the same findings. What doctor
+reports is by construction what serve hits, and serve's log gains a stable `code` per warning.
+
+- *Alternatives*: re-implementing the checks in doctor (no churn, but two rule sets that drift — the pattern this
+  codebase keeps paying for); scraping the real pipeline's log output (no signature changes, but findings would depend
+  on log wording and carry no lines).
+- `-v`/`--verbose` is the CLI's first verbosity flag: it only reveals `info` findings; counts are always reported.
+- `gomddoc_doctor` reuses the MCP server's provider: a filesystem provider reads the disk live, and a Git source is
+  not re-cloned on every call.
+

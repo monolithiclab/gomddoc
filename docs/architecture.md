@@ -941,6 +941,28 @@ docs.Guide ──► lazy search index ──► gomddoc_guide, gomddoc://guide/
 - `docs/guide.go` (`package docs`) embeds `docs/guide/`; drift tests hold the guide to the env vars, config keys and
   frontmatter fields the code declares.
 
+### Diagnostics (`internal/diag`, `internal/doctor`)
+
+A detected problem has one shape, `diag.Finding` (code, severity, file, line, key, message, fix), and its severity comes
+from `diag.Catalogue`, never from the call site. Producers that detect problems at runtime return findings instead of
+logging them; their caller logs them with `diag.Log`:
+
+```text
+config.Normalize / ValidateAll / env walker ──┐
+resolve.Build (path collisions) ──────────────┤          ┌──► serve/build/mcp: diag.Log (startup warnings)
+server.BuildRedirectMap (redirect_from) ──────┼──► findings
+tagsContentCollision (cmd) ───────────────────┘          └──► doctor.Run + doctor's own checks ──► Report
+config.Inspect (NewFromServeArgs's steps, collecting) ─────────────────────────┘
+```
+
+- `setupLanguagePipelines` gathers every pipeline's findings into `LanguagePipeline.Findings` (language paths prefixed
+  with their directory) and logs them, unless `PipelineOptions.ReportOnly` — which doctor sets.
+- `internal/doctor` adds the checks with no runtime counterpart (unknown config keys and env vars, theme toggles and
+  vars, exclude patterns matching nothing, frontmatter types, missing title/description), then deduplicates (code +
+  file + key; a located finding replaces an unlocated one), sorts and counts.
+- `cmd/gomddoc/doctor.go`'s `runDoctor` loads a site fresh for the CLI; `runDoctorWith` reuses the MCP server's
+  provider for `gomddoc_doctor`, rebuilding config and indexes per call.
+
 ## Testing
 
 ### Coverage (as of 2026-04-08)

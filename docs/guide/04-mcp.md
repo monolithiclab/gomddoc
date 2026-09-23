@@ -269,6 +269,7 @@ your site's `docs://` content, so they never collide with your page names.
 | Resource template | `gomddoc://guide/{+path}` | A page of gomddoc's own guide (this guide), as markdown |
 | Tool | `gomddoc_capabilities` | Same document as `gomddoc://capabilities` |
 | Tool | `gomddoc_guide` | The embedded guide — see modes below |
+| Tool | `gomddoc_doctor` | Check the served site's config and content, reloaded on every call — see [Doctor](14-doctor.md) |
 | Prompt | `learn_gomddoc` | Onboarding: overview, how configuration works, commands, where to go deeper |
 
 `gomddoc_guide` picks its mode from the arguments you set:
@@ -281,8 +282,8 @@ your site's `docs://` content, so they never collide with your page names.
 Mistakes come back as tool errors that carry the fix: an unknown page lists the valid paths, an unknown section
 lists the page's heading anchors.
 
-A typical agent flow: get `learn_gomddoc` → read `gomddoc://schema/config` → write `.gomddoc/config.yml` → run
-`gomddoc info` to confirm it loads. The same data is on the command line as `gomddoc info --json` and
+A typical agent flow: get `learn_gomddoc` → read `gomddoc://schema/config` → write `.gomddoc/config.yml` → call
+`gomddoc_doctor` and fix what it reports. The same data is on the command line as `gomddoc info --json` and
 `gomddoc schema`.
 
 The theme's feature list comes from scanning its templates (`"source": "template-scan"`): names only. Their

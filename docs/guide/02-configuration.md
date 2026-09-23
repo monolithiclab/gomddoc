@@ -154,6 +154,18 @@ Print the JSON Schema (draft 2020-12) for `.gomddoc/config.yml` — the same doc
 gomddoc schema > .gomddoc/config.schema.json
 ```
 
+### `doctor`
+
+Check the site's configuration and content and report every problem — unknown keys, invalid values, unknown env vars,
+theme toggles, frontmatter types, redirect conflicts — each with its file, line and fix. Exits 1 on errors (and on
+warnings with `--strict`).
+
+```bash
+gomddoc doctor [DIR] [--json] [--strict] [-v]
+```
+
+See [Doctor](14-doctor.md) for the flags, the JSON report and every finding code.
+
 ---
 
 ## Site Configuration (`SITE`)
@@ -565,6 +577,7 @@ Everything in this page is also available from the binary itself, generated from
 structs' tags), so it cannot fall out of date with the version you run:
 
 - `gomddoc schema` — JSON Schema for `.gomddoc/config.yml`
+- `gomddoc doctor --json` — every problem in the current configuration and content, with fixes
 - `gomddoc info --json` — every setting with its config key, env var, flags and default, plus commands and theme
   features
 - Over MCP (`gomddoc mcp`): `gomddoc://schema/config`, `gomddoc://capabilities` and the `gomddoc_guide` tool — see
