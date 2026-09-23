@@ -342,19 +342,21 @@ configured MCP client, for a reader who has a gomddoc page open and nothing conf
 _gomddoc bundles its own guide and serves it to AI agents via CLI MCP, enabling agents to learn
 how to build documentation sites with gomddoc without external docs._
 
-- [ ] **Bundled guide content**: Embed the `docs/guide/` documentation into the binary via `embed.FS`.
-      This is gomddoc's own user guide — configuration, theming, features, MCP usage, etc. The
-      embedded content is self-contained and versioned with the binary.
-- [ ] **`gomddoc mcp` serves bundled guide**: When `gomddoc mcp` runs without a content directory
-      argument, it serves the bundled guide instead of requiring user content. This lets any
-      MCP-compatible agent (Claude, Cursor, Windsurf, etc.) query gomddoc's own documentation to
-      learn how to set up a site, configure themes, write frontmatter, use exclude patterns, etc.
-      With a content directory, the guide content is available alongside user content (e.g. via a
-      `guide://` resource prefix or a `gomddoc_help` tool).
-- [ ] **Agent onboarding prompt**: Add an MCP prompt (`learn_gomddoc`) that walks an agent through
-      gomddoc's capabilities — what config options exist, how themes work, what frontmatter fields
-      are available — by pulling from the bundled guide. This is the "teach me how to use you"
-      entry point.
+- [x] **Bundled guide content**: `docs/guide/` is embedded in the binary (`docs.Guide`), versioned with it.
+- [x] **`gomddoc mcp` serves bundled guide**: always, alongside the site's content rather than only when no
+      directory is given (`gomddoc mcp` defaults its directory to `.`, so "no directory" never happens). It lives
+      under `gomddoc://guide/{+path}` and the `gomddoc_guide` tool; stdio only, not on `serve`'s `/_mcp/`. See
+      `docs/specs/2026-09-23-self-documentation-design.md`.
+- [x] **Agent onboarding prompt**: `learn_gomddoc`.
+- [x] **Machine-readable capabilities**: `gomddoc info [--json]`, `gomddoc schema`, `gomddoc://capabilities`,
+      `gomddoc://schema/config` — all projected from the config structs' tags.
+- [ ] **`gomddoc doctor`** (sub-spec 2): analyze a site's configuration and report every problem (unknown keys,
+      unknown feature keys for the active theme, invalid values that `Normalize` silently replaces, missing theme,
+      exclude patterns matching nothing), human and JSON output. Consumes `config.Schema()`, `JSONSchema()` and
+      `template.ThemeFeatures`.
+- [ ] **`gomddoc help <topic>`** (sub-spec 3): render embedded guide pages in the terminal; richer per-command help.
+- [ ] **Theme manifest — parked**: themes declaring their features and vars (`theme.yml`), replacing the template
+      scan. Design and open questions in `docs/plans/2026-09-23-theme-manifest-parked.md`.
 
 **Why:** gomddoc's MCP server already lets agents query _user_ documentation. Bundling its own
 guide closes the loop — agents can learn how to _use_ gomddoc itself via the same protocol.
@@ -786,9 +788,8 @@ of a decision risks a second divergence to unwind later:
 
 ### Tier 3 — Roadmap features already in flight
 
-1. **Self-Documentation via MCP** — bundle `docs/guide/` via `embed.FS` so `gomddoc mcp` (no content
-   dir) serves gomddoc's own guide, plus a `learn_gomddoc` onboarding prompt. Contained, high-leverage
-   differentiator that dogfoods the MCP interface.
+1. **Self-Documentation, sub-specs 2–3** — `gomddoc doctor` and `gomddoc help <topic>`, on top of the shipped
+   capabilities model and embedded guide (see Self-Documentation via MCP).
 2. **Next/previous page-bottom UI** — the data plumbing is done (see Page Navigation); this is
    template integration only, now low complexity.
 3. **Developer-experience polish** — autoreload in `preview` (SSE), build-mode asset minification.

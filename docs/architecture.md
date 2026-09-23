@@ -419,7 +419,13 @@ type ServerDeps struct {
     SearchIndex     *search.Index
     NavGenerator    *navigation.Generator // the pipeline's, shared — never rebuilt here
     ExcludePatterns []string              // cfg.Site.Exclude, gates direct reads
+    SelfDocs        *SelfDocs             // gomddoc:// namespace; set by `gomddoc mcp` only
     Version         string
+}
+
+type SelfDocs struct {
+    Report capabilities.Report // built once at startup
+    Guide  fs.FS               // docs.Guide, the embedded user guide
 }
 
 type MCPServer struct {
@@ -450,6 +456,12 @@ stdio (for local clients like Claude Desktop/Cursor) and Streamable HTTP (for re
 | **Prompts** (3) | `explain_concept`, `troubleshoot`, `summarize_page` |
 
 All tools are annotated with `readOnlyHint: true` and `idempotentHint: true` for auto-approval trust.
+
+**Self-documentation (stdio only):** when `SelfDocs` is set, the server also registers `gomddoc://capabilities`,
+`gomddoc://schema/config`, `gomddoc://guide/{+path}`, the `gomddoc_capabilities` and `gomddoc_guide` tools and the
+`learn_gomddoc` prompt. `gomddoc mcp` sets it; `serve`'s `/_mcp/` server is built by `siteMCPServer`, which leaves it
+nil — a public site's readers have no use for the generator's manual. The guide's search index is built lazily
+(`sync.OnceValues`) on the first `gomddoc_guide` search. Guide reads are allowlisted by the report's page list.
 
 **Section Extraction:** The `read_section` tool provides sub-page access by heading anchor ID — a line-based
 algorithm extracts content between headings without requiring goldmark. Uses `slugifyHeading()` matching
@@ -904,6 +916,30 @@ type SiteConfig struct {
 ```
 
 Environment variables are applied via reflection-based walking of the struct tree with `env` tags.
+
+### Self-Description
+
+Every configuration fact is declared once, on the config struct field: `env`, `yaml`, and `doc` (required on every
+leaf, enforced by a test), plus `max` and `default_doc` where they apply. Everything that describes configuration is a
+projection of those tags:
+
+```text
+config struct tags ──► config.Schema() ──► config.JSONSchema() ──► `gomddoc schema`, gomddoc://schema/config
+Kong model ──► commandsFromKong ─┐
+metadata.FrontmatterFields ──────┤
+template.ThemeFeatures ──────────┼──► capabilities.Describe ──► Report ──► `gomddoc info [--json]`,
+docs.Guide (frontmatter) ────────┘                                         gomddoc://capabilities, gomddoc_capabilities
+docs.Guide ──► lazy search index ──► gomddoc_guide, gomddoc://guide/{+path}, learn_gomddoc
+```
+
+- `internal/capabilities` assembles one `Report`; `Report.JSON()` is its only serialization, so `info --json` and the
+  MCP resource are byte-identical. `Describe` never fails — load errors are reported in-band.
+- Flags are joined onto settings by env var name, or by a Kong `setting:"<key>"` tag where a flag's env var differs
+  from the setting's (`--domain`, preview's `--dir-index`).
+- Theme facts are a best-effort template scan (`.Feature "x"`, `var(--theme-x)`) until theme manifests are designed
+  (`docs/plans/2026-09-23-theme-manifest-parked.md`).
+- `docs/guide.go` (`package docs`) embeds `docs/guide/`; drift tests hold the guide to the env vars, config keys and
+  frontmatter fields the code declares.
 
 ## Testing
 

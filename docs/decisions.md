@@ -651,3 +651,35 @@ pkg@goX.Y`) rather than a `Module:` finding, do not touch `go.sum` — bump `too
 latest patch of the same minor line (`go env GOTOOLCHAIN` / `go mod edit -toolchain=goX.Y.Z`) and
 confirm every finding's `Fixed in` version is at or below it. Re-check periodically: this line
 will need bumping again as new stdlib CVEs land, same as any dependency.
+
+## Self-Description Comes From Struct Tags, Served Over Stdio Only
+
+**Context**: gomddoc should be usable by an AI harness with nothing but the binary: how configuration works (flag vs.
+env vs. file, keys, defaults), what the theme supports, and its own guide
+(`docs/specs/2026-09-23-self-documentation-design.md`).
+
+**Decision 1 — config facts live on the struct fields.** A `doc` tag on every leaf (plus `max`, `default_doc`), read by
+the same reflection walk that already derived env var names. `config.Schema()` → JSON Schema, `info`, the MCP report.
+
+- *Alternatives*: a hand-written settings table checked against the struct by a test (reads better, but every fact is
+  written twice and only the test ties them); `go generate` over the structs' doc comments (keeps descriptions as Go
+  comments, but adds a generation step and a checked-in artifact that can go stale).
+- Dropped from the spec as YAGNI: `enum` and `min` tags — no file-settable field has a closed value set, and the only
+  bounds in the code are the `Max*` constants. `config.EnvVars()` was deleted rather than kept as a projection: `info`
+  was its only caller.
+
+**Decision 2 — the gomddoc:// namespace is registered on stdio only.** `gomddoc mcp` is the operator's agent; `serve`'s
+`/_mcp/` endpoint is the site's readers' agents, and a public docs site should not advertise its generator's manual.
+
+- *Alternatives*: both transports (simpler, no nil field); a separate `gomddoc mcp --guide` mode serving the guide as
+  content (no new tools, but an agent editing a site needs two servers, and the schema has nowhere to go).
+
+**Decision 3 — theme facts by template scan, for now.** Feature keys and CSS vars are names scanned from the active
+theme (`"source": "template-scan"`). A `theme.yml` manifest was designed and parked with open questions
+(`docs/plans/2026-09-23-theme-manifest-parked.md`).
+
+**Decision 4 — flags that set a config value under a different env var carry `setting:"<key>"`.** `--domain`
+(`GOMDDOC_DOMAIN`) sets `site.meta.domain` (`GOMDDOC_SITE_META_DOMAIN`); joining flags to settings by env var alone
+missed it. Kong exposes arbitrary struct tags via `Tag.Get`. Unifying the env var names is a separate, user-visible
+change (REVIEW.md §11.1).
+

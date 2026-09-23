@@ -129,13 +129,30 @@ gomddoc mcp [DIR] [flags]
 
 ### `info`
 
-Show version, config file location, and all environment variables with their types and defaults.
+Describe gomddoc and, when run in a site, that site's configuration: config file location and whether it loaded (and
+why not), the precedence rule, every setting with its config key, environment variable, flags, default and
+description, the commands, the active theme's feature toggles and CSS variables, and the embedded guide's pages.
 
 ```bash
-gomddoc info
+gomddoc info [DIR] [--json]
 ```
 
-Run `gomddoc info` for a complete list of all `GOMDDOC_*` environment variables.
+| Flag/Arg | Env Var | Default | Description |
+|----------|---------|---------|-------------|
+| `DIR` (arg) | `GOMDDOC_SERVER_DIR` | `.` | Content directory to inspect. Git URLs are not cloned; defaults are shown |
+| `--json` | | `false` | Print the capabilities report as JSON — the same document as the MCP resource `gomddoc://capabilities` |
+
+`info` never fails on a broken site: a config that does not load is reported with the loader's reason and exit
+status 0, so it is the command to run right after editing `.gomddoc/config.yml`.
+
+### `schema`
+
+Print the JSON Schema (draft 2020-12) for `.gomddoc/config.yml` — the same document as the MCP resource
+`gomddoc://schema/config`. Point an editor's YAML language server at it for validation and completion.
+
+```bash
+gomddoc schema > .gomddoc/config.schema.json
+```
 
 ---
 
@@ -541,6 +558,17 @@ Normalize → Validate.
 The first Env pass exists only for settings no flag owns (`SERVER_HTTP_*`, `SERVER_DEV_MODE`). Flags
 stay on top because the CLI parser has already folded `GOMDDOC_*` into every flag it defines — which is
 also why that pass runs *before* the args rather than after.
+
+### Machine-Readable Configuration
+
+Everything in this page is also available from the binary itself, generated from the same source (the config
+structs' tags), so it cannot fall out of date with the version you run:
+
+- `gomddoc schema` — JSON Schema for `.gomddoc/config.yml`
+- `gomddoc info --json` — every setting with its config key, env var, flags and default, plus commands and theme
+  features
+- Over MCP (`gomddoc mcp`): `gomddoc://schema/config`, `gomddoc://capabilities` and the `gomddoc_guide` tool — see
+  [MCP Server](04-mcp.md#self-documentation)
 
 ### Environment Variable Naming
 

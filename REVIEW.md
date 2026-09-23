@@ -565,3 +565,25 @@ because every caller happens to import `negotiate` — not an enforced invariant
 correct (build writes them, serve serves them); nothing links to them, so a reader subscribing from
 any French page gets the English feed. Same class as the (fixed) §10.3 tag-link findings, one
 artifact over. Check `hreflang` and the JSON-LD `WebSite` node for the same omission while fixing it.
+
+## 11. Found During Self-Documentation Work (2026-09-23)
+
+### 11.1 LOW — two env var names for one setting
+
+**Open.** `--domain` reads `GOMDDOC_DOMAIN` but sets `site.meta.domain`, whose own variable is
+`GOMDDOC_SITE_META_DOMAIN`; preview's `--dir-index` reads `GOMDDOC_DIR_INDEX` for `site.dir_index`
+(`GOMDDOC_SITE_DIR_INDEX`). Both names work, with different precedence (the flag's is folded in by Kong before
+config loading). The capabilities report is correct thanks to the `setting:` Kong tag; unifying the names is a
+user-visible change and was left out of the self-documentation work.
+
+### 11.2 LOW — MCP search snippets carry web-UI HTML
+
+**Open.** `search_docs` and `gomddoc_guide` return the search index's snippets verbatim, which are escaped HTML with
+`<mark>` highlights (`&#39;`, `<mark>exclude</mark>`) built for the search modal. For MCP consumers they are noise;
+strip them in one place for both tools.
+
+### 11.3 FIXED — section extraction ended at `#` comments inside code fences
+
+`ExtractSection` (read_section, and now gomddoc_guide) treated a `# comment` line in a fenced YAML/shell block as a
+level-1 heading, returning half a section. Fixed with a fence-aware `scanHeadings` shared with `HeadingIDs`.
+

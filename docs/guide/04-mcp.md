@@ -256,6 +256,41 @@ concepts, and actionable takeaways.
 |----------|----------|-------------|
 | `path` | Yes | Path to the documentation page |
 
+## Self-Documentation
+
+`gomddoc mcp` also describes **gomddoc itself**, so an agent can learn how to configure and use it without external
+documentation or network access. These live under the `gomddoc://` scheme and a `gomddoc_` prefix, separate from
+your site's `docs://` content, so they never collide with your page names.
+
+| Kind | Name | Returns |
+|------|------|---------|
+| Resource | `gomddoc://capabilities` | JSON report: every setting (config key, env var, flags, default, description), config precedence, commands, frontmatter fields, the active theme's feature toggles and CSS variables, guide pages |
+| Resource | `gomddoc://schema/config` | JSON Schema for `.gomddoc/config.yml` |
+| Resource template | `gomddoc://guide/{+path}` | A page of gomddoc's own guide (this guide), as markdown |
+| Tool | `gomddoc_capabilities` | Same document as `gomddoc://capabilities` |
+| Tool | `gomddoc_guide` | The embedded guide — see modes below |
+| Prompt | `learn_gomddoc` | Onboarding: overview, how configuration works, commands, where to go deeper |
+
+`gomddoc_guide` picks its mode from the arguments you set:
+
+- no arguments — list the guide's pages (`path`, `title`, `description`)
+- `query` — search the guide; returns ranked `path`, `title`, `snippet`
+- `path` — read a page (e.g. `02-configuration.md`)
+- `path` + `section` — read one section by heading anchor (e.g. `priority-order`)
+
+Mistakes come back as tool errors that carry the fix: an unknown page lists the valid paths, an unknown section
+lists the page's heading anchors.
+
+A typical agent flow: get `learn_gomddoc` → read `gomddoc://schema/config` → write `.gomddoc/config.yml` → run
+`gomddoc info` to confirm it loads. The same data is on the command line as `gomddoc info --json` and
+`gomddoc schema`.
+
+The theme's feature list comes from scanning its templates (`"source": "template-scan"`): names only. Their
+descriptions are in [Theming & Assets](05-theming-and-assets.md).
+
+**Only on stdio.** The Streamable HTTP endpoint that `serve` mounts at `/_mcp/` exposes your site to *its
+readers'* agents and does not carry gomddoc's own manual.
+
 ## CLI Reference
 
 ```
