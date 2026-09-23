@@ -56,3 +56,6 @@ func (p *PreviewCmd) Run() error {
 
 	return runUntilCancelled(sigCtx, result.httpServer, result.adminServer)
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*PreviewCmd) Help() string { return "Guide: gomddoc help writing-workflow" }

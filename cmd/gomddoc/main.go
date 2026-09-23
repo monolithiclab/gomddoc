@@ -28,6 +28,7 @@ type CLI struct {
 	Version kong.VersionFlag `name:"version" help:"Show version and exit."`
 	Build   BuildCmd         `cmd:"" help:"Build a static site from markdown files."`
 	Doctor  DoctorCmd        `cmd:"" help:"Check a site's configuration and content; report every problem with a fix."`
+	Help    HelpCmd          `cmd:"" help:"Read gomddoc's guide: list topics, read one, or search it."`
 	Info    InfoCmd          `cmd:"" help:"Describe gomddoc: settings, env vars, flags, theme features and guide pages (--json for agents)."`
 	Init    InitCmd          `cmd:"" help:"Initialize a .gomddoc/ directory with default configuration."`
 	MCP     MCPCmd           `cmd:"" help:"Start MCP server for AI model integration (stdio). Also serves gomddoc's own guide and capabilities under gomddoc://."`

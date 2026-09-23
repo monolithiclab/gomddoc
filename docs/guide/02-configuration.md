@@ -154,6 +154,22 @@ Print the JSON Schema (draft 2020-12) for `.gomddoc/config.yml` — the same doc
 gomddoc schema > .gomddoc/config.schema.json
 ```
 
+### `help`
+
+Read this guide in the terminal: list its topics, read one (or one section of it), or search it. Output to a terminal
+goes through `$PAGER` (default `less -FRX`); piped output is plain markdown. Every command's `--help` ends with the topic
+that covers it.
+
+```bash
+gomddoc help                              # list topics
+gomddoc help configuration                # read a topic
+gomddoc help configuration priority-order # read one section
+gomddoc help --search "exclude pattern"   # search
+```
+
+Topic names are the guide's file names without number or extension (`02-configuration.md` is `configuration`). The same
+pages are served over MCP by `gomddoc_guide` and `gomddoc://guide/<path>`.
+
 ### `doctor`
 
 Check the site's configuration and content and report every problem — unknown keys, invalid values, unknown env vars,

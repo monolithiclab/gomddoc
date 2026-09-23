@@ -217,3 +217,6 @@ func plural(n int, word string) string {
 	}
 	return fmt.Sprintf("%d %ss", n, word)
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*DoctorCmd) Help() string { return "Guide: gomddoc help doctor" }

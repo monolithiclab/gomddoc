@@ -22,3 +22,6 @@ func (s *SchemaCmd) Run() error {
 	_, err := fmt.Fprintf(w, "%s\n", config.JSONSchema())
 	return err
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*SchemaCmd) Help() string { return "Guide: gomddoc help configuration schema" }

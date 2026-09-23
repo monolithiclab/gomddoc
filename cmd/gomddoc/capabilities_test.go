@@ -67,7 +67,7 @@ func TestCommandsFromKong(t *testing.T) {
 			}
 		}
 	}
-	want := []string{"build", "doctor", "info", "init", "mcp", "preview", "schema", "serve"}
+	want := []string{"build", "doctor", "help", "info", "init", "mcp", "preview", "schema", "serve"}
 	if !slices.Equal(names, want) {
 		t.Errorf("commands = %q, want %q", names, want)
 	}

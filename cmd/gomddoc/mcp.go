@@ -90,3 +90,6 @@ func (m *MCPCmd) Run(app *kong.Application) error {
 	}
 	return nil
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*MCPCmd) Help() string { return "Guide: gomddoc help mcp" }

@@ -70,10 +70,10 @@ func writeInfo(w io.Writer, r capabilities.Report) error {
 	fmt.Fprintf(&b, "  vars:     %s\n", listOrNone(r.Theme.Vars))
 	fmt.Fprintf(&b, "  docs:     %s\n", r.Theme.Docs)
 
-	b.WriteString("\nGuide (gomddoc mcp serves it as gomddoc://guide/<path>):\n")
+	b.WriteString("\nGuide (read with gomddoc help <topic>; over MCP, gomddoc://guide/<path>):\n")
 	tw = tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 	for _, p := range r.Guide {
-		fmt.Fprintf(tw, "  %s\t%s\n", p.Path, p.Title)
+		fmt.Fprintf(tw, "  %s\t%s\t%s\n", p.Name, p.Path, p.Title)
 	}
 	tw.Flush() // #nosec G104 -- strings.Builder cannot fail
 	if r.GuideError != "" {
@@ -133,3 +133,6 @@ func listOrNone(l []string) string {
 	}
 	return strings.Join(l, ", ")
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*InfoCmd) Help() string { return "Guide: gomddoc help configuration" }

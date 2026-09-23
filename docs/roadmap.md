@@ -354,7 +354,8 @@ how to build documentation sites with gomddoc without external docs._
       location and fix; `--json`, `--strict`, `-v`; the stdio `gomddoc_doctor` MCP tool. See
       `docs/specs/2026-09-23-doctor-design.md` and the guide's Doctor page.
 - [ ] **`doctor` link checking**: broken internal links and anchors, resolved the way serve and build resolve them.
-- [ ] **`gomddoc help <topic>`** (sub-spec 3): render embedded guide pages in the terminal; richer per-command help.
+- [x] **`gomddoc help <topic>`** (sub-spec 3): list, read, section and search the embedded guide in the terminal
+      (`$PAGER` on a terminal, plain markdown when piped); every command's `--help` names its guide topic.
 - [ ] **Theme manifest — parked**: themes declaring their features and vars (`theme.yml`), replacing the template
       scan. Design and open questions in `docs/plans/2026-09-23-theme-manifest-parked.md`.
 
@@ -788,8 +789,7 @@ of a decision risks a second divergence to unwind later:
 
 ### Tier 3 — Roadmap features already in flight
 
-1. **Self-Documentation, sub-spec 3 and doctor link checking** — `gomddoc help <topic>`, and broken links/anchors in
-   `gomddoc doctor` (see Self-Documentation via MCP).
+1. **Doctor link checking** — broken links and anchors in `gomddoc doctor` (see Self-Documentation via MCP).
 2. **Next/previous page-bottom UI** — the data plumbing is done (see Page Navigation); this is
    template integration only, now low complexity.
 3. **Developer-experience polish** — autoreload in `preview` (SSE), build-mode asset minification.

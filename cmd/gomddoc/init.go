@@ -94,3 +94,6 @@ func generateConfigYAML(title, theme string) ([]byte, error) {
 	}
 	return append([]byte(configHeader), body...), nil
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*InitCmd) Help() string { return "Guide: gomddoc help quickstart" }

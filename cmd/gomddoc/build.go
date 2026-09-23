@@ -860,3 +860,6 @@ func (b *BuildCmd) emitTagPages(ctx context.Context, p *Pipeline, lang string, t
 	}
 	return nil
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*BuildCmd) Help() string { return "Guide: gomddoc help deployment" }

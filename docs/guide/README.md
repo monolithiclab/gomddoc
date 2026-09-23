@@ -48,6 +48,8 @@ It is designed for:
 11. [SEO](11-seo.md) — Canonical URLs, sitemap, robots.txt, Open Graph tags, Atom feeds
 12. [Internationalization](13-internationalization.md) — Multi-language sites, translations, hreflang, language switcher
 13. [Doctor](14-doctor.md) — Check configuration and content: every problem with its location and fix
+
+The same guide ships in the binary: `gomddoc help` lists its topics, `gomddoc help <topic>` reads one.
 ### Advanced Topics
 
 - [HTTP Behavior](12-advanced/01-http-behavior.md) — Caching, compression, content negotiation

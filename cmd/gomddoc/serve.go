@@ -90,3 +90,6 @@ func loadAuthStore(path string) (*server.CredentialStore, error) {
 	}
 	return store, nil
 }
+
+// Help is the command's detail line in --help: where the guide covers it.
+func (*ServeCmd) Help() string { return "Guide: gomddoc help configuration serve" }
