@@ -54,6 +54,19 @@ func (l *Log) Has(msg string, attrs ...slog.Attr) bool {
 	return false
 }
 
+// HasContaining is Has for messages that carry values: some record at exactly
+// level whose message contains substr and which carries every one of attrs.
+func (l *Log) HasContaining(level slog.Level, substr string, attrs ...slog.Attr) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, rec := range l.records {
+		if rec.Level == level && strings.Contains(rec.Message, substr) && hasAttrs(rec, attrs) {
+			return true
+		}
+	}
+	return false
+}
+
 // String renders every captured record, for use in failure messages.
 func (l *Log) String() string {
 	l.mu.Lock()

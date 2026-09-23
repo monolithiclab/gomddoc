@@ -2,7 +2,6 @@ package config
 
 import (
 	"log/slog"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -76,23 +75,8 @@ func TestNewFromServeArgs_LogsNormalizeFindings(t *testing.T) {
 	if _, err := NewFromServeArgs(ServeArgs{Dir: t.TempDir(), Port: DefaultPort}); err != nil {
 		t.Fatal(err)
 	}
-	if !hasLogLine(log.String(), "WARN ", "WriteTimeout", "code=config.value-replaced", "key=server.http.write_timeout") {
+	if !log.HasContaining(slog.LevelWarn, "WriteTimeout", slog.String("code", "config.value-replaced"),
+		slog.String("key", "server.http.write_timeout")) {
 		t.Errorf("replacement not logged at Warn with its code:\n%s", log)
 	}
-}
-
-// hasLogLine reports whether one rendered record (logcapture renders one per
-// line) starts with prefix and contains every part.
-func hasLogLine(logged, prefix string, parts ...string) bool {
-	return slices.ContainsFunc(strings.Split(logged, "\n"), func(l string) bool {
-		if !strings.HasPrefix(l, prefix) {
-			return false
-		}
-		for _, p := range parts {
-			if !strings.Contains(l, p) {
-				return false
-			}
-		}
-		return true
-	})
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/mcp"
@@ -246,6 +247,9 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 			return err == nil
 		},
 	})
+
+	// Build logs nothing itself; its collisions and unreadable paths are logged here.
+	diag.Log(resolver.Findings())
 
 	// Every absolute site path this pipeline emits carries the language prefix:
 	// template content URLs and redirect targets alike.

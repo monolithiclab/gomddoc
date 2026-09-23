@@ -668,3 +668,32 @@ func TestSetupLanguagePipelines_SkipsLanguageOnProviderFailure(t *testing.T) {
 		t.Errorf("the skip left no warning naming fr-FR; log:\n%s", log)
 	}
 }
+
+// TestSetupLanguagePipelines_LogsPathCollision: resolve.Build reports, the
+// pipeline logs — the warning still reaches serve's log, now with its code.
+func TestSetupLanguagePipelines_LogsPathCollision(t *testing.T) {
+	// No t.Parallel: captures global slog output.
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	writeTestFile(t, srcDir, "guide.md", "# Guide")
+	writeTestFile(t, srcDir, "guide/intro.md", "# Intro")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prov.Close()
+
+	log := logcapture.Install(t, slog.LevelWarn)
+	if _, err := setupLanguagePipelines(cfg, prov, PipelineOptions{EnableMetadata: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !log.HasContaining(slog.LevelWarn, "file shadows directory", slog.String("code", "content.path-collision"),
+		slog.String("file", "guide.md")) {
+		t.Errorf("collision not logged at Warn with its code; log:\n%s", log)
+	}
+}

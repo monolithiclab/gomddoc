@@ -3,12 +3,14 @@
 package resolve
 
 import (
+	"fmt"
 	"io/fs"
-	"log/slog"
 	"maps"
 	"path"
+	"slices"
 	"strings"
 
+	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
@@ -21,6 +23,11 @@ type RendererCheck func(mimeType string) bool
 type PathResolver struct {
 	toReal  map[string]string // extensionless -> real file path
 	toClean map[string]string // real file path -> extensionless
+
+	// findings are the problems Build met: unreadable subtrees and clean-path
+	// collisions. Build does not log them; the pipeline does (diag.Log), and
+	// doctor reports them.
+	findings []diag.Finding
 }
 
 // BuildOptions configures Build. StripExtensions and Exclude are both string
@@ -79,10 +86,9 @@ func Build(fsys fs.FS, opts BuildOptions) *PathResolver {
 			// every clean URL — but say so. The symptom otherwise is 404s on
 			// clean URLs for pages that plainly exist, with nothing in the log
 			// to connect them to a permission or I/O failure at startup.
-			slog.Warn("clean-URL index: skipping unreadable path",
-				"path", p,
-				"error", err,
-			)
+			r.findings = append(r.findings, diag.New("target.read-error", p, 0, "",
+				fmt.Sprintf("clean-URL index: skipping unreadable path: %v", err),
+				"check the path's permissions; pages under it have no clean URL"))
 			return nil
 		}
 		if skip, skipErr := provider.SkipWalkEntry(p, d.Name(), d.IsDir(), opts.Exclude); skip {
@@ -113,29 +119,24 @@ func Build(fsys fs.FS, opts BuildOptions) *PathResolver {
 			newPri := extPriority[ext]
 			if newPri >= claimerPri {
 				// Current claimer has equal or higher priority; skip.
-				slog.Warn("extension collision: skipping file",
-					"file", p,
-					"clean_path", cleanPath,
-					"claimed_by_ext", claimerExt,
-				)
+				r.findings = append(r.findings, diag.New("content.path-collision", p, 0, cleanPath,
+					fmt.Sprintf("extension collision: %s is skipped, %s already serves /%s", p, cleanPath+claimerExt, cleanPath),
+					"rename one of the two files"))
 				return nil
 			}
 			// New file has higher priority; replace.
 			oldReal := cleanPath + claimerExt
 			delete(r.toClean, oldReal)
-			slog.Warn("extension collision: replacing mapping",
-				"clean_path", cleanPath,
-				"old_file", oldReal,
-				"new_file", p,
-			)
+			r.findings = append(r.findings, diag.New("content.path-collision", oldReal, 0, cleanPath,
+				fmt.Sprintf("extension collision: %s is skipped, %s serves /%s", oldReal, p, cleanPath),
+				"rename one of the two files"))
 		}
 
 		// Directory collision: file wins, log warning.
 		if dirs[cleanPath] {
-			slog.Warn("file shadows directory for clean path",
-				"file", p,
-				"directory", cleanPath,
-			)
+			r.findings = append(r.findings, diag.New("content.path-collision", p, 0, cleanPath,
+				fmt.Sprintf("file shadows directory for clean path: %s is served at /%s, so the directory %s/ has no index there", p, cleanPath, cleanPath),
+				fmt.Sprintf("move %s to %s/%s, or rename it", p, cleanPath, "README.md")))
 		}
 
 		r.toReal[cleanPath] = p
@@ -158,6 +159,11 @@ func (r *PathResolver) Resolve(cleanPath string) (realPath string, found bool) {
 func (r *PathResolver) CleanPath(realPath string) (cleanPath string, found bool) {
 	cleanPath, found = r.toClean[realPath]
 	return
+}
+
+// Findings returns the problems Build met, for the caller to log or report.
+func (r *PathResolver) Findings() []diag.Finding {
+	return slices.Clone(r.findings)
 }
 
 // IsEmpty reports whether the resolver has no mappings.

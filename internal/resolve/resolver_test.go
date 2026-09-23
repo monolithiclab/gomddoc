@@ -3,11 +3,10 @@ package resolve
 import (
 	"errors"
 	"io/fs"
-	"log/slog"
+	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
-
-	"github.com/monolithiclab/gomddoc/internal/testutil/logcapture"
 )
 
 // mockRenderer returns a RendererCheck that returns true for the given MIME types.
@@ -368,10 +367,8 @@ func (u unreadableDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 // TestResolver_UnreadableSubtreeIsLoggedAndSkipped pins both halves of Build's
 // walk-error branch — the walk continues, and it says so. See Build for why.
-//
-// No t.Parallel: slog's default logger is process-wide state.
-func TestResolver_UnreadableSubtreeIsLoggedAndSkipped(t *testing.T) {
-	log := logcapture.Install(t, slog.LevelWarn)
+func TestResolver_UnreadableSubtreeIsReportedAndSkipped(t *testing.T) {
+	t.Parallel()
 
 	fsys := unreadableDirFS{
 		FS: fstest.MapFS{
@@ -395,8 +392,47 @@ func TestResolver_UnreadableSubtreeIsLoggedAndSkipped(t *testing.T) {
 		t.Error("Resolve(\"secret/hidden\") mapped, want no mapping for an unreadable subtree")
 	}
 
-	if !log.Has("clean-URL index: skipping unreadable path",
-		slog.String("path", "secret"), slog.Any("error", errUnreadableDir)) {
-		t.Errorf("the skipped subtree left no warning naming it and the cause; log:\n%s", log)
+	got := r.Findings()
+	if len(got) != 1 || got[0].Code != "target.read-error" || got[0].File != "secret" ||
+		!strings.Contains(got[0].Message, errUnreadableDir.Error()) {
+		t.Errorf("the skipped subtree must be reported with its path and cause; findings = %+v", got)
+	}
+}
+
+func TestResolver_CollisionFindings(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		fsys fstest.MapFS
+		want []string // "code file key"
+	}{
+		{"lower-priority extension skipped", fstest.MapFS{
+			"guide.md":   {Data: []byte("# md")},
+			"guide.html": {Data: []byte("<p>html</p>")},
+		}, []string{"content.path-collision guide.md guide"}},
+		{"file shadows directory", fstest.MapFS{
+			"guide.md":       {Data: []byte("# Guide")},
+			"guide/intro.md": {Data: []byte("# Intro")},
+		}, []string{"content.path-collision guide.md guide"}},
+		{"no collision", fstest.MapFS{"a.md": {Data: []byte("# A")}}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := Build(tt.fsys, BuildOptions{
+				StripExtensions: []string{".html", ".md"},
+				HasRenderer:     mockRenderer("text/markdown", "text/html"),
+			})
+			var got []string
+			for _, f := range r.Findings() {
+				got = append(got, f.Code+" "+f.File+" "+f.Key)
+				if f.Message == "" {
+					t.Errorf("finding without a message: %+v", f)
+				}
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("findings = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
