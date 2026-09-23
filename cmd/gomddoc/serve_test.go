@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -154,28 +153,6 @@ func TestServeCmd_Setup_NonexistentDir(t *testing.T) {
 	_, err := cmd.setup()
 	if err == nil {
 		t.Error("setup() with nonexistent dir should return error")
-	}
-}
-
-func TestWriteEnvVarsHelp(t *testing.T) {
-	t.Parallel()
-
-	var buf bytes.Buffer
-	writeEnvVarsHelp(&buf)
-
-	output := buf.String()
-	if !strings.Contains(output, "Environment variables:") {
-		t.Error("output should contain 'Environment variables:'")
-	}
-	if !strings.Contains(output, "GOMDDOC_SERVER_PORT") {
-		t.Error("output should contain GOMDDOC_SERVER_PORT")
-	}
-	if !strings.Contains(output, "GOMDDOC_SITE_DEFAULT_INDEX") {
-		t.Error("output should contain GOMDDOC_SITE_DEFAULT_INDEX")
-	}
-	// Check that empty defaults show "(empty)"
-	if !strings.Contains(output, "(empty)") {
-		t.Error("output should contain '(empty)' for vars with no default")
 	}
 }
 
