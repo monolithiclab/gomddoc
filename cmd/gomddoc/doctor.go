@@ -78,10 +78,28 @@ func (d *DoctorCmd) Run(app *kong.Application) error {
 func runDoctor(ctx context.Context, app *kong.Application, dir string, gitCfg provider.GitProviderConfig, environ []string, verbose bool) doctor.Report {
 	ins := config.Inspect(dir)
 	cfg := ins.Config
+	if !config.IsGitURL(dir) {
+		// os.DirFS opens anything, so a missing directory would only surface as
+		// unreadable-path findings deep in the walk; check it up front.
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			in := doctorInput(app, dir, ins, environ)
+			in.Unreachable = err
+			if err == nil {
+				in.Unreachable = fmt.Errorf("%s is not a directory", dir)
+			}
+			return doctor.Run(ctx, in, doctor.Options{Verbose: verbose})
+		}
+	}
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, gitCfg)
 	if err != nil {
 		in := doctorInput(app, dir, ins, environ)
-		in.Unreachable = err
+		if config.IsGitURL(dir) {
+			in.Unreachable = err // the clone failed
+		} else {
+			// The directory is there; a config value (an empty default_index)
+			// stopped the provider. Report the config, skip the content.
+			in.Note = joinNote(in.Note, "content not checked: "+err.Error())
+		}
 		return doctor.Run(ctx, in, doctor.Options{Verbose: verbose})
 	}
 	defer func() { _ = prov.Close() }()
@@ -108,6 +126,13 @@ func runDoctorWith(ctx context.Context, app *kong.Application, dir string, ins c
 		in.Pipelines = append(in.Pipelines, doctor.PipelineView{Lang: lang, Root: p.ContentRoot, Exclude: p.Exclude})
 	}
 	return doctor.Run(ctx, in, doctor.Options{Verbose: verbose})
+}
+
+func joinNote(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
 }
 
 func doctorInput(app *kong.Application, dir string, ins config.Inspection, environ []string) doctor.Input {

@@ -196,3 +196,48 @@ func TestDoctorLocation(t *testing.T) {
 		t.Error("exitCodeError text")
 	}
 }
+
+func doctorJSON(t *testing.T, dir string) (doctor.Report, int) {
+	t.Helper()
+	out, code := runDoctorCmd(t, DoctorCmd{Dir: dir, JSON: true})
+	var r doctor.Report
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("not a Report: %v\n%s", err, out)
+	}
+	return r, code
+}
+
+func codes(r doctor.Report) []string {
+	var out []string
+	for _, f := range r.Findings {
+		out = append(out, f.Code+" "+f.Key)
+	}
+	return out
+}
+
+// TestDoctor_Target: a missing directory or a file is unreachable; a provider
+// that fails on a config value is not — the config findings must show.
+func TestDoctor_Target(t *testing.T) {
+	t.Parallel()
+	gone, code := doctorJSON(t, t.TempDir()+"/absent")
+	if got := codes(gone); code != 1 || !slices.Equal(got, []string{"target.unreachable "}) {
+		t.Errorf("missing dir: exit %d findings %q", code, got)
+	}
+
+	file := doctorSite(t, map[string]string{"README.md": cleanPage})
+	notDir, _ := doctorJSON(t, file+"/README.md")
+	if got := codes(notDir); !slices.Equal(got, []string{"target.unreachable "}) {
+		t.Errorf("file as target: %q", got)
+	}
+
+	badIndex := doctorSite(t, map[string]string{"README.md": cleanPage,
+		".gomddoc/config.yml": "default_index: \"\"\nbogus: 1\nedit_url: ftp://x/\n"})
+	r, code := doctorJSON(t, badIndex)
+	want := []string{"config.invalid-value default_index", "config.unknown-key bogus", "config.invalid-value edit_url"} // by line
+	if got := codes(r); code != 1 || !slices.Equal(got, want) {
+		t.Errorf("empty default_index: exit %d findings %q, want %q", code, got, want)
+	}
+	if !strings.Contains(r.Note, "content not checked") {
+		t.Errorf("note = %q, want it to say the content was not checked", r.Note)
+	}
+}
