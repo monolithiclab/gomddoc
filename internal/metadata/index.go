@@ -390,26 +390,43 @@ var fmDelimiter = []byte("---")
 // Frontmatter must be delimited by --- at the start of the file.
 // Returns nil, nil if no frontmatter is found.
 func extractFrontmatter(content []byte) (map[string]any, error) {
-	if !bytes.HasPrefix(bytes.TrimLeftFunc(content, isSpace), fmDelimiter) {
+	yamlContent, ok := FrontmatterBlock(content)
+	if !ok {
 		return nil, nil
+	}
+	var result map[string]any
+	if err := yaml.Unmarshal(yamlContent, &result); err != nil {
+		return nil, fmt.Errorf("parsing frontmatter YAML: %w", err)
+	}
+	return result, nil
+}
+
+// FrontmatterBlock returns the YAML between a page's --- delimiters and
+// whether there was a terminated block. The opening delimiter is the file's
+// first line, so line 1 of the returned YAML is line 2 of the file — callers
+// reporting YAML lines (doctor) add one.
+func FrontmatterBlock(content []byte) ([]byte, bool) {
+	if !bytes.HasPrefix(bytes.TrimLeftFunc(content, isSpace), fmDelimiter) {
+		return nil, false
 	}
 
 	// Find opening delimiter
 	start := bytes.Index(content, fmDelimiter)
-	if start < 0 {
-		return nil, nil
-	}
 	afterOpen := start + len(fmDelimiter)
 
-	// Must be followed by newline
-	if afterOpen >= len(content) || (content[afterOpen] != '\n' && content[afterOpen] != '\r') {
-		return nil, nil
+	// Must be followed by a line ending, consumed whole: a CRLF file must not
+	// leave its \n as a blank first YAML line, or every reported line is off.
+	switch {
+	case bytes.HasPrefix(content[afterOpen:], []byte("\r\n")):
+		afterOpen += 2
+	case bytes.HasPrefix(content[afterOpen:], []byte("\n")), bytes.HasPrefix(content[afterOpen:], []byte("\r")):
+		afterOpen++
+	default:
+		return nil, false
 	}
-	afterOpen++ // skip newline
 
 	// Find closing delimiter
 	rest := content[afterOpen:]
-	closeIdx := -1
 	for i := 0; i < len(rest); {
 		lineEnd := bytes.IndexByte(rest[i:], '\n')
 		var line []byte
@@ -420,26 +437,14 @@ func extractFrontmatter(content []byte) (map[string]any, error) {
 		}
 		line = bytes.TrimRight(line, "\r")
 		if bytes.Equal(bytes.TrimSpace(line), fmDelimiter) {
-			closeIdx = i
-			break
+			return rest[:i], true
 		}
 		if lineEnd < 0 {
 			break
 		}
 		i += lineEnd + 1
 	}
-
-	if closeIdx < 0 {
-		return nil, nil
-	}
-
-	yamlContent := rest[:closeIdx]
-	var result map[string]any
-	if err := yaml.Unmarshal(yamlContent, &result); err != nil {
-		return nil, fmt.Errorf("parsing frontmatter YAML: %w", err)
-	}
-
-	return result, nil
+	return nil, false
 }
 
 func isSpace(r rune) bool {
