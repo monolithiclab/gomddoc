@@ -52,6 +52,7 @@ gomddoc processes these frontmatter fields with special behavior:
 | `description` | string | Page description — used in `<meta name="description">`, Open Graph, and search results |
 | `tags` | array | Page tags — normalized to lowercase, queryable via `/api/tags` endpoint |
 | `date` | string | Publication date (`YYYY-MM-DD`) — included in tags API responses |
+| `author` | string | Author name — emitted as the `author` of the page's JSON-LD structured data |
 | `og_type` | string | Open Graph type (defaults to `article`) — controls `<meta property="og:type">` |
 | `robots` | string | Controls `<meta name="robots">` for this page (e.g., `noindex`). Pages with `noindex` are excluded from sitemap and feed |
 | `lang` | string | BCP 47 language code — overrides the site-level `language` for this page's `<html lang>` attribute |
