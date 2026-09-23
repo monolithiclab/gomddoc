@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"errors"
 	"io/fs"
 	"path"
 	"slices"
@@ -66,10 +67,24 @@ func capabilitiesInput(app *kong.Application, dir string, cfg *config.Config, cf
 		Version: version, Dir: dir, Config: cfg, ConfigErr: cfgErr,
 		Commands: commandsFromKong(app), Guide: docs.Guide, Assets: embeddedAssets,
 	}
+	in.FileStatus = capabilities.FileNotInspected
 	if contentRoot != nil {
-		_, err := fs.Stat(contentRoot, path.Join(config.ConfigDirName, config.ConfigFileName))
-		in.FileFound = err == nil
+		in.FileStatus = configFileStatus(contentRoot)
 		in.Assets = assets.BuildFS(contentRoot, embeddedAssets)
 	}
 	return in
+}
+
+// configFileStatus says whether contentRoot has a config file — telling an
+// absent file apart from a stat that failed for some other reason.
+func configFileStatus(contentRoot fs.FS) string {
+	_, err := fs.Stat(contentRoot, path.Join(config.ConfigDirName, config.ConfigFileName))
+	switch {
+	case err == nil:
+		return capabilities.FileFound
+	case errors.Is(err, fs.ErrNotExist):
+		return capabilities.FileNotFound
+	default:
+		return capabilities.FileUnknown
+	}
 }

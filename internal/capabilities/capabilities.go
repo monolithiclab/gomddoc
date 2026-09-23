@@ -32,16 +32,26 @@ const (
 	GuideURIPrefix  = "gomddoc://guide/"
 )
 
+// Values of ConfigInfo.FileStatus. "Not found" and "not inspected" are kept
+// apart on purpose: info on a Git URL never looks, and must not claim the
+// repository has no config file.
+const (
+	FileFound        = "found"
+	FileNotFound     = "not_found"
+	FileNotInspected = "not_inspected"
+	FileUnknown      = "unknown" // the stat failed for a reason other than absence
+)
+
 // Input is everything Describe needs. Config, Assets and Guide may be nil.
 type Input struct {
-	Version   string
-	Dir       string
-	Config    *config.Config // nil when it could not be loaded
-	ConfigErr error          // why it could not; reported as text
-	FileFound bool           // .gomddoc/config.yml exists under Dir
-	Commands  []Command
-	Assets    fs.FS // asset FS as the renderer sees it; nil reports the theme unavailable
-	Guide     fs.FS
+	Version    string
+	Dir        string
+	Config     *config.Config // nil when it could not be loaded
+	ConfigErr  error          // why it could not; reported as text
+	FileStatus string         // one of the File* constants; "" means FileNotInspected
+	Commands   []Command
+	Assets     fs.FS // asset FS as the renderer sees it; nil reports the theme unavailable
+	Guide      fs.FS
 }
 
 // Command is one CLI subcommand.
@@ -77,7 +87,7 @@ type Flag struct {
 type ConfigInfo struct {
 	Dir        string   `json:"dir"`
 	File       string   `json:"file"`
-	FileFound  bool     `json:"file_found"`
+	FileStatus string   `json:"file_status"` // found | not_found | not_inspected | unknown
 	FileKeys   string   `json:"file_keys"`
 	Precedence []string `json:"precedence"`
 	Loaded     bool     `json:"loaded"`
@@ -120,7 +130,7 @@ func Describe(in Input) Report {
 		Config: ConfigInfo{
 			Dir:        in.Dir,
 			File:       config.ConfigDirName + "/" + config.ConfigFileName,
-			FileFound:  in.FileFound,
+			FileStatus: cmp.Or(in.FileStatus, FileNotInspected),
 			FileKeys:   config.FileKeysNote,
 			Precedence: slices.Clone(config.Precedence),
 			Loaded:     in.Config != nil,

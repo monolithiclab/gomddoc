@@ -70,10 +70,10 @@ func TestDescribe_SettingTagWinsOverEnv(t *testing.T) {
 
 func TestDescribe_ConfigBlock(t *testing.T) {
 	t.Parallel()
-	loaded := Describe(Input{Dir: "site", Config: config.New(), FileFound: true, Guide: testGuide})
+	loaded := Describe(Input{Dir: "site", Config: config.New(), FileStatus: FileFound, Guide: testGuide})
 	failed := Describe(Input{Dir: "site", ConfigErr: errors.New("config.yml: field nope not found"), Guide: testGuide})
 
-	if !loaded.Config.Loaded || loaded.Config.LoadError != "" || !loaded.Config.FileFound || loaded.Config.Dir != "site" {
+	if !loaded.Config.Loaded || loaded.Config.LoadError != "" || loaded.Config.FileStatus != FileFound || loaded.Config.Dir != "site" {
 		t.Errorf("loaded: %+v", loaded.Config)
 	}
 	if failed.Config.Loaded || failed.Config.LoadError != "config.yml: field nope not found" {

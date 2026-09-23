@@ -83,7 +83,7 @@ func TestMCPCmd_Run_ServesConfiguredContentOverStdio(t *testing.T) {
 	if err := json.Unmarshal([]byte(res.Contents[0].Text), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.Config.Dir != dir || !report.Config.FileFound || report.Theme.Source != "template-scan" || len(report.Guide) < 15 {
+	if report.Config.Dir != dir || report.Config.FileStatus != capabilities.FileFound || report.Theme.Source != "template-scan" || len(report.Guide) < 15 {
 		t.Errorf("capabilities over stdio: config=%+v theme=%+v guide pages=%d", report.Config, report.Theme.ThemeInfo, len(report.Guide))
 	}
 	tools, err := session.ListTools(ctx, nil)

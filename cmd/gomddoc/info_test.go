@@ -40,14 +40,14 @@ func TestInfo_JSON(t *testing.T) {
 		name       string
 		dir        func(t *testing.T) string
 		wantLoaded bool
-		wantFound  bool
+		wantStatus string
 		wantErr    string // substring of load_error; "" = none
 		wantSource string
 	}{
-		{"site with config", func(t *testing.T) string { return siteWithConfig(t, "theme: {name: default}\n") }, true, true, "", "template-scan"},
-		{"no config file", func(t *testing.T) string { return t.TempDir() }, true, false, "", "template-scan"},
-		{"broken config", func(t *testing.T) string { return siteWithConfig(t, "nope: 1\n") }, false, true, "nope", "template-scan"},
-		{"git URL", func(*testing.T) string { return "git+https://example.com/repo.git" }, false, false, "not inspected", "template-scan"},
+		{"site with config", func(t *testing.T) string { return siteWithConfig(t, "theme: {name: default}\n") }, true, capabilities.FileFound, "", "template-scan"},
+		{"no config file", func(t *testing.T) string { return t.TempDir() }, true, capabilities.FileNotFound, "", "template-scan"},
+		{"broken config", func(t *testing.T) string { return siteWithConfig(t, "nope: 1\n") }, false, capabilities.FileFound, "nope", "template-scan"},
+		{"git URL", func(*testing.T) string { return "git+https://example.com/repo.git" }, false, capabilities.FileNotInspected, "not inspected", "template-scan"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestInfo_JSON(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &r); err != nil {
 				t.Fatalf("info --json is not a Report: %v\n%s", err, out)
 			}
-			if r.Config.Loaded != tt.wantLoaded || r.Config.FileFound != tt.wantFound || r.Config.Dir != dir {
+			if r.Config.Loaded != tt.wantLoaded || r.Config.FileStatus != tt.wantStatus || r.Config.Dir != dir {
 				t.Errorf("config = %+v", r.Config)
 			}
 			if (tt.wantErr == "") != (r.Config.LoadError == "") || !strings.Contains(r.Config.LoadError, tt.wantErr) {
@@ -92,7 +92,7 @@ func TestInfo_Human(t *testing.T) {
 	out := runInfo(t, siteWithConfig(t, "nope: 1\n"), false)
 	for _, want := range []string{
 		"Precedence: flag > env > file > default",
-		"not loaded:",             // the reason is shown
+		"(found), not loaded:",    // file status and the reason
 		"nope",                    // ...and it is the loader's reason
 		"GOMDDOC_SITE_THEME_NAME", // a setting's env var
 		"site.meta.domain",        // a setting key
@@ -108,5 +108,15 @@ func TestInfo_Human(t *testing.T) {
 	}
 	if strings.HasPrefix(strings.TrimSpace(out), "{") {
 		t.Error("human output is JSON")
+	}
+}
+
+// TestInfo_GitURLNotInspected: info does not clone, so it must not claim the
+// repository has no config file.
+func TestInfo_GitURLNotInspected(t *testing.T) {
+	t.Parallel()
+	out := runInfo(t, "git+https://example.com/repo.git", false)
+	if !strings.Contains(out, "(not inspected)") || strings.Contains(out, "(not found)") {
+		t.Errorf("git URL config line should say not inspected:\n%s", out[:min(len(out), 400)])
 	}
 }

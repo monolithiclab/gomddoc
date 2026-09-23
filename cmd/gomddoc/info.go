@@ -86,10 +86,7 @@ func writeInfo(w io.Writer, r capabilities.Report) error {
 }
 
 func writeConfigSection(b *strings.Builder, c capabilities.ConfigInfo) {
-	found := "not found"
-	if c.FileFound {
-		found = "found"
-	}
+	found := strings.ReplaceAll(c.FileStatus, "_", " ")
 	status := "loaded"
 	if !c.Loaded {
 		status = "not loaded: " + c.LoadError

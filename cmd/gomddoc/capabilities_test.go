@@ -89,14 +89,14 @@ func TestCapabilitiesInput(t *testing.T) {
 	t.Parallel()
 	withFile := fstest.MapFS{".gomddoc/config.yml": {Data: []byte("theme: {name: default}\n")}}
 	in := capabilitiesInput(testModel(t), "x", config.New(), nil, withFile)
-	if !in.FileFound || in.Dir != "x" || in.Version != version || in.Guide == nil || in.Assets == nil || len(in.Commands) == 0 {
+	if in.FileStatus != capabilities.FileFound || in.Dir != "x" || in.Version != version || in.Guide == nil || in.Assets == nil || len(in.Commands) == 0 {
 		t.Errorf("with file: %+v", in)
 	}
-	if in := capabilitiesInput(testModel(t), "x", config.New(), nil, fstest.MapFS{}); in.FileFound {
-		t.Error("FileFound = true with no config file")
+	if in := capabilitiesInput(testModel(t), "x", config.New(), nil, fstest.MapFS{}); in.FileStatus != capabilities.FileNotFound {
+		t.Errorf("no config file: FileStatus = %q", in.FileStatus)
 	}
 	// No content root (a git URL info will not clone): embedded assets only.
-	if in := capabilitiesInput(testModel(t), "git+https://x/y.git", nil, nil, nil); in.FileFound || in.Assets == nil {
+	if in := capabilitiesInput(testModel(t), "git+https://x/y.git", nil, nil, nil); in.FileStatus != capabilities.FileNotInspected || in.Assets == nil {
 		t.Errorf("nil root: %+v", in)
 	}
 }
