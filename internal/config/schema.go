@@ -1,8 +1,12 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -115,4 +119,72 @@ func settingDefault(fv reflect.Value) any {
 		return nil
 	}
 	return fv.Interface()
+}
+
+// JSONSchema returns a JSON Schema (draft 2020-12) for .gomddoc/config.yml,
+// projected from Schema. The document is static, so it is built once; each
+// call returns a copy because the caller owns what it is handed.
+func JSONSchema() []byte { return slices.Clone(jsonSchema()) }
+
+var jsonSchema = sync.OnceValue(func() []byte {
+	root := schemaObject()
+	root["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+	root["$id"] = "gomddoc://schema/config"
+	root["title"] = "gomddoc site configuration (.gomddoc/config.yml)"
+	root["description"] = "Unknown keys are rejected at load time. " + FileKeysNote
+	for _, s := range Schema() {
+		if s.FileKey == "" {
+			continue
+		}
+		parts := strings.Split(s.FileKey, ".")
+		parent := root
+		for _, p := range parts[:len(parts)-1] {
+			props := parent["properties"].(map[string]any)
+			child, ok := props[p].(map[string]any)
+			if !ok {
+				child = schemaObject()
+				props[p] = child
+			}
+			parent = child
+		}
+		parent["properties"].(map[string]any)[parts[len(parts)-1]] = settingSchema(s)
+	}
+	data, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		panic("config: marshal JSON Schema: " + err.Error()) // maps of strings, bools and slices cannot fail
+	}
+	return data
+})
+
+func schemaObject() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}}
+}
+
+func settingSchema(s Setting) map[string]any {
+	m := map[string]any{"description": s.Description}
+	switch s.Type {
+	case "string":
+		m["type"] = "string"
+	case "bool":
+		m["type"] = "boolean"
+	case "[]string":
+		m["type"] = "array"
+		m["items"] = map[string]any{"type": "string"}
+	case "map[string]string":
+		m["type"] = "object"
+		m["additionalProperties"] = map[string]any{"type": "string"}
+	case "map[string]bool":
+		m["type"] = "object"
+		m["propertyNames"] = map[string]any{"pattern": featureKeyPattern.String()}
+		m["additionalProperties"] = map[string]any{"type": "boolean"}
+	default:
+		// A new file-settable type needs a mapping here; the JSONSchema tests panic first.
+		panic(fmt.Sprintf("config: no JSON Schema mapping for %s (%s)", s.Key, s.Type))
+	}
+	if s.DefaultNote != "" {
+		m["description"] = s.Description + " Default: " + s.DefaultNote + "."
+	} else if s.Default != nil {
+		m["default"] = s.Default
+	}
+	return m
 }
