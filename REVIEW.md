@@ -572,9 +572,10 @@ artifact over. Check `hreflang` and the JSON-LD `WebSite` node for the same omis
 
 **Open.** `--domain` reads `GOMDDOC_DOMAIN` but sets `site.meta.domain`, whose own variable is
 `GOMDDOC_SITE_META_DOMAIN`; preview's `--dir-index` reads `GOMDDOC_DIR_INDEX` for `site.dir_index`
-(`GOMDDOC_SITE_DIR_INDEX`). Both names work, with different precedence (the flag's is folded in by Kong before
-config loading). The capabilities report is correct thanks to the `setting:` Kong tag; unifying the names is a
-user-visible change and was left out of the self-documentation work.
+(`GOMDDOC_SITE_DIR_INDEX`). Both names work; the flag's variable is folded in by Kong and therefore takes flag
+precedence. The capabilities report names the right flag for each setting through the `setting:` Kong tag; unifying
+the names is a user-visible change and was left out of the self-documentation work. (`--dir-index` itself used to be
+applied *before* the config file, so `dir_index: false` in config.yml beat the flag — fixed alongside.)
 
 ### 11.2 LOW — MCP search snippets carry web-UI HTML
 

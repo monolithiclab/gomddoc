@@ -1377,3 +1377,31 @@ func TestNewFromDir_TitleFromContentDir(t *testing.T) {
 		t.Errorf("title = %q, want %q (from the content dir, not the cwd)", cfg.Site.Meta.Title, want)
 	}
 }
+
+// TestNewFromServeArgs_DirIndexFlagBeatsFile: preview's --dir-index is a flag,
+// and flags win (config.Precedence). It used to be applied before the config
+// file loaded, so `dir_index: false` in config.yml silently beat it.
+func TestNewFromServeArgs_DirIndexFlagBeatsFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ConfigDirName), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ConfigDirName, ConfigFileName), []byte("dir_index: false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		flag, want bool
+	}{
+		{true, true},   // the flag wins
+		{false, false}, // no flag: the file's value stands
+	} {
+		cfg, err := NewFromServeArgs(ServeArgs{Dir: dir, Port: DefaultPort, DirIndex: tt.flag})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Site.DirIndex != tt.want {
+			t.Errorf("--dir-index=%v with dir_index: false in the file: DirIndex = %v, want %v", tt.flag, cfg.Site.DirIndex, tt.want)
+		}
+	}
+}

@@ -157,7 +157,6 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 	cfg.Server.Port = args.Port
 	cfg.Server.AdminPort = args.AdminPort
 	cfg.Server.Pprof = args.Pprof
-	cfg.Site.DirIndex = args.DirIndex
 	// DevMode is OR'd, not assigned: it is the one field with no flag on any command,
 	// so args.DevMode is false for `serve` even when the env var asked for dev mode.
 	cfg.Server.DevMode = cfg.Server.DevMode || args.DevMode
@@ -172,6 +171,11 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 
 	// 5. Re-apply environment overrides for site-level settings (env > file)
 	cfg.Site.ApplyEnvOverrides()
+
+	// DirIndex is the one Site field a flag sets (preview's --dir-index), so it is
+	// applied after the file and env, or they would beat the flag. OR'd like
+	// DevMode: a bool flag cannot say "explicitly false", only "not given".
+	cfg.Site.DirIndex = cfg.Site.DirIndex || args.DirIndex
 
 	slog.Info("Loaded site configuration",
 		slog.String("title", cfg.Site.Meta.Title),
