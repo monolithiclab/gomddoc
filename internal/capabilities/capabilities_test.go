@@ -9,6 +9,7 @@ import (
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/guide"
 	"github.com/monolithiclab/gomddoc/internal/template"
 )
 
@@ -102,10 +103,10 @@ func TestDescribe_ActiveThemeFromConfig(t *testing.T) {
 func TestDescribe_Guide(t *testing.T) {
 	t.Parallel()
 	r := Describe(Input{Guide: testGuide})
-	want := []GuidePage{
-		{"02-configuration.md", "Configuration", "Settings"},
-		{"12-advanced/01-http.md", "HTTP", "Caching"},
-		{"README.md", "Guide", "Start here"},
+	want := []guide.Topic{ // reading order, as gomddoc help names them
+		{Name: "overview", Path: "README.md", Title: "Guide", Description: "Start here"},
+		{Name: "configuration", Path: "02-configuration.md", Title: "Configuration", Description: "Settings"},
+		{Name: "http", Path: "12-advanced/01-http.md", Title: "HTTP", Description: "Caching"},
 	}
 	if !slices.Equal(r.Guide, want) || r.GuideError != "" {
 		t.Errorf("guide = %+v (err %q)\nwant %+v", r.Guide, r.GuideError, want)

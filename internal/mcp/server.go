@@ -18,12 +18,12 @@ import (
 	"context"
 	"io/fs"
 	"net/http"
-	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/doctor"
+	"github.com/monolithiclab/gomddoc/internal/guide"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/search"
@@ -78,10 +78,10 @@ type MCPServer struct {
 	server *mcp.Server
 	deps   ServerDeps
 
-	// guideSearch builds the guide's search index on first use and shares
-	// it: sync.OnceValues, so a cold burst of gomddoc_guide calls builds it
-	// once. nil unless SelfDocs is set.
-	guideSearch func() (*search.Index, error)
+	// guide is the embedded guide (nil unless SelfDocs is set); guideErr is
+	// why it could not be indexed, reported by every tool that needs it.
+	guide    *guide.Guide
+	guideErr error
 }
 
 // NewServer creates a new MCP server wired to gomddoc internals.
@@ -104,8 +104,7 @@ func NewServer(deps ServerDeps) *MCPServer {
 	s.registerTools()
 	s.registerPrompts()
 	if deps.SelfDocs != nil {
-		guide := deps.SelfDocs.Guide
-		s.guideSearch = sync.OnceValues(func() (*search.Index, error) { return buildGuideSearch(guide) })
+		s.guide, s.guideErr = guide.New(deps.SelfDocs.Guide)
 		s.registerSelfDocs()
 	}
 	return s

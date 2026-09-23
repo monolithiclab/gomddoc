@@ -13,13 +13,13 @@ package capabilities
 
 import (
 	"cmp"
-	"context"
 	"encoding/json"
 	"io/fs"
 	"slices"
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/guide"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/template"
 )
@@ -101,13 +101,6 @@ type ThemeReport struct {
 	Docs string `json:"docs"`
 }
 
-// GuidePage is one page of the embedded guide.
-type GuidePage struct {
-	Path        string `json:"path"` // "02-configuration.md", no leading slash
-	Title       string `json:"title"`
-	Description string `json:"description"`
-}
-
 // Report is gomddoc's self-description.
 type Report struct {
 	Version     string                      `json:"version"`
@@ -116,7 +109,7 @@ type Report struct {
 	Commands    []Command                   `json:"commands"`
 	Frontmatter []metadata.FrontmatterField `json:"frontmatter"`
 	Theme       ThemeReport                 `json:"theme"`
-	Guide       []GuidePage                 `json:"guide"`
+	Guide       []guide.Topic               `json:"guide"`
 	GuideError  string                      `json:"guide_error,omitempty"`
 }
 
@@ -152,7 +145,7 @@ func Describe(in Input) Report {
 	}
 	r.Theme = ThemeReport{ThemeInfo: info, Docs: GuideURIPrefix + "05-theming-and-assets.md"}
 
-	pages, err := guidePages(in.Guide)
+	pages, err := guideTopics(in.Guide)
 	r.Guide = pages
 	if err != nil {
 		r.GuideError = err.Error()
@@ -197,20 +190,16 @@ func joinFlags(settings []config.Setting, cmds []Command) {
 	}
 }
 
-func guidePages(guide fs.FS) ([]GuidePage, error) {
-	pages := []GuidePage{}
-	if guide == nil {
-		return pages, nil
+// guideTopics lists the embedded guide's pages, as `gomddoc help` names them.
+func guideTopics(fsys fs.FS) ([]guide.Topic, error) {
+	if fsys == nil {
+		return []guide.Topic{}, nil
 	}
-	idx, err := metadata.BuildIndex(context.Background(), guide, nil)
+	g, err := guide.New(fsys)
 	if err != nil {
-		return pages, err
+		return []guide.Topic{}, err
 	}
-	for _, p := range idx.AllPages() {
-		pages = append(pages, GuidePage{strings.TrimPrefix(p.Path, "/"), p.Title, p.Description})
-	}
-	slices.SortFunc(pages, func(a, b GuidePage) int { return cmp.Compare(a.Path, b.Path) })
-	return pages, nil
+	return g.Topics(), nil
 }
 
 // JSON is the one serialization of a Report; every transport uses it.

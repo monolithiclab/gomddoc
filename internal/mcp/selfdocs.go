@@ -6,16 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
-	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
-	"github.com/monolithiclab/gomddoc/internal/metadata"
-	"github.com/monolithiclab/gomddoc/internal/search"
+	"github.com/monolithiclab/gomddoc/internal/guide"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
@@ -78,14 +75,16 @@ func (s *MCPServer) registerSelfDocs() {
 	}, s.handleLearnGomddoc)
 }
 
-// guidePage reads a guide page by path. The report's page list is the
-// allowlist: a path that is not a listed page is not found, whatever the
-// fs.FS would make of it.
-func (s *MCPServer) guidePage(p string) ([]byte, error) {
-	if len(p) > maxArgLen || !slices.ContainsFunc(s.deps.SelfDocs.Report.Guide, func(g capabilities.GuidePage) bool { return g.Path == p }) {
-		return nil, fs.ErrNotExist
+// guidePage reads a guide page (frontmatter stripped) by path or topic.
+// The guide's topic list is the allowlist; see internal/guide.
+func (s *MCPServer) guidePage(ref string) ([]byte, guide.Topic, error) {
+	if s.guide == nil {
+		return nil, guide.Topic{}, s.guideErr
 	}
-	return fs.ReadFile(s.deps.SelfDocs.Guide, p)
+	if len(ref) > maxArgLen {
+		return nil, guide.Topic{}, guide.ErrUnknownTopic
+	}
+	return s.guide.Page(ref)
 }
 
 func (s *MCPServer) handleCapabilitiesResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
@@ -104,7 +103,7 @@ func (s *MCPServer) handleSchemaResource(_ context.Context, req *mcp.ReadResourc
 
 func (s *MCPServer) handleGuideResource(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 	uri := req.Params.URI
-	content, err := s.guidePage(strings.TrimPrefix(uri, capabilities.GuideURIPrefix))
+	body, _, err := s.guidePage(strings.TrimPrefix(uri, capabilities.GuideURIPrefix))
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(uri)
 	}
@@ -112,7 +111,7 @@ func (s *MCPServer) handleGuideResource(_ context.Context, req *mcp.ReadResource
 		Contents: []*mcp.ResourceContents{{
 			URI:      uri,
 			MIMEType: "text/markdown",
-			Text:     string(text.StripFrontmatter(content)),
+			Text:     string(body),
 		}},
 	}, nil
 }
@@ -134,25 +133,6 @@ type GuideInput struct {
 	Limit   int    `json:"limit,omitempty" jsonschema:"maximum search results (default 10, max 50)"`
 }
 
-type guideHit struct {
-	Path    string `json:"path"`
-	Title   string `json:"title"`
-	Snippet string `json:"snippet"`
-}
-
-func buildGuideSearch(guide fs.FS) (*search.Index, error) {
-	ctx := context.Background()
-	meta, err := metadata.BuildIndex(ctx, guide, nil)
-	if err != nil {
-		return nil, fmt.Errorf("guide metadata index: %w", err)
-	}
-	idx, err := search.BuildIndex(ctx, guide, meta, nil)
-	if err != nil {
-		return nil, fmt.Errorf("guide search index: %w", err)
-	}
-	return idx, nil
-}
-
 func (s *MCPServer) handleGuideTool(_ context.Context, _ *mcp.CallToolRequest, in GuideInput) (*mcp.CallToolResult, any, error) {
 	switch {
 	case in.Query != "" && in.Path != "":
@@ -163,8 +143,10 @@ func (s *MCPServer) handleGuideTool(_ context.Context, _ *mcp.CallToolRequest, i
 		return s.guideSearchResult(in.Query, in.Limit), nil, nil
 	case in.Path != "":
 		return s.guideReadResult(in.Path, in.Section), nil, nil
+	case s.guide == nil:
+		return errorResult(s.guideErr.Error()), nil, nil
 	default:
-		return jsonTextResult(s.deps.SelfDocs.Report.Guide), nil, nil
+		return jsonTextResult(s.guide.Topics()), nil, nil
 	}
 }
 
@@ -176,40 +158,40 @@ func (s *MCPServer) guideSearchResult(query string, limit int) *mcp.CallToolResu
 	if limit == 0 {
 		limit = 10
 	}
-	idx, err := s.guideSearch()
+	if s.guide == nil {
+		return errorResult(s.guideErr.Error())
+	}
+	hits, err := s.guide.Search(query, limit)
 	if err != nil {
 		return errorResult(err.Error())
-	}
-	hits := []guideHit{}
-	for _, r := range idx.Search(query, limit) {
-		hits = append(hits, guideHit{strings.TrimPrefix(r.Path, "/"), r.Title, r.Snippet})
 	}
 	return jsonTextResult(hits)
 }
 
 func (s *MCPServer) guideReadResult(p, section string) *mcp.CallToolResult {
-	content, err := s.guidePage(p)
-	if err != nil {
-		paths := make([]string, 0, len(s.deps.SelfDocs.Report.Guide))
-		for _, g := range s.deps.SelfDocs.Report.Guide {
-			paths = append(paths, g.Path)
+	body, page, err := s.guidePage(p)
+	if errors.Is(err, guide.ErrUnknownTopic) {
+		var paths []string
+		for _, t := range s.guide.Topics() {
+			paths = append(paths, t.Path)
 		}
 		return errorResult(fmt.Sprintf("Unknown guide page %q. Pages: %s", truncateArg(p), strings.Join(paths, ", ")))
 	}
+	if err != nil {
+		return errorResult(err.Error())
+	}
 	if section != "" {
-		body, err := text.ExtractSection(content, section)
+		sec, err := s.guide.Section(page.Path, section)
 		if errors.Is(err, text.ErrSectionNotFound) || len(section) > maxArgLen {
-			return errorResult(fmt.Sprintf("No section %q in %s. Sections: %s",
-				truncateArg(section), p, strings.Join(text.HeadingIDs(content), ", ")))
+			ids, _ := s.guide.HeadingIDs(page.Path)
+			return errorResult(fmt.Sprintf("No section %q in %s. Sections: %s", truncateArg(section), page.Path, strings.Join(ids, ", ")))
 		}
 		if err != nil {
 			return errorResult(err.Error())
 		}
-		return textResult(string(body))
+		return textResult(string(sec))
 	}
-	i := slices.IndexFunc(s.deps.SelfDocs.Report.Guide, func(g capabilities.GuidePage) bool { return g.Path == p })
-	page := s.deps.SelfDocs.Report.Guide[i] // guidePage succeeded, so p is listed
-	return textResult(pageHeader(page.Title, page.Description, nil) + string(text.StripFrontmatter(content)))
+	return textResult(pageHeader(page.Title, page.Description, nil) + string(body))
 }
 
 // truncateArg keeps an echoed argument short enough to be useful in an error.
@@ -242,9 +224,9 @@ func (s *MCPServer) handleLearnGomddoc(_ context.Context, _ *mcp.GetPromptReques
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are working with gomddoc %s, which serves a directory of Markdown files as a documentation "+
 		"site, builds it to static HTML, or exposes it over MCP.\n\n", r.Version)
-	if readme, err := s.guidePage("README.md"); err == nil {
+	if readme, _, err := s.guidePage("README.md"); err == nil {
 		b.WriteString("## Overview (from gomddoc's guide)\n\n")
-		b.Write(bytes.TrimSpace(text.StripFrontmatter(readme)))
+		b.Write(bytes.TrimSpace(readme))
 		b.WriteString("\n\n")
 	}
 

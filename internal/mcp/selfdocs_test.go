@@ -12,13 +12,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/monolithiclab/gomddoc/docs"
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/doctor"
-	"github.com/monolithiclab/gomddoc/internal/search"
-	"github.com/monolithiclab/gomddoc/internal/testutil/fanout"
+	"github.com/monolithiclab/gomddoc/internal/guide"
 )
 
 var selfDocsGuide = fstest.MapFS{
@@ -27,15 +25,15 @@ var selfDocsGuide = fstest.MapFS{
 	"05-theming-and-assets.md": {Data: []byte("---\ntitle: Theming\ndescription: Themes\n---\n# Theming\n\nThemes and vars.\n")},
 }
 
-func newSelfDocs(guide fs.FS) *SelfDocs {
+func newSelfDocs(guideFS fs.FS) *SelfDocs {
 	return &SelfDocs{
 		Report: capabilities.Describe(capabilities.Input{
 			Version:  "test",
 			Config:   config.New(),
 			Commands: []capabilities.Command{{Name: "serve", Help: "Serve the site"}},
-			Guide:    guide,
+			Guide:    guideFS,
 		}),
-		Guide: guide,
+		Guide: guideFS,
 	}
 }
 
@@ -187,7 +185,7 @@ func TestGuideTool(t *testing.T) {
 
 	t.Run("list", func(t *testing.T) {
 		out, isErr := callGuide(t, f, map[string]any{})
-		var got []capabilities.GuidePage
+		var got []guide.Topic
 		if err := json.Unmarshal([]byte(out), &got); isErr || err != nil {
 			t.Fatalf("list: isErr=%v err=%v out=%s", isErr, err, out)
 		}
@@ -254,48 +252,6 @@ func TestGuideTool(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestGuideSearch_ColdConcurrent: the lazy guide index is first used cold and
-// concurrently; exactly one build must win and every caller gets it. The
-// index is a pure function of the embedded guide, so no count can tell one
-// build from fifty — pointer identity plus -race (make test) is the check.
-func TestGuideSearch_ColdConcurrent(t *testing.T) {
-	t.Parallel()
-	s := NewServer(ServerDeps{
-		Provider: &testProvider{fsys: fstest.MapFS{}, defaultIndex: "README.md"},
-		SelfDocs: newSelfDocs(selfDocsGuide),
-	})
-	got := make([]*search.Index, 50)
-	fanout.Run(50, func(i int) {
-		idx, err := s.guideSearch()
-		if err != nil {
-			t.Errorf("guideSearch: %v", err)
-		}
-		got[i] = idx
-	})
-	for i, idx := range got {
-		if idx == nil || idx != got[0] {
-			t.Fatalf("call %d returned a different index (%p vs %p)", i, idx, got[0])
-		}
-	}
-}
-
-// TestGuideTool_RealEmbed: the shipped guide indexes and answers a real query.
-func TestGuideTool_RealEmbed(t *testing.T) {
-	t.Parallel()
-	s := NewServer(ServerDeps{
-		Provider: &testProvider{fsys: fstest.MapFS{}, defaultIndex: "README.md"},
-		SelfDocs: newSelfDocs(docs.Guide),
-	})
-	idx, err := s.guideSearch()
-	if err != nil {
-		t.Fatal(err)
-	}
-	hits := idx.Search("environment variable naming precedence", 10)
-	if !slices.ContainsFunc(hits, func(h search.SearchResult) bool { return strings.TrimPrefix(h.Path, "/") == "02-configuration.md" }) {
-		t.Errorf("real guide search missed 02-configuration.md: %+v", hits)
 	}
 }
 
