@@ -42,6 +42,11 @@ type PipelineOptions struct {
 	// directories out of its indexes; each language has its own pipeline.
 	ExtraExclude []string
 
+	// ReportOnly collects producer findings (LanguagePipeline.Findings) without
+	// logging them. doctor sets it: it reports the findings itself, and a
+	// gomddoc_doctor call must not repeat serve's startup warnings in its log.
+	ReportOnly bool
+
 	// Lang is the BCP 47 code of the language subtree this pipeline serves, or
 	// "" for the default language. Everything the pipeline emits as an absolute
 	// site path — template content URLs, redirect targets — carries it.
@@ -75,6 +80,15 @@ type Pipeline struct {
 	// that walk the same content — build's static walk — must use it, or they
 	// emit pages the pipeline's resolver and metadata index know nothing about.
 	Exclude []string
+
+	// ContentRoot is the FS this pipeline indexed: the site root, or the
+	// language directory for a language pipeline.
+	ContentRoot fs.FS
+
+	// Findings are the problems this pipeline's producers met (resolver
+	// collisions, redirect_from problems), with paths relative to ContentRoot.
+	// setupPipeline does not log them; see LanguagePipeline.Findings.
+	Findings []diag.Finding
 }
 
 // LanguagePipeline holds per-language pipeline instances.
@@ -83,11 +97,17 @@ type LanguagePipeline struct {
 	ByLang    map[string]*Pipeline // non-default language pipelines keyed by BCP 47 code
 	Bundle    *locale.Bundle       // shared locale bundle
 	Languages []string             // all non-default language codes
+
+	// Findings gathers every pipeline's findings and the tag-route collision
+	// checks, with language pipelines' paths prefixed by their directory.
+	// setupLanguagePipelines logs them unless PipelineOptions.ReportOnly.
+	Findings []diag.Finding
 }
 
-// warnTagsContentCollision logs a warning when the user has authored content
-// at paths that collide with the auto-generated tag pages (/tags/, /tags/{tag}).
-func warnTagsContentCollision(contentRoot fs.FS, lang string) {
+// tagsContentCollision reports content at paths the auto-generated tag pages
+// (/tags/, /tags/{tag}) shadow.
+func tagsContentCollision(contentRoot fs.FS) []diag.Finding {
+	var findings []diag.Finding
 	for _, candidate := range []string{"tags.md", "tags"} {
 		info, err := fs.Stat(contentRoot, candidate)
 		if err != nil {
@@ -97,12 +117,11 @@ func warnTagsContentCollision(contentRoot fs.FS, lang string) {
 		if info.IsDir() {
 			kind = "directory"
 		}
-		slog.Warn("Content path collides with auto-generated tag pages",
-			slog.String("path", candidate),
-			slog.String("kind", kind),
-			slog.String("lang", lang),
-			slog.String("hint", "rename to avoid being shadowed by /tags routes"))
+		findings = append(findings, diag.New("content.tags-collision", candidate, 0, "",
+			fmt.Sprintf("Content path collides with auto-generated tag pages: %s (%s)", candidate, kind),
+			"rename it: the /tags routes shadow it"))
 	}
+	return findings
 }
 
 // setupLanguagePipelines builds the default pipeline and per-language pipelines
@@ -131,9 +150,6 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 	// Load locale bundle from embedded assets.
 	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
 
-	// Warn if user content shadows auto-generated /tags routes.
-	warnTagsContentCollision(contentRoot, cfg.Site.Language)
-
 	// Embedded files keep their `assets/` prefix from the //go:embed directive,
 	// so the locale dir lives at `assets/locales` rather than `locales`. The
 	// site-level overrides below (MergeFrom contentRoot) use the .gomddoc/locales
@@ -153,6 +169,7 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 		ByLang:    make(map[string]*Pipeline, len(langs)),
 		Bundle:    bundle,
 		Languages: langs,
+		Findings:  slices.Concat(defaultPipeline.Findings, tagsContentCollision(contentRoot)),
 	}
 
 	// Build a pipeline for each detected language directory.
@@ -178,13 +195,15 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 			continue
 		}
 
-		// Warn if user content in this language directory shadows auto-generated /tags routes.
-		warnTagsContentCollision(subFS, lang)
-
+		lp.Findings = append(lp.Findings,
+			diag.WithFilePrefix(slices.Concat(langPipeline.Findings, tagsContentCollision(subFS)), lang)...)
 		lp.ByLang[lang] = langPipeline
 		slog.Info("Built language pipeline", slog.String("lang", lang))
 	}
 
+	if !opts.ReportOnly {
+		diag.Log(lp.Findings)
+	}
 	return lp, nil
 }
 
@@ -248,9 +267,6 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		},
 	})
 
-	// Build logs nothing itself; its collisions and unreadable paths are logged here.
-	diag.Log(resolver.Findings())
-
 	// Every absolute site path this pipeline emits carries the language prefix:
 	// template content URLs and redirect targets alike.
 	langPrefix := ""
@@ -267,6 +283,8 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		StaticFS:         staticFS,
 		Provider:         provider.NewOverlayProvider(prov, staticFS),
 		Exclude:          exclude,
+		ContentRoot:      contentRoot,
+		Findings:         resolver.Findings(),
 	}
 
 	// Enricher options — navigation is optional in shape only: every production
@@ -283,7 +301,9 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 		}
 		enricherOpts.MetaIndex = metaIndex
 		p.MetaIndex = metaIndex
-		p.URLRedirects = server.BuildRedirectMap(metaIndex, p.Resolver, langPrefix)
+		redirects, redirectFindings := server.BuildRedirectMap(metaIndex, p.Resolver, langPrefix)
+		p.URLRedirects = redirects
+		p.Findings = append(p.Findings, redirectFindings...)
 	}
 
 	if opts.EnableNavigation {

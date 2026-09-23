@@ -2,11 +2,13 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"net/http"
 	"path"
 	"strings"
 
+	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
@@ -23,21 +25,32 @@ type URLRedirectMap map[string]string
 // under /{lang} with the prefix already stripped, so the sources stay
 // content-root-relative while the targets must be absolute site paths. Pass ""
 // for the default language.
-func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver, basePath string) URLRedirectMap {
+//
+// It also returns what it had to ignore or could not honour, as findings for
+// the caller to log: a redirect_from that is not a list of paths, a source two
+// pages claim (the later page wins), and a source that is itself a page — the
+// handler consults redirects before content, so that page becomes unreachable.
+func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver, basePath string) (URLRedirectMap, []diag.Finding) {
 	if index == nil {
-		return nil
+		return nil, nil
 	}
 
 	redirects := make(URLRedirectMap)
+	claimedBy := map[string]string{} // source → file of the page that claimed it
+	var findings []diag.Finding
 
 	for _, page := range index.AllPages() {
 		fromRaw, ok := page.Meta["redirect_from"]
 		if !ok {
 			continue
 		}
+		file := strings.TrimPrefix(page.Path, "/")
 
 		sources, ok := fromRaw.([]any)
 		if !ok {
+			findings = append(findings, diag.New("content.frontmatter-type", file, 0, "redirect_from",
+				"redirect_from must be a list of paths; this one is ignored",
+				"write it as a list: redirect_from: [/old/path]"))
 			continue
 		}
 
@@ -51,17 +64,51 @@ func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver, bas
 		target = basePath + target
 
 		for _, src := range sources {
-			if s, ok := src.(string); ok && s != "" {
-				redirects[s] = target
+			s, ok := src.(string)
+			if !ok || s == "" {
+				findings = append(findings, diag.New("content.frontmatter-type", file, 0, "redirect_from",
+					fmt.Sprintf("redirect_from entry %v is not a path and is ignored", src),
+					"list URL paths as strings, e.g. /old/path"))
+				continue
 			}
+			if first, dup := claimedBy[s]; dup && first != file {
+				findings = append(findings, diag.New("content.redirect-conflict", file, 0, s,
+					fmt.Sprintf("%s is also claimed by %s; this page wins", s, first),
+					"keep the source in only one page's redirect_from"))
+			}
+			if isPage(index, resolver, s) {
+				findings = append(findings, diag.New("content.redirect-conflict", file, 0, s,
+					fmt.Sprintf("%s is an existing page; redirecting it makes that page unreachable", s),
+					"remove the source, or move the page it names"))
+			}
+			claimedBy[s] = file
+			redirects[s] = target
 		}
 	}
 
 	if len(redirects) == 0 {
-		return nil
+		return nil, findings
 	}
 
-	return redirects
+	return redirects, findings
+}
+
+// isPage reports whether a redirect source names a real page: an indexed page
+// by file path, or — the resolver knowing every renderable file, frontmatter
+// or not — a page by clean URL or by file path.
+func isPage(index *metadata.Index, resolver *resolve.PathResolver, source string) bool {
+	if index.ByPath(source) != nil {
+		return true
+	}
+	if resolver == nil {
+		return false
+	}
+	p := strings.TrimPrefix(source, "/")
+	if _, found := resolver.Resolve(p); found {
+		return true
+	}
+	_, found := resolver.CleanPath(p)
+	return found
 }
 
 // stripPathPrefix returns middleware that removes a leading path prefix

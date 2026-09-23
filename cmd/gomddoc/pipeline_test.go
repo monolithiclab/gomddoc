@@ -455,7 +455,7 @@ func TestSetupLanguagePipelines_DefaultPipelineExcludesLanguages(t *testing.T) {
 	}
 }
 
-// tagsCollisionMsg is warnTagsContentCollision's message. The three tests below
+// tagsCollisionMsg is how tagsContentCollision's message starts. The three tests below
 // assert on it exactly, so a reworded warning fails here rather than silently
 // leaving the collision unreported.
 const tagsCollisionMsg = "Content path collides with auto-generated tag pages"
@@ -491,7 +491,8 @@ func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_File(t *testing.T) {
 		t.Fatalf("setupLanguagePipelines error: %v", err)
 	}
 
-	if !log.Has(tagsCollisionMsg, slog.String("path", "tags.md"), slog.String("kind", "file")) {
+	if !log.HasContaining(slog.LevelWarn, tagsCollisionMsg+": tags.md (file)", slog.String("file", "tags.md"),
+		slog.String("code", "content.tags-collision")) {
 		t.Errorf("no collision warning naming tags.md as a file; log:\n%s", log)
 	}
 }
@@ -527,7 +528,8 @@ func TestSetupLanguagePipelines_WarnsOnTagsContentCollision_Directory(t *testing
 		t.Fatalf("setupLanguagePipelines error: %v", err)
 	}
 
-	if !log.Has(tagsCollisionMsg, slog.String("path", "tags"), slog.String("kind", "directory")) {
+	if !log.HasContaining(slog.LevelWarn, tagsCollisionMsg+": tags (directory)", slog.String("file", "tags"),
+		slog.String("code", "content.tags-collision")) {
 		t.Errorf("no collision warning naming tags as a directory; log:\n%s", log)
 	}
 }
@@ -563,7 +565,7 @@ func TestSetupLanguagePipelines_NoWarningWhenNoCollision(t *testing.T) {
 		t.Fatalf("setupLanguagePipelines error: %v", err)
 	}
 
-	if log.Has(tagsCollisionMsg) {
+	if log.HasContaining(slog.LevelWarn, tagsCollisionMsg) {
 		t.Errorf("collision warning on a site with no colliding path; log:\n%s", log)
 	}
 }
@@ -695,5 +697,48 @@ func TestSetupLanguagePipelines_LogsPathCollision(t *testing.T) {
 	if !log.HasContaining(slog.LevelWarn, "file shadows directory", slog.String("code", "content.path-collision"),
 		slog.String("file", "guide.md")) {
 		t.Errorf("collision not logged at Warn with its code; log:\n%s", log)
+	}
+}
+
+// TestSetupLanguagePipelines_FindingsPerLanguage: a language directory's
+// findings carry its prefix, are reported once (the default pipeline excludes
+// the directory), and ReportOnly keeps them out of the log.
+func TestSetupLanguagePipelines_FindingsPerLanguage(t *testing.T) {
+	// No t.Parallel: captures global slog output.
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	writeTestFile(t, srcDir, "fr-FR/README.md", "# Accueil")
+	writeTestFile(t, srcDir, "fr-FR/tags.md", "# Tags")
+	writeTestFile(t, srcDir, "fr-FR/a.md", "---\ntitle: A\nredirect_from: /vieux\n---\n# A")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prov.Close()
+
+	log := logcapture.Install(t, slog.LevelDebug)
+	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{EnableMetadata: true, ReportOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range lp.Findings {
+		got = append(got, f.Code+" "+f.File)
+	}
+	slices.Sort(got)
+	want := []string{"content.frontmatter-type fr-FR/a.md", "content.tags-collision fr-FR/tags.md"}
+	if !slices.Equal(got, want) {
+		t.Errorf("findings = %q, want %q", got, want)
+	}
+	if log.HasContaining(slog.LevelWarn, tagsCollisionMsg) || log.HasContaining(slog.LevelWarn, "redirect_from") {
+		t.Errorf("ReportOnly must not log findings; log:\n%s", log)
+	}
+	if lp.Default.ContentRoot == nil || lp.ByLang["fr-FR"].ContentRoot == nil {
+		t.Error("pipelines must expose their content root")
 	}
 }

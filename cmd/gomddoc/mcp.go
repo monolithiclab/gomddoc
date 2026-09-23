@@ -12,6 +12,7 @@ import (
 	"github.com/monolithiclab/gomddoc/docs"
 	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/mcp"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 )
@@ -54,6 +55,7 @@ func (m *MCPCmd) Run(app *kong.Application) error {
 	if err != nil {
 		return fmt.Errorf("setup pipeline: %w", err)
 	}
+	diag.Log(pipeline.Findings)
 
 	// gomddoc's own namespace, describing this site: built once, served as-is.
 	contentRoot, err := prov.RootFS(context.Background())

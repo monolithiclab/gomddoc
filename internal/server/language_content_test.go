@@ -271,7 +271,7 @@ func TestServer_ContentRoutes_PerLanguage_Redirects(t *testing.T) {
 				Provider:         newMemoryProvider(frFiles, "README.md", false),
 				Resolver:         frResolver,
 				EnricherRegistry: setupTestEnricherRegistry(),
-				URLRedirects:     BuildRedirectMap(frIdx, frResolver, "/fr"),
+				URLRedirects:     redirectMap(BuildRedirectMap(frIdx, frResolver, "/fr")),
 			},
 		},
 	})

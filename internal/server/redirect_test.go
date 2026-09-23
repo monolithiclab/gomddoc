@@ -4,10 +4,12 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
 
@@ -19,7 +21,7 @@ func TestBuildRedirectMap_RedirectFrom(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx, nil, "")
+	redirects, _ := BuildRedirectMap(idx, nil, "")
 
 	if redirects == nil {
 		t.Fatal("expected non-nil redirect map")
@@ -54,7 +56,7 @@ func TestBuildRedirectMap_MultiplePages(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx, nil, "")
+	redirects, _ := BuildRedirectMap(idx, nil, "")
 
 	if redirects == nil {
 		t.Fatal("expected non-nil redirect map")
@@ -80,7 +82,7 @@ func TestBuildRedirectMap_BasePath(t *testing.T) {
 	idx := buildTestIndex(t, files)
 	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(string) bool { return true }})
 
-	redirects := BuildRedirectMap(idx, resolver, "/fr-FR")
+	redirects, _ := BuildRedirectMap(idx, resolver, "/fr-FR")
 
 	// The source stays content-root-relative — stripPathPrefix removes /fr-FR
 	// before the handler looks the request path up — while the target must be an
@@ -99,7 +101,7 @@ func TestBuildRedirectMap_Empty(t *testing.T) {
 	}
 
 	idx := buildTestIndex(t, files)
-	redirects := BuildRedirectMap(idx, nil, "")
+	redirects, _ := BuildRedirectMap(idx, nil, "")
 
 	if redirects != nil {
 		t.Errorf("expected nil redirect map, got %v", redirects)
@@ -109,7 +111,7 @@ func TestBuildRedirectMap_Empty(t *testing.T) {
 func TestBuildRedirectMap_NilIndex(t *testing.T) {
 	t.Parallel()
 
-	redirects := BuildRedirectMap(nil, nil, "")
+	redirects, _ := BuildRedirectMap(nil, nil, "")
 	if redirects != nil {
 		t.Errorf("expected nil redirect map for nil index")
 	}
@@ -271,5 +273,74 @@ func TestExtensionRedirect_EmptyStripExts(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d (empty strip exts should pass through)", w.Code, http.StatusOK)
+	}
+}
+
+// redirectMap drops BuildRedirectMap's findings where a test only needs the map.
+func redirectMap(m URLRedirectMap, _ []diag.Finding) URLRedirectMap { return m }
+
+func TestBuildRedirectMap_Findings(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		files   fstest.MapFS
+		want    []string // "code file key"
+		wantMap URLRedirectMap
+	}{
+		{"string instead of list", fstest.MapFS{
+			"a.md": {Data: []byte("---\nredirect_from: /old\n---\n# A\n")},
+		}, []string{"content.frontmatter-type a.md redirect_from"}, nil},
+		{"non-string item", fstest.MapFS{
+			"a.md": {Data: []byte("---\nredirect_from: [/old, 3]\n---\n# A\n")},
+		}, []string{"content.frontmatter-type a.md redirect_from"}, URLRedirectMap{"/old": "/a.md"}},
+		{"two pages claim one source", fstest.MapFS{
+			"a.md": {Data: []byte("---\nredirect_from: [/old]\n---\n# A\n")},
+			"b.md": {Data: []byte("---\nredirect_from: [/old]\n---\n# B\n")},
+		}, []string{"content.redirect-conflict b.md /old"}, URLRedirectMap{"/old": "/b.md"}},
+		{"source is a real page", fstest.MapFS{
+			"a.md": {Data: []byte("---\nredirect_from: [/b.md]\n---\n# A\n")},
+			"b.md": {Data: []byte("---\ntitle: B\n---\n# B\n")}, // indexed: no resolver in this table
+		}, []string{"content.redirect-conflict a.md /b.md"}, URLRedirectMap{"/b.md": "/a.md"}},
+		{"clean", fstest.MapFS{
+			"a.md": {Data: []byte("---\nredirect_from: [/old]\n---\n# A\n")},
+		}, nil, URLRedirectMap{"/old": "/a.md"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m, findings := BuildRedirectMap(buildTestIndex(t, tt.files), nil, "")
+			var got []string
+			for _, f := range findings {
+				got = append(got, f.Code+" "+f.File+" "+f.Key)
+				if f.Message == "" || f.Fix == "" {
+					t.Errorf("finding without message or fix: %+v", f)
+				}
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("findings = %q, want %q", got, tt.want)
+			}
+			// The map itself is what it always was.
+			if !maps.Equal(m, tt.wantMap) {
+				t.Errorf("map = %v, want %v", m, tt.wantMap)
+			}
+		})
+	}
+}
+
+// TestBuildRedirectMap_SourceIsCleanURL: with a resolver, a source naming a
+// page's clean URL is a conflict too.
+func TestBuildRedirectMap_SourceIsCleanURL(t *testing.T) {
+	t.Parallel()
+	files := fstest.MapFS{
+		"a.md": {Data: []byte("---\nredirect_from: [/b]\n---\n# A\n")},
+		"b.md": {Data: []byte("# B\n")},
+	}
+	resolver := resolve.Build(files, resolve.BuildOptions{
+		StripExtensions: []string{".md"},
+		HasRenderer:     func(string) bool { return true },
+	})
+	_, findings := BuildRedirectMap(buildTestIndex(t, files), resolver, "")
+	if len(findings) != 1 || findings[0].Code != "content.redirect-conflict" || findings[0].Key != "/b" {
+		t.Errorf("findings = %+v", findings)
 	}
 }
