@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -57,6 +58,12 @@ func (s *MCPServer) registerSelfDocs() {
 			"No arguments: list pages. query: search. path: read a page. path + section: read one section.",
 		Annotations: readOnlyAnnotations,
 	}, s.handleGuideTool)
+
+	s.server.AddPrompt(&mcp.Prompt{
+		Name:        "learn_gomddoc",
+		Title:       "Learn gomddoc",
+		Description: "Onboard to gomddoc itself: what it does, how configuration works, and where to find details.",
+	}, s.handleLearnGomddoc)
 }
 
 // guidePage reads a guide page by path. The report's page list is the
@@ -214,4 +221,47 @@ func jsonTextResult(v any) *mcp.CallToolResult {
 		return errorResult(err.Error())
 	}
 	return textResult(string(data))
+}
+
+// handleLearnGomddoc is the "teach me how to use you" entry point: the guide's
+// overview plus a compact capabilities summary and how to go deeper.
+func (s *MCPServer) handleLearnGomddoc(_ context.Context, _ *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+	r := s.deps.SelfDocs.Report
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are working with gomddoc %s, which serves a directory of Markdown files as a documentation "+
+		"site, builds it to static HTML, or exposes it over MCP.\n\n", r.Version)
+	if readme, err := s.guidePage("README.md"); err == nil {
+		b.WriteString("## Overview (from gomddoc's guide)\n\n")
+		b.Write(bytes.TrimSpace(text.StripFrontmatter(readme)))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("## How configuration works\n\n")
+	fmt.Fprintf(&b, "Precedence: %s.\n", strings.Join(r.Config.Precedence, " > "))
+	fmt.Fprintf(&b, "%s\n", r.Config.FileKeys)
+	fmt.Fprintf(&b, "%d settings are documented in %s (key, env var, flags, default, description); "+
+		"the config file's JSON Schema is %s.\n\n", len(r.Settings), capabilities.CapabilitiesURI, r.Config.SchemaURI)
+
+	b.WriteString("## Commands\n\n")
+	for _, c := range r.Commands {
+		fmt.Fprintf(&b, "- %s: %s\n", c.Name, c.Help)
+	}
+
+	fmt.Fprintf(&b, "\n## Active theme\n\n%s (%s). Feature toggles: %s.\n\n",
+		r.Theme.Name, r.Theme.Source, strings.Join(r.Theme.Features, ", "))
+
+	b.WriteString("## How to proceed\n\n" +
+		"- Read " + r.Config.SchemaURI + " before writing .gomddoc/config.yml; unknown keys are rejected.\n" +
+		"- Use the gomddoc_guide tool (query, or path + section) for anything not covered here.\n" +
+		"- Put secrets and deployment-specific values (ports, domain, auth file) in env vars or flags; " +
+		"site identity (title, theme, exclude) in config.yml.\n" +
+		"- After writing a config, run `gomddoc info` in the site directory: it reports whether the config loads and why not.\n")
+
+	return &mcp.GetPromptResult{
+		Description: "Learn gomddoc",
+		Messages: []*mcp.PromptMessage{{
+			Role:    mcp.Role("user"),
+			Content: &mcp.TextContent{Text: b.String()},
+		}},
+	}, nil
 }

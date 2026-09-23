@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"slices"
 	"strings"
@@ -96,6 +97,7 @@ func TestSelfDocs_RegisteredOnlyWhenSet(t *testing.T) {
 			{uris, "gomddoc://capabilities"},
 			{uris, "gomddoc://schema/config"},
 			{templates, "gomddoc://guide/{+path}"},
+			{promptNames, "learn_gomddoc"},
 		}
 		for _, c := range checks {
 			if got := slices.Contains(c.list, c.name); got != on {
@@ -292,5 +294,39 @@ func TestGuideTool_RealEmbed(t *testing.T) {
 	hits := idx.Search("environment variable naming precedence", 10)
 	if !slices.ContainsFunc(hits, func(h search.SearchResult) bool { return strings.TrimPrefix(h.Path, "/") == "02-configuration.md" }) {
 		t.Errorf("real guide search missed 02-configuration.md: %+v", hits)
+	}
+}
+
+func TestLearnGomddocPrompt(t *testing.T) {
+	t.Parallel()
+	f := setupSelfDocs(t, true)
+	defer f.close(t)
+	res, err := f.session.GetPrompt(context.Background(), &mcp.GetPromptParams{Name: "learn_gomddoc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Messages) != 1 {
+		t.Fatalf("want one message, got %d", len(res.Messages))
+	}
+	msg := res.Messages[0].Content.(*mcp.TextContent).Text
+	r := f.server.deps.SelfDocs.Report
+	for _, want := range []string{
+		"gomddoc test",                // version
+		"Read the pages.",             // guide README body
+		"flag > env > file > default", // precedence
+		r.Config.FileKeys,             // file-key rule
+		fmt.Sprintf("%d settings", len(r.Settings)),
+		"gomddoc://capabilities",
+		"gomddoc://schema/config", // where the schema is
+		"gomddoc_guide",           // where depth is
+		"serve: Serve the site",   // a command
+		"gomddoc info",            // how to check a written config
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(msg, "title: Guide") {
+		t.Error("README frontmatter must be stripped")
 	}
 }
