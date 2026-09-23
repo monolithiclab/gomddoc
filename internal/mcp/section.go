@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -16,42 +17,74 @@ var ErrSectionNotFound = errors.New("section not found")
 // Returns the heading line and all content until the next heading at the
 // same or higher level (or EOF). Frontmatter is stripped before scanning.
 func ExtractSection(content []byte, headingID string) ([]byte, error) {
-	body := text.StripFrontmatter(content)
-	lines := bytes.Split(body, []byte("\n"))
+	lines, heads := scanHeadings(content)
 
-	var startIdx int
-	var startLevel int
-	found := false
-
-	for i, line := range lines {
-		level, heading, ok := headingLevel(string(line))
-		if !ok {
-			continue
-		}
-		if slugifyHeading(heading) == headingID {
-			startIdx = i
-			startLevel = level
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	start := slices.IndexFunc(heads, func(h heading) bool { return slugifyHeading(h.text) == headingID })
+	if start < 0 {
 		return nil, ErrSectionNotFound
 	}
 
-	// Collect lines from startIdx until next heading at same-or-higher level.
+	// The section runs to the next heading at the same or higher level.
 	endIdx := len(lines)
-	for i := startIdx + 1; i < len(lines); i++ {
-		level, _, ok := headingLevel(string(lines[i]))
-		if ok && level <= startLevel {
-			endIdx = i
+	for _, h := range heads[start+1:] {
+		if h.level <= heads[start].level {
+			endIdx = h.line
 			break
 		}
 	}
 
-	result := bytes.Join(lines[startIdx:endIdx], []byte("\n"))
+	result := bytes.Join(lines[heads[start].line:endIdx], []byte("\n"))
 	return bytes.TrimRight(result, "\n"), nil
+}
+
+// heading is an ATX heading found by scanHeadings.
+type heading struct {
+	line  int // index into the lines scanHeadings returned
+	level int
+	text  string
+}
+
+// scanHeadings splits content (frontmatter stripped) into lines and returns
+// its headings. Lines inside fenced code blocks are skipped: a "# comment" in
+// a YAML or shell example is code, and treating it as a level-1 heading ends
+// the enclosing section at the comment.
+func scanHeadings(content []byte) ([][]byte, []heading) {
+	lines := bytes.Split(text.StripFrontmatter(content), []byte("\n"))
+	var heads []heading
+	var fence string // the open fence's run of ` or ~; "" outside a block
+	for i, line := range lines {
+		if run, ok := fenceRun(string(line)); ok {
+			switch {
+			case fence == "":
+				fence = run
+			case run[0] == fence[0] && len(run) >= len(fence):
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			continue
+		}
+		if level, title, ok := headingLevel(string(line)); ok {
+			heads = append(heads, heading{i, level, title})
+		}
+	}
+	return lines, heads
+}
+
+// fenceRun reports whether line opens or closes a fenced code block
+// (CommonMark: up to 3 spaces, then 3+ backticks or tildes) and returns the
+// run of fence characters.
+func fenceRun(line string) (string, bool) {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > 3 || len(trimmed) < 3 || (trimmed[0] != '`' && trimmed[0] != '~') {
+		return "", false
+	}
+	n := len(trimmed) - len(strings.TrimLeft(trimmed, trimmed[:1]))
+	if n < 3 {
+		return "", false
+	}
+	return trimmed[:n], true
 }
 
 // headingLevel parses an ATX heading line and returns its level and text.
@@ -135,14 +168,13 @@ func slugifyHeading(heading string) string {
 }
 
 // HeadingIDs lists the anchor IDs ExtractSection accepts for content, in
-// document order. It uses ExtractSection's own heading parser, so every ID it
-// returns is extractable.
+// document order. It shares ExtractSection's scanner, so every ID it returns
+// is extractable and none comes from inside a code block.
 func HeadingIDs(content []byte) []string {
-	var ids []string
-	for line := range bytes.SplitSeq(text.StripFrontmatter(content), []byte("\n")) {
-		if _, heading, ok := headingLevel(string(line)); ok {
-			ids = append(ids, slugifyHeading(heading))
-		}
+	_, heads := scanHeadings(content)
+	ids := make([]string, 0, len(heads))
+	for _, h := range heads {
+		ids = append(ids, slugifyHeading(h.text))
 	}
 	return ids
 }

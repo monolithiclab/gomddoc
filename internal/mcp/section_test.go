@@ -263,3 +263,26 @@ func TestHeadingIDs(t *testing.T) {
 		}
 	}
 }
+
+// TestSection_IgnoresHeadingsInCodeFences: a `# comment` inside a fenced block
+// is code, not a heading. Treating it as one cut sections short and listed
+// comments as section IDs (the guide's YAML and shell examples are full of them).
+func TestSection_IgnoresHeadingsInCodeFences(t *testing.T) {
+	t.Parallel()
+	content := []byte("# Top\n\n## Config\n\n```yaml\n# .gomddoc/config.yml\ntheme: x\n```\n\n~~~~sh\n# not a heading\n~~~\n## still code\n~~~~\n\nAfter.\n\n## Next\n\nEnd.\n")
+
+	if got, want := HeadingIDs(content), []string{"top", "config", "next"}; !slices.Equal(got, want) {
+		t.Errorf("HeadingIDs = %q, want %q", got, want)
+	}
+	got, err := ExtractSection(content, "config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "## Config\n\n```yaml\n# .gomddoc/config.yml\ntheme: x\n```\n\n~~~~sh\n# not a heading\n~~~\n## still code\n~~~~\n\nAfter."
+	if string(got) != want {
+		t.Errorf("ExtractSection =\n%q\nwant\n%q", got, want)
+	}
+	if _, err := ExtractSection(content, "gomddoc-config-yml"); !errors.Is(err, ErrSectionNotFound) {
+		t.Errorf("a fenced comment must not be addressable, err = %v", err)
+	}
+}
