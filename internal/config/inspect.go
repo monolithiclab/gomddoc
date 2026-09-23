@@ -8,8 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -31,8 +29,6 @@ type Inspection struct {
 	Findings []diag.Finding
 	Assumed  string
 }
-
-var yamlLine = regexp.MustCompile(`line (\d+)`)
 
 // Inspect loads dir's configuration the way NewFromServeArgs does — env,
 // dynamic defaults, config.yml, site env again, Normalize — but never stops:
@@ -57,12 +53,12 @@ func Inspect(dir string) Inspection {
 		var typeErr *yaml.TypeError
 		if err := node.Decode(&cfg.Site); errors.As(err, &typeErr) {
 			for _, msg := range typeErr.Errors {
-				line := lineOf(msg)
+				line := diag.YAMLLine(msg)
 				findings = append(findings, diag.New("config.wrong-type", ConfigFile, line, keyAtLine(node, line),
 					strings.TrimPrefix(msg, fmt.Sprintf("line %d: ", line)), "see `gomddoc schema` for the expected type"))
 			}
 		} else if err != nil {
-			findings = append(findings, diag.New("config.parse-error", ConfigFile, lineOf(err.Error()), "", err.Error(), ""))
+			findings = append(findings, diag.New("config.parse-error", ConfigFile, diag.YAMLLine(err.Error()), "", err.Error(), ""))
 		}
 	}
 
@@ -90,27 +86,19 @@ func readConfigNode(dir string) (node *yaml.Node, findings []diag.Finding, usabl
 		if errors.Is(err, io.EOF) {
 			return nil, nil, true // empty or comment-only: defaults, as the loader treats it
 		}
-		return nil, []diag.Finding{diag.New("config.parse-error", ConfigFile, lineOf(err.Error()), "", err.Error(),
+		return nil, []diag.Finding{diag.New("config.parse-error", ConfigFile, diag.YAMLLine(err.Error()), "", err.Error(),
 			"fix the YAML syntax at that line")}, false
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		line := extra.Line
 		if err != nil {
-			line = lineOf(err.Error())
+			line = diag.YAMLLine(err.Error())
 		}
 		return nil, []diag.Finding{diag.New("config.parse-error", ConfigFile, line, "",
 			"only the first YAML document is read", "remove the `---` separator and merge the documents")}, false
 	}
 	return &doc, nil, true
-}
-
-func lineOf(msg string) int {
-	if m := yamlLine.FindStringSubmatch(msg); m != nil {
-		n, _ := strconv.Atoi(m[1])
-		return n
-	}
-	return 0
 }
 
 // locate fills in the line of config-file findings that name a key but were

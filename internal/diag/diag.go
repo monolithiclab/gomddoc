@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"regexp"
 	"slices"
+	"strconv"
 )
 
 // Severity ranks a finding.
@@ -167,4 +169,16 @@ func WithFilePrefix(findings []Finding, prefix string) []Finding {
 		}
 	}
 	return out
+}
+
+var yamlErrLine = regexp.MustCompile(`line (\d+)`)
+
+// YAMLLine extracts the line number yaml.v3 puts in its error messages
+// ("yaml: line 3: …", "line 2: cannot unmarshal …"), or 0.
+func YAMLLine(msg string) int {
+	if m := yamlErrLine.FindStringSubmatch(msg); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return n
+	}
+	return 0
 }

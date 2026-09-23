@@ -122,3 +122,16 @@ func TestLog(t *testing.T) {
 		}
 	}
 }
+
+func TestYAMLLine(t *testing.T) {
+	t.Parallel()
+	for msg, want := range map[string]int{
+		"yaml: line 3: did not find expected key": 3,
+		"line 12: cannot unmarshal !!str":         12,
+		"something else":                          0,
+	} {
+		if got := YAMLLine(msg); got != want {
+			t.Errorf("YAMLLine(%q) = %d, want %d", msg, got, want)
+		}
+	}
+}

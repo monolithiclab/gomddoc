@@ -99,13 +99,14 @@ func Run(ctx context.Context, in Input, opts Options) Report {
 }
 
 // extraChecks runs the theme, exclude and content checks.
-func extraChecks(_ context.Context, in Input) []diag.Finding {
+func extraChecks(ctx context.Context, in Input) []diag.Finding {
 	scan := scanTheme(in.Inspection, in.Assets)
 	findings := themeChecks(in.Inspection, scan)
 	for _, p := range in.Pipelines {
 		if p.Lang == "" {
 			findings = append(findings, excludeMatchesNothing(in.Inspection, p.Root)...)
 		}
+		findings = append(findings, contentChecks(ctx, p, scan)...)
 	}
 	return findings
 }
