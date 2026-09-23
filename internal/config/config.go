@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/text"
 
 	"gopkg.in/yaml.v3"
@@ -52,6 +53,10 @@ const (
 	// Config file constants
 	ConfigDirName  = ".gomddoc"
 	ConfigFileName = "config.yml"
+
+	// ConfigFile is the config file's content-root-relative path, as findings
+	// report it.
+	ConfigFile = ConfigDirName + "/" + ConfigFileName
 )
 
 // Config represents the top-level configuration structure (GOMDDOC)
@@ -182,7 +187,7 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 		slog.String("theme", cfg.Site.Theme.Name))
 
 	// 6. Normalize (fix up invalid values with sensible defaults)
-	cfg.Normalize()
+	diag.Log(cfg.Normalize())
 
 	// 7. Validate (pure checks, no mutations)
 	if err := cfg.Validate(); err != nil {
@@ -330,11 +335,14 @@ func (c *Config) ComputeDynamicDefaults() {
 }
 
 // Normalize fixes up configuration values that can be auto-corrected, such as
-// resetting out-of-range timeouts to defaults. Must be called before Validate.
-func (c *Config) Normalize() {
-	c.Site.Normalize()
-	c.normalizeHTTP()
+// resetting out-of-range timeouts to defaults, and returns one finding per
+// replaced value for the caller to log (diag.Log) or report. Must be called
+// before Validate.
+func (c *Config) Normalize() []diag.Finding {
+	findings := c.Site.Normalize()
+	findings = append(findings, c.normalizeHTTP()...)
 	c.normalizeAdminAddr()
+	return findings
 }
 
 // normalizeAdminAddr binds a host-less admin address to loopback. The admin
@@ -362,64 +370,52 @@ func (c *Config) normalizeAdminAddr() {
 		slog.String("addr", c.Server.AdminPort))
 }
 
-// Normalize fixes up site config values that can be auto-corrected.
-func (sc *SiteConfig) Normalize() {
-	if sc.Theme.Name == "" {
-		sc.Theme.Name = DefaultThemeName
-		slog.Warn("Empty theme name, using default")
+// Normalize fixes up site config values that can be auto-corrected and
+// returns one finding per replaced value.
+func (sc *SiteConfig) Normalize() []diag.Finding {
+	if sc.Theme.Name != "" {
+		return nil
 	}
+	sc.Theme.Name = DefaultThemeName
+	return []diag.Finding{diag.New("config.value-replaced", ConfigFile, 0, "theme.name",
+		"Empty theme name, using default "+strconv.Quote(DefaultThemeName),
+		"set theme.name to an installed theme, or remove it")}
 }
 
-func (c *Config) normalizeHTTP() {
+func (c *Config) normalizeHTTP() []diag.Finding {
 	h := &c.Server.HTTP
-
-	if h.ReadHeaderTimeout <= 0 {
-		slog.Warn("ReadHeaderTimeout must be positive, using default",
-			slog.Duration("configured", h.ReadHeaderTimeout),
-			slog.Duration("default", DefaultReadHeaderTimeout))
-		h.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	} else if h.ReadHeaderTimeout > MaxReadHeaderTimeout {
-		slog.Warn("ReadHeaderTimeout exceeds maximum (60s), using default",
-			slog.Duration("configured", h.ReadHeaderTimeout),
-			slog.Duration("default", DefaultReadHeaderTimeout))
-		h.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	}
-
-	if h.WriteTimeout <= 0 {
-		slog.Warn("WriteTimeout must be positive, using default",
-			slog.Duration("configured", h.WriteTimeout),
-			slog.Duration("default", DefaultWriteTimeout))
-		h.WriteTimeout = DefaultWriteTimeout
-	} else if h.WriteTimeout > MaxWriteTimeout {
-		slog.Warn("WriteTimeout exceeds maximum (5m), using default",
-			slog.Duration("configured", h.WriteTimeout),
-			slog.Duration("default", DefaultWriteTimeout))
-		h.WriteTimeout = DefaultWriteTimeout
-	}
-
-	if h.IdleTimeout <= 0 {
-		slog.Warn("IdleTimeout must be positive, using default",
-			slog.Duration("configured", h.IdleTimeout),
-			slog.Duration("default", DefaultIdleTimeout))
-		h.IdleTimeout = DefaultIdleTimeout
-	} else if h.IdleTimeout > MaxIdleTimeout {
-		slog.Warn("IdleTimeout exceeds maximum (10m), using default",
-			slog.Duration("configured", h.IdleTimeout),
-			slog.Duration("default", DefaultIdleTimeout))
-		h.IdleTimeout = DefaultIdleTimeout
-	}
-
-	if h.MaxHeaderMB <= 0 {
-		slog.Warn("MaxHeaderMB must be positive, using default",
-			slog.Int("configured_mb", h.MaxHeaderMB),
-			slog.Int("default_mb", DefaultMaxHeaderMB))
-		h.MaxHeaderMB = DefaultMaxHeaderMB
-	} else if h.MaxHeaderMB > MaxMaxHeaderMB {
-		slog.Warn("MaxHeaderMB exceeds maximum (10MB), using default",
-			slog.Int("configured_mb", h.MaxHeaderMB),
-			slog.Int("default_mb", DefaultMaxHeaderMB))
+	var findings []diag.Finding
+	findings = appendIf(findings, replaceDuration(&h.ReadHeaderTimeout, "ReadHeaderTimeout", "server.http.read_header_timeout", DefaultReadHeaderTimeout, MaxReadHeaderTimeout))
+	findings = appendIf(findings, replaceDuration(&h.WriteTimeout, "WriteTimeout", "server.http.write_timeout", DefaultWriteTimeout, MaxWriteTimeout))
+	findings = appendIf(findings, replaceDuration(&h.IdleTimeout, "IdleTimeout", "server.http.idle_timeout", DefaultIdleTimeout, MaxIdleTimeout))
+	if h.MaxHeaderMB <= 0 || h.MaxHeaderMB > MaxMaxHeaderMB {
+		findings = append(findings, diag.New("config.value-replaced", "", 0, "server.http.max_header_mb",
+			fmt.Sprintf("MaxHeaderMB %d is out of range (1-%d MB), using default %d", h.MaxHeaderMB, MaxMaxHeaderMB, DefaultMaxHeaderMB),
+			fmt.Sprintf("set GOMDDOC_SERVER_HTTP_MAX_HEADER_MB between 1 and %d", MaxMaxHeaderMB)))
 		h.MaxHeaderMB = DefaultMaxHeaderMB
 	}
+	return findings
+}
+
+// replaceDuration resets *v to def when it is not in (0, maxDur] and returns
+// the finding that says so. server.* settings are not file settings, so the
+// finding has no File.
+func replaceDuration(v *time.Duration, name, key string, def, maxDur time.Duration) *diag.Finding {
+	if *v > 0 && *v <= maxDur {
+		return nil
+	}
+	f := diag.New("config.value-replaced", "", 0, key,
+		fmt.Sprintf("%s %s is out of range (above 0, at most %s), using default %s", name, *v, maxDur, def),
+		fmt.Sprintf("set GOMDDOC_%s to a duration above 0 and at most %s", strings.ToUpper(strings.ReplaceAll(key, ".", "_")), maxDur))
+	*v = def
+	return &f
+}
+
+func appendIf(findings []diag.Finding, f *diag.Finding) []diag.Finding {
+	if f == nil {
+		return findings
+	}
+	return append(findings, *f)
 }
 
 // Validate validates the configuration values.

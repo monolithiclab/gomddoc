@@ -23,6 +23,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/diag"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
@@ -113,7 +114,7 @@ func (b *BuildCmd) Run() error {
 
 	if b.Domain != "" {
 		cfg.Site.Meta.Domain = b.Domain
-		cfg.Site.Normalize()
+		diag.Log(cfg.Site.Normalize())
 		if err := cfg.Site.Validate(); err != nil {
 			return fmt.Errorf("domain flag: %w", err)
 		}
