@@ -1,5 +1,8 @@
 // Package mcp exposes the content tree to agents over the Model Context
-// Protocol: six read-only tools, docs:// resources, and a set of prompts.
+// Protocol: six read-only tools, docs:// resources, and a set of prompts —
+// plus, when ServerDeps.SelfDocs is set, gomddoc's own capabilities and guide
+// under gomddoc://. Only stdio sets it: a public site's HTTP endpoint does not
+// advertise its generator's manual.
 //
 // Every entry point that reads a path runs it through
 // provider.IsRestrictedPath first, so a hidden or excluded file is as
@@ -13,10 +16,12 @@ package mcp
 
 import (
 	"context"
+	"io/fs"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/monolithiclab/gomddoc/internal/capabilities"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/search"
@@ -45,7 +50,20 @@ type ServerDeps struct {
 	// yet remain readable by path through read_page. They are not secret.
 	ExcludePatterns []string
 
+	// SelfDocs, when non-nil, registers the gomddoc:// namespace. `gomddoc
+	// mcp` (stdio, the operator's agent) sets it; the HTTP mount in serve
+	// passes nil, because a public site's readers have no use for the
+	// generator's manual.
+	SelfDocs *SelfDocs
+
 	Version string
+}
+
+// SelfDocs is gomddoc describing itself: the capabilities report, built once at
+// startup, and the embedded guide it lists.
+type SelfDocs struct {
+	Report capabilities.Report
+	Guide  fs.FS
 }
 
 // MCPServer wraps the MCP SDK server with gomddoc-specific handlers.
@@ -73,6 +91,9 @@ func NewServer(deps ServerDeps) *MCPServer {
 	s.registerResources()
 	s.registerTools()
 	s.registerPrompts()
+	if deps.SelfDocs != nil {
+		s.registerSelfDocs()
+	}
 	return s
 }
 

@@ -130,12 +130,16 @@ func setupTest(t *testing.T) *testFixture {
 		ExcludePatterns: testExcludes,
 		Version:         "test",
 	})
+	return connect(t, mcpServer)
+}
 
-	ctx, cancel := context.WithCancel(ctx)
+// connect attaches an in-memory client session to s.
+func connect(t *testing.T, s *MCPServer) *testFixture {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	t1, t2 := mcp.NewInMemoryTransports()
-	_, err = mcpServer.Server().Connect(ctx, t1, nil)
-	if err != nil {
+	if _, err := s.Server().Connect(ctx, t1, nil); err != nil {
 		cancel()
 		t.Fatalf("connecting server: %v", err)
 	}
@@ -147,7 +151,7 @@ func setupTest(t *testing.T) *testFixture {
 		t.Fatalf("connecting client: %v", err)
 	}
 
-	return &testFixture{server: mcpServer, session: session, cancel: cancel}
+	return &testFixture{server: s, session: session, cancel: cancel}
 }
 
 func TestNewServer(t *testing.T) {

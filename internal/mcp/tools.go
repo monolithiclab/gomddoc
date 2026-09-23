@@ -345,15 +345,20 @@ func (s *MCPServer) buildPageHeader(filePath string) string {
 		return ""
 	}
 
+	return pageHeader(p.Title, p.Description, p.Tags)
+}
+
+// pageHeader renders the YAML block read_page and gomddoc_guide prepend to a
+// page body; "" when there is nothing to say.
+func pageHeader(title, description string, tags []string) string {
+	if title == "" && description == "" && len(tags) == 0 {
+		return ""
+	}
 	header := struct {
 		Title       string   `yaml:"title,omitempty"`
 		Description string   `yaml:"description,omitempty"`
 		Tags        []string `yaml:"tags,omitempty,flow"`
-	}{
-		Title:       p.Title,
-		Description: p.Description,
-		Tags:        p.Tags,
-	}
+	}{title, description, tags}
 
 	data, err := yaml.Marshal(header)
 	if err != nil {
