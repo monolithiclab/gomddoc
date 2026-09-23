@@ -155,7 +155,7 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 	//    pass are the ones no flag owns — GOMDDOC_SERVER_HTTP_* and SERVER_DEV_MODE.
 	//    The Site half is redundant with step 5, which is the one that matters because
 	//    it runs after LoadFromFile; don't delete step 5 in favour of this call.
-	cfg.ApplyEnvOverrides()
+	envFindings := cfg.ApplyEnvOverrides()
 
 	// 2. Apply serve command args (already resolved by Kong: flags > env > defaults)
 	cfg.Server.Dir = args.Dir
@@ -174,8 +174,10 @@ func NewFromServeArgs(args ServeArgs) (*Config, error) {
 		return nil, fmt.Errorf("load config file: %w", err)
 	}
 
-	// 5. Re-apply environment overrides for site-level settings (env > file)
-	cfg.Site.ApplyEnvOverrides()
+	// 5. Re-apply environment overrides for site-level settings (env > file).
+	// Both passes read GOMDDOC_SITE_*, so a bad value is found twice: log once.
+	envFindings = append(envFindings, cfg.Site.ApplyEnvOverrides()...)
+	diag.Log(diag.Dedupe(envFindings))
 
 	// DirIndex is the one Site field a flag sets (preview's --dir-index), so it is
 	// applied after the file and env, or they would beat the flag. OR'd like
@@ -299,18 +301,19 @@ func (sc *SiteConfig) LoadFromFile(rootDir string) error {
 	return nil
 }
 
-// ApplyEnvOverrides applies environment variable overrides to Config using reflection
-func (c *Config) ApplyEnvOverrides() {
-	// GOMDDOC_...
-	applyEnvOverridesWithPrefix(c, "GOMDDOC")
+// ApplyEnvOverrides applies environment variable overrides to Config using
+// reflection. A value that does not parse is ignored and returned as an
+// env.invalid-value finding.
+func (c *Config) ApplyEnvOverrides() []diag.Finding {
+	return applyEnvOverridesWithPrefix(c, "GOMDDOC")
 }
 
 // ApplyEnvOverrides applies environment variable overrides to SiteConfig using the
 // correct prefix GOMDDOC_SITE. NewFromServeArgs calls this after LoadFromFile, which
 // is what puts env above the config file; the whole-Config pass runs before the CLI
 // args and cannot serve that role.
-func (sc *SiteConfig) ApplyEnvOverrides() {
-	applyEnvOverridesWithPrefix(sc, "GOMDDOC_SITE")
+func (sc *SiteConfig) ApplyEnvOverrides() []diag.Finding {
+	return applyEnvOverridesWithPrefix(sc, "GOMDDOC_SITE")
 }
 
 // titleFromDir derives a human-readable title from a directory path.
@@ -535,14 +538,22 @@ func (c *Config) MaxHeaderBytes() int {
 }
 
 // applyEnvOverridesWithPrefix applies env overrides to any struct with env tags
-func applyEnvOverridesWithPrefix(target any, prefix string) {
+func applyEnvOverridesWithPrefix(target any, prefix string) []diag.Finding {
 	v := reflect.ValueOf(target).Elem()
-	t := v.Type()
-	walkStruct(v, t, prefix)
+	var findings []diag.Finding
+	walkStruct(v, v.Type(), prefix, &findings)
+	return findings
+}
+
+// invalidEnv is the finding for a variable whose value does not parse as kind.
+func invalidEnv(name, kind, value string) diag.Finding {
+	return diag.New("env.invalid-value", "", 0, name,
+		fmt.Sprintf("Invalid %s format; value %q ignored", kind, text.Sanitize(value)),
+		fmt.Sprintf("set %s to a valid %s or unset it", name, kind))
 }
 
 // walkStruct recursively walks any struct and applies env overrides
-func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
+func walkStruct(v reflect.Value, t reflect.Type, prefix string, findings *[]diag.Finding) {
 	for i := range v.NumField() {
 		field := v.Field(i)
 		fieldType := t.Field(i)
@@ -559,7 +570,7 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 			if envTag != "" {
 				newPrefix = prefix + "_" + envTag
 			}
-			walkStruct(field, field.Type(), newPrefix)
+			walkStruct(field, field.Type(), newPrefix, findings)
 			continue
 		}
 
@@ -569,7 +580,7 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 				if envTag != "" {
 					newPrefix = prefix + "_" + envTag
 				}
-				walkStruct(field.Elem(), field.Elem().Type(), newPrefix)
+				walkStruct(field.Elem(), field.Elem().Type(), newPrefix, findings)
 			}
 			continue
 		}
@@ -624,13 +635,13 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 				if duration, err := time.ParseDuration(envValue); err == nil {
 					field.SetInt(int64(duration))
 				} else {
-					slog.Warn("Invalid duration format", slog.String("var", envVarName), text.Safe("value", envValue)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
+					*findings = append(*findings, invalidEnv(envVarName, "duration", envValue))
 				}
 			} else {
 				if intValue, err := strconv.ParseInt(envValue, 10, 64); err == nil {
 					field.SetInt(intValue)
 				} else {
-					slog.Warn("Invalid int format", slog.String("var", envVarName), text.Safe("value", envValue)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
+					*findings = append(*findings, invalidEnv(envVarName, "int", envValue))
 				}
 			}
 
@@ -638,7 +649,7 @@ func walkStruct(v reflect.Value, t reflect.Type, prefix string) {
 			if boolValue, err := strconv.ParseBool(envValue); err == nil {
 				field.SetBool(boolValue)
 			} else {
-				slog.Warn("Invalid bool format", slog.String("var", envVarName), text.Safe("value", envValue)) // #nosec G706 -- value sanitized via text.Safe (slog.LogValuer)
+				*findings = append(*findings, invalidEnv(envVarName, "bool", envValue))
 			}
 		}
 	}
