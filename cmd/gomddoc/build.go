@@ -39,7 +39,7 @@ import (
 type BuildCmd struct {
 	Dir           string `arg:"" optional:"" default:"." env:"GOMDDOC_SERVER_DIR" help:"Markdown source directory or Git URL."`
 	Output        string `name:"output" short:"o" default:"build/site" env:"GOMDDOC_BUILD_OUTPUT" help:"Output directory for generated static site."`
-	Domain        string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
+	Domain        string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" setting:"site.meta.domain" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
 	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
 	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
 

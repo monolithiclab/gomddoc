@@ -33,15 +33,24 @@ type CLI struct {
 	Serve   ServeCmd         `cmd:"" help:"Start the HTTP server to serve markdown files as HTML."`
 }
 
-func main() {
-	cli := CLI{}
-	ctx := kong.Parse(&cli,
+// parserOptions configures the Kong parser. Tests build the model through the
+// same options, so the commands the capabilities report lists are the ones a
+// user runs.
+func parserOptions() []kong.Option {
+	return []kong.Option{
 		kong.Name("gomddoc"),
 		kong.Description("A production-ready HTTP server that serves Markdown files as HTML."),
 		kong.Vars{"version": version},
 		kong.UsageOnError(),
-	)
-	if err := ctx.Run(); err != nil {
+	}
+}
+
+func main() {
+	cli := CLI{}
+	ctx := kong.Parse(&cli, parserOptions()...)
+	// Binding the model lets a command's Run take *kong.Application (info and
+	// mcp describe the CLI); commands whose Run takes nothing are unaffected.
+	if err := ctx.Run(ctx.Model); err != nil {
 		slog.Error("Fatal error", slog.Any("error", err))
 		os.Exit(1)
 	}

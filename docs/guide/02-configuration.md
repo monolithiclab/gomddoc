@@ -549,4 +549,4 @@ Environment variables follow the struct nesting with underscores:
 - `GOMDDOC_SERVER_PORT` — Maps to `Config.Server.Port`
 - `GOMDDOC_SITE_DEFAULT_INDEX` — Maps to `Config.Site.DefaultIndex`
 - `GOMDDOC_SITE_META_TITLE` — Maps to `Config.Site.Meta.Title`
-- `GOMDDOC_SITE_FEATURES_KATEX` — Maps to `Config.Site.Features["katex"]`
+- `GOMDDOC_SITE_THEME_FEATURES_KATEX` — Maps to `Config.Site.Theme.Features["katex"]`
