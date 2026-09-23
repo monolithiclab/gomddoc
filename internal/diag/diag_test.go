@@ -72,23 +72,31 @@ func TestSort(t *testing.T) {
 
 func TestDedupe(t *testing.T) {
 	t.Parallel()
-	a := Finding{Severity: Error, Code: "c", File: "f", Line: 1, Key: "k", Message: "first"}
-	dup := a
-	dup.Message = "second"
-	otherKey := a
-	otherKey.Key = "k2"
-	got := Dedupe([]Finding{a, dup, otherKey})
-	if !slices.Equal(got, []Finding{a, otherKey}) {
-		t.Errorf("Dedupe = %+v", got)
+	f := func(key string, line int, msg string) Finding {
+		return Finding{Code: "c", File: "f", Key: key, Line: line, Message: msg}
 	}
-
-	// A producer without line information and a check with it report the same
-	// problem: one finding survives, the located one, in the first one's place.
-	unlocated := Finding{Code: "c", File: "f", Key: "redirect_from", Message: "producer"}
-	located := unlocated
-	located.Line, located.Message = 4, "check"
-	if got := Dedupe([]Finding{unlocated, otherKey, located}); !slices.Equal(got, []Finding{located, otherKey}) {
-		t.Errorf("Dedupe(unlocated, located) = %+v", got)
+	tests := []struct {
+		name string
+		in   []Finding
+		want []Finding
+	}{
+		{"exact repeat", []Finding{f("k", 1, "m"), f("k", 1, "m")}, []Finding{f("k", 1, "m")}},
+		{"different key", []Finding{f("k", 1, "m"), f("k2", 1, "m")}, []Finding{f("k", 1, "m"), f("k2", 1, "m")}},
+		// A producer without a line and a check with one report the same
+		// problem: the located one survives, in the first one's place.
+		{"unlocated merges into located", []Finding{f("redirect_from", 0, "producer"), f("x", 0, "other"), f("redirect_from", 4, "check")},
+			[]Finding{f("redirect_from", 4, "check"), f("x", 0, "other")}},
+		// Two different problems on one key, neither located (the resolver's
+		// shadowing and extension collision on one clean path; two bad
+		// strip_extensions entries): both kept.
+		{"distinct unlocated problems", []Finding{f("a", 0, "shadows directory"), f("a", 0, "extension collision")},
+			[]Finding{f("a", 0, "shadows directory"), f("a", 0, "extension collision")}},
+		{"distinct located problems", []Finding{f("k", 2, "one"), f("k", 5, "two")}, []Finding{f("k", 2, "one"), f("k", 5, "two")}},
+	}
+	for _, tt := range tests {
+		if got := Dedupe(tt.in); !slices.Equal(got, tt.want) {
+			t.Errorf("%s:\n got %+v\nwant %+v", tt.name, got, tt.want)
+		}
 	}
 }
 

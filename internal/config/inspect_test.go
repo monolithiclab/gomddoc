@@ -53,6 +53,8 @@ func TestInspect(t *testing.T) {
 		{"second document", new("meta:\n  title: x\n---\ntheme: {name: y}\n"), []string{"config.parse-error  3"}, false, true}, // the separator line
 		{"several problems", new("default_index: x\nexclude: drafts/\nmeta: {domain: https://x}\ntheme:\n  features:\n    toc: nope\n"),
 			[]string{"config.wrong-type exclude 2", "config.wrong-type theme.features.toc 6", "config.invalid-value meta.domain 3"}, true, false},
+		{"two bad entries on one key", new("strip_extensions: [md, html]\n"),
+			[]string{"config.invalid-value strip_extensions 1", "config.invalid-value strip_extensions 1"}, true, false},
 		{"theme name emptied", new("theme: {name: ''}\n"), []string{"config.value-replaced theme.name 1"}, true, false},
 	}
 	for _, tt := range tests {

@@ -133,24 +133,41 @@ func Sort(findings []Finding) {
 	})
 }
 
-// Dedupe keeps one finding per code, file and key. Two producers can see one
-// problem — a string redirect_from is both the redirect map's and doctor's
-// frontmatter check's business — and only one of them may know the line, so
-// the line is not part of the identity: the first located duplicate replaces
-// an unlocated one, in the unlocated one's position.
+// Dedupe drops findings that repeat another. Two findings are the same
+// problem when they are identical, or when one has no line and another with
+// the same code, file and key has one: a producer without line information
+// (the redirect map) and a check with it (doctor's frontmatter check) seeing
+// one string redirect_from. The located finding takes the first one's place.
+// Distinct problems on one key — two bad strip_extensions entries, or a file
+// that both shadows a directory and loses an extension collision — differ in
+// message and are both kept.
 func Dedupe(findings []Finding) []Finding {
-	type id struct{ code, file, key string }
-	at := map[id]int{}
+	type site struct{ code, file, key string }
+	located := map[site]Finding{} // first located finding per site
+	for _, f := range findings {
+		k := site{f.Code, f.File, f.Key}
+		if _, ok := located[k]; !ok && f.Line != 0 {
+			located[k] = f
+		}
+	}
+	seen := map[Finding]bool{}
+	placed := map[site]bool{}
 	out := make([]Finding, 0, len(findings))
 	for _, f := range findings {
-		k := id{f.Code, f.File, f.Key}
-		if i, seen := at[k]; seen {
-			if out[i].Line == 0 && f.Line != 0 {
-				out[i] = f
+		k := site{f.Code, f.File, f.Key}
+		if loc, ok := located[k]; ok && f.Line == 0 {
+			if placed[k] {
+				continue
 			}
+			f = loc // the unlocated finding yields to the located one, here
+		}
+		if seen[f] {
 			continue
 		}
-		at[k] = len(out)
+		seen[f] = true
+		if f == located[k] {
+			placed[k] = true
+		}
 		out = append(out, f)
 	}
 	return out
