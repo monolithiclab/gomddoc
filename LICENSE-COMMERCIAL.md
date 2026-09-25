@@ -16,8 +16,5 @@ tailored to your deployment.
 
 ## Getting a commercial license
 
-Contact **licensing@monolithiclab.com** with a short description of your intended
+Contact **contact@monolithiclab.fr** with a short description of your intended
 use, and we will follow up with terms.
-
-> Note: the contact address above is a placeholder pending confirmation by the
-> maintainer.
