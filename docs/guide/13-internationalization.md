@@ -10,8 +10,8 @@ tags: ["i18n", "localization", "multilingual"]
 gomddoc supports multi-language documentation sites with automatic language detection, translated UI strings, a
 language switcher, per-language search indexes, and proper SEO (hreflang tags, per-language sitemaps, and Atom feeds).
 
-No plugins or external tools are required. Place content in BCP 47 directories (e.g., `fr-FR/`, `es-ES/`), provide
-translation files, and gomddoc handles the rest.
+No plugins or external tools are required. Place content in BCP 47 directories (e.g., `fr-FR/`, `es-ES/`) and
+provide translation files.
 
 ## Content Structure
 
@@ -19,7 +19,8 @@ Multi-language content is organized by placing translated pages in directories n
 a language subtag plus a script and/or a region (e.g., `fr-FR`, `es-ES`, `ja-JP`, `zh-Hans`, `es-419`, `sr-Latn-RS`).
 
 Content at the root of your documentation directory is served as the **default language** (configured via
-`language` in your config, default: `en-US`). Each BCP 47 directory becomes an additional language:
+`language` in your config, default: `en-US`). Each BCP 47 directory becomes an additional language, and the default
+language's pages, navigation, search and tags exclude it:
 
 ```text
 /my-docs
@@ -82,7 +83,7 @@ create locale files.
 
 ### Built-in Translation Keys
 
-The default `en-US.yml` provides these 26 keys. `TestBuiltinTranslationKeysAreDocumented`
+The built-in `en-US.yml` provides these 26 keys. `TestBuiltinTranslationKeysAreDocumented`
 (`cmd/gomddoc/locale_docs_test.go`) asserts this block and the shipped file name exactly the same
 set — a key added to one and not the other fails the build:
 
@@ -160,15 +161,20 @@ there is no theme-level layer, so a translation cannot vary by theme.
 When a translation key is requested for a language:
 
 1. Look up the key in the requested language's strings
-2. If not found, look up the key in the default language's strings
+2. If not found, look up the key in the default language's strings (the `language` setting)
 3. If still not found, return the key itself as a literal string
 
-This means you can add a new language with only `language_name` defined, and all other UI strings will fall back to
-English until you translate them.
+With the default `language: en-US`, you can add a new language with only `language_name` defined, and all other UI
+strings fall back to the built-in English until you translate them.
+
+Step 2 uses the configured default language, not `en-US`. If `language` is anything other than `en-US`, provide a
+complete `.gomddoc/locales/{language}.yml`: a key missing from it is rendered as the key name (`toc_title`,
+`aria_search`) on every page, because the built-in English strings are never consulted.
 
 ## Configuration
 
-The `language` setting in `.gomddoc/config.yml` controls the default language for your site:
+The `language` setting in `.gomddoc/config.yml` controls the default language for your site. There is no setting
+for the other languages: they come from the directories detected at startup.
 
 ```yaml
 # .gomddoc/config.yml
@@ -184,7 +190,7 @@ export GOMDDOC_SITE_LANGUAGE=en-US
 This setting determines:
 
 - The `lang` attribute on the `<html>` tag for default-language pages
-- Which language is served at the root URL (without a prefix)
+- The code listed first in the language switcher and in the `x-default` hreflang tag for root-level content
 - The fallback language for missing translations
 
 Individual pages can override the language via frontmatter:
@@ -231,6 +237,10 @@ has:
 | `.Default` | `bool` | `true` if this is the site's default language (served without URL prefix) |
 
 The default language is always listed first. The list is only populated when multiple languages are detected.
+`.Name` falls back to the code itself when the language has no `language_name`.
+
+`.Page.Path` is the page path without the language prefix (`/guide/setup` on `/fr-FR/guide/setup`), so a switcher
+link is the path for the default language and `/{code}` plus the path for the others:
 
 ```html
 {{- $langs := .Languages }}
@@ -240,6 +250,8 @@ The default language is always listed first. The list is only populated when mul
   {{- range $langs }}
   {{- if .Active }}
   <span class="lang-current">{{ .Name }}</span>
+  {{- else if .Default }}
+  <a href="{{ $path }}">{{ .Name }}</a>
   {{- else }}
   <a href="/{{ .Code }}{{ $path }}">{{ .Name }}</a>
   {{- end }}
@@ -250,17 +262,26 @@ The default language is always listed first. The list is only populated when mul
 
 ## Theme Support
 
-Every theme includes i18n support out of the box:
+The default theme ships the `lang-switcher` and `hreflang` partials; other themes inherit them unless they override
+them.
 
 ### Language Switcher
 
 The `lang-switcher` partial renders a language selector when multiple languages are available. It appears in the site
 header and shows the display name for each language, with the current language highlighted.
 
+> [!WARNING]
+> Known bug: the default theme's `lang-switcher` links every non-active language to
+> `/{code}{path}`, including the default language, which is served without a prefix. On `/fr-FR/guide/setup` the
+> English link is `/en-US/guide/setup`, which returns 404. For `gomddoc build`, override the partial with the
+> example above in `.gomddoc/partials/lang-switcher.html.tmpl`. In `serve`, site partials do not reach translated
+> pages (see [Per-Language Features](#per-language-features)), so the override does not help there.
+
 ### hreflang Tags
 
 The `hreflang` partial injects `<link rel="alternate" hreflang="...">` tags in the `<head>` for SEO. The default
-language gets an unprefixed canonical URL and the `x-default` hreflang. Non-default languages get prefixed URLs:
+language gets an unprefixed root-relative URL and the `x-default` hreflang. Non-default languages get prefixed URLs.
+A tag is emitted for every detected language, whether or not the page exists in it:
 
 ```html
 <link rel="alternate" hreflang="en-US" href="/guide/setup">
@@ -291,7 +312,7 @@ When building a custom theme, use these patterns for i18n support:
    {{ template "lang-switcher" . }}
    ```
 
-4. **Include hreflang tags** in the `<head>`:
+4. **Include hreflang tags** in the `<head>`. The shared `head-meta` template already does this:
    ```html
    {{ template "hreflang" . }}
    ```
@@ -306,16 +327,19 @@ When building a custom theme, use these patterns for i18n support:
 Each language gets its own independent:
 
 - **Search index** — full-text search operates within a single language. The search API accepts a `lang` parameter to
-  query a specific language's index.
-- **Sitemap** — each language has its own `sitemap.xml` (e.g., `/fr-FR/sitemap.xml`), served in both
-  modes. When multiple languages exist, a `sitemap-index.xml` referencing them all is written at the
-  root — **in `build` mode only**; `serve` has no route for it. `robots.txt` follows: a build that
-  writes the index points its `Sitemap:` directive at the index, `serve` always points at
-  `/sitemap.xml`.
-- **Atom feed** — each language has its own `feed.xml` (e.g., `/fr-FR/feed.xml`).
+  query a specific language's index; without it, the `Accept-Language` header picks the index. The browser search
+  modal sends no `lang`. Results from a non-default language lack the `/{lang}` prefix in their `path` (a known bug,
+  see [Full-Text Search](10-search.md#multi-language-search)).
+- **Sitemap** — with `meta.domain` set, each language has its own `sitemap.xml` (e.g., `/fr-FR/sitemap.xml`),
+  served in both modes. When multiple languages exist, a `sitemap-index.xml` referencing them all is written at the
+  root, **in `build` mode only**; `serve` has no route for it. `robots.txt` follows: a build that
+  writes the index points its `Sitemap:` directive at the index, `serve` points at `/sitemap.xml`.
+- **Atom feed** — with `meta.domain` set, each language has its own `feed.xml` (e.g., `/fr-FR/feed.xml`).
 - **Navigation tree** — sidebar navigation is built from each language's content independently.
-- **Metadata index** — tags, related documents, and page metadata are indexed per language.
-- **404 page** — each language gets its own `404.html` in build mode.
+- **Metadata index** — tags, related documents, and page metadata are indexed per language, with tag pages at
+  `/{lang}/tags/`. The `/api/tags` endpoints serve the default language only.
+- **404 page** — a missing page under `/{lang}/` renders the 404 page in that language; `build` writes a
+  `404.html` per language.
 - **Redirects** — `redirect_from` on a page under `fr-FR/` redirects `/fr-FR/{source}` to that page's
   language-prefixed URL, and never leaks into the default language's redirect table.
 
@@ -323,6 +347,16 @@ The default language indexes **only** the content outside the language directori
 `fr-FR/` appears in `/fr-FR/sitemap.xml`, `/fr-FR/feed.xml`, `/fr-FR/tags/…` and the French sidebar —
 never in their default-language counterparts. A tag used only by translated pages therefore has no
 default-language tag page.
+
+> [!WARNING]
+> Known bug: in `serve` and `preview`, translated pages do not see the site's `.gomddoc/`
+> overlay. A theme installed under `.gomddoc/assets/themes/<name>/` and site partials under `.gomddoc/partials/`
+> apply to default-language pages only; translated pages log `Theme template not found, falling back to default`
+> and render with the bundled `default` theme. `gomddoc build` applies the installed theme to every language.
+
+> [!WARNING]
+> Known bug, tracked in `REVIEW.md`: a translated page's canonical URL and `og:url` name the default-language path.
+> See [SEO](11-seo.md#static-site-generation).
 
 ## Static Site Generation
 
@@ -338,7 +372,7 @@ build/site/
 ├── sitemap.xml             ← default language sitemap
 ├── feed.xml                ← default language feed
 ├── 404.html                ← default language 404
-├── sitemap-index.xml       ← references all per-language sitemaps
+├── sitemap-index.xml       ← references all per-language sitemaps (needs meta.domain)
 ├── fr-FR/
 │   ├── index.html
 │   ├── guide/
@@ -355,8 +389,10 @@ build/site/
     └── 404.html            ← Spanish 404
 ```
 
-The `sitemap-index.xml` is only generated when at least one translation directory is detected, so a
-single-language site produces a standard `sitemap.xml` at the root and a `robots.txt` naming it.
+`sitemap.xml`, `feed.xml` and `sitemap-index.xml` need `meta.domain`. The `sitemap-index.xml` is only generated
+when at least one translation directory is detected, so a single-language site produces a standard `sitemap.xml` at
+the root and a `robots.txt` naming it. Each page `guide/setup.md` also gets a `guide/setup.md` redirect file pointing
+at its clean URL.
 
 ## Quick Start
 
@@ -394,4 +430,4 @@ To add French to an existing English documentation site:
    ```bash
    gomddoc build -d docs.example.com
    ```
-   The output includes both languages with proper hreflang tags, per-language sitemaps, and a sitemap index.
+   The output includes both languages with hreflang tags, per-language sitemaps and feeds, and a sitemap index.

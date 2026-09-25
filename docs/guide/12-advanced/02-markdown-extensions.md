@@ -7,7 +7,13 @@ tags: ["markdown", "extensions"]
 
 # Markdown Extensions
 
-gomddoc supports several Markdown extensions beyond standard CommonMark, powered by goldmark and client-side rendering libraries.
+gomddoc supports several Markdown extensions beyond standard CommonMark, powered by goldmark and client-side rendering
+libraries.
+
+Several of them are theme features that can be turned off site-wide under `theme.features` in `.gomddoc/config.yml`,
+or per page with the `features` frontmatter field. The default theme reads these toggles, all enabled unless set to
+`false`: `admonitions`, `code_copy`, `color_chips`, `dark_mode`, `heading_anchors`, `katex`, `mermaid`, `search`,
+`see_also`, `tag_chips` and `toc`. `gomddoc info` lists the toggles the active theme reads.
 
 ## GitHub Flavored Markdown (GFM)
 
@@ -17,6 +23,21 @@ All GFM extensions are enabled by default:
 - **Strikethrough**: `~~deleted text~~`
 - **Task lists**: `- [x] completed` / `- [ ] pending`
 - **Autolinks**: URLs are automatically linked
+
+Raw HTML in Markdown is passed through to the page unchanged.
+
+## Syntax Highlighting
+
+Fenced code blocks with a language (```` ```go ````) are highlighted on the server by
+[Chroma](https://github.com/alecthomas/chroma), with the colors written inline. The style is set by
+`highlighting.theme` (default `github`; any Chroma style name, such as `monokai` or `dracula`):
+
+```yaml
+highlighting:
+  theme: monokai
+```
+
+With the `code_copy` feature on, each code block gets a copy button.
 
 ## YAML Front Matter
 
@@ -48,21 +69,26 @@ gomddoc processes these frontmatter fields with special behavior:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `title` | string | Page title — used in `<title>`, Open Graph tags, search results, and the tags API |
+| `title` | string | Page title — used in `<title>`, Open Graph tags, search results, the navigation label, and the tags API |
 | `description` | string | Page description — used in `<meta name="description">`, Open Graph, and search results |
-| `tags` | array | Page tags — normalized to lowercase, queryable via `/api/tags` endpoint |
-| `date` | string | Publication date (`YYYY-MM-DD`) — included in tags API responses |
+| `tags` | array | Page tags — lowercased and trimmed; drive tag pages, `/api/tags`, related pages (See also), and `tag:` search. A tag containing `/` or `\` is dropped |
+| `date` | date | Publication date (`YYYY-MM-DD` or an RFC 3339 timestamp) — JSON-LD `datePublished`, the tags API, and the fallback date for the sitemap, feed and JSON-LD `dateModified` |
 | `author` | string | Author name — emitted as the `author` of the page's JSON-LD structured data |
 | `og_type` | string | Open Graph type (defaults to `article`) — controls `<meta property="og:type">` |
 | `robots` | string | Controls `<meta name="robots">` for this page (e.g., `noindex`). Pages with `noindex` are excluded from sitemap and feed |
 | `lang` | string | BCP 47 language code — overrides the site-level `language` for this page's `<html lang>` attribute |
-| `layout` | string | Alternate template layout file (e.g., `layout: wide` uses `wide.html.tmpl` instead of `default.html.tmpl`) |
-| `redirect_from` | array | List of URL paths that 301-redirect to this page (e.g., `[/old/path, /legacy]`) |
-| `features` | map | Per-page feature toggle overrides (e.g., `features: { color_chips: false }`) |
+| `layout` | string | Alternate template layout file (e.g., `layout: wide` uses `wide.html.tmpl` instead of `default.html.tmpl`); falls back to `default.html.tmpl` when the theme has no such layout |
+| `redirect_from` | array | List of URL paths that 301-redirect to this page (e.g., `[/old/path, /legacy]`); `build` writes a meta-refresh page for each |
+| `features` | map | Per-page feature toggle overrides (e.g., `features: { color_chips: false }`), merged over `theme.features` |
+
+`gomddoc doctor` reports a field of the wrong type (`content.frontmatter-type`), such as `tags: foo` instead of a
+list, and a `features` key the active theme does not read.
 
 ### Custom Fields
 
-Any other frontmatter fields are stored in the page's metadata map and accessible in templates via `{{ index .Page.Meta "field_name" }}`. They also appear in the tags API response under the `meta` object.
+Every frontmatter field is available in templates through `.Page.Meta`, e.g. `{{ index .Page.Meta "field_name" }}`.
+In the tags API response, every field except `title`, `description`, `tags` and `date` (which have their own keys)
+appears under the `meta` object, standard ones such as `author` included.
 
 ```yaml
 ---
@@ -83,7 +109,8 @@ Access in templates:
 
 ## Admonitions (Callout Blocks)
 
-Admonitions are styled callout blocks that highlight important information. They use the same syntax as [GitHub's alerts](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#alerts).
+Admonitions are styled callout blocks that highlight important information. They use the same syntax as [GitHub's
+alerts](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#alerts).
 
 ### Syntax
 
@@ -127,11 +154,16 @@ Admonitions can contain multiple lines and paragraphs:
 > This is a second paragraph with more details.
 ```
 
-The type markers are case-insensitive: `[!NOTE]`, `[!note]`, and `[!Note]` all produce the same result. Regular blockquotes (those without a type marker) are not affected.
+The type markers are case-insensitive: `[!NOTE]`, `[!note]`, and `[!Note]` all produce the same result. Regular
+blockquotes (those without a type marker) are not affected.
+
+Admonitions render as a `<gmd-admonition>` web component. With the `admonitions` feature off, the block renders as an
+ordinary blockquote with the marker as text.
 
 ## Math Rendering (KaTeX)
 
-gomddoc supports mathematical notation using KaTeX, rendered client-side in the browser. Both inline and display (block) math are supported.
+gomddoc supports mathematical notation using KaTeX, rendered client-side in the browser when the `katex` feature is on.
+Both inline and display (block) math are supported.
 
 ### Inline Math
 
@@ -166,11 +198,14 @@ For a complete list of supported functions, see the [KaTeX documentation](https:
 
 ### How It Works
 
-Math rendering uses the KaTeX auto-render extension loaded from the jsDelivr CDN. When a page loads, the script scans the page content for `$...$` (inline) and `$$...$$` (display) delimiters and renders them as formatted math. No server-side processing or additional dependencies are required.
+Math rendering uses KaTeX 0.16 and its auto-render extension, loaded from the jsDelivr CDN. When a page loads, the
+script scans the page for `$...$` (inline) and `$$...$$` (display) delimiters and renders them as formatted math. There
+is no server-side processing; readers need network access to the CDN.
 
 ### Escaping Dollar Signs
 
-If you need to display a literal dollar sign without triggering math rendering, use a backslash: `\$`. For example, `\$100` renders as a plain dollar amount.
+If you need to display a literal dollar sign without triggering math rendering, use a backslash: `\$`. For example,
+`\$100` renders as a plain dollar amount.
 
 ## Mermaid Diagrams
 
@@ -185,25 +220,31 @@ graph TD
 ```
 ````
 
-Mermaid diagrams are rendered client-side using the Mermaid JavaScript library loaded from the jsDelivr CDN. Supported diagram types include flowcharts, sequence diagrams, Gantt charts, class diagrams, and more. See the [Mermaid documentation](https://mermaid.js.org/) for details.
+Mermaid diagrams are rendered client-side, when the `mermaid` feature is on, using Mermaid 11 loaded from the jsDelivr
+CDN. The diagram theme follows the page's light or dark mode at load time. Supported diagram types include flowcharts,
+sequence diagrams, Gantt charts, class diagrams, and more. See the [Mermaid documentation](https://mermaid.js.org/) for
+details.
 
 ## Color Chips
 
-Hex color codes wrapped in backticks are automatically rendered as interactive color swatches using a `<gmd-color-chip>` web component.
+Hex color codes wrapped in backticks are automatically rendered as interactive color swatches using a `<gmd-color-chip>`
+web component.
 
 ### Syntax
 
-Simply wrap a hex color code in backticks:
+Wrap a hex color code in backticks:
 
 ```markdown
 The primary color is `#2563eb` and the accent is `#ec4899`.
 ```
 
-Both 3-digit (`#fff`) and 6-digit (`#ffffff`) hex codes are supported. The color chip displays a small swatch next to the hex code. Clicking the chip copies the hex value to your clipboard.
+Both 3-digit (`#fff`) and 6-digit (`#ffffff`) hex codes are supported. The color chip displays a small swatch next to
+the hex code. Clicking the chip copies the hex value to your clipboard.
 
 ### Controlling Color Chips
 
-Color chips are enabled by default. You can disable them globally in `.gomddoc/config.yml`, under
+Color chips are enabled by default (the `color_chips` feature). You can disable them globally in `.gomddoc/config.yml`,
+under
 `theme.features` — a top-level `features:` key is not a config field and is rejected at startup:
 
 ```yaml
@@ -226,7 +267,9 @@ Per-page frontmatter overrides the global setting. Hex codes inside fenced code 
 
 ## Heading Anchors
 
-All headings with auto-generated IDs get clickable anchor links. The anchor (`#`) appears when you hover over a heading (or is always visible on touch devices). Clicking the anchor updates the URL hash for easy linking to specific sections.
+All headings with auto-generated IDs get clickable anchor links when the `heading_anchors` feature is on. The anchor
+(`#`) appears when you hover over a heading (or is always visible on touch devices). Clicking the anchor updates the URL
+hash for linking to specific sections.
 
 ### How IDs are generated
 
@@ -267,8 +310,11 @@ character:
 
 ## Table of Contents
 
-gomddoc automatically generates a table of contents from headings (h1-h3) in Markdown documents. The TOC appears as a sidebar on desktop and a toggleable panel on mobile. Heading IDs are auto-generated for anchor linking.
+gomddoc builds a table of contents from the headings of each Markdown page. The default theme shows levels 1 and 2
+(`#` and `##`) when the `toc` feature is on, as a sidebar on desktop and a toggleable panel on mobile. Themes choose
+the levels with the `toc` template function: `{{ toc .Page.TOC 2 3 }}` lists `##` and `###` headings.
 
 ### TOC Scroll Highlighting
 
-As you scroll through a page, the TOC sidebar automatically highlights the currently visible section. The active heading is tracked and the TOC auto-scrolls to keep the active item centered. This works across every theme.
+As you scroll through a page, the TOC sidebar highlights the currently visible section and scrolls itself to keep the
+active item centered. Themes that include the shared `scripts-shared` block get this behavior with the `toc` feature.

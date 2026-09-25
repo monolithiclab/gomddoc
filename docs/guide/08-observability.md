@@ -6,12 +6,14 @@ author: "nicolasm"
 
 # Observability
 
-gomddoc provides health endpoints, Prometheus metrics, and optional pprof profiling for monitoring and debugging.
+gomddoc provides health endpoints, Prometheus metrics, request IDs, structured logs, and optional pprof profiling for
+monitoring and debugging.
 
 ## Admin Port
 
-By default, health, metrics, and pprof endpoints are served on the same port as your content. For production
-deployments, you can isolate these admin endpoints onto a dedicated port using `--admin-port`:
+By default, health, metrics, and pprof endpoints are served on the same port as your content, and `serve` logs
+`admin endpoints on main port — use --admin-port for production` at startup (`preview` does not). For production
+deployments, you can isolate these admin endpoints onto a dedicated port using `--admin-port` (`serve` only):
 
 ```bash
 gomddoc serve --admin-port :9090 ./docs
@@ -24,7 +26,8 @@ GOMDDOC_SERVER_ADMIN_PORT=:9090 gomddoc serve ./docs
 ```
 
 When configured, metrics (`/metrics`) and pprof (`/debug/pprof/*`) move to the admin port and are
-removed from the main port entirely — requesting them there returns 404.
+removed from the main port. Requesting them there falls through to the content handler, which answers with the
+theme's 404 page. Setting `--admin-port` to the same value as `--port` keeps everything on the main listener.
 
 **Health checks are the exception.** `/health/live` and `/health/ready` stay on *both* ports, because
 load balancer and Kubernetes probes target the service port, not an internal admin port; moving them
@@ -33,6 +36,11 @@ would break every probe the moment you split the ports. Splitting the ports give
 - Expose the admin port only to your internal network or monitoring systems
 - Keep the main port clean for user traffic
 - Apply different firewall rules or network policies per port
+
+> [!WARNING]
+> Never expose the admin port publicly. It serves `/metrics` and the health endpoints without authentication, even
+> when `--basic-auth-file` is set, and carries pprof when `--pprof` is on. Keep it on loopback or a private network,
+> and block it at the firewall or with a network policy.
 
 ### Bind address
 
@@ -45,12 +53,18 @@ gomddoc serve --admin-port 0.0.0.0:9090 ./docs   # all interfaces
 gomddoc serve --admin-port 10.0.0.5:9090 ./docs  # one interface
 ```
 
-The startup log prints the address actually bound.
+The startup log prints the address actually bound:
+
+```
+INFO Admin port bound to loopback; set an explicit host to widen addr=127.0.0.1:9090
+INFO Admin server started url=http://127.0.0.1:9090
+```
 
 ### Authentication
 
-Health and metrics are unauthenticated — scrapers do not carry credentials, and the loopback default is what limits
-who can reach them.
+On the admin listener, health and metrics are unauthenticated: scrapers do not carry credentials, and the loopback
+default is what limits who can reach them. On the main listener, `/metrics` sits behind `--basic-auth-file` when it
+is configured, like the content routes; the health endpoints are unauthenticated on both listeners.
 
 `/debug/pprof/*` is the exception: when `--basic-auth-file` is configured, it requires those credentials on whichever
 listener carries it — both ports mount pprof through the same gate. Without a credential file, `--pprof` logs a warning
@@ -65,9 +79,9 @@ pprof on the main listener, which binds every interface — so always pair `--pp
 
 ## Health Endpoints
 
-gomddoc exposes two health check endpoints for liveness and readiness monitoring. These endpoints bypass all
-middleware (security headers, authentication, hidden path blocking) to ensure they are always accessible and
-lightweight.
+gomddoc exposes two health check endpoints for liveness and readiness monitoring. They skip authentication,
+compression, request metrics and hidden path blocking. On the main listener they still carry the security headers
+and an `X-Request-ID`. Responses are `application/json`.
 
 ### Liveness: `GET /health/live`
 
@@ -89,16 +103,17 @@ Returns `200 OK` if the provider is healthy, or `503 Service Unavailable` if not
 
 **Unhealthy (503):**
 ```json
-{"status":"unavailable","error":"stat error message"}
+{"status":"unavailable","error":"provider not ready"}
 ```
+
+The underlying error is logged as `readiness check failed` at warning level, not returned to the caller.
 
 ---
 
 ## Metrics Endpoint
 
-A `/metrics` endpoint is served alongside the content routes. It returns
-metrics in the Prometheus exposition format and can be scraped by any
-Prometheus-compatible collector.
+A `/metrics` endpoint is served on the admin listener, or alongside the content routes when there is none. It
+returns metrics in the Prometheus exposition format and can be scraped by any Prometheus-compatible collector.
 
 ```
 GET /metrics
@@ -108,12 +123,17 @@ GET /metrics
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
-| `http_requests_total` | Counter | `method`, `status` | Total HTTP requests, labeled by method (GET, HEAD) and status code (200, 304, 404, etc.) |
+| `http_requests_total` | Counter | `method`, `status` | Total HTTP requests, labeled by method and status code (200, 301, 304, 401, 404, 405, etc.) |
 | `http_request_duration_seconds` | Histogram | `method` | Request latency in seconds. Uses default Prometheus buckets (5ms to 10s). Labeled by HTTP method |
+
+Every route on the main listener is counted (content, tag pages, `/api/*`, `/_mcp/`, `/_assets/`, `/robots.txt`,
+`/sitemap.xml`, `/feed.xml`), except `/health/*`, `/metrics` itself and `/debug/pprof/*`. Requests to the admin
+listener are not counted. Metrics are process-wide and not labeled by path or language.
 
 ### Go Process Metrics
 
-The `/metrics` endpoint also exposes standard Go runtime metrics from the Prometheus client library:
+The `/metrics` endpoint also exposes the Prometheus client library's default Go runtime and process collectors,
+including:
 
 | Metric | Type | Description |
 |---|---|---|
@@ -171,19 +191,38 @@ go_memstats_alloc_bytes
 
 ### Middleware Order
 
-The metrics middleware is the innermost in the content middleware chain, so it measures actual handler processing
-time without overhead from security headers, compression, or path checks:
+The request chain on the main listener, outermost first:
 
 ```
-SecurityHeaders → RequestID → [Auth] → Compression → MethodFilter → ContentExclusion → ExtensionRedirect → Metrics → Handler
+SecurityHeaders → RequestID → router → Compression → Metrics → [BasicAuth] → MethodFilter → ContentExclusion → ExtensionRedirect → Handler
 ```
+
+`MethodFilter`, `ContentExclusion` and `ExtensionRedirect` apply to content routes only. Because Metrics sits outside
+authentication and the content checks, 401, 405, 404 (excluded paths) and 301 (extension redirects) responses are
+counted, and the recorded duration includes authentication and path checks.
+
+---
+
+## Request IDs
+
+Every response on the main listener carries an `X-Request-ID` header. An incoming `X-Request-ID` is echoed back when it
+is 1-128 characters of letters, digits, `-` and `_`; otherwise gomddoc generates one (`{unix-microseconds}-{counter}`).
+Set the header at your proxy to correlate proxy and gomddoc logs.
+
+## Logs
+
+gomddoc logs through Go's default `log/slog` logger: text lines on stderr, at Info level and above, in the form
+`2026/09/25 17:16:09 INFO Server started url=http://localhost:8080 dir=docs dev=false`. There is no flag for JSON
+output or for Debug level. Startup lines report the loaded configuration, auto-assigned ports, the listen URLs, the
+admin-port warning, and each built language pipeline; `gomddoc build` ends with a `Build complete` line that counts
+markdown, copied and skipped files, bytes written and elapsed time. Requests are not logged individually.
 
 ---
 
 ## pprof Profiling
 
 gomddoc can expose Go's built-in profiling endpoints for performance analysis.
-This is disabled by default and should never be enabled in production.
+This is disabled by default and should never be enabled in production. `--pprof` exists on `serve` only.
 
 ### Enabling pprof
 
@@ -199,7 +238,8 @@ GOMDDOC_SERVER_PPROF=true gomddoc serve ./docs
 
 ### Available Profiles
 
-When enabled, the following endpoints are available at `/debug/pprof/`:
+When enabled, the following endpoints are available at `/debug/pprof/`, on the admin listener when `--admin-port` is
+set and on the main listener otherwise. Every named runtime profile is served through the index handler:
 
 | Endpoint | Description |
 |---|---|
@@ -208,6 +248,9 @@ When enabled, the following endpoints are available at `/debug/pprof/`:
 | `/debug/pprof/heap` | Heap memory allocations |
 | `/debug/pprof/goroutine` | All current goroutines |
 | `/debug/pprof/allocs` | Past memory allocations |
+| `/debug/pprof/block`, `/debug/pprof/mutex`, `/debug/pprof/threadcreate` | Other runtime profiles |
+| `/debug/pprof/cmdline` | The process command line |
+| `/debug/pprof/symbol` | Symbol lookup for program counters |
 | `/debug/pprof/trace` | Execution trace (use `?seconds=N`) |
 
 ### Example Usage
@@ -232,6 +275,7 @@ curl http://localhost:8080/debug/pprof/goroutine?debug=1
 
 > [!NOTE]
 > pprof endpoints are protected by HTTP Basic Authentication when
-> `--basic-auth-file` is configured. Without auth, they are publicly
-> accessible — only enable on trusted networks for debugging purposes.
+> `--basic-auth-file` is configured. Without auth, they are open to anyone
+> who can reach the listener, and gomddoc logs a warning at startup. Only
+> enable them on trusted networks for debugging purposes.
 

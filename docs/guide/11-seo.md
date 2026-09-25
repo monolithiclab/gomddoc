@@ -8,12 +8,13 @@ tags: ["seo", "configuration"]
 # SEO
 
 gomddoc includes built-in technical SEO features that help search engines discover, crawl, and
-index your documentation correctly. All SEO features work in both `serve` mode (dynamic) and
-`build` mode (static files), so your documentation is optimized regardless of how you deploy it.
+index your documentation. All SEO features work in both `serve` mode (generated on request) and
+`build` mode (static files).
 
-Most SEO features activate automatically once you configure a domain for your site. Without a
-domain, gomddoc still serves `robots.txt` and renders pages with proper HTML structure — but
-canonical URLs, sitemap, and Open Graph tags require a domain to generate absolute URLs.
+Most SEO features need absolute URLs, so they activate once you configure a domain for your site.
+Without a domain, gomddoc still serves `robots.txt` and renders the description, Open Graph and
+Twitter Card tags that need no URL. Canonical URLs, `og:url`, the sitemap, the Atom feed and JSON-LD
+require a domain.
 
 ## Configuring the Domain
 
@@ -32,9 +33,12 @@ Or via environment variable:
 export GOMDDOC_SITE_META_DOMAIN=docs.example.com
 ```
 
-The domain may include a scheme (`https://docs.example.com`) or not — `https://` is assumed by
-default. This single setting enables canonical URLs, sitemap generation, Open Graph tags, and the
-`Sitemap:` directive in robots.txt.
+Or per run with `--domain` (`-d`) on `serve`, `preview` and `build`, which overrides the config file.
+
+The domain is a bare host: `docs.example.com`, not `https://docs.example.com/`. A scheme or a path is
+rejected at startup (`domain should not include protocol`), and `gomddoc doctor` reports it as
+`config.invalid-value`. Generated URLs always use `https://`. This one setting enables canonical URLs,
+`og:url`, the sitemap, the Atom feed, JSON-LD, and the `Sitemap:` directive in robots.txt.
 
 ## Canonical URLs
 
@@ -45,8 +49,12 @@ When a domain is configured, every page includes a `<link rel="canonical">` tag 
 ```
 
 Canonical URLs tell search engines the authoritative URL for each page. This prevents duplicate
-content issues when the same page is accessible via multiple URLs (for example, with and without
-a trailing slash, or via different hostnames behind a load balancer).
+content issues when the same page is accessible via multiple URLs, such as different hostnames behind a
+load balancer.
+
+> [!WARNING]
+> Known bug, tracked in `REVIEW.md`: in `serve`, the canonical URL follows the request path, so `/guides` and
+> `/guides/` give a directory index two different canonical URLs. `build` always emits one form.
 
 Default index files (like `README.md`) are stripped from canonical URLs — so a page at
 `/guide/README.md` gets a canonical URL of `https://docs.example.com/guide/` rather than including
@@ -67,9 +75,10 @@ This function returns an empty string when no domain is configured, so the tag i
 
 ## Sitemap
 
-An XML sitemap is automatically generated at `/sitemap.xml` when a domain is configured. It follows
-the [sitemaps.org](https://www.sitemaps.org/) specification and includes all indexed markdown pages
-discovered by the metadata index:
+An XML sitemap is generated at `/sitemap.xml` when a domain is configured. It follows
+the [sitemaps.org](https://www.sitemaps.org/) specification and lists every markdown page in the
+metadata index except those whose `robots` frontmatter contains `noindex`, followed by the `/tags/`
+index and one entry per tag page (tag entries carry no `<lastmod>`):
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -85,7 +94,7 @@ discovered by the metadata index:
 </urlset>
 ```
 
-Each entry includes a `<lastmod>` date derived from the file's modification time. For the
+Each page entry includes a `<lastmod>` date (`YYYY-MM-DD`) derived from the file's modification time. For the
 filesystem provider, this is the OS file mtime. For the git provider, it reflects the commit
 timestamp. If a file cannot be stat'd, `<lastmod>` falls back to the frontmatter `date`, and is
 omitted only when the page has neither.
@@ -111,9 +120,9 @@ When multiple languages are detected, each language gets its own sitemap:
 - `/es-ES/sitemap.xml` — Spanish pages
 
 **In `build` mode only**, a `sitemap-index.xml` referencing all per-language sitemaps is written to
-the output root. `serve` registers no route for it, so on a live server that URL is a 404 — the
-per-language sitemaps above are served, but nothing indexes them. Submit them individually, or put
-the built site behind a static host:
+the output root. `serve` registers no route for it, so on a live server that URL is a 404: the
+per-language sitemaps above are served, but nothing indexes them. Submit them individually, or serve
+the built site from a static host:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -136,7 +145,6 @@ A `robots.txt` file is always served at `/robots.txt`, regardless of whether a d
 ```
 User-agent: *
 Allow: /
-
 Disallow: /_assets/
 Disallow: /api/
 Disallow: /debug/
@@ -146,7 +154,7 @@ The `Disallow` rules prevent search engines from indexing internal assets (theme
 endpoints (search and tags), and debug endpoints (pprof). These are implementation details that
 should not appear in search results.
 
-When a domain is configured, a `Sitemap:` directive is appended:
+When a domain is configured, a blank line and a `Sitemap:` directive are appended:
 
 ```
 Sitemap: https://docs.example.com/sitemap.xml
@@ -170,27 +178,30 @@ the `Sitemap:` line entirely when no sitemap is served at all.
 ## Atom Feed
 
 gomddoc generates an Atom 1.0 XML feed at `/feed.xml` when a domain is configured. The feed includes the 20 most
-recently modified pages, sorted by modification time (newest first). Pages with `robots: noindex` in frontmatter are
-excluded.
+recently modified pages, newest first, dated by the same `seo.LastModified` rule as the sitemap. Pages whose `robots`
+frontmatter contains `noindex` are excluded.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>My Project Docs</title>
-  <link href="https://docs.example.com/" rel="alternate"/>
-  <link href="https://docs.example.com/feed.xml" rel="self"/>
+  <id>https://docs.example.com/</id>
   <updated>2025-06-15T10:30:00Z</updated>
+  <link rel="self" href="https://docs.example.com/feed.xml" type="application/atom+xml"></link>
+  <link rel="alternate" href="https://docs.example.com/"></link>
   <entry>
     <title>Setup Guide</title>
-    <link href="https://docs.example.com/guide/setup" rel="alternate"/>
+    <id>https://docs.example.com/guide/setup</id>
     <updated>2025-06-15T10:30:00Z</updated>
+    <link rel="alternate" href="https://docs.example.com/guide/setup"></link>
     <summary>How to install and configure the project</summary>
   </entry>
 </feed>
 ```
 
-Each entry includes the page title, URL, modification time, and description (from frontmatter). The feed is generated
-on first request and cached for the lifetime of the server.
+Each entry includes the page title, URL (also used as its `<id>`), modification time, and description (from
+frontmatter). The feed title is `meta.title`. In `serve`, the feed is generated on first request and cached for the
+lifetime of the process.
 
 ### Multi-Language Feeds
 
@@ -200,8 +211,9 @@ When multiple languages are detected, each language gets its own feed:
 - `/fr-FR/feed.xml` — French content
 - `/es-ES/feed.xml` — Spanish content
 
-Themes include `<link rel="alternate" type="application/atom+xml">` in the `<head>` so that feed readers and browsers
-can auto-discover the feed.
+When a domain is configured, the default theme's `<head>` includes
+`<link rel="alternate" type="application/atom+xml">` pointing at `/feed.xml`, so feed readers and browsers can
+discover the feed. Translated pages point at the same root feed, not their language's feed.
 
 ## hreflang Tags
 
@@ -215,7 +227,9 @@ every page. These tags tell search engines which language variants exist for eac
 ```
 
 The default language pages get an unprefixed URL and the `x-default` hreflang value (which tells search engines to use
-this variant as the fallback for unsupported languages). Non-default languages get prefixed URLs.
+this variant as the fallback for unsupported languages). Non-default languages get prefixed URLs. The `href` values
+are root-relative paths, not absolute URLs, and a tag is emitted for every detected language whether or not that
+page has a translation.
 
 hreflang tags prevent search engines from treating translated pages as duplicate content and enable them to serve the
 correct language variant in search results based on the user's locale.
@@ -224,8 +238,9 @@ See [Internationalization](13-internationalization.md) for the full multi-langua
 
 ## Open Graph Tags
 
-When a domain is configured, pages include Open Graph and Twitter Card meta tags that control how
-your documentation appears when shared on social media, in chat applications, and in link previews:
+Pages include Open Graph and Twitter Card meta tags that control how your documentation appears when
+shared on social media, in chat applications, and in link previews. `og:url` requires a domain; the
+others are emitted without one, each only when its value is set:
 
 ```html
 <meta property="og:url" content="https://docs.example.com/guide">
@@ -241,8 +256,10 @@ your documentation appears when shared on social media, in chat applications, an
 <meta name="description" content="Learn how to set up and configure the project">
 ```
 
-These tags are rendered in the `<head>` of every page by the default theme's `head.html.tmpl`
-partial, which every other theme inherits — a theme only overrides the partials it changes.
+These tags are rendered by the `head-meta` template in the default theme's `partials/head-shared.html.tmpl`, which
+each theme's `head` partial calls. The same template emits the canonical link, the feed link, `rel="prev"` and
+`rel="next"` links (with a domain), and the hreflang tags. A page's `<meta name="robots">` comes from its `robots`
+frontmatter, or from the site-level `meta.robots` when the page sets none.
 
 ### Customizing Open Graph per Page
 
@@ -272,8 +289,9 @@ og_type: website
 ## Structured Data (JSON-LD)
 
 When a domain is configured, gomddoc injects [Schema.org](https://schema.org/) structured data
-into every page as `<script type="application/ld+json">`. This helps search engines understand
-your content and can enable rich results (enhanced search snippets).
+into every page as `<script type="application/ld+json">`, holding a JSON array of schemas. This
+helps search engines understand your content and can enable rich results (enhanced search snippets).
+Without a domain, no JSON-LD is emitted.
 
 Three schema types are generated:
 
@@ -294,8 +312,8 @@ Every page gets a `TechArticle` schema with fields populated from frontmatter:
 }
 ```
 
-Fields are omitted when not present in frontmatter — only `url` and `mainEntityOfPage` are always
-included.
+`headline`, `description` and `author` come from the frontmatter `title`, `description` and `author`, and are
+omitted when not set. Only `url` and `mainEntityOfPage` are always included.
 
 The two dates come from different places:
 
@@ -326,8 +344,9 @@ breadcrumb trail:
 
 ### WebSite (index page only)
 
-The site's index page (root or default index file) includes a `WebSite` schema. When search is
-enabled, it includes a `SearchAction` that tells Google about your site's search endpoint:
+The site's index page (root or default index file) includes a `WebSite` schema. When the search
+index was built (`serve` and `preview` with `search.index: true`), it includes a `SearchAction` pointing at the
+JSON search endpoint. `build` has no search index, so built pages omit it:
 
 ```json
 {
@@ -346,7 +365,8 @@ enabled, it includes a `SearchAction` that tells Google about your site's search
 ### Customizing JSON-LD
 
 The JSON-LD output is rendered via an overridable template partial called `jsonld`. To customize
-or disable JSON-LD, create a `.gomddoc/partials/jsonld.html.tmpl` file:
+or disable JSON-LD, create a `.gomddoc/partials/jsonld.html.tmpl` file. Site-level partials in
+`.gomddoc/partials/` override the theme's partials of the same name:
 
 ```html
 {{/* Disable JSON-LD entirely */}}
@@ -373,9 +393,8 @@ gomddoc serves extensionless (clean) URLs by default, which has several SEO bene
 - **Extensionless URLs are the canonical form.** Canonical `<link>` tags, Open Graph URLs, and
   structured data URLs all use the clean path. Search engines index the extensionless version,
   avoiding duplicate content issues between `/page.md` and `/page`.
-- **Sitemap and feed URLs use clean paths.** When a `PathResolver` is available, `sitemap.xml` and
-  the Atom feed automatically emit extensionless URLs, so search engines discover the canonical
-  form directly.
+- **Sitemap and feed URLs use clean paths**, with default index files folded into their directory
+  (`/guide/README.md` is listed as `/guide/`).
 - **Migration-safe.** If you are migrating an existing site that previously used `.md` URLs, all
   old extension-based links (from external sites, bookmarks, or cached search results) are properly
   redirected. No manual redirect rules are needed.
@@ -385,19 +404,21 @@ For details on how URL resolution works, see
 
 ## Static Site Generation
 
-All SEO features work seamlessly with `gomddoc build`:
+The same SEO output is written by `gomddoc build`:
 
 ```bash
-gomddoc build ./docs -o ./public
+gomddoc build ./docs -o ./public -d docs.example.com
 ```
 
 The output includes:
 
-- **`robots.txt`** — always generated in the output root
-- **`sitemap.xml`** — generated when `meta.domain` is configured (per-language in multi-language sites)
-- **`sitemap-index.xml`** — generated when multiple languages are detected
-- **`feed.xml`** — Atom 1.0 feed (per-language in multi-language sites)
-- **Canonical URLs, Open Graph tags, and hreflang tags** — embedded in each HTML page's `<head>`
+- **`robots.txt`**: always generated in the output root
+- **`sitemap.xml`**: generated when `meta.domain` is configured (per-language in multi-language sites)
+- **`sitemap-index.xml`**: generated when `meta.domain` is configured and translation directories are detected
+- **`feed.xml`**: Atom 1.0 feed, generated when `meta.domain` is configured (per-language in multi-language sites)
+- **Canonical URLs, Open Graph tags, JSON-LD and hreflang tags**: embedded in each HTML page's `<head>`
 
-This means your static site has the same SEO capabilities as the live server, with no additional
-build steps or plugins required.
+> [!WARNING]
+> Known bug, tracked in `REVIEW.md`: on translated pages, the canonical URL, `og:url` and JSON-LD `url` name the
+> default-language path (`https://docs.example.com/guide/setup` for `fr-FR/guide/setup.md`) in both `serve` and
+> `build`, which tells search engines the translation is a duplicate of the default-language page.

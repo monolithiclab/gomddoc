@@ -11,14 +11,14 @@ gomddoc includes built-in HTTP features that require no configuration: caching, 
 ## Caching
 
 Cache-Control and ETag travel together: both are written by the one helper (`serveWithETag`) that
-every handler holding a complete response body goes through. So a route either has both or neither,
+every handler holding a complete response body goes through. A route either has both or neither,
 and the scope below is the same for the two sections.
 
 ### Cache-Control
 
 | Routes | `Cache-Control` |
 |--------|-----------------|
-| Rendered pages, `/tags/`, `/sitemap.xml`, `/feed.xml`, `/robots.txt` | `public, max-age=300` |
+| Rendered pages, raw files, `/tags/`, `/sitemap.xml`, `/feed.xml`, `/robots.txt` | `public, max-age=300` |
 | `/_assets/` (static files) | `public, max-age=31536000, immutable` |
 | `/api/*`, `/health/*`, `/metrics`, error responses | *(none)* |
 
@@ -37,11 +37,14 @@ Responses written through `serveWithETag` — the same set as the first two rows
 `ETag`: a content fingerprint computed with the FNV-64a hash. It is a weak validator (prefixed with
 `W/`) since the same content may be served with different transfer encodings (e.g., gzip).
 
-When a browser makes a subsequent request, it sends the cached ETag in the `If-None-Match` header. If the content has not changed, gomddoc responds with `304 Not Modified` and an empty body, saving bandwidth and processing time.
+When a browser makes a subsequent request, it sends the cached ETag in the `If-None-Match` header. If the content has
+not changed, gomddoc responds with `304 Not Modified` and an empty body, saving bandwidth and processing time.
 
 What the fingerprint is taken over depends on the route:
-- **Markdown pages**: the fully rendered HTML (after template wrapping), so any change to content, metadata, or templates produces a new ETag.
-- **Static assets** (CSS, JS, images): the raw file content.
+- **Markdown pages**: the fully rendered HTML (after template wrapping), so any change to content, metadata, or
+  templates produces a new ETag. A `text/markdown` response is hashed as sent.
+- **Content files** (images, PDFs, CSS under the content root) and **`/_assets/`**: the raw file content.
+- **`/tags/` pages**: the rendered HTML.
 - **`/sitemap.xml`, `/feed.xml`, `/robots.txt`**: the generated document, which is built once and
   cached for the life of the process.
 
@@ -58,8 +61,11 @@ No configuration is required, and there is no way to turn ETags off.
 gomddoc automatically compresses HTTP responses using gzip when all of the following conditions are met:
 
 1. The client sends an `Accept-Encoding` header that includes `gzip`.
-2. The response body is **1 KB or larger**. Smaller responses are sent uncompressed because the compression overhead would outweigh the savings.
-3. The response content type is **not already compressed**. Binary formats such as images (`image/*`), video (`video/*`), audio (`audio/*`), and archive types (`application/zip`, `application/gzip`, etc.) are never re-compressed.
+2. The response body is **1 KB or larger**. Smaller responses are sent uncompressed because the compression overhead
+   would outweigh the savings.
+3. The response content type is **not already compressed**. Binary formats such as images (`image/*`), video
+   (`video/*`), audio (`audio/*`), and archive types (`application/zip`, `application/gzip`, etc.) are never
+   re-compressed.
 
 When compression is active, the middleware:
 
@@ -70,11 +76,12 @@ When compression is active, the middleware:
 Compression requires no configuration and cannot be turned off. It uses a `sync.Pool` of gzip
 writers internally to minimize memory allocations under load.
 
-Two route groups sit outside it, both deliberately:
+Three route groups sit outside it, each deliberately:
 
 - **`/health/live` and `/health/ready`** — probe bodies are far below the 1 KB threshold, so the
   middleware would never fire anyway.
 - **`/metrics`** — `promhttp` negotiates its own encoding.
+- **The admin listener** (`--admin-port`) — health, metrics and pprof there are served without any middleware.
 
 Everything else — pages, `/tags/`, `/sitemap.xml`, `/feed.xml`, `/robots.txt`, `/_assets/`,
 `/api/*`, `/_mcp/` — is compressed, because the middleware is attached to the root route group
@@ -87,7 +94,7 @@ remembering to opt in.
 
 gomddoc uses the HTTP `Accept` header to determine the output format for each request. This
 enables the same URL to serve different representations depending on what the client wants — a
-pattern known as server-driven content negotiation (RFC 7231 §5.3).
+pattern known as server-driven content negotiation (RFC 9110 §12.5.1).
 
 ### How It Works
 
@@ -99,16 +106,38 @@ with the most specific media type preferred over wildcards.
 |---------------|----------------|--------------|
 | `*/*` (default, browsers) | Fully rendered HTML with theme, navigation, and TOC | `text/html` |
 | `text/html` | Fully rendered HTML | `text/html` |
-| `text/markdown` | Raw markdown with YAML frontmatter stripped | `text/markdown` |
+| `text/markdown` | Markdown source with a generated frontmatter block (see below) | `text/markdown; charset=utf-8` |
 | Other (e.g., `application/json`) | `406 Not Acceptable` | — |
 
-Non-markdown files (CSS, JavaScript, images, PDFs) are always served as-is with their detected
-MIME type, regardless of the `Accept` header. Content negotiation only applies to markdown content.
+Non-markdown files (CSS, JavaScript, images, PDFs) are served as-is with their detected MIME type. They go
+through the same renderer registry, whose passthrough renderer returns the input type, so an `Accept` header that
+excludes that type gets a `406` too. Every negotiated response carries `Vary: Accept`.
 
 ### Requesting Raw Markdown
 
-The `text/markdown` output format returns the page content as clean markdown with YAML frontmatter
-removed. This is useful for:
+The `text/markdown` output format returns the page's markdown body. The author's frontmatter is removed and
+replaced by a generated YAML block with these keys, each omitted when empty:
+
+- `metadata`: the page's parsed frontmatter
+- `related_docs`: pages sharing tags with this one (`path` and `title`)
+- `prev_page`, `next_page`: the neighbouring pages in navigation order
+
+```markdown
+---
+metadata:
+    description: Step-by-step guides
+    tags:
+        - guides
+    title: Guides
+related_docs:
+    - path: /guides/configuration.md
+      title: Configuration
+---
+
+# Guides
+```
+
+When there is nothing to report, the body is returned without a frontmatter block. This format is useful for:
 
 - **AI models and LLMs** — token-efficient access to documentation content without HTML markup
 - **API consumers** — scripts and tools that process markdown directly
@@ -116,30 +145,35 @@ removed. This is useful for:
 
 ```bash
 # Get rendered HTML (default)
-curl http://localhost:8080/docs/guide.md
+curl http://localhost:8080/docs/guide
 
-# Get raw markdown (frontmatter stripped)
-curl -H "Accept: text/markdown" http://localhost:8080/docs/guide.md
+# Get the markdown source with generated frontmatter
+curl -H "Accept: text/markdown" http://localhost:8080/docs/guide
 
 # Explicitly request HTML
-curl -H "Accept: text/html" http://localhost:8080/docs/guide.md
+curl -H "Accept: text/html" http://localhost:8080/docs/guide
 ```
+
+Request the extensionless URL: `/docs/guide.md` answers `301` to `/docs/guide` before negotiation runs (see
+[Extension Redirect Middleware](#extension-redirect-middleware)), and `curl` does not follow redirects without `-L`.
 
 ### Error Handling
 
 When the server cannot produce any of the media types listed in the `Accept` header, it returns
-`406 Not Acceptable` with a plain-text body listing the available output formats. This tells the
-client exactly which formats are supported so it can retry with a valid type:
+`406 Not Acceptable` with a plain-text body listing the available output formats, so the client can
+retry with a valid type:
 
 ```bash
 # Returns 406 — no renderer produces JSON for markdown input
-curl -H "Accept: application/json" http://localhost:8080/docs/guide.md
+curl -H "Accept: application/json" http://localhost:8080/docs/guide
+# Not Acceptable: available types: text/markdown, text/html
 ```
 
 ### Integration with the MCP Server
 
-The MCP server's `read_page` tool uses the same content pipeline but always returns markdown
-(equivalent to `Accept: text/markdown`). If you are building integrations for AI models, the
+The MCP server's `read_page` tool reads the same files but always returns markdown: the body with
+frontmatter stripped, preceded by a YAML header of the page's title, description and tags. It takes
+a source file path (`docs/guide.md`), not a URL. If you are building integrations for AI models, the
 MCP server is the preferred access method — see [MCP Server](../04-mcp.md) for details.
 
 No configuration is required. Content negotiation is always enabled.
@@ -184,7 +218,15 @@ GET /guide/setup     →  (passes through to handler)
 The redirect only fires when the resolver has a mapping for the requested file. Requests with
 extensions not in `strip_extensions` (e.g., `.css`, `.png`) pass through unmodified.
 
+> [!WARNING]
+> Known bug, tracked in `REVIEW.md`: the redirect target is the resolver's clean path, which keeps a default index
+> file's name. `/guide/README.md` redirects to `/guide/README`, not `/guide/`; `serve` answers that URL, but
+> `build` never writes it.
+
 ### Handler Resolution
+
+Before reading any file, the handler checks the `redirect_from` map built from page frontmatter; a
+match answers `301` with the page's URL.
 
 When the handler receives a request for a path that the provider cannot find (e.g., `/guide/setup`
 — no such literal file exists), it consults the `PathResolver`:
@@ -193,9 +235,14 @@ When the handler receives a request for a path that the provider cannot find (e.
 2. Call `resolver.Resolve("guide/setup")` — returns `guide/setup.md` if mapped.
 3. Re-read the file from the provider using the real path.
 
-This means the resolver runs *after* the provider's initial lookup fails, not before. Files that
+The resolver runs *after* the provider's initial lookup fails, not before. Files that
 exist at their literal path (images, CSS, non-stripped extensions) are served directly without
 resolver involvement.
+
+A directory URL serves its `default_index` file (`README.md` by default). A directory without one
+renders a listing when `dir_index` is on, and otherwise answers `302 Found` with the first page of the
+site's navigation tree (the first page of the whole site, not of that directory: a known bug, tracked in
+`REVIEW.md`).
 
 ### 404 Behavior
 
@@ -207,7 +254,7 @@ it does not exist.
 
 Content requests pass through the middleware chain in this order (outermost first):
 
-1. **SecurityHeaders** and **RequestID** — wrap the whole mux, including `/health/*` and `/metrics`
+1. **SecurityHeaders** and **RequestID** — wrap the whole main-port mux, including `/health/*` and `/metrics`
 2. **Compression** — gzip, plus `Vary: Accept-Encoding`
 3. **Metrics** — records Prometheus request metrics
 4. **BasicAuth** — only when credentials are configured
@@ -228,4 +275,4 @@ In `gomddoc build`, the resolver drives pretty URL output. Instead of generating
 the build command generates `guide/index.html` so that static hosts serve the page at `/guide/`.
 Extension redirect HTML files (e.g., `guide.md` containing a meta-refresh redirect to `/guide`)
 are also generated so old extension-based URLs work on static hosts that do not support server-side
-redirects.
+redirects. `redirect_from` sources get the same kind of meta-refresh page.

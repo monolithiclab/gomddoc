@@ -18,35 +18,43 @@ automatically, auto-assigns a port, and can open your browser:
 gomddoc preview --open
 ```
 
-Preview enables dev mode automatically and is the recommended command during active writing —
-it prioritizes convenience over production settings. `serve` always runs in production mode.
+`preview` takes the same directory argument as `serve` (a local directory or a Git URL) and these flags:
+`-p/--port` (default `:auto`), `-d/--domain`, `--open` (`GOMDDOC_PREVIEW_OPEN`), `--dir-index`, `--git-key-file`
+and `--git-storage-dir`. It has no `--admin-port`, `--pprof` or `--basic-auth-file`; health and metrics stay on the
+main port.
+
+Preview is the recommended command during active writing. `serve` runs in production mode unless
+`GOMDDOC_SERVER_DEV_MODE=true` is set.
 
 ## Development Mode
 
-Development mode (enabled by `preview`) disables caching and enables verbose logging, so every
-browser refresh shows the latest version of your content.
+Development mode (always on for `preview`, opt-in for `serve` with `GOMDDOC_SERVER_DEV_MODE=true`) disables the
+template and inline-asset caches, so a browser refresh shows your latest template edits.
 
 ### What Changes in Dev Mode
 
-**Template reloading.** In production, parsed templates are cached in memory for performance.
-In dev mode, templates are re-parsed on every request. Any change to a `.tmpl` file — layout,
-partial, or theme override in `.gomddoc/assets/` — is visible immediately upon refresh.
+**Template reloading.** In production, parsed templates and the assets inlined with `inlineJSAsset`,
+`inlineCSSAsset` and `inlineHTMLAsset` are cached in memory. In dev mode, they are re-read on every request. Any
+change to a `.tmpl` file (layout, partial, or theme override in `.gomddoc/`) or to an inlined script is visible
+on refresh.
 
-**Config logging.** The full resolved configuration is logged at startup, which helps verify
-that your `.gomddoc/config.yml` changes are being picked up:
+**Startup logging.** Dev mode logs the directory, port and theme at startup, and the admin-port warning that
+`serve` prints is suppressed:
 
 ```
-INFO Development mode enabled config={...}
+INFO Development mode enabled dir=docs port=:8080 theme=default
 ```
 
-**Debug logging.** You will see verbose `slog.Debug` output including file lookups in overlay
-filesystem layers, hidden path blocking events, environment variable overrides, and template
-cache operations.
+**Content edits.** Markdown is rendered from source on every request in both modes, so an edit to an existing
+page's body shows on refresh.
 
-**No effective caching.** HTTP caching headers are still sent but have no practical effect since
-content is always re-rendered from source. Every page refresh shows the latest content, template
-changes take effect immediately, and configuration changes to `.gomddoc/config.yml` are picked up
-on the next request.
+**What needs a restart.** The configuration, navigation tree, metadata and tag index, search index and clean-URL
+map are built once at startup, in dev mode too. Restart `preview` after you change `.gomddoc/config.yml`, add,
+rename or delete a file, or change a page's title or tags, so navigation, search, tag pages and `strip_extensions`
+URLs pick it up. For Git sources the repository is cloned at startup, so new commits also need a restart.
+
+HTTP caching headers (`ETag`, `Cache-Control: public, max-age=300` on pages) are sent in both modes. Use a hard
+refresh if the browser serves a cached page.
 
 ## Auto-Port Assignment
 
@@ -62,20 +70,22 @@ gomddoc preview
 gomddoc serve -p :auto
 ```
 
-The assigned port is logged at startup:
+The assigned port is logged at startup, and `preview` also prints the URL:
 
 ```
 INFO Auto-assigned port port=:8081
-INFO Server started url=http://localhost:8081
+Preview: http://localhost:8081
+INFO Server started url=http://localhost:8081 dir=. dev=true
 ```
 
 ## Recommended Workflow
 
 1. Run `gomddoc preview --open` in your docs directory
-2. Edit markdown files, templates, or config in your editor
-3. Refresh the browser to see changes instantly
-4. Use `Ctrl+K` to test the search modal with your content
-5. When satisfied, build the static site with `gomddoc build`
+2. Edit markdown files and templates in your editor
+3. Refresh the browser to see changes; restart after config changes or new files
+4. Use `Ctrl+K` (`Cmd+K` on macOS) to test the search modal with your content
+5. Run `gomddoc doctor` to check configuration and content
+6. When satisfied, build the static site with `gomddoc build`
 
 ## YAML Frontmatter
 
@@ -86,8 +96,8 @@ Frontmatter fields affect how the page is rendered, indexed, and displayed in se
 
 ## Tags and Discovery
 
-Adding a `tags` list to a page's frontmatter drives three discovery features automatically — no extra
-configuration beyond the relevant theme feature flags:
+Adding a `tags` list to a page's frontmatter drives three discovery features. They need no configuration beyond
+the relevant theme feature flags:
 
 ```yaml
 ---
@@ -101,10 +111,10 @@ tags: [deployment, docker]
 - **Tag pages** — gomddoc serves an HTML index at `/tags/` listing every tag, and a landing page at
   `/tags/{tag}` listing all pages carrying that tag. These are emitted as static HTML in `build` mode
   too. (See the [API Reference](12-advanced/03-api-reference.md) for the tag endpoints.)
-- **See-also (related pages)** — the `see_also` theme feature appends a "See also" section listing other
-  pages that share one or more tags with the current page, ranked by overlap.
+- **See-also (related pages)** — the `see_also` theme feature appends a "See also" section listing up to 10 other
+  pages that share one or more tags with the current page, sorted by title.
 
-Tags are normalized (lowercased, trimmed, deduplicated) for indexing, and they are also queryable via
-the `tag:` syntax in [full-text search](10-search.md#tag-filters) and the JSON `/api/tags` endpoints.
-Both `tag_chips` and `see_also` are enabled by default in every theme and can be toggled per
-site or per page via [feature flags](02-configuration.md).
+Tags are normalized (lowercased, trimmed, deduplicated; tags containing `/` or `\` are dropped) for indexing, and
+they are also queryable via the `tag:` syntax in [full-text search](10-search.md#tag-filters) and the JSON
+`/api/tags` endpoints. Both `tag_chips` and `see_also` are enabled by default and can be toggled per site or per
+page via [feature flags](02-configuration.md).

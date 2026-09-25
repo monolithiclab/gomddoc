@@ -43,7 +43,11 @@ Three things follow from the shape of this interface:
   are produced earlier by the *enricher* and handed to you in `enrichment`. Use what you need and
   ignore the rest — a renderer that re-parses frontmatter is doing work the pipeline already did.
 
-`enrichment` may be nil for content types no enricher handles. Guard before dereferencing.
+For content types no enricher handles, the handler passes an empty `EnrichmentData` (the no-op enricher's result),
+not nil. Tests and other callers may pass nil, so guard before dereferencing.
+
+A renderer whose output is `text/html` produces a fragment: the handler wraps it in the theme's layout, the same way
+it wraps rendered Markdown. Any other output type is written as-is.
 
 ## A worked example: CSV to an HTML table
 
@@ -113,9 +117,10 @@ Register it in `setupPipeline` (`cmd/gomddoc/pipeline.go`):
 registry.Register(renderer.NewCSVRenderer())
 ```
 
-`text/csv` already maps from `.csv` via the standard library's MIME table. For an extension Go does
-not know, add it to the `init()` in `internal/negotiate/mime.go`, which is where `.md` and
-`.markdown` are registered:
+The provider detects the input type with `mime.TypeByExtension`. Go's built-in table does not list `.csv`; it
+resolves to `text/csv` only when the host's MIME database (`/etc/mime.types` and similar) does, so a binary that
+must behave the same everywhere registers it. For an extension Go does not know, add it to the `init()` in
+`internal/negotiate/mime.go`, which is where `.md`, `.markdown` and `.mjs` are registered:
 
 ```go
 _ = mime.AddExtensionType(".adoc", "text/asciidoc; charset=utf-8")
@@ -221,4 +226,4 @@ Two cases worth adding beyond the happy path:
 | 406 Not Acceptable | The request's `Accept` header does not intersect your `OutputMimeTypes()`. The response body lists what *is* available for that input type. |
 | Content served raw | `PassthroughRenderer` won, which only happens when your `InputMimeTypes()` scored zero — see the row above. |
 | Another renderer wins for the same input type | It was registered later. Move your `Register` call below it in `setupPipeline`. |
-| `context deadline exceeded` | The render exceeded the request timeout. Renderers shelling out to an external tool need their own bounded `exec.CommandContext` — and note gomddoc otherwise ships zero `exec.Command` calls, so this is a meaningful change to the security posture. |
+| Response cut off on a slow render | The render ran past `server.http.write_timeout` (default 30s). gomddoc sets no deadline on the request context, which is cancelled only when the client disconnects. A renderer shelling out to an external tool needs its own bounded `exec.CommandContext`. gomddoc's only `exec.Command` calls today open a browser (`preview --open`) and the user's `$PAGER` (`help`); none run on the request path, so a renderer that runs one is a meaningful change to the security posture. |
