@@ -193,9 +193,10 @@ rsvg-convert -w 512 -h 512 "$TMP/m512.svg" -o "$OUT/maskable-icon-512x512.png"
 ## Verification checklist
 
 `scripts/favicon-check.go` asserts every rule on this page against a deployed site: the six head
-tags, all eight assets served from the URL root, the ICO's three resolutions, each PNG's dimensions,
-the apple-touch-icon's opacity, and the manifest's fields and four icon entries. It needs nothing
-beyond the Go toolchain — no `magick`, no `file`, no `python3`.
+tags, all eight assets served from the URL root, the ICO's three resolutions, the SVG's `viewBox`,
+each PNG's dimensions, the apple-touch-icon's opacity, and the manifest's fields and four icon
+entries. It needs nothing beyond the Go toolchain — no `magick`, no `file`, no `python3`. Run it from
+the skill directory:
 
 ```bash
 go run scripts/favicon-check.go https://your.site

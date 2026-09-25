@@ -40,6 +40,11 @@ Extracted from completed spec files before deletion.
 - **MIME registration**: In `MarkdownRenderer` `init()` — co-located with the renderer that owns it
 - **goldmark thread safety**: Parser/renderer are reused (goldmark is thread-safe), no pooling needed
 
+**Superseded**: two-dimensional negotiation (45d0336, 2026-04-22) changed `DefaultRegistry.Get` to
+`(ContentRenderer, string, error)` and replaced the collision warning with "later registration wins ties"; the `.md`
+MIME registration moved to `internal/negotiate/mime.go`'s `init()` (2bfa95c, 2026-08-07); `Provider` is now its own
+interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
+
 ## Metadata / RenderResult
 
 **Chosen**: `RenderResult` struct instead of multiple return values
@@ -52,6 +57,9 @@ Extracted from completed spec files before deletion.
 
 **Why**: Extensible without interface churn. Prepares for future fields (images found, links for validation). Clean API.
 
+**Superseded**: the content enricher (d13955b, Phase 6b, 2026-04-22) took over metadata and TOC extraction;
+`RenderResult` now holds only `Content` and `MimeType`, and `Render` receives the `*enricher.EnrichmentData`.
+
 ## Configuration Architecture
 
 **Chosen**: Custom implementation with reflection-based env var walking
@@ -63,7 +71,8 @@ Extracted from completed spec files before deletion.
 
 **Precedence models**:
 - Server config: CLI flags > env vars > defaults (Kong handles natively)
-- Site config: env vars > YAML file > defaults (allows environment-specific customization)
+- Site config: CLI flags (`--domain`, `--dir-index`) > env vars > YAML file > defaults (allows environment-specific
+  customization)
 
 **Alternatives rejected**:
 - **Viper/koanf**: Would add external deps; custom implementation is simpler for our specific needs and provides full control
@@ -79,10 +88,14 @@ Extracted from completed spec files before deletion.
 - **SSH**: Fail-closed via known_hosts — no TOFU (Trust On First Use) fallback. SSH agent not supported (explicit key file only)
 - **Error classification**: Uses `errors.Is()` with go-git typed sentinel errors (`transport.ErrAuthenticationRequired`, `transport.ErrRepositoryNotFound`, `plumbing.ErrReferenceNotFound`) instead of string matching. String fallbacks retained only for errors without typed sentinels.
 - **Clone timeout**: Enforced via `context.WithTimeout` (default 60s)
-- **File size limits**: 50MB max per file (configurable)
+- **File size limits**: 50MB max per file (`GitProviderConfig.MaxFileSize`; no flag or env var sets it)
 - **LFS**: Pointer files detected and rejected with 501 Not Implemented
-- **Lazy initialization**: Clone happens on first `ReadFile()`, not at startup
+- **Lazy initialization**: Clone happens on first access (`ensureCloned`, called by `ReadFile`, `Stat` and `RootFS`),
+  not at construction
 - **In-memory storage**: No persistent disk cache, cleared on restart (restart = update content)
+
+**Superseded** in part: `--git-storage-dir` (`GOMDDOC_SERVER_GIT_STORAGE_DIR`) selects on-disk storage through
+`DiskStorageFactory` (e8df64f, 2026-04-22); in-memory remains the default. See "Disk-Based Git Storage".
 
 ## Feature Toggle System
 
@@ -93,12 +106,12 @@ Extracted from completed spec files before deletion.
 - **Bitfield/enum**: Compile-time checked but can't add features from config/frontmatter without code changes.
 - **String set (`map[string]struct{}`)**: Can't distinguish "disabled" from "not configured". No natural default-to-true.
 
-**Why `map[string]bool`**: Arbitrary features without code changes. `nil` map = all enabled (safe default). Per-feature env vars via `GOMDDOC_SITE_FEATURES_<NAME>=bool`. Per-page frontmatter override via `features:` map. Pre-merged at `PageContext` construction time — templates call `.Feature "name"` without re-merging. Feature keys validated with `^[a-z][a-z0-9_]*$` regex.
+**Why `map[string]bool`**: Arbitrary features without code changes. `nil` map = all enabled (safe default). Per-feature env vars via `GOMDDOC_SITE_THEME_FEATURES_<NAME>=bool` (config key `theme.features`). Per-page frontmatter override via `features:` map. Pre-merged at `PageContext` construction time — templates call `.Feature "name"` without re-merging. Feature keys validated with `^[a-z][a-z0-9_]*$` regex.
 
 **Key decisions**:
 - **Default-to-true**: Unknown features return `true`. This means adding a new feature guard to a template doesn't break existing sites — it only takes effect when explicitly disabled. Requires no config migration.
 - **Pre-merged on PageContext**: Site defaults + page overrides are merged once at `TemplateContext` construction (in handler/build), not on every `.Feature` call. Uses `maps.Clone` to avoid mutating the site config.
-- **Env var pattern**: `GOMDDOC_SITE_FEATURES_KATEX=false` uses reflection-based `walkStruct` extended with `reflect.Map` handling for `map[string]bool` types.
+- **Env var pattern**: `GOMDDOC_SITE_THEME_FEATURES_KATEX=false` uses reflection-based `walkStruct` extended with `reflect.Map` handling for `map[string]bool` types.
 - **Renderer gating**: Goldmark extensions (heading_anchors, admonitions, color_chips) check the merged feature map via parser context (AST transformers) or document attribute (node renderers). The renderer sets merged features on both channels before parsing/rendering.
 
 ## API Design Patterns
@@ -127,7 +140,7 @@ Extracted from completed spec files before deletion.
 - **Handler-level generation** (generate in handler, pass via PageContext): Works but couples handler to navigation package
 - **Client-side JS navigation** (fetch navigation JSON, render in browser): Extra HTTP request, flicker on load
 
-**Why FS-walking**: The navigation generator walks `Provider.RootFS()` once to build a cached `NavNode` tree, then projects a per-request `[]enricher.NavItem` with the active path marked. No handler changes needed. Title extracted from the first `# heading` in each `.md` file (skipping frontmatter). Directories without renderable children are pruned.
+**Why FS-walking**: The navigation generator walks `Provider.RootFS()` once to build a cached `NavNode` tree, then projects a per-request `[]enricher.NavItem` with the active path marked. No handler changes needed. Titles come from the metadata index (`SetTitleLookup`), falling back to the first `# heading` in each `.md` file (skipping frontmatter). Directories without renderable children are pruned.
 
 **Why not a template function**: the tree reaches templates as `PageContext.Navigation`, and the theme walks it with a recursive `nav-item` template. A function would have to re-project on every call, and `funcMap` is bound at parse time on templates that are cached and shared across concurrent renders, so there is nowhere to memoize. Breadcrumbs originally *were* a function and were moved to a field for exactly this reason — they cost a provider `Stat` twice per request, once for the breadcrumb bar and once for the JSON-LD partial. Markup ownership also belongs with the theme: a function fixes the `<details>/<summary>` structure for every theme at once.
 
@@ -151,7 +164,7 @@ Extracted from completed spec files before deletion.
 - **Separate rendering pipeline**: Duplicates serve logic, diverges over time
 - **Template-only output** (skip template wrapping, output raw HTML): Simpler but useless without styling
 
-**Why walk-and-render**: Reuses the exact same provider → renderer → template pipeline as `serve.go`. Walks `contentRoot` with `fs.WalkDir`, renders `.md` files through the full pipeline, copies non-markdown files as-is. Generates `index.html` alongside `README.html` for clean URLs. Config reused via `NewFromServeArgs` with dummy port. Title derivation uses the shared `text.DeriveTitle` function (extracted to `internal/text/`).
+**Why walk-and-render**: Reuses the exact same provider → renderer → template pipeline as `serve.go`. Walks `contentRoot` with `fs.WalkDir`, renders `.md` files through the full pipeline, copies non-markdown files as-is. Writes the default index (`README.md`) as `index.html` and, when `strip_extensions` is set, every other page as `<name>/index.html` (`prettyOutputPath`). Config comes from `config.NewFromDir`, which calls `NewFromServeArgs` with a dummy port. Title derivation uses the shared `text.DeriveTitle` function (extracted to `internal/text/`).
 
 ## Color Chip Web Component
 
@@ -191,6 +204,9 @@ Extracted from completed spec files before deletion.
 
 **Chosen**: eight themes with full feature parity — `default` embedded in the binary, seven shipped separately in `gomddoc-themes` — on a single-file `default.html.tmpl` architecture
 
+**Superseded**: themes are split into `layouts/` (`default.html.tmpl`, `error.html.tmpl`) and overridable `partials/`,
+with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
+
 **Key decisions**:
 - **Single-file themes**: Each theme is one `default.html.tmpl` with inline CSS/JS. Simpler than multi-file setups; entire theme is self-contained and easy to copy/customize.
 - **Feature parity**: All themes must support: light/dark mode, TOC, navigation, breadcrumbs, admonitions, color chips, code copy, heading anchors, KaTeX, Mermaid, touch accessibility. Prevents "works in default theme but not in X" bugs.
@@ -207,7 +223,7 @@ Extracted from completed spec files before deletion.
 - **Global template function with hardcoded paths**: Inflexible; can't be overridden per-theme
 - **Single `inlineAsset` returning one type**: Go's `html/template` applies context-aware escaping — `template.JS` works in `<script>` but is escaped in `<style>` or bare HTML; `template.HTML` works bare but is quoted/escaped inside `<script>`. No single type works in all contexts.
 
-**Why three typed functions**: Search order (theme dir → shared dir) lets themes override shared assets without forking. Each function returns the correct `html/template` safe type for its context: `template.JS` for `<script>`, `template.CSS` for `<style>`, `template.HTML` for bare HTML (e.g. inline SVGs). Asset file reading is shared via an unexported `readAsset` method. When Phase 8e (static asset serving) ships, themes can migrate to `<script src="{{ assetURL ... }}">` while keeping inline asset functions as a fallback for small snippets.
+**Why three typed functions**: Search order (theme dir → shared dir) lets themes override shared assets without forking. Each function returns the correct `html/template` safe type for its context: `template.JS` for `<script>`, `template.CSS` for `<style>`, `template.HTML` for bare HTML (e.g. inline SVGs). Asset file reading is shared via an unexported `readAsset` method. Phase 8e shipped static asset serving at `/_assets/` (0638461) without an `assetURL` function; the default theme still inlines every shared `.mjs` file.
 
 ## Cache Busting Strategy
 
@@ -227,7 +243,7 @@ Extracted from completed spec files before deletion.
 - **Three document sizes**: Small (~50B), medium (~2KB), large (~20KB) — covers cache-friendly and cache-busting scenarios
 - **Separate bench files**: `*_bench_test.go` keeps benchmarks isolated from unit tests; `make bench` uses `-run=^$` to skip unit tests
 - **`benchstat` comparison**: `make bench-save` captures baseline, `make bench-compare` detects regressions. Count=6 for statistical significance
-- **No CI integration yet**: Deferred until GitHub Actions is set up
+- **No CI integration**: `.github/workflows/ci.yml` does not run benchmarks
 
 ## pprof Integration
 
@@ -237,7 +253,7 @@ Extracted from completed spec files before deletion.
 - **Always-on pprof on separate port**: Avoids accidental production exposure but adds port management complexity
 - **Build tag (`-tags pprof`)**: Zero overhead when disabled but complicates the build process
 
-**Why CLI flag**: Simplest approach. Disabled by default, logs `slog.Warn` when enabled. Routes registered via the auth `RouteGroup` — protected by BasicAuth when configured. Config flows through `ServerConfig.Pprof` and is overridable via `GOMDDOC_SERVER_PPROF` env var.
+**Why CLI flag**: Simplest approach. Disabled by default, logs `slog.Warn` when enabled. Routes registered by `mountPprof` on whichever listener carries the admin endpoints (`--admin-port`, or the main listener when it is empty) and protected by BasicAuth when `--basic-auth-file` is set. Config flows through `ServerConfig.Pprof` and is overridable via `GOMDDOC_SERVER_PPROF` env var.
 
 ## Pre-Launch SEO (Phase 9a)
 
@@ -245,7 +261,7 @@ Extracted from completed spec files before deletion.
 
 **Key decisions**:
 - **Shared URL construction**: `seo.PageURL(domain, path, defaultIndex)` in `internal/seo/url.go` used by template functions, sitemap handler, and build command. Uses `net/url` for proper URL building. Default index filename from config (not hardcoded).
-- **Single head partial**: All SEO tags in `default/partials/head.html.tmpl` — inherited by all 8 themes via partial override system. No per-theme changes needed.
+- **Single head partial**: All SEO tags in the `head-meta` block of `default/partials/head-shared.html.tmpl` — inherited by all 8 themes via partial override system. No per-theme changes needed.
 - **`og:type` overridable**: Defaults to `article` but frontmatter `og_type` field overrides it (e.g., `og_type: website` for landing pages).
 - **Conditional tags**: All SEO tags degrade gracefully — canonical/OG URL tags only render when `meta.domain` is configured. Description falls back from page to site level.
 - **Sitemap handler**: Only registered when both `MetaIndex` and `Meta.Domain` are available. Uses `metadata.Index.AllPages()` for page discovery.
@@ -262,7 +278,7 @@ Extracted from completed spec files before deletion.
 - **`strings.IndexByte` over `strings.Split`**: Throughout `Matches()`, `inputMatchScore()`, `outputMatchScore()`. `strings.Split` allocates a `[]string` slice; `IndexByte` returns an index for substring slicing (zero-alloc).
 - **Stack-allocated candidate array**: `Registry.Get()` uses `var candidateBuf [8]candidate` instead of `var candidates []candidate`. For typical registries (≤8 renderers), avoids heap allocation entirely.
 - **`NormalizeMimeType` fast-path**: Skip `mime.ParseMediaType` when input has no semicolon (common case for pre-normalized MIME types from `Provider.ReadFile`).
-- **Compression buffer pool**: `sync.Pool` for `compressionWriter.buf` byte slices. Acquired on request start, returned in `Close()`. Avoids per-request 4KB buffer allocation.
+- **Compression buffer pool**: `sync.Pool` for `compressionWriter.buf` byte slices. Acquired on request start, returned in `Close()`. Avoids a per-request buffer allocation (capacity `minCompressionSize`, 1 KiB).
 
 **Results** (allocs/op):
 | Path | Before | After |
@@ -273,6 +289,9 @@ Extracted from completed spec files before deletion.
 | `ParseAccept` (browser) | 12+ | 4 |
 | `Matches` | 1 | 0 |
 | `Registry.Get` | 5-12 | 0 |
+
+**Superseded**: `MediaType.Matches` was deleted as dead code (cfcb493, 2026-08-07); RFC 9110 precedence now lives in
+`(negotiate.MediaType).Specificity()`, which `outputMatchScore` calls.
 
 ## Full-Text Search (Phase 5)
 
@@ -290,7 +309,7 @@ are tokenized by stripping markdown syntax and splitting on non-alphanumeric bou
 TF-IDF with title (3x) and description (1.5x) boosts. Query semantics are AND (all terms must match).
 Snippets are generated with `<mark>` highlighting around query terms.
 
-**API:** `GET /api/search?q=<query>&limit=<n>` returns JSON array of `{path, title, description, snippet, score}`.
+**API:** `GET /api/search?q=<query>&limit=<n>&lang=<code>` returns JSON array of `{path, title, description, snippet, score}`.
 
 **Search UI:** Shared `search.mjs` module loaded via `{{ inlineJSAsset "search.mjs" }}` across all 8 themes.
 CSS injected dynamically using theme custom properties (`--color-*`) for automatic cross-theme and dark
@@ -327,7 +346,8 @@ mutually exclusive at runtime, so the exclusion is safe by construction.
 
 ## MCP Server (Phase 10)
 
-**Chosen**: Official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk` v1.4.x) with thin adapter architecture
+**Chosen**: Official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk`, v1.4.x when chosen, v1.8.0 in `go.mod`
+now) with thin adapter architecture
 
 **Alternatives considered**:
 - **mcp-go** (`github.com/mark3labs/mcp-go`): Larger community (8.5k stars) but v0.46.0 (unstable semver), functional options pattern, manual schema builders
@@ -337,7 +357,7 @@ mutually exclusive at runtime, so the exclusion is safe by construction.
 **Why official SDK**: Semver stable (v1.4.x), auto-generates JSON Schema from Go struct tags (matches gomddoc conventions), maintained by Anthropic + Google, will track spec authoritatively. Struct-based options align with gomddoc's Options struct pattern.
 
 **Key design decisions**:
-- **Thin adapter**: MCP package calls existing `Provider.ReadFile()`, `MetaIndex.AllPages()`, `SearchIndex.Search()`, and `navigation.Generator.Generate()` — no new parsing or indexing
+- **Thin adapter**: MCP package calls existing `Provider.ReadFile()`, `MetaIndex.AllPages()`, `SearchIndex.Search()`, and `navigation.Generator.Tree()` — no new parsing or indexing
 - **`docs://` URI scheme**: Semantic resource identification separate from HTTP URLs
 - **Section extraction without goldmark**: Line-based heading parser keeps MCP package lightweight with no dependency on the rendering pipeline
 - **All tools `readOnlyHint: true`**: Trust signal for MCP clients to enable auto-approval

@@ -33,8 +33,6 @@ features:
 screenshots:
   desktop-light: "screenshots/desktop-light.png"
   desktop-dark: "screenshots/desktop-dark.png"
-  mobile-light: "screenshots/mobile-light.png"
-  mobile-dark: "screenshots/mobile-dark.png"
 ---
 
 # Default
@@ -43,13 +41,19 @@ The default gomddoc theme. A clean, modern documentation layout with a left navi
 right-hand table of contents, and full dark mode support. Uses Inter for body text and JetBrains
 Mono for code.
 
-Light mode uses a crisp white background with blue accents. Dark mode switches to a deep
-purple-tinted background with indigo highlights and a subtle gradient border on code blocks.
+Light mode uses a white background with blue accents. Dark mode switches to a deep
+purple-tinted background with indigo highlights. Without a stored choice, the theme follows the
+system `prefers-color-scheme` setting.
 
-Features sticky header with backdrop blur, breadcrumb navigation, collapsible nav sections,
-scroll-tracked TOC highlighting, and copy-to-clipboard buttons on code blocks. Admonitions use
-color-coded left borders with tinted backgrounds. Responsive layout hides the TOC on tablets and
-collapses the nav sidebar into a hamburger menu on mobile.
+Features a sticky header with backdrop blur and a gradient bottom border, breadcrumb navigation,
+collapsible nav sections, scroll-tracked TOC highlighting, a search modal (Ctrl+K / Cmd+K),
+copy-to-clipboard buttons on code blocks, tag chips, a "See also" section, an "Edit this page"
+link when `edit_url` is set, and a language switcher on multi-language sites. Admonitions use
+color-coded left borders with tinted backgrounds. Below 1200px the TOC sidebar moves behind a
+toggle button; below 992px the nav sidebar collapses into a hamburger menu.
+
+Every optional part is gated by a feature toggle: `admonitions`, `code_copy`, `color_chips`,
+`dark_mode`, `heading_anchors`, `katex`, `mermaid`, `search`, `see_also`, `tag_chips` and `toc`.
 
 ## CSS Variables
 

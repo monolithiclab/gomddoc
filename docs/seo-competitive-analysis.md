@@ -7,32 +7,31 @@ author: "research"
 # SEO Competitive Analysis
 
 > **Historical research, not a gap analysis.** This document was written before Phase 9 to decide
-> what to build. Most of it has since shipped, so every "gomddoc is missing X" statement below
-> describes the state at the time of writing, not today. The competitor survey and the rationale for
-> each recommendation are still accurate and still worth reading; the verdicts are not. See
-> [Implementation Status](#implementation-status) for what actually landed, and
-> [roadmap.md](roadmap.md) Phase 9 for the authoritative record.
+> what to build. The competitor survey and the rationale for each recommendation still hold; the
+> recommendation sections describe gomddoc as it was then. [Implementation Status](#implementation-status)
+> and the other statements about gomddoc's own capabilities were checked against the code on 2026-09-25.
+> [roadmap.md](roadmap.md) Phase 9 is the record of when each item shipped.
 
 ## Implementation Status
 
 | #  | Recommendation                     | Status | Where                                                     |
 | -- | ---------------------------------- | ------ | --------------------------------------------------------- |
-| 1  | Canonical URLs                     | ✅     | `internal/seo`, `canonicalURL` template func               |
-| 2  | XML sitemap                        | ✅     | `internal/server/sitemap.go`, `build.go` (+ sitemap index) |
-| 3  | robots.txt                         | ✅     | `GET /robots.txt`, `generateSEOFiles`                      |
-| 4  | Open Graph / Twitter Card          | ✅     | `partials/head-shared.html.tmpl`                           |
-| 5  | JSON-LD structured data            | ✅     | `seo.GenerateJSONLD`, `partials/jsonld.html.tmpl`          |
-| 6  | Auto-generated meta description    | ❌     | frontmatter `description` or the site default only         |
-| 7  | Git-based timestamps               | 🟡     | sitemap `<lastmod>` and the feed use ModTime; JSON-LD has no `datePublished`/`dateModified` |
+| 1  | Canonical URLs                     | 🟡     | `canonicalURL` template func (`seo.PageURL`), emitted when `site.meta.domain` is set; on a translated page it omits the `/{lang}` prefix and points at the default-language URL |
+| 2  | XML sitemap                        | ✅     | `internal/server/sitemap.go`: serve answers `/sitemap.xml` and `/{lang}/sitemap.xml` when a domain is set; build writes the same files plus `sitemap-index.xml` on a multi-language site |
+| 3  | robots.txt                         | ✅     | `GET /robots.txt`, `generateSEOFiles`; disallows `/_assets/`, `/api/`, `/debug/`; its `Sitemap:` line names the sitemap actually published (`sitemap-index.xml` for a multi-language build) |
+| 4  | Open Graph / Twitter Card          | ✅     | `partials/head-shared.html.tmpl`: `og:url`, `og:type` (`article`, or frontmatter `og_type`), `og:site_name`, `og:title`, `og:description`, `twitter:card` = `summary`, `twitter:title`, `twitter:description`; no `og:image` |
+| 5  | JSON-LD structured data            | ✅     | `seo.GenerateJSONLD`, `partials/jsonld.html.tmpl`: `TechArticle` (headline, description, author, `datePublished`, `dateModified`), `BreadcrumbList`, `WebSite` on the index page with a `SearchAction` when a search index was built |
+| 6  | Auto-generated meta description    | ❌     | frontmatter `description` or `site.meta.description` only; `gomddoc doctor` reports `content.missing-description` |
+| 7  | Git-based timestamps               | 🟡     | `seo.LastModified` feeds sitemap `<lastmod>`, the feed and JSON-LD `dateModified`; the git provider reports the HEAD commit time for every file, not each file's last commit; frontmatter `date` is the fallback and the `datePublished` source |
 | 8  | Social preview image generation    | ❌     | no `og:image`; deliberately deferred (needs image rendering) |
-| 9  | Per-page `<meta name="robots">`    | ✅     | frontmatter `robots`, site default `meta.robots`           |
-| 10 | Heading anchor slug stability      | 🟡     | goldmark `WithAutoHeadingID` is stable, but the algorithm is neither documented nor pinned by a test |
-| 11 | `<html lang>`                      | ✅     | `layouts/default.html.tmpl`, `site.language`               |
-| 12 | Related pages via tags             | ✅     | `findRelatedDocs`, `PageContext.RelatedDocs`               |
-| 13 | 404 page with navigation           | ✅     | error layout in serve, `404.html` in build                 |
-| 14 | Redirect support                   | ✅     | frontmatter `redirect_from`, `URLRedirectMap`              |
-| 15 | RSS/Atom feed                      | ✅     | `internal/server/feed.go`, `GET /feed.xml`                 |
-| 16 | Preconnect/preload resource hints  | ✅     | `partials/head.html.tmpl`                                  |
+| 9  | Per-page `<meta name="robots">`    | ✅     | frontmatter `robots`, site default `site.meta.robots`; pages whose frontmatter `robots` contains `noindex` are left out of the sitemap and feed |
+| 10 | Heading anchor slug stability      | ✅     | goldmark `WithAutoHeadingID`; algorithm documented in `docs/guide/12-advanced/02-markdown-extensions.md` and pinned by `TestHeadingSlugs`; no per-heading ID override |
+| 11 | `<html lang>`                      | ✅     | `layouts/default.html.tmpl`; `site.language` (default `en-US`), frontmatter `lang`, or the page's language directory |
+| 12 | Related pages via tags             | ✅     | `findRelatedDocs`, `PageContext.RelatedDocs`, `partials/see-also.html.tmpl` |
+| 13 | 404 page with navigation           | 🟡     | themed error layout in serve, `404.html` (and `/{lang}/404.html`) in build; it has the site header and a homepage link but no navigation sidebar |
+| 14 | Redirect support                   | ✅     | frontmatter `redirect_from`, `URLRedirectMap`: 301 in serve, meta-refresh HTML pages in build |
+| 15 | RSS/Atom feed                      | ✅     | `internal/server/feed.go`, Atom at `/feed.xml` and `/{lang}/feed.xml` |
+| 16 | Preconnect/preload resource hints  | 🟡     | default theme's `partials/head.html.tmpl` preconnects to Google Fonts; no `preload`, no preconnect for the KaTeX CDN |
 | 17 | Image dimension attributes         | ❌     | images pass through unchanged                              |
 | 18 | `<link rel="next/prev">`           | ✅     | `partials/head-shared.html.tmpl`                           |
 
@@ -61,9 +60,9 @@ Key findings:
 4. **Documentation-specific patterns** (clean heading hierarchy, internal cross-references, code
    snippet indexing) are where gomddoc can differentiate from general-purpose CMS tools.
 
-gomddoc's current state: `<meta name="description">` is present, `<title>` uses page + site title,
-`base_url`/`domain` config exists. Everything else in this document is net-new.
-_(As of Phase 9, 14 of the 18 recommendations below are implemented.)_
+gomddoc's state at the time of writing: `<meta name="description">` was present, `<title>` used page + site title,
+and `base_url`/`domain` config existed. Everything else in this document was net-new.
+_(As of 2026-09-25, 11 of the 18 recommendations below are implemented, 4 partially, and 3 not at all.)_
 
 ## WordPress SEO Deep Dive
 
@@ -364,7 +363,7 @@ Google indexes code snippets and can surface them in search results:
 Both visual breadcrumbs and BreadcrumbList JSON-LD markup:
 - Appears as rich snippet path in search results (e.g., "Docs > Guide > Installation")
 - Improves CTR by showing content hierarchy in SERPs
-- gomddoc has breadcrumbs in templates but no JSON-LD markup
+- gomddoc renders breadcrumbs in templates and emits a matching `BreadcrumbList` in its JSON-LD
 
 ### 4. Internal Cross-References
 
@@ -373,7 +372,7 @@ Dense internal linking within documentation:
 - "See also" / "Related" sections linking to other pages
 - API reference cross-links between types, methods, endpoints
 - Navigation sidebars providing site-wide internal links
-- gomddoc has TOC and navigation; could add related pages via tags
+- gomddoc has TOC, navigation, and a "See also" section of pages that share tags
 
 ### 5. Clean URL Structure
 
@@ -381,7 +380,8 @@ Documentation URLs should be human-readable and stable:
 - `/docs/installation/` not `/docs/page?id=123`
 - No file extensions (`.html`, `.md`) in URLs
 - Hierarchical paths matching content organization
-- gomddoc produces clean URLs; `index.html` generation supports this
+- gomddoc strips extensions listed in `site.strip_extensions` (default `.md`) from served URLs and
+  301-redirects the extension-ful URL; build writes `page/index.html`
 
 ### 6. Canonical URLs for Versioned Docs
 
@@ -389,7 +389,7 @@ When docs exist in multiple versions:
 - `<link rel="canonical">` points to latest version
 - `<meta name="robots" content="noindex">` on old versions (optional)
 - Prevents duplicate content across versions
-- Not applicable to gomddoc yet (no versioning), but relevant for Phase 9/10
+- Not applicable to gomddoc: it has no versioned docs
 
 ### 7. Last Modified Dates
 
@@ -397,7 +397,8 @@ When docs exist in multiple versions:
 - Git commit dates are the ideal source for documentation
 - Displayed to users and included in structured data
 - Included in sitemap `<lastmod>`
-- gomddoc can extract this from Git provider but doesn't yet
+- gomddoc uses file modification time (the HEAD commit time with the git provider, not a per-file
+  commit date) for sitemap `<lastmod>`, the feed and JSON-LD `dateModified`; it does not display it
 
 ### 8. Long-Tail Keyword Coverage
 
@@ -659,8 +660,8 @@ doesn't fit gomddoc's Markdown-to-HTML pipeline. Authors can add JSON-LD manuall
 ### Internal Link Analysis / Orphan Page Detection
 
 Tools like Screaming Frog and Yoast provide internal link auditing. This is a build-time
-analysis tool, not a rendering feature. Could be part of `gomddoc validate` in the future
-but is not an SEO feature to implement in the renderer.
+analysis tool, not a rendering feature. It could become a `gomddoc doctor` check (doctor has no
+link or orphan check today) but is not an SEO feature to implement in the renderer.
 
 ### WebP/AVIF Image Conversion
 

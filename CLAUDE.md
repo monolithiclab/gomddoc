@@ -16,6 +16,7 @@ make ci                     # Full pipeline: codefix + format + lint + tests (US
 make test                   # Tests with coverage (target: 87%+)
 make lint -j8               # Parallelize linting (includes govulncheck as lint-vulncheck)
 make build                  # Production binary → build/gomddoc
+make install                # go install with the version ldflag → $GOBIN (or $GOPATH/bin)
 make bench                  # Benchmarks
 make run                    # Run locally (go run ./cmd/gomddoc serve testsite)
 FORCE_UPDATE=1 make lint    # Reinstall every linter, including govulncheck
@@ -34,6 +35,8 @@ docs/
 ├── architecture.md         # Component relationships, data flow, middleware, themes
 ├── decisions.md            # Technical choices log (with alternatives considered)
 ├── roadmap.md              # Phased roadmap, deferred ideas
+├── seo-competitive-analysis.md  # Pre-Phase-9 SEO research vs. MkDocs/Docusaurus/Hugo
+├── guide.go                # Embeds guide/ into the binary (docs.Guide)
 ├── guide/                  # Feature documentation (agent + human audience)
 ├── specs/                  # Feature specifications (written before implementation)
 ├── plans/                  # Task-by-task implementation plans derived from a spec
@@ -95,11 +98,12 @@ internal/
 ├── renderer/          # Content renderers (markdown→HTML, passthrough)
 ├── resolve/           # Clean-URL ↔ real-path resolution (strip_extensions, redirects)
 ├── search/            # Full-text search (inverted index, TF-IDF ranking)
-├── seo/               # Canonical URL building for sitemap/feed/SEO tags
+├── seo/               # Canonical URLs, JSON-LD, last-modified dates for sitemap/feed/SEO tags
 ├── server/            # HTTP server, handlers, middleware, RouteGroup
 ├── template/          # HTML rendering, caching, breadcrumbs, navigation
 ├── testutil/          # Shared test helpers
-└── text/              # Text utilities (sanitize, title case)
+└── text/              # Text utilities (sanitize, title case, frontmatter strip, section extraction, closest match)
+scripts/install.sh     # curl | sh installer for release archives (checksum + cosign verification)
 testsite/              # Lorem ipsum test site for quick testing
 ```
 

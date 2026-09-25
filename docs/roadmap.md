@@ -27,17 +27,18 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 
 ## Current State
 
-The foundation is production-ready with 90.8% test coverage (target: 87%+). For a full description
-of current capabilities, see `docs/architecture.md`.
+The foundation is production-ready with 91.8% test coverage (target: 87%+). Released versions: v0.1.0 through
+v0.1.3 (2026-09-25). For a full description of current capabilities, see `docs/architecture.md`.
 
-**Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement),
-7 (partial — sitemap generation complete), 7b (preview), 8 (theming engine), 9a (pre-launch SEO),
-9b-9d (most post-launch SEO), 10a-10b (MCP server + HTTP), tag components (chips, listing/index
-pages, `tag:` search, related/see-also section), i18n/l10n (UI strings + multi-language content).
-A GitHub Actions CI pipeline (lint + test on an ubuntu+macOS matrix, plus a `govulncheck` job) is in
-place — see Distribution and Packaging. Four review passes (13th, i18n simplification, 14th, 15th —
-see REVIEW.md) have fixed every HIGH finding and the large majority of MEDIUM/LOW ones; the
-remainder is tracked in REVIEW.md and prioritized in this doc's Implementation Strategy section.
+**Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement), 7 (partial — sitemap generation
+complete), 7b (preview), 8 (theming engine), 9a (pre-launch SEO), 9b-9d (most post-launch SEO), 10a-10b (MCP server +
+HTTP), tag components (chips, listing/index pages, `tag:` search, related/see-also section), i18n/l10n (UI strings +
+multi-language content), self-documentation (`help`, `info`, `schema`, `doctor`, the guide over MCP), and distribution
+(GoReleaser, Homebrew, Docker, install script). A GitHub Actions CI pipeline (`make lint test`, which includes
+`govulncheck`, on an ubuntu+macOS matrix, plus a shellcheck job for `scripts/install.sh`) is in place — see Distribution
+and Packaging. Features that shipped without a roadmap item are listed under Shipped Foundations. Four review passes
+(13th, i18n simplification, 14th, 15th — see REVIEW.md) have fixed every HIGH finding and the large majority of
+MEDIUM/LOW ones; the remainder is tracked in REVIEW.md and prioritized in this doc's Implementation Strategy section.
 
 **Phase 5 note:** Server-side full-text search and client-side search UI are complete for `serve`
 and `preview` modes. Build-mode search (Pagefind) deferred.
@@ -45,6 +46,33 @@ and `preview` modes. Build-mode search (Pagefind) deferred.
 **Phase 4 note:** Benchmarks, pprof, and allocation reduction are complete. CI benchmark tracking
 is unblocked (a CI pipeline now exists) but not yet done — see Phase 4, still low priority. Partial
 clones are blocked by go-git library limitations.
+
+## Shipped Foundations
+
+_Features from the completed phases that have no item elsewhere in this document._
+
+- [x] **Content serving (Phases 1-3)**: MIME-detected serving of every file type; a renderer registry with
+      `Accept` negotiation (`406` when unsatisfiable) and a Markdown passthrough for `Accept: text/markdown`
+      (`internal/renderer`, `internal/negotiate`); graceful shutdown and configurable HTTP timeouts.
+- [x] **Content providers**: filesystem, Git (`git+https://`, `git+ssh://`, in memory or on disk with
+      `--git-storage-dir`, SSH host keys checked against `known_hosts`) and the overlay filesystem for
+      `.gomddoc/` asset overrides (`internal/provider`, `internal/assets`).
+- [x] **Configuration**: flag > env > `.gomddoc/config.yml` > default, strict decoding that rejects unknown keys
+      (`internal/config`).
+- [x] **Renderer enhancement (Phase 6)**: goldmark with GFM, Chroma highlighting, heading anchors, admonitions and
+      color chips; KaTeX and Mermaid client-side (`internal/renderer`, spec `2026-04-05-goldmark-extensions-design.md`).
+- [x] **Theming engine (Phase 8)**: `layouts/` + `partials/` per theme with default-theme partials as the base and
+      site partials in `.gomddoc/partials/`; `theme.vars` as CSS custom properties; `theme.features` toggles with
+      per-page frontmatter `features` overrides (spec `2026-03-31-theme-feature-toggles-design.md`); shared web
+      components in `cmd/gomddoc/assets/shared/` (spec `2026-04-07-html-in-go-to-web-components.md`); seven themes
+      in `gomddoc-themes`.
+- [x] **Page chrome**: breadcrumbs, TOC, navigation sidebar, "Edit this page" links (`edit_url`), generated
+      directory listings (`dir_index`).
+- [x] **Operations**: `/health/live`, `/health/ready`, Prometheus `/metrics`, `--pprof`, and a separate
+      `--admin-port` listener (spec `2026-04-07-admin-port-design.md`); gzip compression, ETags with `304`,
+      request IDs, security headers, GET/HEAD method filtering, htpasswd Basic Auth (`--basic-auth-file`).
+- [x] **Search index postings tagged by field** (title, description, body) for field boosts (spec
+      `2026-04-06-search-index-field-tagged-postings.md`).
 
 ## Phase 4: Performance and Scaling
 
@@ -56,7 +84,7 @@ clones are blocked by go-git library limitations.
 - [x] **Allocation reduction**: Profiled and reduced allocations in the request hot path.
       ETag generation: inline FNV-64a + `strconv.AppendUint` (1 alloc, down from 2+).
       ETag checking: zero allocs. Content negotiation: hand-rolled Accept parser replacing
-      `mime.ParseMediaType` (2-4 allocs, down from 5-12). `Matches()`: zero allocs.
+      `mime.ParseMediaType` (2-4 allocs, down from 5-12).
       Registry lookup: zero allocs (down from 5-12) via `strings.IndexByte` and stack-allocated
       candidate arrays. Compression: `sync.Pool` for buffers. `NormalizeMimeType`: fast-path
       for parameter-free MIME types.
@@ -65,7 +93,7 @@ clones are blocked by go-git library limitations.
 
 - [x] **Full-text search (serve)**: Stdlib inverted index (`internal/search/`) built at startup. TF-IDF ranking
       with title/description boosts, AND query semantics, snippet generation with `<mark>` highlighting.
-      API: `GET /api/search?q=<query>&limit=<n>`. Enabled in `serve` and `preview` modes.
+      API: `GET /api/search?q=<query>&limit=<n>&lang=<code>`. Enabled in `serve` and `preview` modes.
 - [x] **Search UI**: Client-side search modal shared across all 8 themes via `inlineJSAsset "search.mjs"`.
       Ctrl+K / Cmd+K shortcut, debounced API fetch, arrow key navigation, highlighted snippets.
       CSS uses theme custom properties for automatic cross-theme and dark mode compatibility.
@@ -74,8 +102,8 @@ clones are blocked by go-git library limitations.
 ## Phase 7: Static Site Generation
 
 - [x] **Sitemap generation**: Generate `sitemap.xml` during build with `<url>` entries for all rendered
-      pages. Include `<lastmod>` from file mtime (Git provider returns commit timestamps).
-      Respects `base_url` from site config for absolute URLs. Excludes hidden files and non-HTML outputs.
+      pages. Include `<lastmod>` from file mtime (the Git provider returns the HEAD commit time).
+      Uses `meta.domain` from site config for absolute URLs. Excludes hidden files and non-HTML outputs.
       Implemented in `cmd/gomddoc/build.go` via `server.GenerateSitemap()`.
 - [ ] **Asset optimization**: Minify HTML/CSS/JS during build.
 - [x] **Static host compatibility, mostly**: directory-based clean-URL output (`guide/index.html`)
@@ -92,8 +120,8 @@ _Usability improvements to the serve, build, and preview subcommands._
 - [x] **Guard build output directory**: `gomddoc build` uses a `.gomddoc-build` sentinel file to
       track directories it created. Non-empty directories without the sentinel are refused,
       preventing accidental deletion of unrelated files. Low complexity.
-- [x] **Remove `--dev` from `serve`**: `serve` is always production mode. `preview` is the
-      designated dev command (no caching, template re-parsing, verbose logging).
+- [x] **Remove `--dev` from `serve`**: `serve` runs in production mode unless `GOMDDOC_SERVER_DEV_MODE=true`.
+      `preview` is the designated dev command (render cache off, templates re-parsed per request).
 - [ ] **Autoreload in `preview`**: Automatically reload the browser when content files change.
       Inject a small script into rendered pages that connects via Server-Sent Events (SSE) to
       a `/_preview/events` endpoint. The server watches the content directory with `fsnotify`
@@ -169,7 +197,7 @@ _Enhances competitiveness and closes remaining gaps._
       controls per-page indexing. Site-wide default via `meta.robots` config. Pages with `noindex`
       are automatically excluded from the sitemap. Low complexity.
 - [x] **HTML `lang` attribute**: `<html lang="...">` configurable via `language` field in
-      `SiteConfig` (default `"en"`). Per-page override via frontmatter `lang` field.
+      `SiteConfig` (default `"en-US"`). Per-page override via frontmatter `lang` field.
       All 8 themes + marketing site updated. Low complexity.
 - [x] **Static error pages**: Styled standalone error pages (404, 403, 500) with inline CSS and
       dark mode support. `build` outputs `404.html` for static host compatibility (Netlify, GitHub
@@ -200,7 +228,8 @@ _Enhances competitiveness and closes remaining gaps._
       `meta.domain`. Excludes `robots: noindex` pages. Autodiscovery `<link>` in all themes.
 - [ ] **Preconnect/preload resource hints**: Add `<link rel="preconnect">` for external domains
       (Google Fonts, KaTeX/Mermaid CDNs) and `<link rel="preload">` for critical resources in
-      theme `<head>`. Improves LCP. Low complexity.
+      theme `<head>`. Improves LCP. Low complexity. Partial: the default theme's `head.html.tmpl` preconnects to
+      `fonts.googleapis.com` and `fonts.gstatic.com`; there is no CDN preconnect and no `preload`.
 - [ ] **Image dimension attributes**: Post-process rendered HTML to add `width`/`height` to
       `<img>` tags that lack them. Prevents CLS (Core Web Vitals). Reads dimensions from content
       provider. Medium complexity.
@@ -216,10 +245,10 @@ the metadata index — these items surface them in the UI and search engine._
       (styled inline elements) on each page. Each chip links to a tag listing page. Position
       configurable via theme template (typically below the page title or in a sidebar metadata
       section). All 8 themes (`default` plus the 7 in `gomddoc-themes`) must include the tag chips. Low-medium complexity.
-- [x] **Tag listing page (`/tags/{tag}`)**: Server-rendered HTML page listing all pages tagged
-      with a given tag. Reuses the existing `MetaIndex.ByTag()` lookup. Each result shows title,
-      description, and path as a clickable link. Shares the site's theme and navigation chrome.
-      In `build` mode, generate a static HTML page per tag under `tags/`. Medium complexity.
+- [x] **Tag listing page (`/tags/{tag}`)**: Server-rendered HTML page listing all pages tagged with a given tag. Uses
+      the metadata index's `Index.LookupTag`, shared with `/api/tags/{tag}` and MCP. Each result shows title,
+      description, and path as a clickable link. Shares the site's theme and navigation chrome. In `build` mode,
+      generate a static HTML page per tag under `tags/`. Medium complexity.
 - [x] **Tag index page (`/tags/`)**: Overview page listing all tags with document counts. Each
       tag links to its listing page. Serves as a discovery entry point. Generated statically in
       `build` mode. Low complexity.
@@ -277,9 +306,9 @@ Provider → Metadata Index → Search Index → Navigation
 
 _Full MCP server with tools, resources, prompts, and section-level access._
 
-- [x] **`internal/mcp/` package**: MCP server using the official Go MCP SDK
-      (`github.com/modelcontextprotocol/go-sdk` v1.4.x). Thin adapter over Provider,
-      MetaIndex, SearchIndex, and Navigation. Supports stdio and Streamable HTTP transports.
+- [x] **`internal/mcp/` package**: MCP server using the official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk`,
+      v1.4.x when adopted, v1.8.0 in `go.mod` today). Thin adapter over Provider, MetaIndex, SearchIndex, and
+      Navigation. Supports stdio and Streamable HTTP transports.
 - [x] **`gomddoc mcp` subcommand**: stdio transport for local use. Speaks MCP JSON-RPC over
       stdin/stdout. Works with Claude Desktop, Cursor, Claude Code, and any MCP-compatible
       client. Kong subcommand with same positional `dir` argument as `serve`.
@@ -302,9 +331,9 @@ _Streamable HTTP transport for remote MCP access._
 
 - [x] **Streamable HTTP at `/_mcp/`**: Mount `MCPServer.HTTPHandler()` on the existing HTTP
       server behind the auth RouteGroup. `MCPHandler http.Handler` added to `HTTPServerConfig`.
-      Protected by the same authentication middleware as other endpoints. MCP server is created
-      in `setupServer` and shared between stdio (`gomddoc mcp`) and HTTP (`gomddoc serve/preview`)
-      transports.
+      Protected by the same authentication middleware as other endpoints. `serve`/`preview` build the
+      server with `siteMCPServer` (`cmd/gomddoc/pipeline.go`); `gomddoc mcp` builds its own over the same
+      pipeline and adds the self-documentation resources and tools.
 
 ### 10c: WebMCP — Browser-Native Tool Exposure (Idea, blocked on browser support)
 
@@ -384,15 +413,14 @@ resolved; every install path was exercised end to end:
 _Note:_ docker tags are **unprefixed** (`ghcr.io/monolithiclab/gomddoc:0.1.1`, not `:v0.1.1`) —
 GoReleaser's `{{ .Version }}` strips the `v`.
 
-- [x] **GitHub Releases with GoReleaser**: `.goreleaser.yaml` produces cross-platform binaries
-      (linux/darwin × amd64/arm64) as tar.gz archives with `SHA256SUMS`, a grouped changelog from
-      conventional commits, and a GitHub Release on tagged builds. Checksums are cosign-signed (keyless
-      via OIDC). Every action in both workflows is pinned to a full commit SHA with a `# vX.Y.Z`
-      comment, and goreleaser to `~> v2.17` — the release job holds `id-token: write`, so an upstream
-      tag repoint would otherwise be able to mint valid Sigstore signatures over arbitrary artifacts.
-      Dependabot's `github-actions` ecosystem keeps the pins current. _Note:_ windows builds were
-      omitted (gomddoc is primarily a server) — add a `windows` goos entry if a Windows binary is
-      wanted.
+- [x] **GitHub Releases with GoReleaser**: `.goreleaser.yaml` produces cross-platform binaries (linux/darwin ×
+      amd64/arm64) as tar.gz archives with `SHA256SUMS`, a grouped changelog from conventional commits, and a GitHub
+      Release on tagged builds. Checksums are cosign-signed (keyless via OIDC), as a single `SHA256SUMS.sigstore.json`
+      bundle since v0.1.3 (`.sig`/`.pem` pair before). Every action in both workflows is pinned to a full commit SHA
+      with a `# vX.Y.Z` comment, and goreleaser to `~> v2.17` — the release job holds `id-token: write`, so an upstream
+      tag repoint would otherwise be able to mint valid Sigstore signatures over arbitrary artifacts. Dependabot's
+      `github-actions` ecosystem keeps the pins current. _Note:_ windows builds were omitted (gomddoc is primarily a
+      server) — add a `windows` goos entry if a Windows binary is wanted.
 - [x] **`go install` support**: module path is public, assets are embedded in-module via `//go:embed`,
       and `go install github.com/monolithiclab/gomddoc/cmd/gomddoc@latest` works. `-ldflags -X main.version`
       injection is wired for GoReleaser and `make build`, but `go install` applies no ldflags — v0.1.1
@@ -407,10 +435,10 @@ GoReleaser's `{{ .Version }}` strips the `v`.
 - [x] **Homebrew tap**: GoReleaser `brews:` publishes a formula to `monolithiclab/homebrew-tap`
       (`brew install monolithiclab/tap/gomddoc`) with a `gomddoc --version` smoke test. Requires the
       `HOMEBREW_TAP_TOKEN` secret.
-- [x] **CI pipeline (GitHub Actions)**: `.github/workflows/ci.yml` runs `make lint test` (vet, gofmt,
-      staticcheck, golangci-lint, gosec, gocritic, `go test -race -cover`) on an ubuntu+macOS matrix
-      for pushes to `main` and all PRs, with Go module caching, concurrency cancellation of superseded
-      runs, and coverage-artifact upload. _Remaining enhancement (deferred):_ coverage threshold
+- [x] **CI pipeline (GitHub Actions)**: `.github/workflows/ci.yml` runs `make lint test` (vet, gofmt, staticcheck,
+      golangci-lint, gosec, gocritic, govulncheck, `go test -race -cover`) on an ubuntu+macOS matrix for pushes to
+      `main` and all PRs, plus `shellcheck -s sh scripts/install.sh`, with Go module caching, concurrency cancellation
+      of superseded runs, and coverage-artifact upload. _Remaining enhancement (deferred):_ coverage threshold
       enforcement (87%+).
 - [x] **Install script**: `scripts/install.sh` — POSIX `sh`, no dependencies beyond curl/wget and
       tar. Detects OS/arch (linux/darwin × amd64/arm64), resolves the latest tag via the GitHub API
@@ -588,7 +616,7 @@ _Allow themes to ship sane defaults for features and variables, reducing site-le
       Theme config provides defaults that site config overrides. A site using the `midnight`
       theme gets its color palette for free, but can override any variable in
       `.gomddoc/config.yml` under `theme.vars`. Similarly, theme feature defaults are
-      overridden by site-level `features:` and then by per-page frontmatter.
+      overridden by site-level `theme.features` and then by per-page frontmatter `features`.
 
       **Scope restrictions**: Theme config can only set `features` and `theme.vars` — not
       `meta`, `edit_url`, `default_index`, or other operational settings. This prevents themes
@@ -627,7 +655,7 @@ _Multi-language documentation sites with translated UI chrome._
 ### UI String Localization
 
 - [x] **Locale file format**: Three-layer YAML locale loading (built-in → theme → site overrides)
-      with BCP 47 filenames (e.g., `en-US.yml`, `fr-FR.yml`). Built-in `en-US.yml` ships with 20
+      with BCP 47 filenames (e.g., `en-US.yml`, `fr-FR.yml`). Built-in `en-US.yml` ships with 26
       UI string keys. Sites override via `.gomddoc/locales/`.
 - [x] **`language` config integration**: Default language changed to BCP 47 `en-US`. Templates
       access strings via `{{ .T "key" }}` with fallback chain: requested lang → default → raw key.
@@ -672,9 +700,9 @@ _Enable community theme sharing via a GitHub-based registry._
       `gomddoc theme search dark` finds midnight, nord, etc.
 - [ ] **`gomddoc theme info <name>`**: Show detailed theme information: full description, color palette,
       fonts, screenshot URLs, download URL, and installation instructions.
-- [ ] **`gomddoc theme install <name>`**: Download the theme into `.gomddoc/themes/<name>/`. Clones the
-      theme repository (sparse checkout of the theme directory if from the default registry). Updates
-      `.gomddoc/config.yml` to set `theme: <name>`.
+- [ ] **`gomddoc theme install <name>`**: Download the theme into `.gomddoc/assets/themes/<name>/` (where
+      installed themes are read from today). Clones the theme repository (sparse checkout of the theme directory if
+      from the default registry). Updates `.gomddoc/config.yml` to set `theme: {name: <name>}`.
 - [ ] **`gomddoc theme update [name]`**: Pull latest version of installed theme(s). Without a name,
       updates all installed themes.
 
@@ -696,20 +724,23 @@ _Enable community theme sharing via a GitHub-based registry._
 
 ## Future CLI Commands
 
-| Command                 | Purpose                                              | Status  |
-| ----------------------- | ---------------------------------------------------- | ------- |
-| `gomddoc serve`         | Production HTTP server for documentation             | Done    |
-| `gomddoc build`         | Static site generation                               | Done    |
-| `gomddoc preview`       | Quick local preview with auto-open browser           | Done    |
-| `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config | Done    |
-| `gomddoc mcp`           | MCP server for AI-native documentation access        | Done    |
-| `gomddoc info`          | Show version, config file location, environment vars | Done    |
-| `gomddoc validate`      | Validate config and check for broken links           | Planned |
-| `gomddoc theme list`    | List available themes from the marketplace           | Planned |
-| `gomddoc theme search`  | Search themes by name, category, or keyword          | Planned |
-| `gomddoc theme info`    | Show detailed theme information                      | Planned |
-| `gomddoc theme install` | Download and install a theme                         | Planned |
-| `gomddoc theme update`  | Update installed theme(s) to latest version          | Planned |
+| Command                 | Purpose                                                      | Status                         |
+| ----------------------- | ------------------------------------------------------------ | ------------------------------ |
+| `gomddoc serve`         | Production HTTP server for documentation                     | Done                           |
+| `gomddoc build`         | Static site generation                                       | Done                           |
+| `gomddoc preview`       | Quick local preview with auto-port and optional browser open | Done                           |
+| `gomddoc init`          | Scaffold a `.gomddoc/` directory with default config         | Done                           |
+| `gomddoc mcp`           | MCP server for AI-native documentation access                | Done                           |
+| `gomddoc info`          | Settings, env vars, flags, theme features, guide topics      | Done                           |
+| `gomddoc schema`        | JSON Schema for `.gomddoc/config.yml`                        | Done                           |
+| `gomddoc help`          | Read and search the embedded guide                           | Done                           |
+| `gomddoc doctor`        | Check config and content, report fixes                       | Done (link checking: Planned)  |
+| `gomddoc validate`      | Validate config and check for broken links                   | Replaced by `gomddoc doctor`   |
+| `gomddoc theme list`    | List available themes from the marketplace                   | Planned                        |
+| `gomddoc theme search`  | Search themes by name, category, or keyword                  | Planned                        |
+| `gomddoc theme info`    | Show detailed theme information                              | Planned                        |
+| `gomddoc theme install` | Download and install a theme                                 | Planned                        |
+| `gomddoc theme update`  | Update installed theme(s) to latest version                  | Planned                        |
 
 ## Implementation Strategy
 
@@ -721,20 +752,10 @@ section tracks *what to do about it and in what order*.
 
 ### Tier 0 — Ship blocking
 
-1. **Ship `v0.1.2` (security + canonical URLs)** — every released version (`v0.1.0`, `v0.1.1`) has
-   a HIGH-severity `exclude` bypass: with `strip_extensions` active (the default), a file excluded
-   as `SECRET.md` was still served in full at `/SECRET` while search, navigation and metadata
-   correctly omitted it, so the bypass produced no visible signal (`build` additionally emitted
-   redirect stubs disclosing every excluded file's name). Fixed by `c80981e`, now on `main` — see
-   REVIEW.md §10.1 for the full writeup and regression tests. `v0.1.1` also ships static builds
-   whose `rel="canonical"`/`og:url`/JSON-LD `@id` keep the `.md` extension, contradicting the same
-   build's own `sitemap.xml` (found live on monolithiclab.fr, pinned to `v0.1.1`); fixed by
-   `5dfc253`, landed two days after the `v0.1.1` tag — see REVIEW.md §10.2. What's left for both is
-   delivery, not code: (a) tag `v0.1.2` and call out the exclude bypass in the release notes so
-   operators pinned to `v0.1.1` can judge their own exposure and rotate anything sensitive that was
-   exposed, (b) update `monolithiclab/homebrew-tap` so `brew install` stops shipping the vulnerable
-   build, (c) bump the `GOMDDOC_VERSION` pin in downstream sites built from this repo
-   (`monolithiclab/website`).
+1. **Ship `v0.1.2` (security + canonical URLs)** — done. `v0.1.2` was tagged on 2026-09-07 with the `exclude`
+   bypass fix (`c80981e`, REVIEW.md §10.1) and the static-build canonical URL fix (`5dfc253`, REVIEW.md §10.2);
+   `v0.1.3` followed on 2026-09-25. Both releases published the Homebrew formula through GoReleaser's `brews:`,
+   and `monolithiclab/website` pins `GOMDDOC_VERSION: "v0.1.2"` in its deploy workflow.
 
 ### Tier 1 — Correctness (serve/build parity and tag/i18n bugs, REVIEW.md §10.2/§10.3/§10.14)
 
@@ -764,13 +785,13 @@ of a decision risks a second divergence to unwind later:
    the whole site back with no error. `redirectFinderAdapter` ignores its path argument and always
    does a global DFS from the root, so `/guide/` with no index redirects to the site's first page,
    not the first page under `/guide/`. Independent, low-effort fixes.
-5. **Misc correctness, MEDIUM, independent fixes**: `findRelatedDocs` bypasses the tag-normalization
-   single source of truth (untrimmed tags silently drop see-also); index pages appear in their own
+5. **Misc correctness, MEDIUM, independent fixes**: index pages appear in their own
    related-docs list in serve; git submodules misclassified as directories abort the whole build;
-   `.well-known` silently dropped from git-backed sites; search results nondeterministic on score
-   ties; snippet body truncates on a byte boundary (invalid UTF-8); non-root index canonical URLs
+   `.well-known` silently dropped from git-backed sites; feed order nondeterministic on mtime ties;
+   snippet body truncates on a byte boundary (invalid UTF-8); non-root index canonical URLs
    miss a trailing slash; two frontmatter parsers disagree on what counts as frontmatter (raw YAML
-   can leak into the search corpus).
+   can leak into the search corpus). (Fixed since the list was drawn up: `findRelatedDocs` tag normalization,
+   now through `Index.PagesByTag`; search ties, now broken by `docIdx` in `compareScored`.)
 6. **Bug fix**: theme-fallback layout loads partials from the default theme instead of the active
    overloaded theme (see Bugs).
 7. **Heading anchor escape hatch + non-ASCII handling** (REVIEW.md §10.5, MEDIUM): see Phase 9c —
@@ -804,7 +825,7 @@ theme rather than listed exhaustively — see REVIEW.md for the full set:
 - **API consistency**: unmatched `/api/*` routes answer `text/plain` not JSON; `/api/*` responses are
   never cached/ETagged (`writeJSON` streams with no byte slice to hash).
 - **Dedup/refactor candidates**: `TemplateCache` models a boolean as a two-implementation interface;
-  `AllPages` has no `iter.Seq` sibling (5 consumers still deep-copy); MCP's `handleRelatedPages`
+  `AllPages` has no `iter.Seq` sibling (5 consumers still deep-copy); MCP's `handleFindRelated`
   reimplements `enricher.findRelatedDocs` without its bound/sort; three copies of the "fail one path"
   `fs.FS` test fake; `internal/template` has no `testhelpers_test.go` despite ~60 duplicated
   constructions; `Pipeline.Exclude` has three remaining stragglers still reading `cfg.Site.Exclude`
