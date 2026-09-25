@@ -1,7 +1,7 @@
 # Admin Port for Metrics & Pprof
 
 **Date:** 2026-04-07
-**Status:** Approved
+**Status:** Implemented 2026-04-22 in 82e6f59 (tests in 80ccb40). Hardened 2026-08-03 in 354df05.
 **Addresses:** REVIEW.md §2.2 — "Metrics and pprof endpoints share auth — no separate control"
 
 ---
@@ -141,3 +141,15 @@ Warning is suppressed when `AdminPort == Port` (explicit opt-in to main port).
 - No robots.txt or static assets on admin port
 - No middleware on admin port
 - No changes to `build` or `preview` commands (admin port is serve-only)
+
+## Divergences from implementation
+
+- A host-less `--admin-port` such as `:9090` binds `127.0.0.1` (`Config.normalizeAdminAddr`). An explicit host,
+  `0.0.0.0` included, is kept (354df05).
+- `/debug/pprof/*` requires the `--basic-auth-file` credentials when that flag is set, on whichever listener carries it
+  (`mountPprof`). `/metrics` and `/health/*` stay unauthenticated (354df05).
+- `ServerConfig.AdminOnMain()` decides between the main and the dedicated listener: `AdminPort` empty or equal to
+  `Port`.
+- `AdminServerConfig` also takes `AuthStore` and `HTTP`; the admin listener uses the main server's read-header, write
+  and idle timeouts and max header size.
+- Validation rejects an admin port outside 1-65535, reported as `server.admin_port`.

@@ -1,6 +1,8 @@
 # `gomddoc doctor` (Self-Documentation Sub-Spec 2 of 3)
 
-**Status**: design approved 2026-09-23, spec pending review
+**Status**: Implemented 2026-09-23 (commits `59fe6de` through `2497403`, with follow-up fixes `8f4d882`, `d2a3446`,
+`88da0d0`, `d307429`). Design approved 2026-09-23. Link and anchor checking is still not implemented (open roadmap
+item). Sub-spec 3 (`gomddoc help <topic>`) shipped in `37250b5` with no spec document.
 **Roadmap entry**: "Self-Documentation via MCP" → `gomddoc doctor`
 **Builds on**: `docs/specs/2026-09-23-self-documentation-design.md` (capabilities report, `config.Schema()`,
 `template.ThemeFeatures`, `metadata.FrontmatterFields`, the stdio-only `gomddoc://` namespace)
@@ -226,3 +228,25 @@ with `SelfDocs`, i.e. stdio only. `learn_gomddoc` tells agents to call it after 
 - Duplicate heading anchors (REVIEW.md §11.5), language-directory detection issues.
 - Auto-fixing (`doctor --fix`).
 - `gomddoc help <topic>` (sub-spec 3).
+
+## Divergences from implementation
+
+- `target.read-error` is a warning, not an error (`88da0d0`): an unreadable file means a check was incomplete, and
+  serve logs it at Warn as it did before.
+- `diag` also exports `Catalogue` (every code with its severity and summary), `New` (severity looked up from the
+  catalogue; an unknown code panics), `Sort`, `Dedupe` and `WithFilePrefix`. `Dedupe` merges only identical findings,
+  or an unlocated finding with a located one on the same code, file and key (`8f4d882`).
+- `doctor.Input` has no `Content` field and `PipelineView` carries no findings. `Input` takes `Unreachable error`,
+  `Producer []diag.Finding` (all pipelines' findings, language files prefixed with `fr-FR/` and so on) and `Note`.
+  `Report` gained a `note` field (for example, that a Git source's snapshot was checked).
+- `config.SiteConfig.LoadFromFile` is unchanged. `config.Inspect` reads and decodes `config.yml` into a `yaml.Node`
+  itself and exposes it as `Inspection.Node`.
+- `resolve.Build` keeps its `*PathResolver` return; findings come from `(*PathResolver).Findings()`.
+  `BuildRedirectMap` returns `(URLRedirectMap, []diag.Finding)`.
+- Pipelines collect producer findings in `LanguagePipeline.Findings`, and `setupLanguagePipelines` logs them through
+  `diag.Log` unless `PipelineOptions.ReportOnly`, which doctor sets.
+- A local target that is missing or not a directory is `target.unreachable`. A provider that fails on a config value
+  (such as an empty `default_index`) skips only the content checks and says so in the note, so the config findings
+  are still reported (`d2a3446`).
+- The CLI returns an `exitCodeError` for a non-zero status; `main` exits with it without logging.
+- The "did you mean" matcher is `text.Closest` in `internal/text` (`8fb0529`), shared with `gomddoc help`.

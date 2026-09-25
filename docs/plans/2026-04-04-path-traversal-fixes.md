@@ -1,5 +1,7 @@
 # Path Traversal Fixes Implementation Plan
 
+**Status:** Implemented 2026-04-22 in 502a94a. All steps shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Prevent path traversal in build output writes and template asset reads.
@@ -16,7 +18,7 @@
 - Modify: `cmd/gomddoc/build.go:531-545`
 - Modify: `cmd/gomddoc/build_test.go`
 
-- [ ] **Step 1: Add test for path traversal rejection**
+- [x] **Step 1: Add test for path traversal rejection**
 
 Add to `cmd/gomddoc/build_test.go` after `TestWriteOutputFile_ReadOnlyDir`:
 
@@ -51,12 +53,12 @@ func TestWriteOutputFile_PathTraversal(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/gomddoc/ -run TestWriteOutputFile_PathTraversal -v`
 Expected: FAIL (no containment check yet)
 
-- [ ] **Step 3: Add containment check to `writeOutputFile`**
+- [x] **Step 3: Add containment check to `writeOutputFile`**
 
 Replace the `writeOutputFile` method in `cmd/gomddoc/build.go` (lines 531-545):
 
@@ -91,12 +93,12 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./cmd/gomddoc/ -run TestWriteOutputFile -v`
 Expected: all PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/gomddoc/build.go cmd/gomddoc/build_test.go
@@ -115,7 +117,7 @@ path traversal and hardens all other callers."
 - Modify: `internal/template/inline_asset.go:12-20`
 - Modify: `internal/template/inline_asset_test.go`
 
-- [ ] **Step 1: Add test for path traversal rejection**
+- [x] **Step 1: Add test for path traversal rejection**
 
 Add to `internal/template/inline_asset_test.go`:
 
@@ -150,12 +152,12 @@ func TestReadAsset_PathTraversal(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/template/ -run TestReadAsset_PathTraversal -v`
 Expected: FAIL for at least one case (fs.ReadFile may already reject some, but not all)
 
-- [ ] **Step 3: Add `fs.ValidPath` check to `readAsset`**
+- [x] **Step 3: Add `fs.ValidPath` check to `readAsset`**
 
 Replace `readAsset` in `internal/template/inline_asset.go` (lines 10-21):
 
@@ -177,17 +179,17 @@ func (h *HTMLRenderer) readAsset(name string) ([]byte, error) {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `go test ./internal/template/ -v`
 Expected: all PASS
 
-- [ ] **Step 5: Run full CI**
+- [x] **Step 5: Run full CI**
 
 Run: `make ci`
 Expected: all pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/template/inline_asset.go internal/template/inline_asset_test.go
@@ -196,3 +198,8 @@ git commit -m "Add fs.ValidPath check to readAsset
 Validates asset name before constructing path, preventing traversal
 outside the expected asset directories."
 ```
+
+## Divergences from implementation
+
+- The containment check lives in `resolveOutputPath` (d648daf), shared by `writeOutputFile` and `streamOutputFile`. It
+  also rejects an absolute `relPath` outright and creates the parent directory.

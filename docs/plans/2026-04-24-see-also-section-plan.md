@@ -1,5 +1,9 @@
 # See Also Section: Implementation Plan
 
+**Status**: Implemented 2026-05-15. All 7 tasks shipped (commits `dd62e36`, `ffeb714`, `b57c536`, `2a3f348`,
+`a0b28c7`, `01daf3a`, `32f9b56`; merged in `0084783` on 2026-05-16). The coordinated `gomddoc-themes` change shipped:
+all 7 themes call `{{ template "see-also" . }}`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Render a "See also" section at the bottom of every page that has at least one related page (linked by shared frontmatter tags).
@@ -36,7 +40,7 @@
 
 This task is structural — the field has no behavior on its own, so no failing test for *this task*. The wiring tasks (2 and 3) introduce the failing tests that this struct change unblocks.
 
-- [ ] **Step 1: Add the field**
+- [x] **Step 1: Add the field**
 
 In `internal/template/renderer.go`, locate `type PageContext struct` (around line 109). Add a new field below `NextPage`:
 
@@ -56,12 +60,12 @@ type PageContext struct {
 
 (Keep the existing field alignment style — the existing struct uses one-space alignment. The new field follows the same pattern.)
 
-- [ ] **Step 2: Verify build still compiles**
+- [x] **Step 2: Verify build still compiles**
 
 Run: `go build ./...`
 Expected: clean build with no errors. (No callers populate the new field yet; it defaults to nil, which is the same as "no related pages" — partials will treat it as empty.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/template/renderer.go
@@ -80,7 +84,7 @@ No behavior change yet -- handler and build wiring follow."
 - Modify: `cmd/gomddoc/assets/locales/en-US.yml`
 - Modify: `internal/locale/bundle_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `internal/locale/bundle_test.go` (find the existing `TestLoadBundle_TagKeys` test added in the previous tag-components work and add a sibling test):
 
@@ -105,12 +109,12 @@ func TestLoadBundle_SeeAlsoKey(t *testing.T) {
 
 If the helper `enUSBundleBytes(t)` does not exist, find the equivalent helper used by `TestLoadBundle_TagKeys` and reuse it. If that test loads the YAML inline rather than via a helper, mirror the same inline pattern — read `cmd/gomddoc/assets/locales/en-US.yml` once via `os.ReadFile` and pass the bytes to a `fstest.MapFS`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/locale/ -run TestLoadBundle_SeeAlsoKey -v`
 Expected: FAIL — `see_also` key absent from en-US bundle.
 
-- [ ] **Step 3: Add the locale entry**
+- [x] **Step 3: Add the locale entry**
 
 Append to `cmd/gomddoc/assets/locales/en-US.yml`:
 
@@ -118,12 +122,12 @@ Append to `cmd/gomddoc/assets/locales/en-US.yml`:
 see_also: "See also"
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/locale/ -run TestLoadBundle_SeeAlsoKey -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/locales/en-US.yml internal/locale/bundle_test.go
@@ -138,7 +142,7 @@ git commit -m "Add en-US locale string for see-also section heading"
 - Create: `cmd/gomddoc/assets/themes/default/partials/see-also.html.tmpl`
 - Modify: `internal/template/renderer_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/template/renderer_test.go`:
 
@@ -226,12 +230,12 @@ func seeAlsoPartialBytes(t *testing.T) []byte {
 
 If `enricher` is not yet imported in this test file, add `"github.com/monolithiclab/gomddoc/internal/enricher"` to imports.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/template/ -run TestRender_SeeAlso -v`
 Expected: FAIL — partial file does not exist.
 
-- [ ] **Step 3: Create the partial**
+- [x] **Step 3: Create the partial**
 
 Create `cmd/gomddoc/assets/themes/default/partials/see-also.html.tmpl`:
 
@@ -261,17 +265,17 @@ Create `cmd/gomddoc/assets/themes/default/partials/see-also.html.tmpl`:
 
 `.Feature`, `.T`, and `.Page.RelatedDocs` resolve through the `TemplateContext` (top-level `.`). The `{{ define "see-also" }}…{{ end }}` wrapper matches the existing pattern used by `tag-chips.html.tmpl`, `tags-list.html.tmpl`, and `tags-index.html.tmpl`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/template/ -run TestRender_SeeAlso -race -v`
 Expected: PASS (all subtests).
 
-- [ ] **Step 5: Run the full template package**
+- [x] **Step 5: Run the full template package**
 
 Run: `go test ./internal/template/ -race`
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/themes/default/partials/see-also.html.tmpl \
@@ -292,7 +296,7 @@ styling once they include the partial."
 **Files:**
 - Modify: `cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl` (around line 32)
 
-- [ ] **Step 1: Insert the partial call**
+- [x] **Step 1: Insert the partial call**
 
 Open `cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl`. The `<article>` block currently looks like:
 
@@ -318,7 +322,7 @@ Insert `{{ template "see-also" . }}` between `{{ .Page.Content }}` and `{{ templ
 </article>
 ```
 
-- [ ] **Step 2: Verify the build still works**
+- [x] **Step 2: Verify the build still works**
 
 Run: `go build ./...`
 Expected: clean build.
@@ -326,7 +330,7 @@ Expected: clean build.
 Run: `go test ./internal/template/ -race`
 Expected: all PASS — confirms the layout edit didn't break any existing test.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl
@@ -344,7 +348,7 @@ Renders the section between content body and footer in the
 - Modify: `internal/server/handler.go` (`serveHTML` around line 175-188)
 - Modify: `internal/server/handler_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/server/handler_test.go`:
 
@@ -381,12 +385,12 @@ func TestServeHTML_IncludesSeeAlsoSection(t *testing.T) {
 
 `newTestServer(t, files)` may not exist with that exact signature — find the existing setup pattern in `internal/server/handler_test.go` (other tests construct an `HTTPServer` from `fstest.MapFS`) and adapt. The test must exercise the full request flow (provider → enricher → renderer → response) so the new wiring is covered end-to-end.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/server/ -run TestServeHTML_IncludesSeeAlsoSection -v`
 Expected: FAIL — section not in output (because `RelatedDocs` is not threaded into the template context yet).
 
-- [ ] **Step 3: Wire the field in `serveHTML`**
+- [x] **Step 3: Wire the field in `serveHTML`**
 
 In `internal/server/handler.go`, locate `serveHTML` (around line 164). Find the `PageContext` literal (around line 175-188). Add the sort call before constructing the context, and add `RelatedDocs` to the literal:
 
@@ -416,17 +420,17 @@ context := &tmpl.TemplateContext{
 
 Add `"slices"`, `"strings"`, and `"github.com/monolithiclab/gomddoc/internal/enricher"` to the import block if not already present. (`enricher` is likely already imported; `slices` and `strings` may already be too — `gofmt` will tell you.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/server/ -run TestServeHTML_IncludesSeeAlsoSection -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full server package**
+- [x] **Step 5: Run the full server package**
 
 Run: `go test ./internal/server/ -race`
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/server/handler.go internal/server/handler_test.go
@@ -445,7 +449,7 @@ partial in the layout can render the section."
 - Modify: `cmd/gomddoc/build.go` (around line 444-456)
 - Modify: `cmd/gomddoc/build_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `cmd/gomddoc/build_test.go`:
 
@@ -486,12 +490,12 @@ func TestBuildCmd_EmitsSeeAlsoSection(t *testing.T) {
 
 If the build's URL-extension stripping produces a different output path (e.g. `a.html` instead of `a/index.html`), adjust the `os.ReadFile` path. Inspect another existing build test (e.g. `TestBuildCmd_EmitsTagPages`) to confirm the convention.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/gomddoc/ -run TestBuildCmd_EmitsSeeAlsoSection -v`
 Expected: FAIL — section absent because build path doesn't thread `RelatedDocs` yet.
 
-- [ ] **Step 3: Wire the field in `build.go`**
+- [x] **Step 3: Wire the field in `build.go`**
 
 In `cmd/gomddoc/build.go`, locate the `PageContext` literal in the markdown render path (around line 444-456). It currently looks like:
 
@@ -536,17 +540,17 @@ templateCtx := &tmpl.TemplateContext{
 
 Add `"slices"`, `"strings"`, and `"github.com/monolithiclab/gomddoc/internal/enricher"` to imports if missing.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./cmd/gomddoc/ -run TestBuildCmd_EmitsSeeAlsoSection -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full cmd package**
+- [x] **Step 5: Run the full cmd package**
 
 Run: `go test ./cmd/gomddoc/ -race`
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/build.go cmd/gomddoc/build_test.go
@@ -564,7 +568,7 @@ serveHTML behavior. Build and serve produce identical output."
 **Files:**
 - Modify: `docs/roadmap.md`
 
-- [ ] **Step 1: Mark the item done**
+- [x] **Step 1: Mark the item done**
 
 Open `docs/roadmap.md`. Find the "Tag Components" section's "Related pages via tags" line:
 
@@ -574,12 +578,12 @@ Open `docs/roadmap.md`. Find the "Tag Components" section's "Related pages via t
 
 Change `- [ ]` to `- [x]`. Leave the description text intact.
 
-- [ ] **Step 2: Verify the full test suite**
+- [x] **Step 2: Verify the full test suite**
 
 Run: `go test ./... -race`
 Expected: all packages PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/roadmap.md
@@ -593,3 +597,10 @@ git commit -m "Mark Related pages via tags roadmap item done"
 After landing all 7 tasks above, open a coordinated PR in `gomddoc-themes` adding the same `{{ template "see-also" . }}` line to each of the 7 themes' main layouts in the same position (between content body and footer). The shared partial uses CSS custom properties that all themes already define, so no per-theme styling is needed.
 
 A separate `gomddoc-website` PR should follow, documenting the new `see_also` feature flag and the `see-also` partial in the theming guide.
+
+## Divergences from implementation
+
+- Tasks 5 and 6: the handler-side and build-side `slices.SortFunc` calls are gone. The enricher sorts related docs
+  (title, then path; `4d5a683`) and caps them at 10 (`f713812`). Both render paths build the page context through
+  `template.BuildPageContext` (`cfecf21`) instead of their own `PageContext` literals.
+- Task 3: the partial links each entry through `contentURL $doc.Path` (`fae64e8`), not the raw path.

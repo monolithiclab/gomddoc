@@ -1,7 +1,7 @@
 # Design: Generic Theme Feature Toggles
 
 **Date:** 2026-03-31
-**Status:** Approved
+**Status:** Implemented 2026-04-22 in d0ef929; the seven gomddoc-themes themes also gate on `.Feature`.
 
 ## Problem
 
@@ -256,3 +256,24 @@ Update `docs/guide/05-theming-and-assets.md` and `material/public-website/docs/c
 - Feature dependencies (e.g., "toc requires heading_anchors") — themes handle this implicitly
 - Custom feature key registration — themes can use any key; unknown keys are passed through
 - Chained map pattern (`ChainedMap[V]` with ordered `Get` across multiple maps) — considered for lazy cascading lookup instead of `mergeFeatures()`, but overkill for ~8 boolean keys. Revisit if cascading config expands to theme vars or per-directory overrides
+
+## Divergences from implementation
+
+- Toggles live on the theme config, not the site root: `ThemeConfig.Features`, YAML `theme.features`. The env var is
+  `GOMDDOC_SITE_THEME_FEATURES_<NAME>=true|false`, not `GOMDDOC_SITE_FEATURES_<NAME>`.
+- `SiteConfig.HasSearch` was not folded into `Features["search"]`. A separate `search.index` setting
+  (`SearchConfig.Index`, default `true`, env `GOMDDOC_SITE_SEARCH_INDEX`) decides whether the index is built. The
+  `search` feature key only gates the theme's search UI. JSON-LD `SearchAction` follows whether an index was built
+  (`template.WithSearchIndex`), not the feature key.
+- Templates call a method, `{{ .Feature "name" }}` on `TemplateContext`, not a `feature` funcMap closure. The merged map
+  is `PageContext.Features`, built in `BuildPageContext` as `config.MergeFeatures(site.Theme.Features,
+  enrichment.Features)`; the enricher extracts page overrides with `config.ExtractPageFeatures`.
+- The helpers are exported from `internal/config` as `FeatureEnabled` and `MergeFeatures(base, overrides...)`.
+  `MergeFeatures` is variadic and returns `base` itself, uncloned, when no override has entries.
+- Key validation (`^[a-z][a-z0-9_]*$`) runs inside `SiteConfig.Validate`, reported against `theme.features.<key>`; the
+  `ValidateFeatureKeys` helper was removed in 21f487c.
+- Renderer gating happens inside the goldmark extensions (`ext_anchors.go`, `ext_admonition.go`, `ext_colorchip.go`)
+  from the 2026-04-05 goldmark extensions spec, not around regex post-processors.
+- The default theme gates scripts in `head-shared.html.tmpl` and `scripts.html.tmpl` and reads two more keys,
+  `tag_chips` and `see_also`. The capabilities report (`gomddoc info`, MCP) lists the keys a theme reads under
+  `theme.features` (`template.ThemeFeatures`).

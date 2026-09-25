@@ -1,7 +1,7 @@
 # Path Traversal Fixes
 
 **Date:** 2026-04-04
-**Status:** Approved
+**Status:** Implemented 2026-04-22 in 502a94a.
 **Addresses:** REVIEW.md HIGH: `redirect_from` path traversal, MEDIUM: `writeOutputFile` no guard,
 LOW: `readAsset` path traversal
 
@@ -34,3 +34,9 @@ invalid.
 - `cmd/gomddoc/build_test.go` -- add test for path traversal rejection
 - `internal/template/inline_asset.go` -- add `fs.ValidPath` check in `readAsset`
 - `internal/template/inline_asset_test.go` -- add test for traversal rejection
+
+## Divergences from implementation
+
+- The containment check lives in `resolveOutputPath` (d648daf), shared by `writeOutputFile` and `streamOutputFile`. It
+  also rejects an absolute `relPath` outright and creates the parent directory.
+- `readAsset` validates the asset `name` with `fs.ValidPath` before joining it to a directory, not the joined path.

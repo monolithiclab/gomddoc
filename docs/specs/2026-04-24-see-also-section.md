@@ -1,6 +1,7 @@
 # See Also Section (Tag Components Sub-Spec 2 of 3)
 
-**Status**: design approved 2026-04-24
+**Status**: Implemented 2026-05-15 (commits `dd62e36`..`32f9b56`, merged in `0084783` on 2026-05-16). Design approved
+2026-04-24. Sub-spec 3 (`tag:` search syntax) has since shipped: `docs/specs/2026-05-19-tag-search-syntax.md`.
 **Sub-spec**: 2 of 3 in the broader Tag Components roadmap entry
 **Sub-specs in scope**: "See also" section at the bottom of every page that has at least one
 related page (linked by shared frontmatter tags)
@@ -153,3 +154,17 @@ Coverage target: maintain 86%+ overall.
 - Per-page limit / pagination on the section.
 - Deep-link anchor for the section heading itself.
 - `tag:` search syntax — sub-spec 3.
+
+## Divergences from implementation
+
+- Sorting happens in the enricher, not in the handler or build. `findRelatedDocs` (`internal/enricher/markdown.go`)
+  returns related docs ordered by `compareRelatedDocs`: case-insensitive title, then path as a tiebreaker
+  (`4d5a683`).
+- The list is capped at `maxRelatedDocs` (10) (`f713812`). The enricher keeps a sorted top-10 window instead of
+  collecting every match (`de14afd`). "Limit: none" no longer holds.
+- `RelatedDocs` reaches the template through `template.BuildPageContext` (`internal/template/context.go`, `cfecf21`),
+  which both `serveHTML` and build's `buildFile` call. Neither assigns the field directly.
+- Links go through `contentURL $doc.Path` (`fae64e8`), which applies the clean-URL mapping and the language prefix.
+- The section class is `see-also`, not `related-pages`.
+- The default layout calls `see-also` after `.Page.Content` and before the `footer` partial.
+- Self-exclusion in `findRelatedDocs` compares paths across extension stripping (`6d44f78`).

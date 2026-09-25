@@ -3,6 +3,11 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status**: Implemented 2026-09-23. All 14 tasks shipped: `6b912cf` (1), `c891f4a` (2), `480d7a4` (3), `1dcc358` (4),
+`06b4ee9` (5), `3224034` (6), `5e1c3f1` (7), `e41fa6a` (8), `c80885e` (9), `85f6a2e` (10), `ea4fcde` and `1c10b21`
+(11), `e4e9ee7` (12), `228ece9` (13), `c449d06` (14). Later refactors changed parts of Tasks 6 and 11 (see
+Divergences).
+
 **Goal:** gomddoc describes itself — config schema, env vars, flags, commands, frontmatter, theme features and its
 own embedded guide — over stdio MCP and the CLI (`info`, `info --json`, `schema`), from one source per fact.
 
@@ -110,7 +115,7 @@ the report; `internal/mcp` serves it plus the guide under a `gomddoc://` namespa
 - Produces: `docs.Guide fs.FS` — rooted at `docs/guide/`, so paths are `README.md`, `02-configuration.md`,
   `12-advanced/02-markdown-extensions.md`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 package docs
@@ -171,12 +176,12 @@ If `internal/text` has no `Frontmatter(data) []byte` extractor (it has `StripFro
 frontmatter → nil; `---\na: 1\n---\nbody` → `a: 1\n`; unterminated → nil. Grep first
 (`grep -rn "func Frontmatter\|func ExtractFrontmatter" internal/`) — reuse an existing one if present.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `go test ./docs/ -run TestGuide -v`
 Expected: FAIL — `undefined: Guide`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 // Package docs embeds gomddoc's user guide so the binary can serve its own
@@ -210,12 +215,12 @@ func mustSub(fsys fs.FS, dir string) fs.FS {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./docs/ -v`
 Expected: PASS. If a guide page lacks `title`/`description`, add them to that page (it is a real gap).
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(docs): embed the user guide in the binary`).
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(docs): embed the user guide in the binary`).
 
 ---
 
@@ -249,7 +254,7 @@ const FileKeysNote = "…"
 func Schema() []Setting // fresh slice every call; callers may mutate it
 ```
 
-- [ ] **Step 1: Write the failing tests** (`schema_test.go`)
+- [x] **Step 1: Write the failing tests** (`schema_test.go`)
 
 ```go
 package config
@@ -394,12 +399,12 @@ func TestSchema_ReturnsFreshSlice(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/config/ -run TestSchema -v`
 Expected: FAIL — `undefined: Schema`
 
-- [ ] **Step 3: Implement `schema.go`**
+- [x] **Step 3: Implement `schema.go`**
 
 ```go
 package config
@@ -512,7 +517,7 @@ func settingDefault(fv reflect.Value) any {
 }
 ```
 
-- [ ] **Step 4: Add tags to every leaf field in `config.go`**
+- [x] **Step 4: Add tags to every leaf field in `config.go`**
 
 Use these exact descriptions (agent-oriented: effect, then interactions). Add `max` where shown and
 `default_doc` on `Meta.Title`.
@@ -551,12 +556,12 @@ wording if the code disagrees — the doc tag is now the documentation.
 
 Then delete `EnvVar`, `EnvVars` and `collectEnvVars` from `config.go` and `TestEnvVars` from `config_test.go`.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `go test ./internal/config/ ./cmd/gomddoc/ -v -run 'TestSchema|Env'`
 Expected: PASS
 
-- [ ] **Step 6: `make ci`, then draft the commit message** (`feat(config): derive a settings schema from struct
+- [x] **Step 6: `make ci`, then draft the commit message** (`feat(config): derive a settings schema from struct
   tags`).
 
 ---
@@ -571,7 +576,7 @@ Expected: PASS
 - Consumes: `Schema()`, `FileKeysNote`, `featureKeyPattern` (in `features.go`).
 - Produces: `func JSONSchema() []byte` — indented JSON, deterministic, a fresh copy per call.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 // validateAgainst is a structural validator for the subset of JSON Schema that
@@ -737,12 +742,12 @@ func TestJSONSchema_ReturnsCopy(t *testing.T) {
 The "every key" row is also what makes `TestJSONSchema_Validates` falsifiable against a schema that dropped a
 property: a missing leaf turns that row into an "unknown key" error.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/config/ -run TestJSONSchema -v`
 Expected: FAIL — `undefined: JSONSchema`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 // JSONSchema returns a JSON Schema (draft 2020-12) for .gomddoc/config.yml,
@@ -814,12 +819,12 @@ func settingSchema(s Setting) map[string]any {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./internal/config/ -v`
 Expected: PASS
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(config): project a JSON Schema for
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(config): project a JSON Schema for
   config.yml`).
 
 ---
@@ -835,7 +840,7 @@ Expected: PASS
   `description`; `var FrontmatterFields []FrontmatterField`; `func FrontmatterFieldList() []FrontmatterField`
   returning a clone (the report must not alias the package var).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 package metadata
@@ -896,12 +901,12 @@ func TestFrontmatterFieldList_IsCopy(t *testing.T) {
 Check first that `fieldRow` matches **only** the Standard Fields table (grep the page for other backticked first
 columns). If another table matches, restrict parsing to the text between `### Standard Fields` and the next `###`.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/metadata/ -run Frontmatter -v`
 Expected: FAIL — `undefined: FrontmatterFields`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 package metadata
@@ -938,15 +943,15 @@ func FrontmatterFieldList() []FrontmatterField { return slices.Clone(Frontmatter
 Verify each description against its consumer before committing (`renderer.go:632` for `author`, `renderer.go:716`
 for `layout`, `seo/jsonld.go`, `metadata.ParseFrontmatterDate`).
 
-- [ ] **Step 4: Add the `author` row** to the Standard Fields table in `02-markdown-extensions.md`, with the same
+- [x] **Step 4: Add the `author` row** to the Standard Fields table in `02-markdown-extensions.md`, with the same
   description as the declared entry.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `go test ./internal/metadata/ -v`
 Expected: PASS
 
-- [ ] **Step 6: `make ci`, then draft the commit message** (`feat(metadata): declare the special frontmatter
+- [x] **Step 6: `make ci`, then draft the commit message** (`feat(metadata): declare the special frontmatter
   fields`).
 
 ---
@@ -964,7 +969,7 @@ Expected: PASS
 - Produces: `func parserOptions() []kong.Option`; Kong struct tag `setting:"<Setting.Key>"` on flags that set a
   config value under a different env var.
 
-- [ ] **Step 1: Write the failing test** (`guide_drift_test.go`)
+- [x] **Step 1: Write the failing test** (`guide_drift_test.go`)
 
 ```go
 package main
@@ -1057,7 +1062,7 @@ func TestGuide_ConfigurationPageCoversEverySetting(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Introduce `parserOptions()` in `main.go`** (needed by `testModel`) and switch `main` to it:
+- [x] **Step 2: Introduce `parserOptions()` in `main.go`** (needed by `testModel`) and switch `main` to it:
 
 ```go
 // parserOptions configures the Kong parser. Tests build the model through the
@@ -1085,28 +1090,28 @@ func main() {
 `ctx.Run(ctx.Model)` binds `*kong.Application` so a command's `Run(app *kong.Application)` can receive it; commands
 whose `Run()` takes nothing are unaffected.
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 Run: `go test ./cmd/gomddoc/ -run TestGuide_ -v`
 Expected: FAIL — at least `02-configuration.md mentions GOMDDOC_SITE_FEATURES_KATEX, which gomddoc does not read`.
 
-- [ ] **Step 4: Fix the guide** until both tests pass. Known fix: `GOMDDOC_SITE_FEATURES_KATEX` →
+- [x] **Step 4: Fix the guide** until both tests pass. Known fix: `GOMDDOC_SITE_FEATURES_KATEX` →
   `GOMDDOC_SITE_THEME_FEATURES_KATEX`. For each other failure, add the missing key/variable to the relevant
   section of `02-configuration.md` (Site Configuration tables, Network Tuning) using the setting's doc tag
   wording. Do not weaken the tests.
 
-- [ ] **Step 5: Add `setting:` tags** so Task 8 can join flags whose env var differs from the setting's:
+- [x] **Step 5: Add `setting:` tags** so Task 8 can join flags whose env var differs from the setting's:
   - `ServeCmd.Domain`, `PreviewCmd.Domain`, `BuildCmd.Domain`: `setting:"site.meta.domain"`
   - `PreviewCmd.DirIndex`: `setting:"site.dir_index"`
   - Grep all command structs for any other flag that feeds a `config.Config` field (follow `ServeArgs` and
     `ServerSetupOptions` into `config`) and tag it the same way.
 
-- [ ] **Step 6: Run to verify it passes**
+- [x] **Step 6: Run to verify it passes**
 
 Run: `go test ./cmd/gomddoc/ -run TestGuide_ -v`
 Expected: PASS
 
-- [ ] **Step 7: `make ci`, then draft the commit message** (`test(docs): hold the guide to the env vars and keys
+- [x] **Step 7: `make ci`, then draft the commit message** (`test(docs): hold the guide to the env vars and keys
   gomddoc reads`, body naming the `GOMDDOC_SITE_FEATURES_KATEX` fix).
 
 ---
@@ -1136,7 +1141,7 @@ func ThemeFeatures(assets fs.FS, name string) ThemeInfo
 `assets` is the asset FS as the renderer sees it (embedded `assets/` possibly overlaid by `.gomddoc/`), so theme
 files live under `assets/themes/<name>/`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 package template
@@ -1196,19 +1201,19 @@ func TestThemeFeatures(t *testing.T) {
 }
 ```
 
-- [ ] **Step 1b: Provide the embedded default theme to the test.** The embed lives in `cmd/gomddoc`
+- [x] **Step 1b: Provide the embedded default theme to the test.** The embed lives in `cmd/gomddoc`
   (`embeddedAssets`), which `internal/template` cannot import. Check how existing `internal/template` tests get
   real theme files (`grep -rn "os.DirFS\|cmd/gomddoc/assets" internal/template/*_test.go`) and reuse that helper;
   if none exists, write `defaultThemeAssets(t)` returning
   `fstest`-free `os.DirFS("../../cmd/gomddoc")` (whose `assets/themes/default/…` layout matches the embed) and put
   it in `internal/template/testhelpers_test.go`.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/template/ -run TestThemeFeatures -v`
 Expected: FAIL — `undefined: ThemeFeatures`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 package template
@@ -1280,13 +1285,13 @@ func ThemeFeatures(assets fs.FS, name string) ThemeInfo {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./internal/template/ -run TestThemeFeatures -v`
 Expected: PASS. If the default-theme lists differ from the test's, the test is the claim to check — grep the
 templates, and fix whichever side is wrong.
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(template): list a theme's feature keys and CSS
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(template): list a theme's feature keys and CSS
   vars by template scan`).
 
 ---
@@ -1372,7 +1377,7 @@ func Describe(in Input) Report
 func (r Report) JSON() []byte
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 package capabilities
@@ -1488,12 +1493,12 @@ func TestReport_JSONRoundTrip(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/capabilities/ -v`
 Expected: FAIL — package does not exist
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 // Package capabilities answers "what can gomddoc do, and how is it
@@ -1615,12 +1620,12 @@ func (r Report) JSON() []byte {
 `metadata.Index` exposes `AllPages()` (deep copies) — use it unless an iterator accessor exists; this runs once per
 process. Settings with nil `Default` marshal as `null`, which is intended.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./internal/capabilities/ -v`
 Expected: PASS
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(capabilities): assemble one self-description
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(capabilities): assemble one self-description
   report`).
 
 ---
@@ -1642,7 +1647,7 @@ func commandsFromKong(app *kong.Application) []capabilities.Command
 func capabilitiesInput(app *kong.Application, dir string, cfg *config.Config, cfgErr error, contentRoot fs.FS) capabilities.Input
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 package main
@@ -1715,12 +1720,12 @@ func TestCapabilitiesInput_FileFound(t *testing.T) {
 
 The `"schema"` entry in the command list is added by Task 9; until then remove it from `want` and add it back there.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./cmd/gomddoc/ -run 'TestSettingTags|TestCommandsFromKong|TestCapabilitiesInput' -v`
 Expected: FAIL — `undefined: commandsFromKong`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 // commandsFromKong converts Kong's model into the capabilities form, so
@@ -1782,12 +1787,12 @@ func capabilitiesInput(app *kong.Application, dir string, cfg *config.Config, cf
 Check whether `n.Flags` includes Kong's inherited app-level `--help`/`--version` flags; the `f.Name == "help"`
 filter must exclude exactly those (add `"version"` if it appears).
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./cmd/gomddoc/ -v -run 'TestSettingTags|TestCommandsFromKong|TestCapabilitiesInput'`
 Expected: PASS
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(cli): convert the Kong model for the
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(cli): convert the Kong model for the
   capabilities report`).
 
 ---
@@ -1806,7 +1811,7 @@ Expected: PASS
   `config.IsGitURL`.
 - Produces: `InfoCmd{Dir string; JSON bool; out io.Writer}`, `SchemaCmd{out io.Writer}`.
 
-- [ ] **Step 1: Write the failing tests** (`info_test.go`)
+- [x] **Step 1: Write the failing tests** (`info_test.go`)
 
 ```go
 package main
@@ -1931,12 +1936,12 @@ func TestSchemaCmd(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./cmd/gomddoc/ -run 'TestInfo|TestSchemaCmd' -v`
 Expected: FAIL — unknown fields `JSON`, `out`; undefined `SchemaCmd`
 
-- [ ] **Step 3: Implement `info.go`**
+- [x] **Step 3: Implement `info.go`**
 
 ```go
 // InfoCmd describes gomddoc and, when run in a site, that site's configuration.
@@ -1989,7 +1994,7 @@ func (i *InfoCmd) Run(app *kong.Application) error {
 
 Keep it one function per section if `writeInfo` passes ~60 lines. Delete `writeEnvVarsHelp` and its test.
 
-- [ ] **Step 4: Implement `schema.go`**
+- [x] **Step 4: Implement `schema.go`**
 
 ```go
 // SchemaCmd prints the JSON Schema for .gomddoc/config.yml.
@@ -2012,15 +2017,15 @@ In `main.go`'s `CLI`: `Schema SchemaCmd `cmd:"" help:"Print the JSON Schema for 
 `Info`'s help to `"Describe gomddoc: settings, env vars, flags, theme features and guide pages (--json for
 agents)."`.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `go test ./cmd/gomddoc/ -v -run 'TestInfo|TestSchemaCmd|TestCommandsFromKong'`
 Expected: PASS
 
-- [ ] **Step 6: Manual check** — `go run ./cmd/gomddoc info testsite`, `go run ./cmd/gomddoc info --json testsite |
+- [x] **Step 6: Manual check** — `go run ./cmd/gomddoc info testsite`, `go run ./cmd/gomddoc info --json testsite |
   head -40`, `go run ./cmd/gomddoc schema | head`. Read the human output as an agent would; fix anything unclear.
 
-- [ ] **Step 7: `make ci`, then draft the commit message** (`feat(cli): info describes gomddoc from the
+- [x] **Step 7: `make ci`, then draft the commit message** (`feat(cli): info describes gomddoc from the
   capabilities report; add schema`).
 
 ---
@@ -2045,7 +2050,7 @@ func pageHeader(title, description string, tags []string) string // "" when all 
 func (s *MCPServer) guidePage(p string) ([]byte, error)           // allowlisted read, used by Tasks 10–12
 ```
 
-- [ ] **Step 1: Write the failing tests** (`selfdocs_test.go`)
+- [x] **Step 1: Write the failing tests** (`selfdocs_test.go`)
 
 ```go
 package mcp
@@ -2177,12 +2182,12 @@ func TestSelfDocs_GuideResource(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/mcp/ -run TestSelfDocs -v`
 Expected: FAIL — unknown field `SelfDocs`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `server.go`: add `SelfDocs` type and field (doc comment: "nil for the HTTP mount in serve: a public site's MCP
 endpoint does not advertise its generator's manual"), and in `NewServer` after `registerPrompts()`:
@@ -2240,12 +2245,12 @@ same shape with MIME `application/schema+json`; `handleGuideResource` → trim `
 error `mcp.ResourceNotFoundError(uri)`, else `text.StripFrontmatter`; `handleCapabilitiesTool` →
 `textResult(string(Report.JSON()))`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./internal/mcp/ -v`
 Expected: PASS (all existing tests too — `setupTest` now goes through `connect`)
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(mcp): serve the capabilities report and config
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(mcp): serve the capabilities report and config
   schema under gomddoc://`).
 
 ---
@@ -2261,7 +2266,7 @@ Expected: PASS (all existing tests too — `setupTest` now goes through `connect
 - Produces: `MCPServer.guideSearch func() (*search.Index, error)` (a `sync.OnceValues`);
   `func HeadingIDs(content []byte) []string`; `GuideInput{Query, Path, Section string; Limit int}`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `section_test.go`:
 
@@ -2413,12 +2418,12 @@ func TestGuideTool_RealEmbed(t *testing.T) {
 
 Add the `gomddoc_guide` row back into `TestSelfDocs_RegisteredOnlyWhenSet`.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/mcp/ -run 'TestGuide|TestHeadingIDs' -v`
 Expected: FAIL — `undefined: HeadingIDs`, unknown tool `gomddoc_guide`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `section.go`:
 
@@ -2521,12 +2526,12 @@ func (s *MCPServer) handleGuideTool(_ context.Context, _ *mcp.CallToolRequest, i
 	}, s.handleGuideTool)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./internal/mcp/ -race -v`
 Expected: PASS
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(mcp): add gomddoc_guide over the embedded guide`).
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(mcp): add gomddoc_guide over the embedded guide`).
 
 ---
 
@@ -2538,7 +2543,7 @@ Expected: PASS
 **Interfaces:**
 - Consumes: `SelfDocs.Report`, `guidePage("README.md")`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestLearnGomddocPrompt(t *testing.T) {
@@ -2577,12 +2582,12 @@ func TestLearnGomddocPrompt(t *testing.T) {
 `Commands: []capabilities.Command{{Name: "serve", Help: "Serve"}}` in its `capabilities.Input` so the command
 assertion is falsifiable. Uncomment the `learn_gomddoc` row in `TestSelfDocs_RegisteredOnlyWhenSet`.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./internal/mcp/ -run TestLearnGomddocPrompt -v`
 Expected: FAIL — prompt not found
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 	s.server.AddPrompt(&mcp.Prompt{
@@ -2605,12 +2610,12 @@ Expected: FAIL — prompt not found
    values (ports, domain, auth file) in env vars or flags, site identity (title, theme, exclude) in config.yml;
    after writing a config, run `gomddoc info` to see whether it loads.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./internal/mcp/ -v`
 Expected: PASS
 
-- [ ] **Step 5: `make ci`, then draft the commit message** (`feat(mcp): add the learn_gomddoc onboarding prompt`).
+- [x] **Step 5: `make ci`, then draft the commit message** (`feat(mcp): add the learn_gomddoc onboarding prompt`).
 
 ---
 
@@ -2622,7 +2627,7 @@ Expected: PASS
 **Interfaces:**
 - Consumes: `capabilitiesInput`, `capabilities.Describe`, `mcp.SelfDocs`, `docs.Guide`.
 
-- [ ] **Step 1: Write the failing test** — read `TestMCPCmd_Run_ServesConfiguredContentOverStdio` first and follow
+- [x] **Step 1: Write the failing test** — read `TestMCPCmd_Run_ServesConfiguredContentOverStdio` first and follow
   its harness exactly. Add assertions (or a sibling test using the same harness) that over stdio:
   - `ListTools` includes `gomddoc_capabilities` and `gomddoc_guide`;
   - reading `gomddoc://capabilities` returns a `capabilities.Report` whose `Config.Dir` is the test's directory
@@ -2633,12 +2638,12 @@ Expected: PASS
   assertion that `gomddoc_capabilities` is **absent**. If no such test exists, add one that builds
   `setupServer` for a temp site, POSTs an MCP `initialize` + `tools/list` to `/mcp`, and checks the tool list.
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `go test ./cmd/gomddoc/ -run TestMCPCmd -v`
 Expected: FAIL — `gomddoc_capabilities` not listed
 
-- [ ] **Step 3: Implement** — `MCPCmd.Run(app *kong.Application) error`; after the pipeline is set up:
+- [x] **Step 3: Implement** — `MCPCmd.Run(app *kong.Application) error`; after the pipeline is set up:
 
 ```go
 	contentRoot, err := prov.RootFS(context.Background())
@@ -2660,16 +2665,16 @@ gomddoc://."`
 
 If a test calls `(&MCPCmd{…}).Run()` with no arguments, pass `testModel(t)`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `go test ./cmd/gomddoc/ -race -v -run 'TestMCPCmd|MCP'`
 Expected: PASS
 
-- [ ] **Step 5: Manual check** with an MCP client (Claude Code: `claude mcp add gomddoc-test -- go run
+- [x] **Step 5: Manual check** with an MCP client (Claude Code: `claude mcp add gomddoc-test -- go run
   ./cmd/gomddoc mcp testsite`, or the MCP Inspector): call `gomddoc_guide` with no args, a query, a path + section;
   read `gomddoc://capabilities`; get `learn_gomddoc`. Confirm an agent could write a valid `config.yml` from them.
 
-- [ ] **Step 6: `make ci`, then draft the commit message** (`feat(mcp): serve gomddoc's self-docs from gomddoc
+- [x] **Step 6: `make ci`, then draft the commit message** (`feat(mcp): serve gomddoc's self-docs from gomddoc
   mcp`).
 
 ---
@@ -2680,35 +2685,47 @@ Expected: PASS
 - Modify: `docs/guide/04-mcp.md`, `docs/guide/02-configuration.md`, `docs/architecture.md`, `docs/decisions.md`,
   `docs/roadmap.md`, `REVIEW.md`, `../gomddoc-website/docs/configuration.md`
 
-- [ ] **Step 1: `04-mcp.md`** — add a `## Self-Documentation` section: the namespace table (3 resources,
+- [x] **Step 1: `04-mcp.md`** — add a `## Self-Documentation` section: the namespace table (3 resources,
   2 tools, 1 prompt, as in the spec's §6 table), the `gomddoc_guide` modes, why it is stdio-only, and one
   example agent flow (`learn_gomddoc` → `gomddoc://schema/config` → write config → `gomddoc info`). Update the
   page's tool/resource count wherever it states one.
 
-- [ ] **Step 2: `02-configuration.md`** — rewrite the `### info` section for `info [DIR] [--json]`; add
+- [x] **Step 2: `02-configuration.md`** — rewrite the `### info` section for `info [DIR] [--json]`; add
   `### schema`; add a short "Machine-readable configuration" paragraph near Priority Order pointing to
   `gomddoc schema`, `gomddoc info --json` and the MCP resources. Keep `TestGuide_*` green.
 
-- [ ] **Step 3: `architecture.md`** — add a "Self-description" subsection: the data-flow diagram from the spec, the
+- [x] **Step 3: `architecture.md`** — add a "Self-description" subsection: the data-flow diagram from the spec, the
   one-source rule (struct tags), and where each consumer sits.
 
-- [ ] **Step 4: `decisions.md`** — three entries in the file's existing format: (1) config facts on struct tags,
+- [x] **Step 4: `decisions.md`** — three entries in the file's existing format: (1) config facts on struct tags,
   alternatives hand-written table / `go generate`; (2) gomddoc namespace on stdio only, alternative both
   transports; (3) theme facts by template scan until the manifest design settles, link the parked plan. Also note
   the deviations listed at the top of this plan (dropped `enum`/`min`, `EnvVars` deleted, `setting:` Kong tag).
 
-- [ ] **Step 5: `roadmap.md`** — tick the three "Self-Documentation via MCP" items (noting `mcp` always serves
+- [x] **Step 5: `roadmap.md`** — tick the three "Self-Documentation via MCP" items (noting `mcp` always serves
   the guide alongside content rather than only when no directory is given), add two open items for sub-spec 2
   (`gomddoc doctor`) and sub-spec 3 (`gomddoc help <topic>`), add a "Theme manifest — parked" item linking
   `docs/plans/2026-09-23-theme-manifest-parked.md`, and update the Tier 3 priority list.
 
-- [ ] **Step 6: `REVIEW.md`** — record, as an open LOW issue: env var names for the same setting differ between
+- [x] **Step 6: `REVIEW.md`** — record, as an open LOW issue: env var names for the same setting differ between
   flags and config (`GOMDDOC_DOMAIN` vs `GOMDDOC_SITE_META_DOMAIN`; preview's `GOMDDOC_DIR_INDEX` vs
   `GOMDDOC_SITE_DIR_INDEX`). The `setting:` tag makes the report correct; unifying the names is a separate,
   user-visible change.
 
-- [ ] **Step 7: gomddoc-website `docs/configuration.md`** — add a short section pointing to `gomddoc schema` (for
+- [x] **Step 7: gomddoc-website `docs/configuration.md`** — add a short section pointing to `gomddoc schema` (for
   editor validation) and `gomddoc info --json`. This is a separate repository: draft its commit message separately.
 
-- [ ] **Step 8: `make ci`, then draft the commit messages** (`docs: document gomddoc's self-description surface`;
+- [x] **Step 8: `make ci`, then draft the commit messages** (`docs: document gomddoc's self-description surface`;
   website: `docs(configuration): point to gomddoc schema and info --json`).
+
+## Divergences from implementation
+
+The plan's own "Deviations from the spec" section describes the shipped design. Later changes:
+
+- Task 6: `ThemeFeatures` scans the templates the renderer resolves (inherited default partials, site partials,
+  default-layout fallback) and reports an uninstalled theme as `fallback-default` (`f1173ea`).
+- Task 7: the report gained `config.dir`, `config.file_status` (`442424c`) and `guide_error`; guide entries carry a
+  `topic` name (`2b05595`).
+- Task 11: the MCP-owned guide index, page allowlist and search moved to `internal/guide` (`2b05595`), shared with
+  `gomddoc help` (`37250b5`). Section extraction moved from `internal/mcp` to `internal/text` (`e6f0ce5`).
+- Task 13: `mcp.SelfDocs` later gained a `Doctor` function for the `gomddoc_doctor` tool (`f5a9426`).

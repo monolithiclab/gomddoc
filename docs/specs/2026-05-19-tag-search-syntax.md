@@ -1,8 +1,9 @@
 # `tag:` Search Syntax (Tag Components Sub-Spec 3 of 3)
 
-**Status**: design approved 2026-05-19; revised 2026-05-29 (review fixes); revised 2026-06-09
-(tag membership resolved against the metadata index rather than a search-local `byTag` map — see
-Architecture and Edge Cases)
+**Status**: Implemented 2026-06-10 (commits `4bd8962` metadata tag deduplication, `ff5f217` `tag:` filter syntax).
+Design approved 2026-05-19; revised 2026-05-29 (review fixes); revised 2026-06-09 (tag membership resolved against the
+metadata index rather than a search-local `byTag` map — see Architecture and Edge Cases). The coordinated
+`gomddoc-themes` change did not ship (see Divergences).
 **Sub-spec**: 3 of 3 in the broader Tag Components roadmap entry
 **Sub-specs in scope**: `tag:` prefix parser in the search engine plus a discoverable UI tip
 **Sub-specs already shipped**: chips + per-tag pages + tag index (sub-spec 1); see-also section (sub-spec 2)
@@ -218,3 +219,15 @@ Coverage target: maintain 87%+ overall.
 - A separate `&tags=foo,bar` JSON API parameter — the unified `q=` string covers it.
 - "Show me documents WITHOUT this tag" syntax (`-tag:foo`).
 - Field prefixes for other fields (`title:`, `desc:`).
+
+## Divergences from implementation
+
+- The coordinated `gomddoc-themes` change did not ship. None of the 7 themes sets `data-search-tag-tip` on `<html>`,
+  so the search tip renders only in the default theme. The `tag:` filter and the description fallback work in every
+  theme, since they live in the server and in the shared `search.mjs`.
+- The "`metaIndex == nil`" edge case refers to `idx.byTag`, which does not exist in the shipped design. With no
+  metadata index, `taggedPages` returns nil and every `tag:` query returns zero results.
+- The mixed-query scan was later rewritten as a linear merge over sorted posting lists (`4edc17b`). The tag
+  restriction still maps tagged pages to doc indices through `pathToDoc` (`tagDocSet`).
+- `metadata.Index.ByTag` normalizes its argument (lowercase and trim) itself, so the lowercasing in `parseQuery` is
+  redundant with the lookup rather than the only normalization step.

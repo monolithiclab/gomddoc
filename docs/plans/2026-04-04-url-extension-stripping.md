@@ -1,5 +1,7 @@
 # URL Extension Stripping Implementation Plan
 
+**Status:** Implemented 2026-04-22 in 7f7b400, b9289e9, 3fc56bb, e9fe1a0 and 86cb198. All steps shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Serve content files at extensionless canonical URLs with 301 redirects from extension-based URLs, and generate pretty URL output in build mode.
@@ -44,7 +46,7 @@
 - Modify: `internal/config/config.go:259-296` (Validate)
 - Test: `internal/config/config_test.go`
 
-- [ ] **Step 1: Write the test for default value**
+- [x] **Step 1: Write the test for default value**
 
 Add a test to `internal/config/config_test.go`:
 
@@ -59,12 +61,12 @@ func TestNewSiteConfig_StripExtensionsDefault(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/config/ -run TestNewSiteConfig_StripExtensionsDefault -v`
 Expected: FAIL — `StripExtensions` field does not exist.
 
-- [ ] **Step 3: Add the field and default**
+- [x] **Step 3: Add the field and default**
 
 In `internal/config/config.go`, add `StripExtensions` to `SiteConfig` (after `Exclude` on line 82):
 
@@ -78,7 +80,7 @@ In `NewSiteConfig()` (around line 185), add to the returned struct:
 StripExtensions: []string{".md"},
 ```
 
-- [ ] **Step 4: Write test for YAML loading**
+- [x] **Step 4: Write test for YAML loading**
 
 ```go
 func TestSiteConfig_LoadFromFile_StripExtensions(t *testing.T) {
@@ -99,12 +101,12 @@ func TestSiteConfig_LoadFromFile_StripExtensions(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `go test ./internal/config/ -run TestNewSiteConfig_StripExtensionsDefault\|TestSiteConfig_LoadFromFile_StripExtensions -v`
 Expected: PASS
 
-- [ ] **Step 6: Write validation test for bad extensions**
+- [x] **Step 6: Write validation test for bad extensions**
 
 ```go
 func TestSiteConfig_Validate_StripExtensions(t *testing.T) {
@@ -134,7 +136,7 @@ func TestSiteConfig_Validate_StripExtensions(t *testing.T) {
 }
 ```
 
-- [ ] **Step 7: Add validation logic**
+- [x] **Step 7: Add validation logic**
 
 In `SiteConfig.Validate()` (around line 291, before the return), add:
 
@@ -146,12 +148,12 @@ for _, ext := range sc.StripExtensions {
 }
 ```
 
-- [ ] **Step 8: Run all config tests**
+- [x] **Step 8: Run all config tests**
 
 Run: `go test ./internal/config/ -v`
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add internal/config/config.go internal/config/config_test.go
@@ -167,7 +169,7 @@ git commit -m "Add StripExtensions config field with .md default"
 - Create: `internal/resolve/resolver.go`
 - Create: `internal/resolve/resolver_test.go`
 
-- [ ] **Step 1: Write basic resolution test**
+- [x] **Step 1: Write basic resolution test**
 
 Create `internal/resolve/resolver_test.go`:
 
@@ -221,12 +223,12 @@ func hasHTMLRenderer(mimeType string) bool {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/resolve/ -run TestResolver_BasicResolution -v`
 Expected: FAIL — package does not exist.
 
-- [ ] **Step 3: Implement PathResolver**
+- [x] **Step 3: Implement PathResolver**
 
 Create `internal/resolve/resolver.go`:
 
@@ -373,12 +375,12 @@ func (r *PathResolver) IsEmpty() bool {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/resolve/ -run TestResolver_BasicResolution -v`
 Expected: PASS
 
-- [ ] **Step 5: Write collision tests**
+- [x] **Step 5: Write collision tests**
 
 Add to `internal/resolve/resolver_test.go`:
 
@@ -488,12 +490,12 @@ func TestResolver_NonRenderedFileSkipped(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Run all resolver tests**
+- [x] **Step 6: Run all resolver tests**
 
 Run: `go test ./internal/resolve/ -v`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/resolve/
@@ -509,7 +511,7 @@ git commit -m "Add PathResolver for extensionless URL mapping"
 - Create: `internal/server/redirect.go`
 - Create: `internal/server/redirect_test.go`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `internal/server/redirect_test.go`:
 
@@ -587,12 +589,12 @@ func TestExtensionRedirect(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/server/ -run TestExtensionRedirect -v`
 Expected: FAIL — `ExtensionRedirect` not defined.
 
-- [ ] **Step 3: Implement the middleware**
+- [x] **Step 3: Implement the middleware**
 
 Create `internal/server/redirect.go`:
 
@@ -638,12 +640,12 @@ func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string) func(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/server/ -run TestExtensionRedirect -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/server/redirect.go internal/server/redirect_test.go
@@ -660,7 +662,7 @@ git commit -m "Add extension redirect middleware for canonical URLs"
 - Modify: `internal/server/handler.go:67-135` (ServeContent)
 - Test: `internal/server/handler_test.go`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Add to `internal/server/handler_test.go` a test that requests an extensionless path and verifies the handler resolves it through the resolver. Look at existing handler tests for the pattern (they likely use a mock provider). The test should:
 
@@ -676,12 +678,12 @@ func TestServeContent_ExtensionlessPath(t *testing.T) {
 
 Adapt to the existing test patterns in `handler_test.go`. The key assertion is that the handler resolves `/guide` by consulting the resolver and reading `guide.md` from the provider.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/server/ -run TestServeContent_ExtensionlessPath -v`
 Expected: FAIL — handler doesn't have resolver.
 
-- [ ] **Step 3: Add resolver to handler**
+- [x] **Step 3: Add resolver to handler**
 
 In `internal/server/handler.go`, add to `HandlerConfig` and `Handler`:
 
@@ -699,7 +701,7 @@ In `NewHandler`, add:
 resolver: cfg.Resolver,
 ```
 
-- [ ] **Step 4: Add resolution logic in ServeContent**
+- [x] **Step 4: Add resolution logic in ServeContent**
 
 In `ServeContent`, after the provider read fails with a not-found error (around line 78), add resolver fallback before the error handling:
 
@@ -723,17 +725,17 @@ if err != nil {
 
 Note: Check what error type `ReadFile` returns for not-found. It likely wraps `fs.ErrNotExist`. Adjust the error check accordingly (e.g., `errors.Is(err, fs.ErrNotExist)`).
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `go test ./internal/server/ -run TestServeContent_ExtensionlessPath -v`
 Expected: PASS
 
-- [ ] **Step 6: Run all handler tests**
+- [x] **Step 6: Run all handler tests**
 
 Run: `go test ./internal/server/ -v`
 Expected: PASS — no regressions.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/server/handler.go internal/server/handler_test.go
@@ -751,7 +753,7 @@ git commit -m "Resolve extensionless paths via PathResolver in handler"
 - Modify: `internal/server/server.go:30-51` (HTTPServerConfig)
 - Modify: `internal/server/server.go:54-155` (NewHTTPServer)
 
-- [ ] **Step 1: Add resolver to Pipeline struct**
+- [x] **Step 1: Add resolver to Pipeline struct**
 
 In `cmd/gomddoc/pipeline.go`, add to the `Pipeline` struct:
 
@@ -759,7 +761,7 @@ In `cmd/gomddoc/pipeline.go`, add to the `Pipeline` struct:
 Resolver *resolve.PathResolver
 ```
 
-- [ ] **Step 2: Build resolver in setupPipeline**
+- [x] **Step 2: Build resolver in setupPipeline**
 
 In `setupPipeline()`, after the registry is built (around line 54), add:
 
@@ -774,7 +776,7 @@ p.Resolver = resolver
 
 This uses the registry itself to check if a MIME type has an HTML renderer.
 
-- [ ] **Step 3: Pass resolver to HTTPServerConfig**
+- [x] **Step 3: Pass resolver to HTTPServerConfig**
 
 In `internal/server/server.go`, add to `HTTPServerConfig`:
 
@@ -788,7 +790,7 @@ In `cmd/gomddoc/pipeline.go`'s `setupServer()`, pass it in the `serverConfig` (a
 Resolver: pipeline.Resolver,
 ```
 
-- [ ] **Step 4: Wire resolver in NewHTTPServer**
+- [x] **Step 4: Wire resolver in NewHTTPServer**
 
 In `NewHTTPServer()`, pass resolver to `HandlerConfig`:
 
@@ -808,12 +810,12 @@ content := auth.Subgroup("",
 )
 ```
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `make ci`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/pipeline.go internal/server/server.go
@@ -830,7 +832,7 @@ git commit -m "Wire PathResolver into server startup and middleware"
 - Modify: `internal/template/navigation/navigation.go:86-120` (buildTree file handling)
 - Test: `internal/template/navigation/navigation_test.go`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Add to `internal/template/navigation/navigation_test.go`:
 
@@ -862,12 +864,12 @@ func TestGenerate_CleanPaths(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/template/navigation/ -run TestGenerate_CleanPaths -v`
 Expected: FAIL — `NewGenerator` doesn't accept resolver.
 
-- [ ] **Step 3: Add resolver to Generator**
+- [x] **Step 3: Add resolver to Generator**
 
 In `navigation.go`, add `resolver` field to `Generator`:
 
@@ -907,7 +909,7 @@ In `buildTree()`, when creating file nodes (around line 103), use clean path if 
 }
 ```
 
-- [ ] **Step 4: Fix all existing callers of NewGenerator**
+- [x] **Step 4: Fix all existing callers of NewGenerator**
 
 Update `setupPipeline()` in `pipeline.go` (line 92):
 
@@ -917,12 +919,12 @@ navGen := navigation.NewGenerator(contentRoot, cfg.Site.DefaultIndex, cfg.Site.E
 
 Update build command if it creates a `NewGenerator` separately.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/template/navigation/ -v && make ci`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/template/navigation/navigation.go internal/template/navigation/navigation_test.go cmd/gomddoc/pipeline.go
@@ -940,7 +942,7 @@ git commit -m "Emit extensionless paths in navigation tree"
 - Modify: `internal/server/sitemap.go`
 - Modify: `internal/server/feed.go`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Add to `internal/seo/url_test.go`:
 
@@ -971,7 +973,7 @@ func TestPageURL_StripExtension(t *testing.T) {
 
 The SEO `PageURL` function already handles path normalization. The change is at the call sites — sitemap and feed should pass clean paths instead of raw file paths.
 
-- [ ] **Step 2: Update sitemap to use clean paths**
+- [x] **Step 2: Update sitemap to use clean paths**
 
 In `internal/server/sitemap.go`, `GenerateSitemap` needs access to the resolver. Update the signature:
 
@@ -991,20 +993,20 @@ if resolver != nil {
 loc := seo.PageURL(domain, pagePath, defaultIndex)
 ```
 
-- [ ] **Step 3: Update feed similarly**
+- [x] **Step 3: Update feed similarly**
 
 In `internal/server/feed.go`, update `GenerateFeed` signature to accept resolver. Apply the same clean path logic when building entry URLs.
 
-- [ ] **Step 4: Update all callers**
+- [x] **Step 4: Update all callers**
 
 Update `NewSitemapHandler`, `NewFeedHandler`, and the build command's `generateSEOFiles` to pass the resolver.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./internal/seo/ ./internal/server/ -v`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/seo/ internal/server/sitemap.go internal/server/feed.go cmd/gomddoc/build.go
@@ -1021,7 +1023,7 @@ git commit -m "Use extensionless paths in sitemap and feed URLs"
 - Modify: `cmd/gomddoc/build.go:162-228` (walkAndBuild)
 - Test: `cmd/gomddoc/build_test.go`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Add to `cmd/gomddoc/build_test.go` (or create if needed):
 
@@ -1051,12 +1053,12 @@ func TestBuildFile_PrettyURLOutput(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/gomddoc/ -run TestBuildFile_PrettyURLOutput -v`
 Expected: FAIL — `prettyOutputPath` not defined.
 
-- [ ] **Step 3: Extract output path logic**
+- [x] **Step 3: Extract output path logic**
 
 In `cmd/gomddoc/build.go`, extract the output path computation into a function:
 
@@ -1084,7 +1086,7 @@ func prettyOutputPath(filePath, defaultIndex string, dirsWithIndexMD map[string]
 }
 ```
 
-- [ ] **Step 4: Update buildFile to use prettyOutputPath**
+- [x] **Step 4: Update buildFile to use prettyOutputPath**
 
 In `buildFile()`, replace the output path logic (lines 286-291):
 
@@ -1100,12 +1102,12 @@ if len(siteConfig.StripExtensions) > 0 {
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `go test ./cmd/gomddoc/ -run TestBuildFile_PrettyURLOutput -v`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/build.go cmd/gomddoc/build_test.go
@@ -1120,7 +1122,7 @@ git commit -m "Generate pretty URL output in build mode"
 
 - Modify: `cmd/gomddoc/build.go:393-427` (generateRedirectFiles)
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Add to `cmd/gomddoc/build_test.go`:
 
@@ -1133,7 +1135,7 @@ func TestGenerateExtensionRedirects(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Add extension redirect generation**
+- [x] **Step 2: Add extension redirect generation**
 
 In `cmd/gomddoc/build.go`, after `generateRedirectFiles`, add a call to generate extension redirects. This can be integrated into the existing `generateRedirectFiles` or be a new function:
 
@@ -1170,7 +1172,7 @@ func (r *PathResolver) AllMappings() map[string]string {
 }
 ```
 
-- [ ] **Step 3: Call it from Build.Run()**
+- [x] **Step 3: Call it from Build.Run()**
 
 In `Build.Run()`, after `generateRedirectFiles` (around line 113):
 
@@ -1180,12 +1182,12 @@ if err := b.generateExtensionRedirects(pipeline.Resolver, &cfg.Site); err != nil
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `make ci`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/gomddoc/build.go internal/resolve/resolver.go
@@ -1201,7 +1203,7 @@ git commit -m "Generate extension redirect pages in build output"
 - Modify: `cmd/gomddoc/build.go:50-136` (Run)
 - Modify: `cmd/gomddoc/build.go:162-228` (walkAndBuild)
 
-- [ ] **Step 1: Pass resolver through build pipeline**
+- [x] **Step 1: Pass resolver through build pipeline**
 
 The build command creates its own pipeline via `setupPipeline()`, which already builds the resolver (from Task 5). Pass `pipeline.Resolver` through the build chain:
 
@@ -1226,16 +1228,16 @@ Update the call in `Run()`:
 stats, err := b.walkAndBuild(contentRoot, pipeline.Registry, pipeline.EnricherRegistry, pipeline.TemplateRenderer, &cfg.Site, pipeline.Resolver)
 ```
 
-- [ ] **Step 2: Pass resolver to SEO generation**
+- [x] **Step 2: Pass resolver to SEO generation**
 
 Update `generateSEOFiles` to accept and pass the resolver to `GenerateSitemap` and `GenerateFeed`.
 
-- [ ] **Step 3: Run full CI**
+- [x] **Step 3: Run full CI**
 
 Run: `make ci`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add cmd/gomddoc/build.go
@@ -1250,7 +1252,7 @@ git commit -m "Wire resolver into build pipeline for SEO and pretty URLs"
 
 - Modify or create: an integration test file
 
-- [ ] **Step 1: Write integration test**
+- [x] **Step 1: Write integration test**
 
 Create a test that starts a full server with test content and verifies:
 
@@ -1262,12 +1264,12 @@ Create a test that starts a full server with test content and verifies:
 
 Use `httptest.NewServer` with the full handler stack or test against the handler directly.
 
-- [ ] **Step 2: Run integration test**
+- [x] **Step 2: Run integration test**
 
 Run: `go test ./... -run TestIntegration_ExtensionStripping -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add <test files>
@@ -1284,19 +1286,19 @@ git commit -m "Add integration tests for URL extension stripping"
 - Modify: `docs/architecture.md` (mention resolver in pipeline)
 - Modify: `docs/roadmap.md` (mark feature as done)
 
-- [ ] **Step 1: Update configuration docs**
+- [x] **Step 1: Update configuration docs**
 
 Add a section for `strip_extensions` in `docs/guide/02-configuration.md` explaining the config option, defaults, and behavior.
 
-- [ ] **Step 2: Update architecture docs**
+- [x] **Step 2: Update architecture docs**
 
 Add the `PathResolver` to the pipeline diagram in `docs/architecture.md`.
 
-- [ ] **Step 3: Update roadmap**
+- [x] **Step 3: Update roadmap**
 
 Mark URL extension stripping as completed in `docs/roadmap.md`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/
@@ -1307,12 +1309,12 @@ git commit -m "Document URL extension stripping feature"
 
 ### Task 13: Final validation
 
-- [ ] **Step 1: Run full CI**
+- [x] **Step 1: Run full CI**
 
 Run: `make ci`
 Expected: PASS with no warnings.
 
-- [ ] **Step 2: Manual test with testsite**
+- [x] **Step 2: Manual test with testsite**
 
 Run: `make run` and verify with Chrome DevTools MCP against `testsite/`:
 
@@ -1321,7 +1323,7 @@ Run: `make run` and verify with Chrome DevTools MCP against `testsite/`:
 - Navigation shows clean URLs
 - Build output uses pretty URLs
 
-- [ ] **Step 3: Run build and inspect output**
+- [x] **Step 3: Run build and inspect output**
 
 ```bash
 go run ./cmd/gomddoc build --dir testsite --output /tmp/testbuild --force
@@ -1329,3 +1331,25 @@ find /tmp/testbuild -name "*.html" | head -20
 ```
 
 Verify directory structure shows `guide/index.html` pattern.
+
+## Divergences from implementation
+
+- The resolver is built once per pipeline at startup and never rebuilt. There is no git refresh mechanism for it to hook
+  into.
+- The constructor is `resolve.Build(fsys, BuildOptions{StripExtensions, Exclude, HasRenderer})`. It skips hidden paths
+  and paths matching the pipeline's exclude patterns, so an excluded file has no clean URL (c80981e).
+- Collisions and unreadable paths are recorded as `diag.Finding`s (`content.path-collision`, `target.read-error`) that
+  the pipeline logs and `gomddoc doctor` reports; the resolver does not log (7128c58).
+- `(*PathResolver).PageURLPath(realPath, defaultIndex)` is the single file-to-URL derivation, used by navigation,
+  sitemap, feed, build and the templates' `contentURL`. The resolver also has `AllMappings`, `IsEmpty` and `Findings`;
+  the package exports `IsDefaultIndex`.
+- The redirect middleware is `server.ExtensionRedirect(resolver, stripExts, basePath)`. Per-language scopes pass
+  `/{lang}` as `basePath`, which applies to redirect targets only.
+- Build uses pretty output for every rendered page whenever `strip_extensions` is non-empty. `prettyOutputPath` does not
+  consult the resolver or the extension list.
+- Output rule 5 is not implemented: `guide.md` and `guide/README.md` both write `guide/index.html`, with no
+  `guide/README.html` fallback and no warning.
+- With `strip_extensions: []`, build writes `guide.html` while serve publishes `/guide.md`. REVIEW.md §10.2 tracks the
+  split between the URL and the output path.
+- Extension redirect stubs are written at the source path: the output file `guide.md` is an HTML page redirecting to
+  `/guide`. Default-index files get no stub.

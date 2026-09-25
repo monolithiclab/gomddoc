@@ -1,7 +1,7 @@
 # Post-Processors to Goldmark Extensions
 
 **Date:** 2026-04-05
-**Status:** Approved
+**Status:** Implemented 2026-04-22 in 93323f8.
 
 ## Summary
 
@@ -146,3 +146,12 @@ Emits:
 - **HTML output must be byte-identical** to current regex-based post-processors. No behavioral change.
 - All existing tests must pass with equivalent assertions (test structure may change from testing raw HTML functions to testing via the renderer).
 - Feature flag behavior (site-level defaults, per-page overrides, default-to-enabled) must be preserved exactly.
+
+## Divergences from implementation
+
+- Node renderers have no parser context, so the flags are also stored on the document node
+  (`setDocFeatures`/`getDocFeatures`, attribute `gomddoc:features`). The heading renderer reads them there; the
+  admonition and color chip transformers read the parser context.
+- The HTML is no longer the regex post-processors' output. The 2026-04-07 web components spec changed the renderers to
+  emit `<gmd-heading-anchor href="#id">`, `<gmd-admonition type="…" title="…">` and `<gmd-color-chip>` (65669ba,
+  13f1d7f, 722e519).

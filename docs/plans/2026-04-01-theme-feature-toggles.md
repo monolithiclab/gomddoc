@@ -1,5 +1,8 @@
 # Theme Feature Toggles Implementation Plan
 
+**Status:** Implemented 2026-04-22 in d0ef929, a single commit rather than the per-task commits below. All steps
+shipped. See the spec's divergences: `Features` sits on `ThemeConfig`, and templates use `.Feature`, not `feature`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace one-off `ColorChips` and `HasSearch` fields with a generic `Features map[string]bool` on `SiteConfig`, add a `feature` template function with per-page frontmatter override, and gate all conditional theme features behind it.
@@ -19,7 +22,7 @@
 - Create: `internal/config/features.go`
 - Test: `internal/config/features_test.go`
 
-- [ ] **Step 1: Write tests for `featureEnabled`**
+- [x] **Step 1: Write tests for `featureEnabled`**
 
 ```go
 // internal/config/features_test.go
@@ -79,12 +82,12 @@ func TestFeatureEnabled(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/config/ -run TestFeatureEnabled -v`
 Expected: FAIL — `FeatureEnabled` undefined
 
-- [ ] **Step 3: Implement `featureEnabled`**
+- [x] **Step 3: Implement `featureEnabled`**
 
 ```go
 // internal/config/features.go
@@ -102,12 +105,12 @@ func FeatureEnabled(name string, features map[string]bool) bool {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/config/ -run TestFeatureEnabled -v`
 Expected: PASS
 
-- [ ] **Step 5: Write tests for `MergeFeatures`**
+- [x] **Step 5: Write tests for `MergeFeatures`**
 
 Add to `internal/config/features_test.go`:
 
@@ -206,7 +209,7 @@ func TestMergeFeatures(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: Implement `MergeFeatures`**
+- [x] **Step 6: Implement `MergeFeatures`**
 
 Add to `internal/config/features.go`:
 
@@ -238,12 +241,12 @@ func MergeFeatures(site map[string]bool, pageMeta map[string]any) map[string]boo
 }
 ```
 
-- [ ] **Step 7: Run all tests**
+- [x] **Step 7: Run all tests**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/config/ -run "TestFeatureEnabled|TestMergeFeatures" -v`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/config/features.go internal/config/features_test.go
@@ -261,7 +264,7 @@ git commit -m "feat: add FeatureEnabled and MergeFeatures for generic feature to
 - Modify: `internal/config/features_test.go` (add validation tests)
 - Modify: `cmd/gomddoc/init.go`
 
-- [ ] **Step 1: Write validation test**
+- [x] **Step 1: Write validation test**
 
 Add to `internal/config/features_test.go`:
 
@@ -296,7 +299,7 @@ func TestValidateFeatureKeys(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement `ValidateFeatureKeys`**
+- [x] **Step 2: Implement `ValidateFeatureKeys`**
 
 Add to `internal/config/features.go`:
 
@@ -320,12 +323,12 @@ func ValidateFeatureKeys(features map[string]bool) error {
 }
 ```
 
-- [ ] **Step 3: Run validation test**
+- [x] **Step 3: Run validation test**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/config/ -run TestValidateFeatureKeys -v`
 Expected: PASS
 
-- [ ] **Step 4: Update `SiteConfig` struct**
+- [x] **Step 4: Update `SiteConfig` struct**
 
 In `internal/config/config.go`, replace:
 
@@ -364,7 +367,7 @@ Notes:
 - `HasSearch` removed — migrated to `Features["search"]`
 - `Features` has no `env` tag — env override for map types requires custom handling (see Task 3)
 
-- [ ] **Step 5: Update `NewSiteConfig`**
+- [x] **Step 5: Update `NewSiteConfig`**
 
 In `internal/config/config.go`, remove `ColorChips: true` from `NewSiteConfig`. The Features map starts nil — `FeatureEnabled()` defaults everything to `true`.
 
@@ -397,7 +400,7 @@ func NewSiteConfig(dir string) SiteConfig {
 }
 ```
 
-- [ ] **Step 6: Add feature key validation to `SiteConfig.Validate()`**
+- [x] **Step 6: Add feature key validation to `SiteConfig.Validate()`**
 
 In `internal/config/config.go`, add at the end of `SiteConfig.Validate()`:
 
@@ -407,7 +410,7 @@ if err := ValidateFeatureKeys(sc.Features); err != nil {
 }
 ```
 
-- [ ] **Step 7: Update `initConfig` in `cmd/gomddoc/init.go`**
+- [x] **Step 7: Update `initConfig` in `cmd/gomddoc/init.go`**
 
 Replace the `initConfig` struct and `generateConfigYAML`:
 
@@ -423,7 +426,7 @@ type initConfig struct {
 
 Remove `ColorChips: true` from `generateConfigYAML`. The `features` key is omitted from init config since all features default to true.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/config/config.go internal/config/features.go internal/config/features_test.go cmd/gomddoc/init.go
@@ -441,7 +444,7 @@ git commit -m "feat: replace ColorChips and HasSearch with Features map on SiteC
 
 The existing `walkStruct` handles `string`, `bool`, `int`, `duration` but not maps. For `Features`, env vars follow the pattern `GOMDDOC_SITE_FEATURES_KATEX=false`.
 
-- [ ] **Step 1: Write env override test for features**
+- [x] **Step 1: Write env override test for features**
 
 Find the existing env override tests in `internal/config/config_test.go` and add a test case. The test should:
 
@@ -465,12 +468,12 @@ func TestSiteConfig_ApplyEnvOverrides_Features(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/config/ -run TestSiteConfig_ApplyEnvOverrides_Features -v`
 Expected: FAIL
 
-- [ ] **Step 3: Add map[string]bool handling to `walkStruct`**
+- [x] **Step 3: Add map[string]bool handling to `walkStruct`**
 
 In `internal/config/config.go`, in the `walkStruct` function, add a case for `reflect.Map` after the `reflect.Pointer` case:
 
@@ -509,12 +512,12 @@ Also add the `env:"FEATURES"` tag to the `Features` field in `SiteConfig`:
 Features     map[string]bool `env:"FEATURES" yaml:"features"`
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/config/ -run TestSiteConfig_ApplyEnvOverrides_Features -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/config/config.go internal/config/config_test.go
@@ -534,7 +537,7 @@ git commit -m "feat: add env var override support for Features map (GOMDDOC_SITE
 - Modify: `internal/renderer/admonition_test.go`
 - Modify: `internal/renderer/markdown_bench_test.go`
 
-- [ ] **Step 1: Update `MarkdownOptions` and `MarkdownRenderer`**
+- [x] **Step 1: Update `MarkdownOptions` and `MarkdownRenderer`**
 
 In `internal/renderer/markdown.go`:
 
@@ -571,7 +574,7 @@ return &MarkdownRenderer{
 }
 ```
 
-- [ ] **Step 2: Update `Render` method**
+- [x] **Step 2: Update `Render` method**
 
 Replace the post-processing section in `Render()`:
 
@@ -600,7 +603,7 @@ Add `"github.com/monolithiclab/gomddoc/internal/config"` to imports.
 
 Remove the `colorChipsEnabled` function entirely.
 
-- [ ] **Step 3: Update all test files**
+- [x] **Step 3: Update all test files**
 
 Replace `ColorChips: true` with `Features: map[string]bool{"color_chips": true}` in:
 
@@ -617,12 +620,12 @@ Update `internal/renderer/colorchip_test.go`:
   - Update enrichment metadata from `map[string]any{"color_chips": false}` to `map[string]any{"features": map[string]any{"color_chips": false}}`
   - Similarly for the "enables" case
 
-- [ ] **Step 4: Run all renderer tests**
+- [x] **Step 4: Run all renderer tests**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/renderer/ -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/renderer/markdown.go internal/renderer/colorchip_test.go internal/renderer/markdown_test.go internal/renderer/highlighting_test.go internal/renderer/admonition_test.go internal/renderer/markdown_bench_test.go
@@ -640,7 +643,7 @@ git commit -m "feat: migrate renderer from ColorChips bool to Features map"
 - Modify: `internal/server/testhelpers_test.go`
 - Modify: `cmd/gomddoc/build_test.go`
 
-- [ ] **Step 1: Update pipeline to pass Features**
+- [x] **Step 1: Update pipeline to pass Features**
 
 In `cmd/gomddoc/pipeline.go`, change `setupPipeline`:
 
@@ -651,7 +654,7 @@ registry.Register(renderer.NewMarkdownRenderer(renderer.MarkdownOptions{
 }))
 ```
 
-- [ ] **Step 2: Update HasSearch migration in pipeline**
+- [x] **Step 2: Update HasSearch migration in pipeline**
 
 Replace `cfg.Site.HasSearch = true` with:
 
@@ -662,7 +665,7 @@ if cfg.Site.Features == nil {
 cfg.Site.Features["search"] = true
 ```
 
-- [ ] **Step 3: Update JSON-LD in template renderer**
+- [x] **Step 3: Update JSON-LD in template renderer**
 
 In `internal/template/renderer.go`, change `generateJSONLD`:
 
@@ -677,7 +680,7 @@ cfg := seo.JSONLDConfig{
 
 Add `"github.com/monolithiclab/gomddoc/internal/config"` to imports.
 
-- [ ] **Step 4: Update test files**
+- [x] **Step 4: Update test files**
 
 In `internal/server/server_test.go` and `internal/server/testhelpers_test.go`:
 Replace `renderer.MarkdownOptions{ColorChips: true}` with `renderer.MarkdownOptions{}` (nil features = all enabled).
@@ -695,12 +698,12 @@ In `cmd/gomddoc/init_test.go`:
 - Remove the `color_chips` YAML assertion
 - Optionally add assertion that `Features` is nil (all default true)
 
-- [ ] **Step 5: Run all tests**
+- [x] **Step 5: Run all tests**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./... 2>&1 | tail -30`
 Expected: PASS (all packages)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/pipeline.go internal/template/renderer.go internal/server/server_test.go internal/server/testhelpers_test.go internal/template/renderer_test.go cmd/gomddoc/init_test.go cmd/gomddoc/build_test.go
@@ -738,7 +741,7 @@ But then says:
 
 The cleanest way to honor the spec with cached templates: add a `Feature` method to `TemplateContext`. Templates call `{{ .Feature "katex" }}`. This is functionally identical to the spec's intent — per-page resolution — just uses Go method dispatch instead of a closure in funcMap.
 
-- [ ] **Step 1: Write test for feature template function**
+- [x] **Step 1: Write test for feature template function**
 
 Add to `internal/template/renderer_test.go`:
 
@@ -787,7 +790,7 @@ func TestTemplateContext_Feature(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement `Feature` method on `TemplateContext`**
+- [x] **Step 2: Implement `Feature` method on `TemplateContext`**
 
 In `internal/template/renderer.go`:
 
@@ -800,12 +803,12 @@ func (tc *TemplateContext) Feature(name string) bool {
 }
 ```
 
-- [ ] **Step 3: Run test**
+- [x] **Step 3: Run test**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/template/ -run TestTemplateContext_Feature -v`
 Expected: PASS
 
-- [ ] **Step 4: Write integration test with per-page override**
+- [x] **Step 4: Write integration test with per-page override**
 
 ```go
 func TestTemplateContext_Feature_PageOverride(t *testing.T) {
@@ -834,12 +837,12 @@ func TestTemplateContext_Feature_PageOverride(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: Run test**
+- [x] **Step 5: Run test**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/template/ -run TestTemplateContext_Feature -v`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/template/renderer.go internal/template/renderer_test.go
@@ -856,7 +859,7 @@ git commit -m "feat: add Feature method to TemplateContext for per-page feature 
 - Modify: `cmd/gomddoc/assets/themes/default/partials/header.html.tmpl`
 - Modify: `cmd/gomddoc/assets/themes/default/partials/toc.html.tmpl`
 
-- [ ] **Step 1: Update `scripts.html.tmpl`**
+- [x] **Step 1: Update `scripts.html.tmpl`**
 
 Wrap each feature in `{{ if .Feature "name" }}`:
 
@@ -984,7 +987,7 @@ Wrap each feature in `{{ if .Feature "name" }}`:
 {{ end }} {{ end }}
 ```
 
-- [ ] **Step 2: Update `header.html.tmpl`**
+- [x] **Step 2: Update `header.html.tmpl`**
 
 Wrap theme toggle and search button:
 
@@ -1024,7 +1027,7 @@ Wrap theme toggle and search button:
 {{ end }}
 ```
 
-- [ ] **Step 3: Update `toc.html.tmpl`**
+- [x] **Step 3: Update `toc.html.tmpl`**
 
 Wrap entire TOC in feature check:
 
@@ -1069,12 +1072,12 @@ Wrap entire TOC in feature check:
 {{- end }} {{- end }} {{ end }}
 ```
 
-- [ ] **Step 4: Run `make ci`**
+- [x] **Step 4: Run `make ci`**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make ci`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/themes/default/partials/scripts.html.tmpl cmd/gomddoc/assets/themes/default/partials/header.html.tmpl cmd/gomddoc/assets/themes/default/partials/toc.html.tmpl
@@ -1099,22 +1102,22 @@ Each theme's templates need the same `{{ .Feature "name" }}` guards applied. The
 
 **This task should be dispatched to parallel subagents — one per theme** since each theme's templates differ in structure but the transformation is mechanical.
 
-- [ ] **Step 1: Update academic theme** (scripts, header, toc)
-- [ ] **Step 2: Update gitbook theme** (scripts, header, toc)
-- [ ] **Step 3: Update material theme** (scripts, header, toc)
-- [ ] **Step 4: Update midnight theme** (scripts, header, toc)
-- [ ] **Step 5: Update minimal theme** (scripts, header, toc)
-- [ ] **Step 6: Update nord theme** (scripts, header, toc)
-- [ ] **Step 7: Update ocean theme** (scripts, header, toc)
+- [x] **Step 1: Update academic theme** (scripts, header, toc)
+- [x] **Step 2: Update gitbook theme** (scripts, header, toc)
+- [x] **Step 3: Update material theme** (scripts, header, toc)
+- [x] **Step 4: Update midnight theme** (scripts, header, toc)
+- [x] **Step 5: Update minimal theme** (scripts, header, toc)
+- [x] **Step 6: Update nord theme** (scripts, header, toc)
+- [x] **Step 7: Update ocean theme** (scripts, header, toc)
 
 For each theme, read the existing template, identify the asset/component blocks, wrap them with the appropriate `{{ if .Feature "name" }}...{{ end }}` guard. Preserve the theme's existing formatting and any theme-specific JS logic.
 
-- [ ] **Step 8: Run `make ci`**
+- [x] **Step 8: Run `make ci`**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make ci`
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add material/themes/
@@ -1130,7 +1133,7 @@ git commit -m "feat: gate all 7 material theme features behind feature toggle ch
 - Verify: all tests pass
 - Verify: no remaining references to `ColorChips` or `HasSearch` in non-test code
 
-- [ ] **Step 1: Search for stale references**
+- [x] **Step 1: Search for stale references**
 
 ```bash
 cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc
@@ -1139,12 +1142,12 @@ grep -r "ColorChips\|HasSearch\|colorChips\|color_chips" --include="*.go" | grep
 
 Expected: no matches (all migrated)
 
-- [ ] **Step 2: Run full CI**
+- [x] **Step 2: Run full CI**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make ci`
 Expected: PASS
 
-- [ ] **Step 3: Verify with a quick manual check**
+- [x] **Step 3: Verify with a quick manual check**
 
 Start the server with the testsite to verify feature toggles work:
 
@@ -1155,6 +1158,27 @@ go run ./cmd/gomddoc serve testsite
 
 Open in browser, verify all features still load (default: all enabled).
 
-- [ ] **Step 4: Commit any remaining fixes**
+- [x] **Step 4: Commit any remaining fixes**
 
 If any stale references or test failures were found, fix and commit.
+
+## Divergences from implementation
+
+- Toggles live on the theme config, not the site root: `ThemeConfig.Features`, YAML `theme.features`. The env var is
+  `GOMDDOC_SITE_THEME_FEATURES_<NAME>=true|false`, not `GOMDDOC_SITE_FEATURES_<NAME>`.
+- `SiteConfig.HasSearch` was not folded into `Features["search"]`. A separate `search.index` setting
+  (`SearchConfig.Index`, default `true`, env `GOMDDOC_SITE_SEARCH_INDEX`) decides whether the index is built. The
+  `search` feature key only gates the theme's search UI. JSON-LD `SearchAction` follows whether an index was built
+  (`template.WithSearchIndex`), not the feature key.
+- Templates call a method, `{{ .Feature "name" }}` on `TemplateContext`, not a `feature` funcMap closure. The merged map
+  is `PageContext.Features`, built in `BuildPageContext` as `config.MergeFeatures(site.Theme.Features,
+  enrichment.Features)`; the enricher extracts page overrides with `config.ExtractPageFeatures`.
+- The helpers are exported from `internal/config` as `FeatureEnabled` and `MergeFeatures(base, overrides...)`.
+  `MergeFeatures` is variadic and returns `base` itself, uncloned, when no override has entries.
+- Key validation (`^[a-z][a-z0-9_]*$`) runs inside `SiteConfig.Validate`, reported against `theme.features.<key>`; the
+  `ValidateFeatureKeys` helper was removed in 21f487c.
+- Renderer gating happens inside the goldmark extensions (`ext_anchors.go`, `ext_admonition.go`, `ext_colorchip.go`)
+  from the 2026-04-05 goldmark extensions spec, not around regex post-processors.
+- The default theme gates scripts in `head-shared.html.tmpl` and `scripts.html.tmpl` and reads two more keys,
+  `tag_chips` and `see_also`. The capabilities report (`gomddoc info`, MCP) lists the keys a theme reads under
+  `theme.features` (`template.ThemeFeatures`).

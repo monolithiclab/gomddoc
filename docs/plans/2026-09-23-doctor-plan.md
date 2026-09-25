@@ -3,6 +3,10 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status**: Implemented 2026-09-23. All 14 tasks shipped: `59fe6de` (1), `b6194ad` (2), `0381fae` (3), `21f487c` (4),
+`c31f34b` (5), `7128c58` (6), `80f59f4` (7), `7b564c3` (8), `c4d0faa` (9), `e217faf` (10), `53b87b3` (11), `9ddb625`
+(12), `f5a9426` (13), `2497403` (14). Follow-up fixes: `8f4d882`, `d2a3446`, `88da0d0`, `d307429`.
+
 **Goal:** `gomddoc doctor [DIR] [--json] [--strict] [-v]` and a stdio `gomddoc_doctor` MCP tool that report every
 configuration problem and the cheap content problems, each as a `diag.Finding` with location and fix.
 
@@ -81,52 +85,52 @@ func Dedupe(findings []Finding) []Finding // same code+file+key(+line) once, fir
 func WithFilePrefix(findings []Finding, prefix string) []Finding // "fr-FR" + "a.md" → "fr-FR/a.md"; skips File == ""
 ```
 
-- [ ] **Step 1: Tests** (`diag_test.go`): `New` takes severity from the catalogue for three codes of different
+- [x] **Step 1: Tests** (`diag_test.go`): `New` takes severity from the catalogue for three codes of different
   severities and panics on `"nope"`; `Catalogue` codes are unique and each severity is valid; `Sort` orders a shuffled
   table exhaustively; `Dedupe` keeps the first of two equal findings and keeps findings that differ only in key;
   `WithFilePrefix` prefixes and leaves `File == ""` alone; `Log` emits one record per finding at the mapped level with
   `code`/`file`/`line`/`key` attrs (`logcapture.Has`).
-- [ ] **Step 2:** run, FAIL (package missing).
-- [ ] **Step 3: Implement.** Package comment: producers return findings and keep their runtime behaviour; logging is
+- [x] **Step 2:** run, FAIL (package missing).
+- [x] **Step 3: Implement.** Package comment: producers return findings and keep their runtime behaviour; logging is
   the caller's job through `Log`, so serve's log and `doctor` see the same finding. Catalogue codes (spec order):
   `config.parse-error` E, `config.unknown-key` E, `config.wrong-type` E, `config.invalid-value` E,
   `config.value-replaced` W, `env.invalid-value` W, `env.unknown` W, `theme.not-installed` W,
   `theme.unknown-feature` W, `theme.unknown-var` I, `content.frontmatter-invalid` E, `content.frontmatter-type` E,
   `content.redirect-conflict` E, `content.path-collision` W, `content.tags-collision` W, `content.missing-title` I,
   `content.missing-description` I, `exclude.matches-nothing` W, `target.unreachable` E, `target.read-error` E.
-- [ ] **Step 4:** PASS; `make ci`; commit `feat(diag): one finding type and code catalogue for doctor and the logs`.
+- [x] **Step 4:** PASS; `make ci`; commit `feat(diag): one finding type and code catalogue for doctor and the logs`.
 
 ### Task 2: `config.Normalize` returns findings
 
 **Interfaces:** `func (c *Config) Normalize() []diag.Finding`, `func (sc *SiteConfig) Normalize() []diag.Finding`,
 `normalizeHTTP() []diag.Finding`. `normalizeAdminAddr` keeps its `slog.Info` (not a problem, a documented behaviour).
 
-- [ ] **Step 1: Tests** (table): empty theme name → `config.value-replaced`, key `theme.name`, message names the
+- [x] **Step 1: Tests** (table): empty theme name → `config.value-replaced`, key `theme.name`, message names the
   default; each of the eight HTTP branches (≤0 and >max for four fields) → one finding keyed
   `server.http.<field>` whose message contains the configured and the default value; valid config → no findings.
   Plus `NewFromServeArgs` with `GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT=10m` still logs one Warn record containing
   "WriteTimeout" with `code=config.value-replaced` (logcapture; no `t.Parallel`, uses `t.Setenv`).
-- [ ] **Step 2:** FAIL (signature).
-- [ ] **Step 3:** Replace each `slog.Warn` with a `diag.New("config.value-replaced", ConfigFile, 0, key, msg, fix)`
+- [x] **Step 2:** FAIL (signature).
+- [x] **Step 3:** Replace each `slog.Warn` with a `diag.New("config.value-replaced", ConfigFile, 0, key, msg, fix)`
   where the message folds in the old attributes ("WriteTimeout 10m0s exceeds maximum 5m0s; using default 30s") and
   fix names the range. `ConfigFile` const = `.gomddoc/config.yml` (exported, reused by Inspect/doctor) — but for
   `server.*` keys `File` is `""` (they are not file settings). Callers: `NewFromServeArgs` → `diag.Log(cfg.Normalize())`;
   `build.go:116` → `diag.Log(cfg.Site.Normalize())`.
-- [ ] **Step 4:** PASS; `make ci`; commit `refactor(config): Normalize reports replaced values as findings`.
+- [x] **Step 4:** PASS; `make ci`; commit `refactor(config): Normalize reports replaced values as findings`.
 
 ### Task 3: env overrides report unparseable values
 
 **Interfaces:** `func (c *Config) ApplyEnvOverrides() []diag.Finding`, `func (sc *SiteConfig) ApplyEnvOverrides()
 []diag.Finding`; `walkStruct(v, t, prefix string, out *[]diag.Finding)`.
 
-- [ ] **Step 1: Tests** (sequential, `t.Setenv`): `GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT=abc`, `…_MAX_HEADER_MB=x`,
+- [x] **Step 1: Tests** (sequential, `t.Setenv`): `GOMDDOC_SERVER_HTTP_WRITE_TIMEOUT=abc`, `…_MAX_HEADER_MB=x`,
   `GOMDDOC_SITE_SEARCH_INDEX=maybe` → three `env.invalid-value` findings keyed by the variable name, File `""`,
   message naming the expected type; the field keeps its previous value. `NewFromServeArgs` with a bad
   `GOMDDOC_SITE_SEARCH_INDEX` logs it **once** (the Config pass and the Site pass both see it — dedupe).
-- [ ] **Step 2:** FAIL.
-- [ ] **Step 3:** Thread `out` through `walkStruct`; `NewFromServeArgs` collects both passes and logs
+- [x] **Step 2:** FAIL.
+- [x] **Step 3:** Thread `out` through `walkStruct`; `NewFromServeArgs` collects both passes and logs
   `diag.Dedupe(all)`.
-- [ ] **Step 4:** PASS; `make ci`; commit `refactor(config): env overrides report unparseable values as findings`.
+- [x] **Step 4:** PASS; `make ci`; commit `refactor(config): env overrides report unparseable values as findings`.
 
 ### Task 4: `Config.ValidateAll`
 
@@ -136,12 +140,12 @@ func WithFilePrefix(findings []Finding, prefix string) []Finding // "fr-FR" + "a
 and `Config.Validate()` return the first error with **unchanged** text; the shutdown-timeout `slog.Warn` stays in
 `validateServer`.
 
-- [ ] **Step 1: Tests:** a SiteConfig with a scheme in `meta.domain`, an `edit_url` with `ftp:`, `strip_extensions:
+- [x] **Step 1: Tests:** a SiteConfig with a scheme in `meta.domain`, an `edit_url` with `ftp:`, `strip_extensions:
   [md]`, feature key `Toc`, empty `default_index` → `ValidateAll` returns five `config.invalid-value` findings with
   keys `meta.domain`, `edit_url`, `strip_extensions`, `theme.features`, `default_index` and File `.gomddoc/config.yml`;
   `Validate()` returns the first one's error text exactly as before (pin the current string). Existing validate
   tests stay green.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; `make ci`; commit
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; `make ci`; commit
   `feat(config): ValidateAll reports every invalid value`.
 
 ### Task 5: `config.Inspect`
@@ -165,12 +169,12 @@ document's line; otherwise `node.Decode(&cfg.Site)` **without** KnownFields — 
 `config.wrong-type` per entry (`line N: cannot unmarshal …`), keyed by the YAML path found at that line; then site env
 pass, `Normalize`, `ValidateAll`; `diag.Dedupe`. Unknown keys are doctor's check (Task 9), done on `Node`.
 
-- [ ] **Step 1: Tests** (table over temp dirs): no file → no findings, `Node == nil`; valid testsite config → no
+- [x] **Step 1: Tests** (table over temp dirs): no file → no findings, `Node == nil`; valid testsite config → no
   findings, `Node != nil`; syntax error on line 3 → one `config.parse-error` Line 3, `Assumed` non-empty, `Config`
   has defaults; `---` second document at line 4 → parse-error Line 4; "several problems" (`exclude: drafts/` line 2,
   `meta: {domain: https://x}` line 3) → `config.wrong-type` Line 2 key `exclude` **and** `config.invalid-value` key
   `meta.domain`; env bad value → `env.invalid-value` present once.
-- [ ] **Step 2:** FAIL. **Step 3:** implement (`internal/config/inspect.go`; helper `keyAtLine(node, line) string`
+- [x] **Step 2:** FAIL. **Step 3:** implement (`internal/config/inspect.go`; helper `keyAtLine(node, line) string`
   walking mapping nodes). **Step 4:** PASS; `make ci`; commit `feat(config): Inspect loads a site collecting every
   problem`.
 
@@ -180,10 +184,10 @@ pass, `Normalize`, `ValidateAll`; `diag.Dedupe`. Unknown keys are doctor's check
 `content.path-collision` for both extension-collision branches and file-shadows-directory (File = the file, Key =
 clean path), and `target.read-error` for the unreadable-path branch; no `slog` left in `Build`.
 
-- [ ] **Step 1:** Update `resolver_test.go`'s log assertions to finding assertions (same cases, exact findings), and
+- [x] **Step 1:** Update `resolver_test.go`'s log assertions to finding assertions (same cases, exact findings), and
   add one `setupPipeline` test in `cmd` asserting the collision is still logged at Warn with `code=content.path-collision`
   (so the log half is pinned where it now happens).
-- [ ] **Step 2:** FAIL. **Step 3:** implement; `setupPipeline` appends `resolver.Findings()` to `p.Findings` (Task 7
+- [x] **Step 2:** FAIL. **Step 3:** implement; `setupPipeline` appends `resolver.Findings()` to `p.Findings` (Task 7
   adds the field — introduce `Findings []diag.Finding` and `ContentRoot fs.FS` on `Pipeline` here) and every command
   logs them (Task 7 finishes the logging sites; here log in `setupPipeline` temporarily if Task 7's aggregate is not
   in yet, then move it). **Step 4:** PASS; `make ci`; commit `refactor(resolve): report path collisions as findings`.
@@ -201,11 +205,11 @@ the second page (by `AllPages` order), message naming the first; a source that i
 (`resolver.Resolve(trimmed)` found, or `index.ByPath(src)` non-nil) → `content.redirect-conflict`, message "…makes
 that page unreachable".
 
-- [ ] **Step 1: Tests:** `redirect_test.go` rows for each finding plus "the map is unchanged" (same entries as before
+- [x] **Step 1: Tests:** `redirect_test.go` rows for each finding plus "the map is unchanged" (same entries as before
   for the same fixture); `tagsContentCollision` rows for `tags.md`, `tags/`, none; a pipeline test for a language
   directory asserting `fr-FR/` prefixed Files in `LanguagePipeline.Findings` and no duplicate from the default
   pipeline (it excludes `fr-FR/`).
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; `make ci`; commit
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** PASS; `make ci`; commit
   `feat(server): report redirect_from problems instead of dropping them`.
 
 ### Task 8: `metadata.FrontmatterBlock`
@@ -213,7 +217,7 @@ that page unreachable".
 **Interfaces:** `func FrontmatterBlock(content []byte) (yamlBytes []byte, ok bool)` — the bytes between the
 delimiters, exactly what `extractFrontmatter` parses (it now calls this). YAML line 1 is file line 2.
 
-- [ ] Tests: no frontmatter, valid, unterminated, CRLF, leading spaces before `---`; `extractFrontmatter` behaviour
+- [x] Tests: no frontmatter, valid, unterminated, CRLF, leading spaces before `---`; `extractFrontmatter` behaviour
   unchanged (existing tests). Implement, PASS, `make ci`, commit `refactor(metadata): expose the frontmatter block`.
 
 ### Task 9: `internal/doctor` core, config-key and env checks
@@ -245,7 +249,7 @@ fix "did you mean `X`?" when one sibling is within Levenshtein 2, else "valid ke
 every `GOMDDOC_*` in `Environ` not in `KnownEnvs` and not under a known prefix. `Run`: merge Inspection findings,
 producer findings and check findings; `Dedupe`; `Sort`; count; drop `Info` unless verbose.
 
-- [ ] Tests: unknown key at root/nested/`site:` wrapper with lines and suggestions (`titel`→`title`,
+- [x] Tests: unknown key at root/nested/`site:` wrapper with lines and suggestions (`titel`→`title`,
   `hightlighting`→`highlighting`, `zzz` → valid-keys fix); map children never unknown; env rows (known, known map
   prefix, unknown, non-GOMDDOC ignored); Run: verbose on/off gives identical Summary and differing Findings; a
   clean input yields zero findings; Unreachable → exactly one `target.unreachable`. Implement, PASS, `make ci`,
@@ -261,7 +265,7 @@ producer findings and check findings; `Dedupe`; `Sort`; count; drop `Info` unles
 - `exclude.matches-nothing`: for each `Site.Exclude` pattern, walk the content root (hidden paths skipped) and test
   every file and directory path with `provider.IsExcludedPath(p, []string{pattern})` (and `p + "/"` for dirs, matching
   how the provider tests directories); no match → finding keyed by the pattern, line from the node's sequence item.
-- [ ] Tests per code with exact findings, and negative rows (installed theme, known feature, matching pattern).
+- [x] Tests per code with exact findings, and negative rows (installed theme, known feature, matching pattern).
   Implement, PASS, `make ci`, commit `feat(doctor): theme and exclude checks`.
 
 ### Task 11: content checks
@@ -275,7 +279,7 @@ type as fix. Page `features` keys → `unknownFeatures`. Missing `title` (and no
 `content.missing-title`; missing `description` → `content.missing-description`. Files are prefixed with the
 pipeline's `Lang`.
 
-- [ ] Tests: one row per code; "no frontmatter at all" → only the two info findings; `tags: foo` → frontmatter-type;
+- [x] Tests: one row per code; "no frontmatter at all" → only the two info findings; `tags: foo` → frontmatter-type;
   string `redirect_from` reported by both the producer and this check → one finding after `Run`; an excluded file
   with bad frontmatter → nothing; `fr-FR/page.md` → File `fr-FR/page.md`. Implement, PASS, `make ci`, commit
   `feat(doctor): frontmatter and page metadata checks`.
@@ -293,7 +297,7 @@ doctor.Report` (shared with MCP): `config.Inspect`; provider (`target.unreachabl
 Human format: `error    .gomddoc/config.yml:4  config.unknown-key  meta.titel: unknown key` / `         fix: did you mean
 `title`?`, then `2 errors, 1 warning (3 info hidden, use -v)`; "No problems found." when empty.
 
-- [ ] Tests: exit status table (clean 0; warning 0; warning+strict 1; error 1; missing dir 1); `--json` unmarshals
+- [x] Tests: exit status table (clean 0; warning 0; warning+strict 1; error 1; missing dir 1); `--json` unmarshals
   into `doctor.Report`; `-v` shows info lines, summary identical; human output contains file:line and fix. Wire into
   `CLI`, check `main` exits with the code (exitError handled in `main`). Implement, PASS, manual run on `testsite`
   and on a broken temp site, `make ci`, commit `feat(cli): add gomddoc doctor`.
@@ -304,7 +308,7 @@ Human format: `error    .gomddoc/config.yml:4  config.unknown-key  meta.titel: u
 {verbose?: bool}` → JSON; nil `Doctor` → tool not registered. `MCPCmd.Run` sets it to a closure over `runDoctor`.
 `learn_gomddoc` gains "call gomddoc_doctor after editing config or content".
 
-- [ ] Tests: internal/mcp with a fake `Doctor` counting calls (two calls → two invocations; verbose passed through);
+- [x] Tests: internal/mcp with a fake `Doctor` counting calls (two calls → two invocations; verbose passed through);
   stdio test in cmd: start `gomddoc mcp` on a temp site, call `gomddoc_doctor` (no errors), write a bad key into
   `config.yml`, call again → `config.unknown-key` present; `siteMCPServer` lists no `gomddoc_doctor`. Implement, PASS,
   `make ci`, commit `feat(mcp): add gomddoc_doctor`.
@@ -320,4 +324,16 @@ Human format: `error    .gomddoc/config.yml:4  config.unknown-key  meta.titel: u
 - `02-configuration.md` `doctor` section; `04-mcp.md` self-documentation table row; README of the guide lists page 14;
   architecture (diag flow), decisions (producers report; `-v` as first verbosity flag), roadmap (tick doctor, add
   link/anchor checking).
-- [ ] `make ci`, commit `docs: document gomddoc doctor`.
+- [x] `make ci`, commit `docs: document gomddoc doctor`.
+
+## Divergences from implementation
+
+- Task 1: `target.read-error` is catalogued as a warning, not an error (`88da0d0`). `Dedupe` merges only identical
+  findings, or an unlocated finding with a located one on the same code, file and key (`8f4d882`).
+- Task 7: `setupLanguagePipelines` logs producer findings through `diag.Log` unless `PipelineOptions.ReportOnly`
+  (set by doctor), rather than each command calling `diag.Log` itself.
+- Task 9: the Levenshtein "did you mean" helper moved to `internal/text` as `text.Closest` (`8fb0529`).
+- Task 12: the error type is `exitCodeError`, and `runDoctor` also takes the environment
+  (`runDoctor(ctx, app, dir, gitCfg, environ, verbose)`); `runDoctorWith` serves the MCP tool from an already open
+  provider. A local target that is missing or not a directory is `target.unreachable`, and a provider that fails on a
+  config value skips only the content checks (`d2a3446`).

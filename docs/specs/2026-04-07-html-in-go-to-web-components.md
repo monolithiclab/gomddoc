@@ -1,7 +1,8 @@
 # Move HTML-in-Go to Web Components and Templates
 
 **Date:** 2026-04-07
-**Status:** Approved
+**Status:** Implemented 2026-04-22 in 722e519 (color chip rename), 13f1d7f (admonitions), 65669ba (heading anchors),
+9b9ed66 (JSON-LD) and a4a5e0f (docs).
 **Addresses:** REVIEW.md HIGH "Hardcoded HTML in Go (Theme Inflexibility)"
 
 ## Summary
@@ -136,3 +137,10 @@ Align existing web component with the `gmd-` prefix convention.
   existing theme CSS targeting `.heading-anchor` should be removed from theme stylesheets
   since the component owns its own styles
 - Third-party themes in `gomddoc-themes` will need updated CSS and the new shared JS assets
+
+## Divergences from implementation
+
+- `jsonLD` returns `template.JS`, not `template.HTML`.
+- The gomddoc-themes themes kept `color-chip:not(:defined)` selectors after the rename, so the rule matched nothing.
+  They now use `gmd-color-chip`, and 03e7d30 added a test that every `:not(:defined)` selector in the bundled assets
+  names a registered element.

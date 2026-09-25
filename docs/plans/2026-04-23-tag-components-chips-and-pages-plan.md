@@ -1,5 +1,8 @@
 # Tag Components — Chips, Listing & Index Pages: Implementation Plan
 
+**Status**: Implemented 2026-04-23. All 13 tasks shipped (commits `38e5557` through `13dc45e`, merged in `711990a`
+on 2026-05-15). The coordinated `gomddoc-themes` change shipped: all 7 themes call `{{ template "tag-chips" . }}`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Render tag chips below the H1 of every tagged page, and serve per-tag listing pages (`/tags/{tag}`) plus a tag index page (`/tags/`) — all per-language, all server-rendered, also emitted in build mode.
@@ -43,7 +46,7 @@
 - Modify: `internal/metadata/index.go` (around lines 160-167 in `parseFrontmatter` / `extractTags`)
 - Modify: `internal/metadata/index_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/metadata/index_test.go`:
 
@@ -75,12 +78,12 @@ func TestBuildIndex_TagValidation(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/metadata/ -run TestBuildIndex_TagValidation -v`
 Expected: FAIL — `bad/slash` (and possibly empty/whitespace tags) present in `AllTags`.
 
-- [ ] **Step 3: Implement the validator**
+- [x] **Step 3: Implement the validator**
 
 Replace the tag-parsing block in `internal/metadata/index.go` (currently `if v, ok := fm["tags"]`) with:
 
@@ -111,17 +114,17 @@ if v, ok := fm["tags"]; ok {
 
 Verify `log/slog` is already imported in `internal/metadata/index.go`. If not, add it.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/metadata/ -run TestBuildIndex_TagValidation -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full metadata package**
+- [x] **Step 5: Run the full metadata package**
 
 Run: `go test ./internal/metadata/ -race`
 Expected: all PASS — confirms existing tag tests still work.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/metadata/index.go internal/metadata/index_test.go
@@ -141,7 +144,7 @@ enricher, and tag pages all see the same cleaned set."
 - Modify: `internal/template/renderer.go` (extend `funcMap()`)
 - Modify: `internal/template/renderer_test.go` (or create a focused helper test file)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/template/renderer_test.go`:
 
@@ -205,12 +208,12 @@ func TestPageTags(t *testing.T) {
 
 If `slices` is not yet imported in the test file, add it.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/template/ -run "TestTagURL|TestPageTags" -v`
 Expected: FAIL — `tagURL`/`pageTags` not in funcMap.
 
-- [ ] **Step 3: Add the helpers**
+- [x] **Step 3: Add the helpers**
 
 In `internal/template/renderer.go`, extend `funcMap()`:
 
@@ -269,17 +272,17 @@ func pageTags(meta map[string]any) []string {
 
 Add `"net/url"` and `"slices"` to the import block if not already present.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./internal/template/ -run "TestTagURL|TestPageTags" -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full template package**
+- [x] **Step 5: Run the full template package**
 
 Run: `go test ./internal/template/ -race`
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/template/renderer.go internal/template/renderer_test.go
@@ -298,7 +301,7 @@ over it without inline type assertions."
 **Files:**
 - Modify: `cmd/gomddoc/assets/locales/en-US.yml`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/locale/bundle_test.go` (or create a new file `cmd/gomddoc/assets/locales/locales_test.go` if no existing test fits):
 
@@ -323,12 +326,12 @@ func TestBundle_TagKeys(t *testing.T) {
 
 If the current locale tests live elsewhere or `embeddedAssets` is unexported, add the test next to existing locale tests (likely `internal/locale/`) and use a `fstest.MapFS` containing the new keys to validate the lookup contract — the integration check below catches the actual file change.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/locale/ -run TestBundle_TagKeys -v`
 Expected: FAIL — keys missing from en-US bundle.
 
-- [ ] **Step 3: Add the locale entries**
+- [x] **Step 3: Add the locale entries**
 
 Append to `cmd/gomddoc/assets/locales/en-US.yml`:
 
@@ -343,12 +346,12 @@ tags_empty: "No pages tagged %s"
 on `/tags/`; `tags_tagged_as` is the heading on `/tags/{tag}`; `tags_empty` is shown when a
 tag exists but has no live pages — and as the sole content of `/tags/` when there are no tags.)
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/locale/ -run TestBundle_TagKeys -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/locales/en-US.yml internal/locale/bundle_test.go
@@ -364,7 +367,7 @@ git commit -m "Add en-US locale strings for tag pages and chips"
 - Modify: `cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl`
 - Modify: `internal/template/renderer_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/template/renderer_test.go`:
 
@@ -457,12 +460,12 @@ func tagChipsPartialBytes(t *testing.T) []byte {
 
 If `os` is not imported, add it. Adjust the path relative to the test file's location (`internal/template/`).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/template/ -run TestRender_TagChips -v`
 Expected: FAIL — partial file does not exist.
 
-- [ ] **Step 3: Create the partial**
+- [x] **Step 3: Create the partial**
 
 Create `cmd/gomddoc/assets/themes/default/partials/tag-chips.html.tmpl`:
 
@@ -493,12 +496,12 @@ Create `cmd/gomddoc/assets/themes/default/partials/tag-chips.html.tmpl`:
 {{- end -}}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/template/ -run TestRender_TagChips -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Wire the partial into the default layout**
+- [x] **Step 5: Wire the partial into the default layout**
 
 Open `cmd/gomddoc/assets/themes/default/layouts/default.html.tmpl`. Locate the spot where `{{ .Page.Content }}` is rendered (the main article body). Immediately above the content block — **after** any title/breadcrumbs and **before** the markdown content — insert:
 
@@ -511,12 +514,12 @@ Verify by running:
 Run: `go run ./cmd/gomddoc preview testsite`
 Manually visit a tagged page and confirm chips render. Stop the preview server.
 
-- [ ] **Step 6: Run the full template package**
+- [x] **Step 6: Run the full template package**
 
 Run: `go test ./internal/template/ -race`
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/themes/default/partials/tag-chips.html.tmpl \
@@ -540,7 +543,7 @@ inherit the styling once they include the partial."
 - Modify: `internal/template/renderer.go` (add `RenderTagPage`)
 - Modify: `internal/template/renderer_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/template/renderer_test.go`:
 
@@ -621,12 +624,12 @@ func tagsListPartialBytes(t *testing.T) []byte {
 
 Add `metadata` import if not present (`"github.com/monolithiclab/gomddoc/internal/metadata"`).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/template/ -run TestRenderTagPage -v`
 Expected: FAIL — partial does not exist; method does not exist.
 
-- [ ] **Step 3: Create the partial**
+- [x] **Step 3: Create the partial**
 
 Create `cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl`:
 
@@ -657,7 +660,7 @@ Create `cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl`:
 </style>
 ```
 
-- [ ] **Step 4: Add the render method and partial-execution helper**
+- [x] **Step 4: Add the render method and partial-execution helper**
 
 In `internal/template/renderer.go`, add (place after `Render`):
 
@@ -728,17 +731,17 @@ func (h *HTMLRenderer) executePartial(name string, data any) ([]byte, error) {
 
 Add imports: `"bytes"`, `"path"`, `"github.com/monolithiclab/gomddoc/internal/metadata"` (none of these need to be added if already imported).
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `go test ./internal/template/ -run TestRenderTagPage -race -v`
 Expected: PASS.
 
-- [ ] **Step 6: Run the full template package**
+- [x] **Step 6: Run the full template package**
 
 Run: `go test ./internal/template/ -race`
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/themes/default/partials/tags-list.html.tmpl \
@@ -762,7 +765,7 @@ RenderTagsIndex in the next task)."
 - Modify: `internal/template/renderer.go`
 - Modify: `internal/template/renderer_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/template/renderer_test.go`:
 
@@ -836,12 +839,12 @@ func tagsIndexPartialBytes(t *testing.T) []byte {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/template/ -run TestRenderTagsIndex -v`
 Expected: FAIL — partial missing, method missing, `TagCount` type missing.
 
-- [ ] **Step 3: Add the TagCount type and method**
+- [x] **Step 3: Add the TagCount type and method**
 
 In `internal/template/renderer.go` add:
 
@@ -888,7 +891,7 @@ type tagsIndexData struct {
 }
 ```
 
-- [ ] **Step 4: Create the partial**
+- [x] **Step 4: Create the partial**
 
 Create `cmd/gomddoc/assets/themes/default/partials/tags-index.html.tmpl`:
 
@@ -913,12 +916,12 @@ Create `cmd/gomddoc/assets/themes/default/partials/tags-index.html.tmpl`:
 </style>
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `go test ./internal/template/ -run TestRenderTagsIndex -race -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/assets/themes/default/partials/tags-index.html.tmpl \
@@ -939,7 +942,7 @@ composition pattern."
 - Create: `internal/server/tags_html.go`
 - Create: `internal/server/tags_html_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/server/tags_html_test.go`:
 
@@ -1053,12 +1056,12 @@ func TestTagPageHandler_DecodesPathValue(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/server/ -run TestTagPageHandler -v`
 Expected: FAIL — `TagPageHandler` not defined.
 
-- [ ] **Step 3: Implement the handler**
+- [x] **Step 3: Implement the handler**
 
 Create `internal/server/tags_html.go`:
 
@@ -1116,12 +1119,12 @@ func (h *TagPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 Add imports `"slices"` and `"strings"` if not already present.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./internal/server/ -run TestTagPageHandler -race -v`
 Expected: PASS (all three subtests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/server/tags_html.go internal/server/tags_html_test.go
@@ -1141,7 +1144,7 @@ content pages."
 - Modify: `internal/server/tags_html.go`
 - Modify: `internal/server/tags_html_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `internal/server/tags_html_test.go`:
 
@@ -1212,12 +1215,12 @@ func TestTagsIndexHandler_Empty(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/server/ -run TestTagsIndexHandler -v`
 Expected: FAIL — `TagsIndexHandler` not defined.
 
-- [ ] **Step 3: Implement the handler**
+- [x] **Step 3: Implement the handler**
 
 Append to `internal/server/tags_html.go`:
 
@@ -1251,12 +1254,12 @@ func (h *TagsIndexHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./internal/server/ -run TestTagsIndexHandler -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/server/tags_html.go internal/server/tags_html_test.go
@@ -1275,11 +1278,11 @@ state is handled by the partial."
 - Modify: `internal/server/server.go`
 - Modify: `internal/server/server_test.go` (or relevant existing test)
 
-- [ ] **Step 1: Locate the existing per-language registration block**
+- [x] **Step 1: Locate the existing per-language registration block**
 
 Open `internal/server/server.go` and find where `/sitemap.xml` is registered for default and per-lang pipelines. The new tag routes go in the same block(s).
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Add to `internal/server/server_test.go`:
 
@@ -1316,12 +1319,12 @@ func TestServer_TagRoutes_DefaultLang(t *testing.T) {
 
 If `newTestServerWithContent` does not exist, mirror the construction pattern used in existing handler tests (`internal/server/handler_test.go`), wiring a real `HTTPServer` against `fstest.MapFS`.
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `go test ./internal/server/ -run TestServer_TagRoutes -v`
 Expected: FAIL — routes not registered (404 on /tags/docs, etc.).
 
-- [ ] **Step 4: Register the routes**
+- [x] **Step 4: Register the routes**
 
 In `internal/server/server.go`, find the loop that registers per-language sitemap/feed handlers (look for `for lang, langCfg := range opts.LangPipelines`). Inside that same loop add:
 
@@ -1346,17 +1349,17 @@ mux.Handle("GET /tags/", defaultTagsIndex)
 `opts.LocaleBundle` and `opts.DefaultLang` already exist on `HTTPServerConfig` (they back the
 existing per-language sitemap/feed handlers). `opts.MetaIndex` and `opts.TemplateRenderer` likewise.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `go test ./internal/server/ -run TestServer_TagRoutes -race -v`
 Expected: PASS.
 
-- [ ] **Step 6: Run full server package**
+- [x] **Step 6: Run full server package**
 
 Run: `go test ./internal/server/ -race`
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/server/server.go internal/server/server_test.go
@@ -1376,7 +1379,7 @@ registration pattern."
 - Modify: `internal/server/sitemap.go`
 - Modify: `internal/server/sitemap_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/server/sitemap_test.go`:
 
@@ -1416,12 +1419,12 @@ func TestGenerateSitemap_IncludesTagPages(t *testing.T) {
 
 If `fakeProvider` doesn't already exist in this package's tests, locate the existing sitemap-test fixture pattern and reuse it.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/server/ -run TestGenerateSitemap_IncludesTagPages -v`
 Expected: FAIL — tag URLs not in generated sitemap.
 
-- [ ] **Step 3: Append tag URLs to the sitemap**
+- [x] **Step 3: Append tag URLs to the sitemap**
 
 In `internal/server/sitemap.go`, find where page URLs are emitted (look for the loop iterating `idx.AllPages()`). After that loop and before the closing `</urlset>` write, add:
 
@@ -1437,12 +1440,12 @@ for _, tag := range idx.AllTags() {
 
 Inspect existing sitemap-emission code to match its exact formatting (indentation, lastmod usage, xml.escape vs html.EscapeString). If the file uses an `xml.Encoder` instead of string formatting, switch to that style. Add `"net/url"` import if missing.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./internal/server/ -run TestGenerateSitemap -race -v`
 Expected: PASS (existing sitemap tests still PASS, new test PASS).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/server/sitemap.go internal/server/sitemap_test.go
@@ -1461,7 +1464,7 @@ pages. Tags are PathEscape'd for URL safety."
 - Modify: `cmd/gomddoc/build.go`
 - Modify: `cmd/gomddoc/build_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `cmd/gomddoc/build_test.go`:
 
@@ -1497,12 +1500,12 @@ func TestBuildCmd_EmitsTagPages(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/gomddoc/ -run TestBuildCmd_EmitsTagPages -v`
 Expected: FAIL — files not generated.
 
-- [ ] **Step 3: Add the build-mode emission**
+- [x] **Step 3: Add the build-mode emission**
 
 In `cmd/gomddoc/build.go`, find where `walkAndBuildToDir` finishes for the default language (around the section that calls `generateSEOFiles`). Add a new method invocation:
 
@@ -1570,17 +1573,17 @@ func (b *BuildCmd) emitTagPages(ctx context.Context, p *Pipeline, lang string, t
 
 Add `"net/url"`, `"slices"`, `"strings"`, `"github.com/monolithiclab/gomddoc/internal/metadata"` to the import block if not already present.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./cmd/gomddoc/ -run TestBuildCmd_EmitsTagPages -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the full cmd/gomddoc package**
+- [x] **Step 5: Run the full cmd/gomddoc package**
 
 Run: `go test ./cmd/gomddoc/ -race`
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/build.go cmd/gomddoc/build_test.go
@@ -1599,7 +1602,7 @@ and RenderTagPage so serve and build produce identical output."
 - Modify: `cmd/gomddoc/serve.go` (or wherever the content provider is constructed)
 - Modify: `cmd/gomddoc/serve_test.go` (or build_test.go for the build-mode equivalent)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `cmd/gomddoc/serve_test.go`:
 
@@ -1628,12 +1631,12 @@ func TestSetupServer_WarnsOnTagsContentCollision(t *testing.T) {
 
 If `captureLogs` is not available, write a minimal inline helper that swaps `slog.Default()` for a buffered handler.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./cmd/gomddoc/ -run TestSetupServer_WarnsOnTagsContentCollision -v`
 Expected: FAIL — no warning emitted.
 
-- [ ] **Step 3: Implement the warning**
+- [x] **Step 3: Implement the warning**
 
 In `cmd/gomddoc/serve.go` (or wherever the language pipelines are assembled), after the metadata index is built but before the server starts, add:
 
@@ -1668,12 +1671,12 @@ func warnTagsContentCollision(contentRoot fs.FS, lang string) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `go test ./cmd/gomddoc/ -run TestSetupServer_WarnsOnTagsContentCollision -race -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cmd/gomddoc/serve.go cmd/gomddoc/serve_test.go
@@ -1693,7 +1696,7 @@ rename."
 - Modify: `docs/roadmap.md`
 - Modify: `docs/decisions.md`
 
-- [ ] **Step 1: Mark roadmap items done**
+- [x] **Step 1: Mark roadmap items done**
 
 Open `docs/roadmap.md` → "Tag Components" section. Change each `- [ ]` to `- [x]` for the three items shipped here:
 
@@ -1703,7 +1706,7 @@ Open `docs/roadmap.md` → "Tag Components" section. Change each `- [ ]` to `- [
 
 Leave the remaining two items (`tag:` search syntax and Related pages via tags) as `- [ ]`.
 
-- [ ] **Step 2: Add a decisions entry**
+- [x] **Step 2: Add a decisions entry**
 
 Append to `docs/decisions.md`:
 
@@ -1721,12 +1724,12 @@ Append to `docs/decisions.md`:
 **Why no related-pages or `tag:` search**: deferred to follow-up sub-specs to keep this PR focused on the user-visible discovery features (chips + landing pages).
 ```
 
-- [ ] **Step 3: Verify the build still passes**
+- [x] **Step 3: Verify the build still passes**
 
 Run: `make ci`
 Expected: all PASS, coverage ≥ 86%.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/roadmap.md docs/decisions.md
@@ -1747,3 +1750,17 @@ A separate `gomddoc-website` PR should follow, documenting:
 - The new `tag_chips` feature flag in the configuration reference.
 - The tag-chips, tags-list, and tags-index partials in the theming guide.
 - A short "Tags" section in the user guide explaining how chips and the tag pages work.
+
+## Divergences from implementation
+
+See the spec's divergences section (`docs/specs/2026-04-23-tag-components-chips-and-pages.md`) for behavior.
+Plan-specific:
+
+- Task 1: tags are lowercased and trimmed by `normalizeTag`, which also rejects `\`; later commits added per-page
+  deduplication (`4bd8962`) and `Index.LookupTag` with `MaxTagLength` (`3754610`).
+- Task 3: the File Structure table's dotted keys (`tags.title`, `tags.count`, ...) did not ship. The shipped keys are
+  `tags_title`, `tags_index_title`, `tags_tagged_as` and `tags_empty`.
+- Task 4: the chips render above the H1, as the first child of `<article>` before `.Page.Content`.
+- Task 7/8: handlers now take a `TagHandlerConfig` and write 404/500 through the language scope's `ErrorPage`.
+- Task 12: the collision warning moved out of `cmd/gomddoc/serve.go`. It is now `tagsContentCollision` in
+  `cmd/gomddoc/pipeline.go`, returning a `content.tags-collision` `diag.Finding` per language.

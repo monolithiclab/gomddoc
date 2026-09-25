@@ -1,5 +1,7 @@
 # Search Index Redesign: Field-Tagged Postings
 
+**Status:** Implemented 2026-04-22 in 6c8000c.
+
 ## Goal
 
 Replace the current hybrid search index (single inverted index for body + linear `strings.Contains`
@@ -185,3 +187,13 @@ all search behavior. The refactor is internal — same inputs, same ranking sema
 Tests should pass without modification. If any ranking order changes due to the shift from substring
 matching to tokenized matching in title/description, update test expectations to reflect the
 improved behavior.
+
+## Divergences from implementation
+
+- `Search` does not build a per-token `byDoc` map. Posting lists are ascending by `docIdx`, because `BuildIndex` phase 3
+  appends one document at a time, and `Search` intersects and scores by merging them (`distinctDocs`, `seekDoc`)
+  (4edc17b).
+- Ranking keeps a sorted top-N window (`rankTopN`) and breaks score ties by `docIdx`.
+- `Search` accepts `tag:name` filters (ff5f217). A tag-only query lists the tagged pages by title; a mixed query
+  restricts candidates to documents carrying every named tag. `Index` holds `metaIndex` and `pathToDoc` for this.
+- `BuildIndex` takes `(ctx, rootFS, metaIndex, excludePatterns)`.

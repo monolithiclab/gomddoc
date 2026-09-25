@@ -1,7 +1,9 @@
 # Theme Manifest (`theme.yml`) — Parked
 
-**Status**: parked 2026-09-23, not scheduled. Do not implement until the open questions below are settled with the
-developer.
+**Status**: Parked 2026-09-23, not scheduled; still parked as of 2026-09-25 (no `theme.yml`, no `internal/theme`
+package, roadmap item "Theme manifest — parked" open). Do not implement until the open questions below are settled
+with the developer. `gomddoc doctor` (`2497403` and earlier) has since shipped theme checks on top of the template
+scan; see Divergences.
 **Context**: `docs/specs/2026-09-23-self-documentation-design.md` — the self-documentation sub-spec uses a
 best-effort template scan (`template.ThemeFeatures`) for theme facts in the meantime.
 
@@ -49,3 +51,23 @@ nothing declares them. Consequences:
 ## Not in this document
 
 No task list: it gets one when the design is settled and a spec is written.
+
+## Divergences from implementation
+
+Changes since this was parked that bear on the Problem and the open questions:
+
+- There is no `ValidateFeatureKeys` any more. The key-shape check (`^[a-z][a-z0-9_]*$`) is part of
+  `Config.ValidateAll` (`21f487c`), and it still checks shape only.
+- `gomddoc doctor` now catches typos by template scan: `theme.unknown-feature` (warning) for a `theme.features` key or a
+  page `features:` key the active theme never reads, and `theme.unknown-var` (info, shown with `-v`) for a
+  `theme.vars` key the theme's CSS never reads. `features: {serach: false}` is still accepted at runtime, but doctor
+  reports it. What the manifest would still add is descriptions and defaults.
+- `template.ThemeFeatures` scans the templates the renderer resolves: the theme's own, the default theme's partials it
+  inherits, site partials under `.gomddoc/partials/`, and the default layout it falls back to (`f1173ea`). This is the
+  scan's answer to question 4 (a partial override contributes its feature calls; inherited partials keep theirs). A
+  manifest would need a matching rule.
+- An uninstalled theme is reported as `source: "fallback-default"` with the default theme's names, and doctor reports
+  `theme.not-installed`.
+- The JSON Schema is still static (question 2): `theme.features` accepts any key matching the pattern with a boolean
+  value, and its description points to the capabilities report for the active theme's keys. `theme.features` is still
+  `map[string]bool` (question 3).

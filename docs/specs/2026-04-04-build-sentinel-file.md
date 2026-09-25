@@ -1,7 +1,7 @@
 # Build Sentinel File
 
 **Date:** 2026-04-04
-**Status:** Approved
+**Status:** Implemented 2026-04-22 in 6e2f38b (code), c026418 (tests) and c779757 (docs).
 **Addresses:** REVIEW.md HIGH: `build --force` can delete the source tree
 
 ## Problem
@@ -57,3 +57,10 @@ sentinel file before any build work begins.
 
 - Path traversal guard in `writeOutputFile` (separate issue)
 - Protecting against dangerous paths like `-o /` (user error)
+
+## Divergences from implementation
+
+- `guardOutputDir` refuses an output path that exists but is not a directory, and a sentinel path that is a directory
+  counts as no sentinel (2bfa95c).
+- A stat error other than not-exist, on the output directory or the sentinel, is returned as an error instead of being
+  read as "absent" or "not created by gomddoc build" (2bfa95c).

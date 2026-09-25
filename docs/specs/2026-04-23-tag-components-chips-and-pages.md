@@ -1,6 +1,9 @@
 # Tag Components — Chips, Listing & Index Pages (Sub-Spec 1 of 3)
 
-**Status**: design approved 2026-04-23
+**Status**: Implemented 2026-04-23 (commits `38e5557`..`13dc45e`, merged in `711990a` on 2026-05-15). Design approved
+2026-04-23. The deferred sub-specs have since shipped: see-also section (sub-spec 2,
+`docs/specs/2026-04-24-see-also-section.md`) and `tag:` search syntax (sub-spec 3,
+`docs/specs/2026-05-19-tag-search-syntax.md`).
 **Sub-spec**: 1 of 3 in the broader Tag Components roadmap entry
 **Sub-specs in scope**: chips, per-tag listing pages, tag index page
 **Sub-specs deferred**: related-pages section (sub-spec 2), `tag:` search syntax (sub-spec 3)
@@ -190,3 +193,30 @@ Coverage target: maintain 86%+ overall; new files at 90%+.
 - "Trending" or "popular" sort.
 - Related-pages section at the bottom of content pages — sub-spec 2.
 - `tag:` search syntax in the search modal — sub-spec 3.
+
+## Divergences from implementation
+
+- Tags are normalized, not kept literally: `normalizeTag` lowercases and trims each tag, and rejects tags containing
+  `/` or `\` (`internal/metadata/index.go`). Duplicate tags on a page are dropped (`4bd8962`). Only the `/` and `\`
+  rejections log a warning (`Skipping tag with invalid character`); empty and whitespace-only tags are skipped silently.
+  The chip helper `pageTags` runs the same `NormalizeTags`, so chip labels match the index (`486c810`).
+- `GET /tags/{tag}` goes through `metadata.Index.LookupTag` (`3754610`), which also rejects tags longer than
+  `MaxTagLength` (128) and sorts pages by `metadata.CompareTitles` with a path tiebreaker. The 404 is the language
+  scope's themed `ErrorPage`, the same body as any missing page.
+- Locale keys use underscores and live in `cmd/gomddoc/assets/locales/en-US.yml`: `tags_title`, `tags_index_title`,
+  `tags_tagged_as`, `tags_empty`. There is no `tags.count` key; the count renders as `(n)` in the partial.
+- The `tag_chips` gate is inside the `tag-chips` partial, not around the layout call. The default layout calls the
+  partial as the first child of `<article>`, before `.Page.Content`, so chips render above the page's H1, not below it.
+- `RenderTagPage` and `RenderTagsIndex` also take the language's `tFunc`. The internal `tagURL` helper takes the site
+  default language as a third argument; the template function keeps the `tagURL lang tag` signature.
+- The tag index with zero tags renders an empty list. `tags_empty` is used only by the `tags-list` partial, which an
+  unknown tag never reaches because it returns 404.
+- No breadcrumb label override exists: the `tags` segment uses the breadcrumb generator's default title-casing
+  ("Tags"), not a localized label.
+- `<title>` follows the default `head` partial: `{tag} | {site title}` on a tag page and the bare site title on the
+  index, not `{tag} · Tags · {SiteName}`.
+- The `/tags` collision warning is a `diag.Finding` with code `content.tags-collision` (`tagsContentCollision` in
+  `cmd/gomddoc/pipeline.go`), logged by serve, preview, build and mcp and reported by `gomddoc doctor`, not a
+  startup-only `slog.Warn` in `serve.go`.
+- The tag handlers take a `TagHandlerConfig` (index, renderer, `TFunc`, lang, `ErrorPage`) and are registered on the
+  `auth` route group.

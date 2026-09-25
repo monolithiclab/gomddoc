@@ -1,5 +1,8 @@
 # HTML-in-Go to Web Components Implementation Plan
 
+**Status:** Implemented 2026-04-22 in 722e519, 13f1d7f, 65669ba, 9b9ed66 and a4a5e0f. Task 5 Step 1 (REVIEW.md) stays
+unticked: REVIEW.md in git starts at d648daf (2026-04-23) and never carried the entry.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace hardcoded HTML in goldmark renderers with `<gmd-*>` web components, move the JSON-LD `<script>` wrapper into its template partial, and rename `<color-chip>` to `<gmd-color-chip>`.
@@ -21,7 +24,7 @@
 - Modify: `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl:51`
 - Modify: `cmd/gomddoc/assets/themes/default/partials/head.html.tmpl:777` (CSS `:not(:defined)` selector)
 
-- [ ] **Step 1: Update the goldmark renderer to emit `<gmd-color-chip>`**
+- [x] **Step 1: Update the goldmark renderer to emit `<gmd-color-chip>`**
 
 In `internal/renderer/ext_colorchip.go`, change the `renderColorChip` function:
 
@@ -39,7 +42,7 @@ func (r *colorChipRenderer) renderColorChip(
 }
 ```
 
-- [ ] **Step 2: Update color chip tests**
+- [x] **Step 2: Update color chip tests**
 
 In `internal/renderer/colorchip_test.go`, replace all `<color-chip>` / `</color-chip>` assertions with `<gmd-color-chip>` / `</gmd-color-chip>`. Also update the `wantNotContain` check that looks for `"color-chip"` — change it to `"gmd-color-chip"`.
 
@@ -57,7 +60,7 @@ And every `wantNotContain` / string check for `"color-chip"` → `"gmd-color-chi
 In `TestColorChips_Disabled`, update:
 - `"color-chip"` → `"gmd-color-chip"` in all `strings.Contains` checks.
 
-- [ ] **Step 3: Rename the JS file and update the custom element registration**
+- [x] **Step 3: Rename the JS file and update the custom element registration**
 
 Rename `cmd/gomddoc/assets/shared/color-chip.mjs` to `cmd/gomddoc/assets/shared/gmd-color-chip.mjs`.
 
@@ -66,7 +69,7 @@ In the new file, update:
 - Class name: `ColorChip` → `GmdColorChip`
 - Registration: `customElements.define("color-chip", ColorChip)` → `customElements.define("gmd-color-chip", GmdColorChip)`
 
-- [ ] **Step 4: Update `head-shared.html.tmpl` asset reference**
+- [x] **Step 4: Update `head-shared.html.tmpl` asset reference**
 
 In `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`, line 51:
 
@@ -76,7 +79,7 @@ In `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`, line 51:
 {{- end }}
 ```
 
-- [ ] **Step 5: Update CSS `:not(:defined)` selector in head.html.tmpl**
+- [x] **Step 5: Update CSS `:not(:defined)` selector in head.html.tmpl**
 
 In `cmd/gomddoc/assets/themes/default/partials/head.html.tmpl`, around line 777:
 
@@ -88,12 +91,12 @@ gmd-color-chip:not(:defined) {
 }
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `make ci`
 Expected: All tests pass. The colorchip tests now assert `<gmd-color-chip>`, the integration test in `markdown_test.go` does NOT assert color-chip output (it's not tested there), so no changes needed there.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/renderer/ext_colorchip.go internal/renderer/colorchip_test.go \
@@ -114,7 +117,7 @@ git commit -m "Rename <color-chip> to <gmd-color-chip> for namespace consistency
 - Create: `cmd/gomddoc/assets/shared/gmd-admonition.mjs`
 - Modify: `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`
 
-- [ ] **Step 1: Update admonition tests to assert web component output**
+- [x] **Step 1: Update admonition tests to assert web component output**
 
 In `internal/renderer/admonition_test.go`, update the test cases. The goldmark renderer will now emit `<gmd-admonition type="note" title="Note">` instead of `<div class="admonition admonition-note"><p class="admonition-title">Note</p>`.
 
@@ -216,12 +219,12 @@ wantNotContain: []string{"<blockquote>"},
 In `TestAdmonitions_Disabled`, update:
 - `"admonition"` checks remain valid — both old and new output contain this string in the tag name. No changes needed.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/renderer/ -run TestAdmonitions -v`
 Expected: FAIL — tests now expect `<gmd-admonition` but renderer still emits `<div class="admonition`.
 
-- [ ] **Step 3: Update the goldmark renderer to emit `<gmd-admonition>`**
+- [x] **Step 3: Update the goldmark renderer to emit `<gmd-admonition>`**
 
 In `internal/renderer/ext_admonition.go`, change the `renderAdmonition` function:
 
@@ -245,12 +248,12 @@ func (r *admonitionRenderer) renderAdmonition(
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/renderer/ -run TestAdmonitions -v`
 Expected: PASS
 
-- [ ] **Step 5: Create the `gmd-admonition.mjs` web component**
+- [x] **Step 5: Create the `gmd-admonition.mjs` web component**
 
 Create `cmd/gomddoc/assets/shared/gmd-admonition.mjs`:
 
@@ -284,7 +287,7 @@ class GmdAdmonition extends HTMLElement {
 customElements.define("gmd-admonition", GmdAdmonition);
 ```
 
-- [ ] **Step 6: Add conditional loading in `head-shared.html.tmpl`**
+- [x] **Step 6: Add conditional loading in `head-shared.html.tmpl`**
 
 In `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`, add the admonition script inside the `scripts-shared` block, before the color_chips entry:
 
@@ -296,12 +299,12 @@ In `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`, add the a
 
 Note: no `type="module"` needed since this is a simple class definition with no imports. Matches the pattern of `toc-highlight.mjs` and `code-copy.mjs`.
 
-- [ ] **Step 7: Run full CI**
+- [x] **Step 7: Run full CI**
 
 Run: `make ci`
 Expected: All tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/renderer/ext_admonition.go internal/renderer/admonition_test.go \
@@ -322,7 +325,7 @@ git commit -m "Replace admonition HTML-in-Go with <gmd-admonition> web component
 - Modify: `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`
 - Modify: `cmd/gomddoc/assets/themes/default/partials/head.html.tmpl` (CSS cleanup)
 
-- [ ] **Step 1: Update heading anchor tests to assert web component output**
+- [x] **Step 1: Update heading anchor tests to assert web component output**
 
 In `internal/renderer/anchors_test.go`, update test cases. The renderer will emit `<gmd-heading-anchor href="#id"></gmd-heading-anchor>` instead of `<a href="#id" class="heading-anchor" aria-hidden="true" tabindex="-1">#</a>`.
 
@@ -391,12 +394,12 @@ Also update `internal/renderer/markdown_test.go`, the "heading with auto ID" tes
 wantContains: []string{"<h1", `id="hello"`, "gmd-heading-anchor", `href="#hello"`, "</h1>"},
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/renderer/ -run "TestHeadingAnchors|TestMarkdownRenderer" -v`
 Expected: FAIL
 
-- [ ] **Step 3: Update the goldmark renderer to emit `<gmd-heading-anchor>`**
+- [x] **Step 3: Update the goldmark renderer to emit `<gmd-heading-anchor>`**
 
 In `internal/renderer/ext_anchors.go`, replace the anchor rendering block (lines 55-68):
 
@@ -419,12 +422,12 @@ if config.FeatureEnabled("heading_anchors", features) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/renderer/ -run "TestHeadingAnchors|TestMarkdownRenderer" -v`
 Expected: PASS
 
-- [ ] **Step 5: Create the `gmd-heading-anchor.mjs` web component**
+- [x] **Step 5: Create the `gmd-heading-anchor.mjs` web component**
 
 Create `cmd/gomddoc/assets/shared/gmd-heading-anchor.mjs`:
 
@@ -492,7 +495,7 @@ class GmdHeadingAnchor extends HTMLElement {
 customElements.define("gmd-heading-anchor", GmdHeadingAnchor);
 ```
 
-- [ ] **Step 6: Add conditional loading in `head-shared.html.tmpl`**
+- [x] **Step 6: Add conditional loading in `head-shared.html.tmpl`**
 
 In `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`, add inside the `scripts-shared` block:
 
@@ -502,7 +505,7 @@ In `cmd/gomddoc/assets/themes/default/partials/head-shared.html.tmpl`, add insid
 {{- end }}
 ```
 
-- [ ] **Step 7: Remove heading anchor CSS from `head.html.tmpl`**
+- [x] **Step 7: Remove heading anchor CSS from `head.html.tmpl`**
 
 In `cmd/gomddoc/assets/themes/default/partials/head.html.tmpl`, remove the heading anchor CSS block (lines 782-809). This includes:
 - `.heading-anchor { ... }`
@@ -512,12 +515,12 @@ In `cmd/gomddoc/assets/themes/default/partials/head.html.tmpl`, remove the headi
 
 The `@media (hover: none)` block should keep the `.copy-btn { opacity: 1; }` rule but remove the `.heading-anchor { opacity: 1; }` rule.
 
-- [ ] **Step 8: Run full CI**
+- [x] **Step 8: Run full CI**
 
 Run: `make ci`
 Expected: All tests pass.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add internal/renderer/ext_anchors.go internal/renderer/anchors_test.go \
@@ -537,7 +540,7 @@ git commit -m "Replace heading anchor HTML-in-Go with <gmd-heading-anchor> web c
 - Modify: `internal/template/renderer_test.go:1341-1474`
 - Modify: `cmd/gomddoc/assets/themes/default/partials/jsonld.html.tmpl`
 
-- [ ] **Step 1: Update JSON-LD tests**
+- [x] **Step 1: Update JSON-LD tests**
 
 In `internal/template/renderer_test.go`, the `TestJSONLDFunction` test renders a template that calls `{{- jsonLD .Page -}}`. Since the `jsonLD` function will now return only the raw JSON (no `<script>` wrapper), the test template needs updating.
 
@@ -562,12 +565,12 @@ func TestJSONLDFunction(t *testing.T) {
 
 The rest of the test cases remain the same — they still assert `<script type="application/ld+json">`, `"TechArticle"`, etc. The only difference is the `<script>` tag now comes from the partial instead of the Go function.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/template/ -run TestJSONLDFunction -v`
 Expected: FAIL — the `jsonLD` function still returns `<script>` wrapper, so output will have double `<script>` tags.
 
-- [ ] **Step 3: Update `generateJSONLD` to return raw JSON only**
+- [x] **Step 3: Update `generateJSONLD` to return raw JSON only**
 
 In `internal/template/renderer.go`, change line 352:
 
@@ -581,7 +584,7 @@ return template.HTML(raw) // #nosec G203 -- trusted JSON-LD output
 
 Remove the `<script type="application/ld+json">` wrapper and the `</script>` suffix.
 
-- [ ] **Step 4: Update the `jsonld.html.tmpl` partial**
+- [x] **Step 4: Update the `jsonld.html.tmpl` partial**
 
 In `cmd/gomddoc/assets/themes/default/partials/jsonld.html.tmpl`:
 
@@ -589,17 +592,17 @@ In `cmd/gomddoc/assets/themes/default/partials/jsonld.html.tmpl`:
 {{ define "jsonld" }}{{ $json := jsonLD .Page }}{{ if $json }}<script type="application/ld+json">{{ $json }}</script>{{ end }}{{ end }}
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/template/ -run TestJSONLDFunction -v`
 Expected: PASS
 
-- [ ] **Step 6: Run full CI**
+- [x] **Step 6: Run full CI**
 
 Run: `make ci`
 Expected: All tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/template/renderer.go internal/template/renderer_test.go \
@@ -638,7 +641,7 @@ In the Recommendations section, mark item 1 as done:
 1. ~~**Move HTML-in-Go to templates (HIGH arch)**~~ DONE: Web components + template partial.
 ```
 
-- [ ] **Step 2: Update `docs/architecture.md` Goldmark Extensions section**
+- [x] **Step 2: Update `docs/architecture.md` Goldmark Extensions section**
 
 In `docs/architecture.md`, update lines 132-134:
 
@@ -676,7 +679,7 @@ Update the Goldmark Extensions glossary entry (line 734):
 - **Goldmark Extensions**: Custom goldmark `Extender` implementations (heading anchors, admonitions, color chips) that operate at the AST level during parsing and rendering, emitting `<gmd-*>` web component elements, gated by feature toggles
 ```
 
-- [ ] **Step 3: Add entry to `docs/decisions.md`**
+- [x] **Step 3: Add entry to `docs/decisions.md`**
 
 Add a new section before "Deferred / Discarded Ideas":
 
@@ -699,14 +702,18 @@ Add a new section before "Deferred / Discarded Ideas":
 - **`gmd-` prefix**: Namespaces all custom elements to avoid collisions. Applied retroactively to `<color-chip>` → `<gmd-color-chip>`.
 ```
 
-- [ ] **Step 4: Run full CI one final time**
+- [x] **Step 4: Run full CI one final time**
 
 Run: `make ci`
 Expected: All tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add REVIEW.md docs/architecture.md docs/decisions.md
 git commit -m "Update docs for HTML-in-Go to web components migration"
 ```
+
+## Divergences from implementation
+
+- `jsonLD` returns `template.JS`, not `template.HTML`.

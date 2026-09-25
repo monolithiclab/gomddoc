@@ -1,5 +1,7 @@
 # Admin Port Implementation Plan
 
+**Status:** Implemented 2026-04-22 in 82e6f59 and 80ccb40. All steps shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Separate metrics and pprof endpoints onto a dedicated admin port for production isolation.
@@ -15,7 +17,7 @@
 **Files:**
 - Modify: `internal/config/config.go:54-61` (ServerConfig struct)
 
-- [ ] **Step 1: Add the field**
+- [x] **Step 1: Add the field**
 
 In `internal/config/config.go`, add `AdminPort` to `ServerConfig`:
 
@@ -31,12 +33,12 @@ type ServerConfig struct {
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go build ./...`
 Expected: clean build
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/config/config.go
@@ -52,7 +54,7 @@ git commit -m "config: add AdminPort field to ServerConfig"
 - Modify: `cmd/gomddoc/pipeline.go:160-171` (ServerSetupOptions struct)
 - Modify: `cmd/gomddoc/pipeline.go:180-268` (setupServer function)
 
-- [ ] **Step 1: Add flag to ServeCmd**
+- [x] **Step 1: Add flag to ServeCmd**
 
 In `cmd/gomddoc/serve.go`, add the `AdminPort` field to `ServeCmd`:
 
@@ -69,7 +71,7 @@ type ServeCmd struct {
 }
 ```
 
-- [ ] **Step 2: Add AdminPort to ServerSetupOptions**
+- [x] **Step 2: Add AdminPort to ServerSetupOptions**
 
 In `cmd/gomddoc/pipeline.go`, add `AdminPort string` to `ServerSetupOptions`:
 
@@ -88,7 +90,7 @@ type ServerSetupOptions struct {
 }
 ```
 
-- [ ] **Step 3: Pass AdminPort through setup**
+- [x] **Step 3: Pass AdminPort through setup**
 
 In `cmd/gomddoc/serve.go`, in the `setup()` method, pass `AdminPort` to `setupServer`:
 
@@ -105,7 +107,7 @@ return setupServer(ServerSetupOptions{
 })
 ```
 
-- [ ] **Step 4: Set AdminPort on config in setupServer**
+- [x] **Step 4: Set AdminPort on config in setupServer**
 
 In `cmd/gomddoc/pipeline.go`, in `setupServer`, after `cfg.Server.Pprof = opts.Pprof`, add:
 
@@ -113,12 +115,12 @@ In `cmd/gomddoc/pipeline.go`, in `setupServer`, after `cfg.Server.Pprof = opts.P
 cfg.Server.AdminPort = opts.AdminPort
 ```
 
-- [ ] **Step 5: Verify it compiles**
+- [x] **Step 5: Verify it compiles**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go build ./...`
 Expected: clean build
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/serve.go cmd/gomddoc/pipeline.go
@@ -133,7 +135,7 @@ git commit -m "serve: add --admin-port flag and plumb through setup"
 - Create: `internal/server/admin.go`
 - Create: `internal/server/admin_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/server/admin_test.go`:
 
@@ -254,12 +256,12 @@ func TestAdminServer_NoContentRoutes(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/server/ -run "TestAdminServer" -v`
 Expected: FAIL — `NewAdminServer` and `AdminServerConfig` undefined
 
-- [ ] **Step 3: Implement AdminServer**
+- [x] **Step 3: Implement AdminServer**
 
 Create `internal/server/admin.go`:
 
@@ -342,12 +344,12 @@ func (s *AdminServer) Shutdown(ctx context.Context) error {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/server/ -run "TestAdminServer" -v`
 Expected: all 5 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/server/admin.go internal/server/admin_test.go
@@ -363,7 +365,7 @@ git commit -m "server: add AdminServer for dedicated admin port"
 - Modify: `internal/server/server.go:42-64` (HTTPServerConfig)
 - Modify: `internal/server/server_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `internal/server/server_test.go`:
 
@@ -459,12 +461,12 @@ func TestHTTPServer_AdminPortSeparation(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/server/ -run "TestHTTPServer_AdminPortSeparation" -v`
 Expected: FAIL — metrics/pprof still registered on main mux when admin port is set
 
-- [ ] **Step 3: Modify NewHTTPServer to conditionally register admin endpoints**
+- [x] **Step 3: Modify NewHTTPServer to conditionally register admin endpoints**
 
 In `internal/server/server.go`, modify `NewHTTPServer`. The key change is wrapping the metrics and pprof registration in a condition. Replace the current metrics and pprof blocks:
 
@@ -492,17 +494,17 @@ And for pprof, change the existing block:
 	}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/server/ -run "TestHTTPServer_AdminPortSeparation" -v`
 Expected: all 5 subtests PASS
 
-- [ ] **Step 5: Run full server test suite**
+- [x] **Step 5: Run full server test suite**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/server/ -v`
 Expected: all tests PASS (existing tests still work since they don't set AdminPort)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/server/server.go internal/server/server_test.go
@@ -516,7 +518,7 @@ git commit -m "server: skip metrics/pprof on main mux when admin port is set"
 **Files:**
 - Modify: `cmd/gomddoc/pipeline.go:173-284` (setupResult, setupServer, runUntilCancelled)
 
-- [ ] **Step 1: Add adminServer to setupResult**
+- [x] **Step 1: Add adminServer to setupResult**
 
 In `cmd/gomddoc/pipeline.go`, add the field to `setupResult`:
 
@@ -529,7 +531,7 @@ type setupResult struct {
 }
 ```
 
-- [ ] **Step 2: Create admin server in setupServer**
+- [x] **Step 2: Create admin server in setupServer**
 
 In `cmd/gomddoc/pipeline.go`, in `setupServer`, after `httpServer := server.NewHTTPServer(serverConfig)`, add admin server creation:
 
@@ -559,7 +561,7 @@ Update the return to include `adminServer`:
 	}, nil
 ```
 
-- [ ] **Step 3: Update runUntilCancelled to manage admin server**
+- [x] **Step 3: Update runUntilCancelled to manage admin server**
 
 Change `runUntilCancelled` signature and add admin server goroutines:
 
@@ -591,7 +593,7 @@ func runUntilCancelled(ctx context.Context, httpServer *server.HTTPServer, admin
 }
 ```
 
-- [ ] **Step 4: Update all callers of runUntilCancelled**
+- [x] **Step 4: Update all callers of runUntilCancelled**
 
 In `cmd/gomddoc/serve.go`, update the `Run` method:
 
@@ -605,12 +607,12 @@ Run: `grep -rn "runUntilCancelled" cmd/gomddoc/`
 
 Update each caller to pass `result.adminServer` (which will be nil for preview since it doesn't set AdminPort).
 
-- [ ] **Step 5: Verify it compiles**
+- [x] **Step 5: Verify it compiles**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go build ./...`
 Expected: clean build
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/pipeline.go cmd/gomddoc/serve.go cmd/gomddoc/preview.go
@@ -624,7 +626,7 @@ git commit -m "pipeline: wire admin server lifecycle alongside main server"
 **Files:**
 - Modify: `cmd/gomddoc/pipeline.go` (setupServer function)
 
-- [ ] **Step 1: Add warning log**
+- [x] **Step 1: Add warning log**
 
 In `cmd/gomddoc/pipeline.go`, in `setupServer`, after the admin server creation block (after `cfg.Server.AdminPort = opts.AdminPort`), add the warning for serve (non-dev, non-preview) mode:
 
@@ -636,12 +638,12 @@ In `cmd/gomddoc/pipeline.go`, in `setupServer`, after the admin server creation 
 
 This naturally won't fire for preview (which sets `DevMode: true`) or when admin port is set.
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go build ./...`
 Expected: clean build
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add cmd/gomddoc/pipeline.go
@@ -655,19 +657,19 @@ git commit -m "serve: warn when admin endpoints are on main port"
 **Files:**
 - Possibly: any file that needs adjustment
 
-- [ ] **Step 1: Run make ci**
+- [x] **Step 1: Run make ci**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make ci`
 Expected: all checks pass (codefix, format, lint, tests)
 
-- [ ] **Step 2: Fix any failures**
+- [x] **Step 2: Fix any failures**
 
 If lint or tests fail, fix the issues. Common things to watch for:
 - The existing `TestHTTPServer_SecurityHeadersOnAllEndpoints` tests `/metrics` — it will still pass because it doesn't set `AdminPort`
 - The existing `TestHTTPServer_AuthProtectsAllEndpoints` tests `/metrics` and `/debug/pprof/` — same, still passes
 - Unused imports in `server.go` if pprof import is no longer always needed — the import is still needed because the `adminOnMain` path still uses it
 
-- [ ] **Step 3: Commit any fixes**
+- [x] **Step 3: Commit any fixes**
 
 ```bash
 git add -u
@@ -681,15 +683,27 @@ git commit -m "fix: address CI issues from admin port changes"
 **Files:**
 - Check: `cmd/gomddoc/preview.go`
 
-- [ ] **Step 1: Check preview passes nil admin server**
+- [x] **Step 1: Check preview passes nil admin server**
 
 Run: `grep -n "runUntilCancelled" cmd/gomddoc/preview.go`
 
 Verify the preview command passes `result.adminServer` (which will be nil since preview's `ServerSetupOptions` doesn't set `AdminPort`). The `runUntilCancelled` function handles nil gracefully.
 
-- [ ] **Step 2: Run preview-related tests if any exist**
+- [x] **Step 2: Run preview-related tests if any exist**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./cmd/gomddoc/ -v -run "Preview"`
 Expected: PASS (or no matching tests)
 
-- [ ] **Step 3: No commit needed if no changes**
+- [x] **Step 3: No commit needed if no changes**
+
+## Divergences from implementation
+
+- A host-less `--admin-port` such as `:9090` binds `127.0.0.1` (`Config.normalizeAdminAddr`). An explicit host,
+  `0.0.0.0` included, is kept (354df05).
+- `/debug/pprof/*` requires the `--basic-auth-file` credentials when that flag is set, on whichever listener carries it
+  (`mountPprof`). `/metrics` and `/health/*` stay unauthenticated (354df05).
+- `ServerConfig.AdminOnMain()` decides between the main and the dedicated listener: `AdminPort` empty or equal to
+  `Port`.
+- `AdminServerConfig` also takes `AuthStore` and `HTTP`; the admin listener uses the main server's read-header, write
+  and idle timeouts and max header size.
+- Validation rejects an admin port outside 1-65535, reported as `server.admin_port`.

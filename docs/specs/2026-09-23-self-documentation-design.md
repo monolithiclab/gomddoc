@@ -1,6 +1,10 @@
 # Self-Documentation: Capabilities Model and Embedded Guide (Sub-Spec 1 of 3)
 
-**Status**: design approved 2026-09-23, spec pending review
+**Status**: Implemented 2026-09-23 (commits `6b912cf` through `c449d06`, with follow-up fixes `f1173ea`, `23aad3b`,
+`4f4a79c`, `442424c`, `fddfc40`). Design approved 2026-09-23. All three sub-specs have shipped: sub-spec 2
+(`gomddoc doctor`, `docs/specs/2026-09-23-doctor-design.md`, implemented 2026-09-23) and sub-spec 3 (`gomddoc help
+<topic>`, commit `37250b5` "feat(cli): add gomddoc help", 2026-09-23). Sub-spec 3 has no spec or plan document. The
+theme manifest remains parked.
 **Roadmap entry**: "Self-Documentation via MCP" (`docs/roadmap.md`)
 **Sub-specs in scope**: machine-readable capabilities model (config schema, env vars, commands, frontmatter, theme
 features) and the embedded guide, exposed over stdio MCP and the CLI (`info`, `info --json`, `schema`)
@@ -296,3 +300,30 @@ docs.Guide ──► lazy metadata + search index ──► gomddoc_guide, gomdd
 - Theme manifest — parked.
 - A hosted schema URL and a `yaml-language-server` hint in `gomddoc init`.
 - Self-docs on the HTTP MCP endpoint.
+
+## Divergences from implementation
+
+- Struct tags: only `doc`, `max` and `default_doc` shipped. `enum`, `min` and `example` were dropped, and `Setting`
+  has no `Enum`, `Min` or `Example` fields. It gained `DefaultNote` (`default_note`) for computed defaults, such as the
+  title derived from the content directory.
+- `config.EnvVars()`, `EnvVar` and `collectEnvVars` were deleted, not kept as a projection of `Schema()` (`c891f4a`).
+  Map-valued settings spell their env var with a key placeholder (`GOMDDOC_SITE_THEME_FEATURES_<KEY>`).
+- Flags are joined onto settings by a Kong `setting:"<key>"` tag first, then by env var name. `--domain`
+  (`GOMDDOC_DOMAIN`) and preview's `--dir-index` (`GOMDDOC_DIR_INDEX`) set settings whose own env vars differ.
+  `Setting.Flags` also lists positional args that set a setting (uppercased, such as `DIR`).
+- `metadata.knownKeys` is not derived from `FrontmatterFields`; a test asserts it is a subset. The declared list also
+  carries `og_type` and `layout`.
+- `ThemeFeatures` scans the templates the renderer resolves (theme, inherited default partials, site partials,
+  default-layout fallback), not the theme directory alone (`f1173ea`). A theme that is not installed is reported as
+  the default theme with `source: "fallback-default"`; `unavailable` applies only when not even the default theme
+  has layouts.
+- `capabilities.Input` also takes `Dir` and `FileStatus`. `Report.config` carries `dir` and `file_status`
+  (`found`, `not_found`, `not_inspected`, `unknown`; `442424c`), and `Report` has a `guide_error` field. Guide
+  entries are `guide.Topic` values with a `topic` name alongside `path`, `title` and `description`.
+- The guide is served through `internal/guide` (`2b05595`), not an MCP-owned index: `guide.New` builds the topic list,
+  the search index is built lazily behind `sync.OnceValues`, and a page is reachable by path or by topic name
+  (`configuration`). Section extraction moved to `internal/text` (`e6f0ce5`). `gomddoc help` uses the same package.
+- `SelfDocs` gained a `Doctor` function; when set, the stdio namespace also registers the `gomddoc_doctor` tool
+  (sub-spec 2).
+- `gomddoc_guide` errors are `IsError: true` tool results.
+- `info`'s `DIR` argument reads `GOMDDOC_SERVER_DIR`. A Git URL is not cloned; `info` reports defaults.

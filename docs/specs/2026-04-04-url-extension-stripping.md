@@ -1,7 +1,8 @@
 # URL Extension Stripping
 
 **Date**: 2026-04-04
-**Status**: Draft
+**Status**: Implemented 2026-04-22 in 7f7b400 (resolver), b9289e9 (serve), 3fc56bb (build), e9fe1a0 (integration tests)
+and 86cb198 (docs).
 
 ## Summary
 
@@ -210,3 +211,25 @@ URLs in generated sitemap, feed, and robots files use clean paths.
 - Start server, request extensionless URL, verify content served
 - Request with extension, verify 301 to clean URL
 - Sitemap/feed URLs use clean paths
+
+## Divergences from implementation
+
+- The resolver is built once per pipeline at startup and never rebuilt. There is no git refresh mechanism for it to hook
+  into.
+- The constructor is `resolve.Build(fsys, BuildOptions{StripExtensions, Exclude, HasRenderer})`. It skips hidden paths
+  and paths matching the pipeline's exclude patterns, so an excluded file has no clean URL (c80981e).
+- Collisions and unreadable paths are recorded as `diag.Finding`s (`content.path-collision`, `target.read-error`) that
+  the pipeline logs and `gomddoc doctor` reports; the resolver does not log (7128c58).
+- `(*PathResolver).PageURLPath(realPath, defaultIndex)` is the single file-to-URL derivation, used by navigation,
+  sitemap, feed, build and the templates' `contentURL`. The resolver also has `AllMappings`, `IsEmpty` and `Findings`;
+  the package exports `IsDefaultIndex`.
+- The redirect middleware is `server.ExtensionRedirect(resolver, stripExts, basePath)`. Per-language scopes pass
+  `/{lang}` as `basePath`, which applies to redirect targets only.
+- Build uses pretty output for every rendered page whenever `strip_extensions` is non-empty. `prettyOutputPath` does not
+  consult the resolver or the extension list.
+- Output rule 5 is not implemented: `guide.md` and `guide/README.md` both write `guide/index.html`, with no
+  `guide/README.html` fallback and no warning.
+- With `strip_extensions: []`, build writes `guide.html` while serve publishes `/guide.md`. REVIEW.md §10.2 tracks the
+  split between the URL and the output path.
+- Extension redirect stubs are written at the source path: the output file `guide.md` is an HTML page redirecting to
+  `/guide`. Default-index files get no stub.

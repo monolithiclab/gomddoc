@@ -1,7 +1,7 @@
 # GitHub Actions CI
 
 **Date**: 2026-04-10
-**Status**: Approved
+**Status**: Implemented 2026-04-22 in 4fca374, as specified. The workflow has since grown; see below.
 
 ## Goal
 
@@ -64,3 +64,16 @@ jobs:
           go-version-file: go.mod
       - run: make lint test
 ```
+
+## Divergences from implementation
+
+- Triggers are `push` to `main` and `pull_request`, not `push` on every branch (7ae8ba2).
+- A `concurrency` group (`ci-${{ github.ref }}`) cancels superseded runs (7ae8ba2).
+- The job is named `test` and runs on an `ubuntu-latest` / `macos-latest` matrix with `fail-fast: false` (7ae8ba2).
+- The Ubuntu run uploads `cover.out` as the `coverage` artifact, kept 14 days (7ae8ba2). No coverage threshold is
+  enforced.
+- A `shellcheck` job lints `scripts/install.sh` (c8086f6).
+- `make lint` includes `lint-vulncheck` (govulncheck), so CI gates on reachable vulnerabilities (ec0d4f8, 4b3a59a).
+- Actions are pinned to commit SHAs (0d9015d): `actions/checkout` v7.0.1, `actions/setup-go` v7.0.0 with `cache: true`,
+  `actions/upload-artifact` v7.0.1.
+- Releases run from a separate `.github/workflows/release.yml` (GoReleaser).

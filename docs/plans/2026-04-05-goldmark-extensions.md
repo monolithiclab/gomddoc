@@ -1,5 +1,8 @@
 # Post-Processors to Goldmark Extensions — Implementation Plan
 
+**Status:** Implemented 2026-04-22 in 93323f8, one commit for all tasks. Task 2's first "Step 3: Create
+`ext_anchors.go`" stays unticked: the plan replaced it with "Step 3 (revised)" and "Step 4", which shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the three regex-based HTML post-processors (heading anchors, admonitions, color chips) with proper goldmark AST extensions.
@@ -36,7 +39,7 @@
 
 - Create: `internal/renderer/ext_features.go`
 
-- [ ] **Step 1: Create `ext_features.go`**
+- [x] **Step 1: Create `ext_features.go`**
 
 ```go
 package renderer
@@ -59,12 +62,12 @@ func getFeatures(pc parser.Context) map[string]bool {
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go build ./internal/renderer/`
 Expected: no errors
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/renderer/ext_features.go
@@ -81,7 +84,7 @@ git commit -m "Add shared feature context key for goldmark extensions"
 - Rewrite: `internal/renderer/anchors_test.go`
 - Delete: `internal/renderer/anchors.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Rewrite `internal/renderer/anchors_test.go`. Tests go through the full renderer with markdown input, since the extension operates at the renderer level. The existing `TestAddHeadingAnchors` tests on raw HTML become renderer-based tests on markdown input.
 
@@ -260,7 +263,7 @@ func TestHeadingAnchors_PageOverride(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/renderer/ -run "TestHeadingAnchors" -v`
 Expected: Tests fail because `anchors.go` still has the old `addHeadingAnchors` function and the new extension doesn't exist yet. The tests won't compile initially because they depend on the renderer changes in Task 5.
@@ -360,7 +363,7 @@ features, _ := featuresAttr.(map[string]bool)
 
 This is clean and doesn't require a side channel. Let me update `ext_features.go` accordingly.
 
-- [ ] **Step 3 (revised): Update `ext_features.go` to use document attribute**
+- [x] **Step 3 (revised): Update `ext_features.go` to use document attribute**
 
 Replace the parser context approach with a document attribute approach:
 
@@ -394,7 +397,7 @@ func getDocFeatures(node ast.Node) map[string]bool {
 }
 ```
 
-- [ ] **Step 4: Create `ext_anchors.go` (revised)**
+- [x] **Step 4: Create `ext_anchors.go` (revised)**
 
 ```go
 package renderer
@@ -462,7 +465,7 @@ func (r *headingAnchorRenderer) renderHeading(
 }
 ```
 
-- [ ] **Step 5: Delete `anchors.go`**
+- [x] **Step 5: Delete `anchors.go`**
 
 ```bash
 rm internal/renderer/anchors.go
@@ -470,7 +473,7 @@ rm internal/renderer/anchors.go
 
 Note: This will break compilation until Task 5 removes references from `markdown.go`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/renderer/ext_features.go internal/renderer/ext_anchors.go internal/renderer/anchors_test.go
@@ -488,7 +491,7 @@ git commit -m "Add heading anchor goldmark extension (replaces regex post-proces
 - Rewrite: `internal/renderer/admonition_test.go`
 - Delete: `internal/renderer/admonition.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Rewrite `internal/renderer/admonition_test.go`. All tests use markdown input through the renderer.
 
@@ -691,7 +694,7 @@ func TestAdmonitions_PageOverride(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Create `ext_admonition.go`**
+- [x] **Step 2: Create `ext_admonition.go`**
 
 ```go
 package renderer
@@ -906,7 +909,7 @@ func (r *admonitionRenderer) renderAdmonition(
 
 The admonition transformer reads features from the **parser context** (not document attribute), because transformers have access to `parser.Context`. This means `ext_features.go` needs both approaches: parser context key for transformers, document attribute for renderers.
 
-- [ ] **Step 3: Update `ext_features.go` to support both parser context and document attribute**
+- [x] **Step 3: Update `ext_features.go` to support both parser context and document attribute**
 
 ```go
 package renderer
@@ -954,13 +957,13 @@ func getDocFeatures(node ast.Node) map[string]bool {
 }
 ```
 
-- [ ] **Step 4: Delete `admonition.go`**
+- [x] **Step 4: Delete `admonition.go`**
 
 ```bash
 rm internal/renderer/admonition.go
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/renderer/ext_admonition.go internal/renderer/ext_features.go internal/renderer/admonition_test.go
@@ -978,7 +981,7 @@ git commit -m "Add admonition goldmark extension (replaces regex post-processor)
 - Rewrite: `internal/renderer/colorchip_test.go`
 - Delete: `internal/renderer/colorchip.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Rewrite `internal/renderer/colorchip_test.go`:
 
@@ -1153,7 +1156,7 @@ func TestColorChips_PageOverride(t *testing.T) {
 }
 ````
 
-- [ ] **Step 2: Create `ext_colorchip.go`**
+- [x] **Step 2: Create `ext_colorchip.go`**
 
 ```go
 package renderer
@@ -1269,13 +1272,13 @@ func (r *colorChipRenderer) renderColorChip(
 }
 ```
 
-- [ ] **Step 3: Delete `colorchip.go`**
+- [x] **Step 3: Delete `colorchip.go`**
 
 ```bash
 rm internal/renderer/colorchip.go
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/renderer/ext_colorchip.go internal/renderer/colorchip_test.go
@@ -1291,7 +1294,7 @@ git commit -m "Add color chip goldmark extension (replaces regex post-processor)
 
 - Modify: `internal/renderer/markdown.go`
 
-- [ ] **Step 1: Update `markdown.go`**
+- [x] **Step 1: Update `markdown.go`**
 
 Replace the contents of `internal/renderer/markdown.go`. Key changes:
 
@@ -1423,17 +1426,17 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 }
 ```
 
-- [ ] **Step 2: Run all tests**
+- [x] **Step 2: Run all tests**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go test ./internal/renderer/ -v -count=1`
 Expected: All tests pass. If any fail, debug by comparing actual vs expected HTML output.
 
-- [ ] **Step 3: Run `make ci`**
+- [x] **Step 3: Run `make ci`**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make ci`
 Expected: Full pipeline passes (lint + tests + coverage).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/renderer/markdown.go
@@ -1448,12 +1451,12 @@ This task validates that the new extensions produce the same HTML as the old pos
 
 **Files:** None (verification only)
 
-- [ ] **Step 1: Run the full test suite**
+- [x] **Step 1: Run the full test suite**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make ci`
 Expected: All tests pass, including the existing `markdown_test.go` integration tests that validate end-to-end rendering.
 
-- [ ] **Step 2: Manual spot-check with testsite**
+- [x] **Step 2: Manual spot-check with testsite**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && go run ./cmd/gomddoc serve --root testsite`
 
@@ -1463,7 +1466,7 @@ Open in browser and verify:
 - Admonition blockquotes render as styled divs
 - Hex color codes in backticks render as color chips
 
-- [ ] **Step 3: Run benchmarks to check for performance regression**
+- [x] **Step 3: Run benchmarks to check for performance regression**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make bench`
 Expected: No significant regression. AST-based transforms may be slightly faster than regex since they avoid re-parsing HTML.
@@ -1472,21 +1475,30 @@ Expected: No significant regression. AST-based transforms may be slightly faster
 
 ### Task 7: Cleanup and Final Commit
 
-- [ ] **Step 1: Verify deleted files are gone**
+- [x] **Step 1: Verify deleted files are gone**
 
 Run: `ls internal/renderer/anchors.go internal/renderer/admonition.go internal/renderer/colorchip.go 2>&1`
 Expected: All three files report "No such file or directory"
 
-- [ ] **Step 2: Check for stale references**
+- [x] **Step 2: Check for stale references**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && grep -r "addHeadingAnchors\|transformAdmonitions\|transformColorChips" internal/`
 Expected: No matches
 
-- [ ] **Step 3: Final `make ci`**
+- [x] **Step 3: Final `make ci`**
 
 Run: `cd /Users/nicolasm/Work/Monolithic/repositories/gomddoc && make ci`
 Expected: Clean pass
 
-- [ ] **Step 4: Final commit if any cleanup was needed**
+- [x] **Step 4: Final commit if any cleanup was needed**
 
 Only if steps 1-3 revealed issues that needed fixing.
+
+## Divergences from implementation
+
+- Node renderers have no parser context, so the flags are also stored on the document node
+  (`setDocFeatures`/`getDocFeatures`, attribute `gomddoc:features`). The heading renderer reads them there; the
+  admonition and color chip transformers read the parser context.
+- The HTML is no longer the regex post-processors' output. The 2026-04-07 web components spec changed the renderers to
+  emit `<gmd-heading-anchor href="#id">`, `<gmd-admonition type="…" title="…">` and `<gmd-color-chip>` (65669ba,
+  13f1d7f, 722e519).

@@ -1,5 +1,8 @@
 # Search Index Field-Tagged Postings Implementation Plan
 
+**Status:** Partially implemented. Tasks 1-3 shipped 2026-04-22 in 6c8000c. Task 4 (REVIEW.md updates) has no commit:
+REVIEW.md in git starts at d648daf (2026-04-23) and never carried the IDF or `avgDL` entries.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the hybrid search index with a unified field-tagged inverted index that eliminates title/description duplication, enables proper per-field TF-IDF, and removes linear substring scans.
@@ -24,12 +27,12 @@ No new files. No callers change (`server/search.go`, `mcp/tools.go`, `mcp/prompt
 **Files:**
 - Modify: `internal/search/index.go:30-59`
 
-- [ ] **Step 1: Run existing tests to establish baseline**
+- [x] **Step 1: Run existing tests to establish baseline**
 
 Run: `go test ./internal/search/... -v -count=1`
 Expected: All tests PASS
 
-- [ ] **Step 2: Update `posting` struct to include field tag**
+- [x] **Step 2: Update `posting` struct to include field tag**
 
 Replace the `posting` type and add the `field` enum in `internal/search/index.go`. Replace lines 41-52:
 
@@ -51,7 +54,7 @@ type posting struct {
 }
 ```
 
-- [ ] **Step 3: Update `document` struct**
+- [x] **Step 3: Update `document` struct**
 
 Replace the `document` struct (lines 36-45) with the simplified version that drops `titleLower`, `descLower`, `termFreqs`, and `totalTerms`:
 
@@ -65,7 +68,7 @@ type document struct {
 }
 ```
 
-- [ ] **Step 4: Update `Index` struct**
+- [x] **Step 4: Update `Index` struct**
 
 Replace the `Index` struct (lines 53-59) to drop `avgDL` and add `docTermCounts`:
 
@@ -79,7 +82,7 @@ type Index struct {
 }
 ```
 
-- [ ] **Step 5: Verify compilation fails with expected errors**
+- [x] **Step 5: Verify compilation fails with expected errors**
 
 Run: `go build ./internal/search/...`
 Expected: Compilation errors in `BuildIndex` and `Search` referencing removed fields (`termFreqs`, `totalTerms`, `titleLower`, `descLower`, `avgDL`). This confirms the struct changes are correct and the next tasks will fix these references.
@@ -91,7 +94,7 @@ Expected: Compilation errors in `BuildIndex` and `Search` referencing removed fi
 **Files:**
 - Modify: `internal/search/index.go:60-191`
 
-- [ ] **Step 1: Update parseResult struct and Phase 2 worker**
+- [x] **Step 1: Update parseResult struct and Phase 2 worker**
 
 Replace the `parseResult` struct and the Phase 2 worker goroutine body (lines 96-161). The new `parseResult` carries three freq maps and the body total instead of a full `document`:
 
@@ -171,7 +174,7 @@ Replace the `parseResult` struct and the Phase 2 worker goroutine body (lines 96
 	}
 ```
 
-- [ ] **Step 2: Update Phase 3 merge to emit field-tagged postings**
+- [x] **Step 2: Update Phase 3 merge to emit field-tagged postings**
 
 Replace the Phase 3 merge block (lines 166-191) with:
 
@@ -205,11 +208,11 @@ Replace the Phase 3 merge block (lines 166-191) with:
 	return idx, nil
 ```
 
-- [ ] **Step 3: Remove the `strings` import if no longer used**
+- [x] **Step 3: Remove the `strings` import if no longer used**
 
 Check: `strings` is still used by `extractFirstHeading` (line 322, 323, 324). Keep the import.
 
-- [ ] **Step 4: Verify BuildIndex compiles**
+- [x] **Step 4: Verify BuildIndex compiles**
 
 Run: `go build ./internal/search/...`
 Expected: Compilation errors only in `Search` method (not `BuildIndex`). `BuildIndex` should compile cleanly now.
@@ -221,7 +224,7 @@ Expected: Compilation errors only in `Search` method (not `BuildIndex`). `BuildI
 **Files:**
 - Modify: `internal/search/index.go:193-305`
 
-- [ ] **Step 1: Replace the Search method**
+- [x] **Step 1: Replace the Search method**
 
 Replace the entire `Search` method (lines 195-305) with the new implementation:
 
@@ -342,22 +345,22 @@ func (idx *Index) Search(query string, limit int) []SearchResult {
 }
 ```
 
-- [ ] **Step 2: Verify full compilation**
+- [x] **Step 2: Verify full compilation**
 
 Run: `go build ./internal/search/...`
 Expected: Clean compilation, no errors.
 
-- [ ] **Step 3: Run all search tests**
+- [x] **Step 3: Run all search tests**
 
 Run: `go test ./internal/search/... -v -count=1`
 Expected: All tests PASS. If any ranking-order test fails (e.g., `TestSearch/title_boost` or `TestSearch/description_boost`), the change is expected — the new tokenized matching produces slightly different scores than the old substring matching. Update the expected values in the test to match the improved behavior.
 
-- [ ] **Step 4: Run full CI**
+- [x] **Step 4: Run full CI**
 
 Run: `make ci`
 Expected: All tests pass, coverage stays at 87%+.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/search/index.go internal/search/index_test.go
@@ -421,3 +424,13 @@ git commit -m "Update REVIEW.md: mark IDF and avgDL items as fixed
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 ```
+
+## Divergences from implementation
+
+- `Search` does not build a per-token `byDoc` map. Posting lists are ascending by `docIdx`, because `BuildIndex` phase 3
+  appends one document at a time, and `Search` intersects and scores by merging them (`distinctDocs`, `seekDoc`)
+  (4edc17b).
+- Ranking keeps a sorted top-N window (`rankTopN`) and breaks score ties by `docIdx`.
+- `Search` accepts `tag:name` filters (ff5f217). A tag-only query lists the tagged pages by title; a mixed query
+  restricts candidates to documents carrying every named tag. `Index` holds `metaIndex` and `pathToDoc` for this.
+- `BuildIndex` takes `(ctx, rootFS, metaIndex, excludePatterns)`.

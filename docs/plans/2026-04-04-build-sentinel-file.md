@@ -1,5 +1,7 @@
 # Build Sentinel File Implementation Plan
 
+**Status:** Implemented 2026-04-22 in 6e2f38b, c026418 and c779757. All steps shipped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace `--force` flag with a `.gomddoc-build` sentinel file that prevents accidental deletion of non-build directories.
@@ -15,7 +17,7 @@
 **Files:**
 - Modify: `cmd/gomddoc/build.go:34-163`
 
-- [ ] **Step 1: Remove `Force` field from `BuildCmd` struct**
+- [x] **Step 1: Remove `Force` field from `BuildCmd` struct**
 
 Replace lines 34-39:
 
@@ -28,7 +30,7 @@ type BuildCmd struct {
 }
 ```
 
-- [ ] **Step 2: Add sentinel constant and `isDirEmpty` helper**
+- [x] **Step 2: Add sentinel constant and `isDirEmpty` helper**
 
 Add after the `BuildCmd` struct (before `buildStats`):
 
@@ -60,7 +62,7 @@ func isDirEmpty(path string) (bool, error) {
 
 Add `"io"` to the import block.
 
-- [ ] **Step 3: Rewrite `guardOutputDir`**
+- [x] **Step 3: Rewrite `guardOutputDir`**
 
 Replace lines 144-163:
 
@@ -99,7 +101,7 @@ func (b *BuildCmd) guardOutputDir() error {
 }
 ```
 
-- [ ] **Step 4: Write sentinel in `Run()` after `guardOutputDir`**
+- [x] **Step 4: Write sentinel in `Run()` after `guardOutputDir`**
 
 Replace lines 54-56 in `Run()`:
 
@@ -116,12 +118,12 @@ Replace lines 54-56 in `Run()`:
 	}
 ```
 
-- [ ] **Step 5: Verify it compiles**
+- [x] **Step 5: Verify it compiles**
 
 Run: `go build ./cmd/gomddoc/`
 Expected: no errors (tests may fail — we fix those next)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/build.go
@@ -139,7 +141,7 @@ is written at the start of every build."
 **Files:**
 - Modify: `cmd/gomddoc/build_test.go`
 
-- [ ] **Step 1: Rewrite `TestGuardOutputDir` table**
+- [x] **Step 1: Rewrite `TestGuardOutputDir` table**
 
 Replace the entire `TestGuardOutputDir` function (lines 767-845) with:
 
@@ -227,7 +229,7 @@ func TestGuardOutputDir(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Add `TestGuardOutputDir_SentinelRemovesContent` to verify old files are deleted**
+- [x] **Step 2: Add `TestGuardOutputDir_SentinelRemovesContent` to verify old files are deleted**
 
 Add after `TestGuardOutputDir`:
 
@@ -253,7 +255,7 @@ func TestGuardOutputDir_SentinelRemovesContent(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Update `TestBuildCmd_Run_MultipleRuns`**
+- [x] **Step 3: Update `TestBuildCmd_Run_MultipleRuns`**
 
 Replace the `TestBuildCmd_Run_MultipleRuns` function (lines 685-714) with:
 
@@ -289,7 +291,7 @@ func TestBuildCmd_Run_MultipleRuns(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Fix any other test references to `Force` field**
+- [x] **Step 4: Fix any other test references to `Force` field**
 
 Search for `Force:` or `.Force` in `build_test.go` and remove those field assignments. Based on the code read, these appear in:
 - `TestBuildCmd_Run_MultipleRuns` (already replaced above)
@@ -297,12 +299,12 @@ Search for `Force:` or `.Force` in `build_test.go` and remove those field assign
 
 Grep for remaining references and fix.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `make ci`
 Expected: all tests pass, no lint errors
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/gomddoc/build_test.go
@@ -312,3 +314,10 @@ Replace --force test cases with sentinel-based equivalents.
 Add test for sentinel removing stale content and for sentinel
 presence after build."
 ```
+
+## Divergences from implementation
+
+- `guardOutputDir` refuses an output path that exists but is not a directory, and a sentinel path that is a directory
+  counts as no sentinel (2bfa95c).
+- A stat error other than not-exist, on the output directory or the sentinel, is returned as an error instead of being
+  read as "absent" or "not created by gomddoc build" (2bfa95c).
