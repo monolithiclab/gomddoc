@@ -79,5 +79,10 @@ jobs:
           version: "~> v2.17"
           args: release --clean
         env:
+          # GoReleaser otherwise picks the tag from `git tag --points-at HEAD`, and git's
+          # version sort ranks v0.1.3-rc1 above v0.1.3. With both on one commit, the v0.1.3
+          # push re-released the rc (and re-signed its checksums under the v0.1.3 identity,
+          # which install.sh then rejected for the rc). Pin it to the tag that triggered us.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
