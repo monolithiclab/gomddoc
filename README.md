@@ -52,10 +52,13 @@ Prebuilt binaries and checksums for Linux and macOS (amd64/arm64) are attached t
 
 ```bash
 cosign verify-blob SHA256SUMS \
-  --certificate SHA256SUMS.pem --signature SHA256SUMS.sig \
+  --bundle SHA256SUMS.sigstore.json \
   --certificate-identity-regexp '^https://github.com/monolithiclab/gomddoc/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
+
+Releases up to v0.1.2 predate the bundle and ship `SHA256SUMS.sig` + `SHA256SUMS.pem` instead;
+pass `--certificate SHA256SUMS.pem --signature SHA256SUMS.sig` in place of `--bundle`.
 
 Build from source:
 

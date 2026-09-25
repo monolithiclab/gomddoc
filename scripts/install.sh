@@ -117,6 +117,12 @@ verify_checksum() {
 # The certificate identity pins the signature to this repository's release
 # workflow at this exact tag, so a signature lifted from another project — or
 # from another tag of this one — does not verify.
+#
+# Releases are signed into a single Sigstore bundle (SHA256SUMS.sigstore.json).
+# Tags up to v0.1.2 predate it and carry a detached .sig/.pem pair instead, so
+# the pair is tried only when the tag has no bundle to download. That fallback is
+# not a downgrade: both shapes are checked against the same identity, and a
+# signature that fails to verify is fatal either way.
 verify_signature() {
 	if ! need cosign; then
 		if [ -n "${GOMDDOC_REQUIRE_COSIGN:-}" ]; then
@@ -127,18 +133,23 @@ verify_signature() {
 		return 0
 	fi
 
-	if ! fetch "${2}/SHA256SUMS.sig" "${1}.sig" ||
-		! fetch "${2}/SHA256SUMS.pem" "${1}.pem"; then
-		die "cosign is installed but the signature for ${3} could not be downloaded"
+	# $@ is reused for cosign's signature flags; POSIX sh has no locals, so these
+	# names must not collide with main's globals (tag, base).
+	sums=$1 sig_base="${2}/SHA256SUMS" release=$3
+	if fetch "${sig_base}.sigstore.json" "${sums}.sigstore.json" 2>/dev/null; then
+		set -- --bundle "${sums}.sigstore.json"
+	elif fetch "${sig_base}.sig" "${sums}.sig" &&
+		fetch "${sig_base}.pem" "${sums}.pem"; then
+		set -- --certificate "${sums}.pem" --signature "${sums}.sig"
+	else
+		die "cosign is installed but the signature for ${release} could not be downloaded"
 	fi
 
-	cosign verify-blob \
-		--certificate "${1}.pem" \
-		--signature "${1}.sig" \
-		--certificate-identity "https://github.com/${REPO}/.github/workflows/release.yml@refs/tags/${3}" \
+	cosign verify-blob "$@" \
+		--certificate-identity "https://github.com/${REPO}/.github/workflows/release.yml@refs/tags/${release}" \
 		--certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-		"$1" >/dev/null 2>&1 ||
-		die "cosign could not verify SHA256SUMS for ${3}; refusing to install"
+		"$sums" >/dev/null 2>&1 ||
+		die "cosign could not verify SHA256SUMS for ${release}; refusing to install"
 
 	info "Signature verified."
 }

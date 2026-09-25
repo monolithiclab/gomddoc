@@ -700,3 +700,24 @@ reports is by construction what serve hits, and serve's log gains a stable `code
 - `gomddoc_doctor` reuses the MCP server's provider: a filesystem provider reads the disk live, and a Git source is
   not re-cloned on every call.
 
+
+## Release Checksums Signed as a Sigstore Bundle, With a Fallback for Older Tags
+
+**Context**: `sigstore/cosign-installer` v4 installs cosign v3, whose `sign-blob` requires `--bundle` and drops the
+detached `--output-signature`/`--output-certificate` pair `.goreleaser.yaml` used. `release.yml` had been held at
+installer v3 (cosign v2) to avoid the change.
+
+**Decision**: sign `SHA256SUMS` into one `SHA256SUMS.sigstore.json` bundle (signature, certificate and transparency-log
+proof together) and move to installer v4. `scripts/install.sh` tries the bundle and falls back to `.sig`/`.pem` only
+when the bundle *cannot be downloaded*, never when it fails to verify: v0.1.0–v0.1.2 shipped only the pair, and
+`GOMDDOC_VERSION` can pin them. Both shapes are checked against the same tag-pinned workflow identity, so the fallback
+buys no downgrade — a forged pair fails exactly as a forged bundle does.
+
+- *Alternatives*: staying on cosign v2 (its last release line; only critical fixes from here); dropping the fallback
+  (the "no backward compatibility" rule is about gomddoc's own code, not artifacts already installed from — every
+  cosign user pinning an old tag would hit a hard failure); publishing both shapes from new releases (two signing
+  paths to keep working for a format the installer no longer needs).
+- `docker_signs` is unchanged: `cosign sign --yes <image>@<digest>` is the same invocation under v3.
+- Verified before landing: the fallback installs v0.1.2 under cosign v3.1.3 with `GOMDDOC_REQUIRE_COSIGN=1`, and the
+  bundle-path `verify-blob` command accepts GoReleaser's own v2.18.2 `checksums.txt.sigstore.json` and rejects it
+  when the identity names another tag. The signing side is only exercised by a real tag.

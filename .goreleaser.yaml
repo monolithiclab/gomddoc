@@ -27,15 +27,17 @@ archives:
 checksum:
   name_template: "SHA256SUMS"
 
+# cosign v3 writes the signature, certificate and transparency-log proof into one
+# Sigstore bundle; the separate .sig/.pem pair (--output-signature/--output-certificate)
+# is gone. Releases up to v0.1.2 carry the old pair, which is why scripts/install.sh
+# falls back to it when a tag has no bundle.
 signs:
   - id: cosign-checksums
     cmd: cosign
-    signature: "${artifact}.sig"
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
-      - "--output-certificate=${certificate}"
-      - "--output-signature=${signature}"
+      - "--bundle=${signature}"
       - "${artifact}"
       - "--yes"
     artifacts: checksum

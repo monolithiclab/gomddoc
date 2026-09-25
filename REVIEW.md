@@ -188,6 +188,8 @@ the summary and `git log` around 2026-06-16 for the commits.
 - ~~**`install.sh` fails open on checksum verification, never verifies the cosign signature**~~ ✅
   FIXED. Missing-tool branch now `die`s; `verify_signature` runs `cosign verify-blob` pinned to this
   repo's release workflow at the installed tag; `GOMDDOC_REQUIRE_COSIGN=1` makes it mandatory.
+  Since the cosign v3 migration it verifies the `SHA256SUMS.sigstore.json` bundle, falling back to
+  the `.sig`/`.pem` pair only for tags that have no bundle (v0.1.0–v0.1.2).
 - ~~**Release workflow actions pinned to mutable tags while holding `id-token: write`**~~ ✅ FIXED —
   all action refs in both workflows are full commit SHAs; goreleaser pinned to `~> v2.17`. Dependabot
   keeps the pins current.
