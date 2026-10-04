@@ -116,9 +116,9 @@ testsite/              # Lorem ipsum test site for quick testing
 
 1. Make minimal, focused code changes
 2. Write/update tests (`*_test.go`) — target 87%+ coverage
-3. Run `make ci` — must pass before drafting commit
+3. Run `make ci` — must pass before committing
 4. Update relevant documentation in `docs/`
-5. Draft and print the Git commit message (let user commit manually)
+5. Commit (`type(scope): summary`, with the session's trailers); never push unless asked
 6. Never squash commits — each commit must be atomic and self-contained
 
 ### Conventions
