@@ -388,7 +388,7 @@ make ci           # lint + test, never mutating — run this before committing
 make run          # Serve ./testsite locally (go run; no hot reload)
 make test         # Run tests with race detection and a coverage report
 make bench        # Run benchmarks (bench-save / bench-compare for benchstat baselines)
-make lint         # Run every check (format, vet, staticcheck, golangci-lint, gosec, gocritic, govulncheck, go mod tidy, pins)
+make lint         # Run every check (golangci-lint with gofmt/vet/staticcheck/gosec/gocritic, govulncheck, go mod tidy, pins)
 make lint-fix     # Apply go fix modernizations, then gofmt -s
 make build        # Build binary to build/gomddoc
 make install      # Install gomddoc to $GOBIN (or $GOPATH/bin)
@@ -396,7 +396,7 @@ make clean        # Remove build artifacts
 make update-deps  # Update dependencies
 ```
 
-`make lint -j8` runs the linters in parallel; each one is also a target of its own (`make lint-vulncheck`).
+`make lint -j8` runs the checks in parallel; each one is also a target of its own (`make lint-vulncheck`).
 `make lint` needs network access for `govulncheck`.
 
 There is no file watcher. `gomddoc preview` runs in dev mode, which re-reads content and templates

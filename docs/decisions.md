@@ -756,3 +756,17 @@ the scoped vulncheck) still hold and carry over unchanged.
 - `ci` is `lint test` and never mutates the tree; `codefix` + `format` became `lint-fix`, which `ci` does not run.
 - `lint` gained `lint-mod` (`go mod tidy -diff`) and `lint-pins` (actions by SHA, Docker bases by digest).
 - `COVERAGE_MIN` makes the 87% target a failing check rather than a number in CLAUDE.md.
+
+## One Linter: golangci-lint With the Lab Config
+
+**Decision** (2026-10-07): `make lint` runs golangci-lint v2 alone with the lab's canonical `.golangci.yml`, which
+absorbs `gofmt -s`, `go vet`, staticcheck (ST1000 on, the same six ST checks off as before), gosec (outside `_test.go`)
+and gocritic's `builtinShadow`/`importShadow`. `lint-format`, `lint-vet`, `lint-staticcheck`, `lint-gosec` and
+`lint-gocritic` are gone, `staticcheck.conf` is deleted, and `tools/go.mod` drops staticcheck, gosec and gocritic.
+
+- *Evidence*: on gomddoc the single config reported exactly what the six separate tools did, on clean code and on nine
+  planted violations (go-cli-development skill, "Why one linter"). The switch found nothing new here: `0 issues`.
+- The repo's previous `.golangci.yml` (the `golangci-lint migrate` output described above) used the `comments` and
+  `common-false-positives` presets; the lab config drops them because they hide ST1000 and G304.
+- *Cost if wrong*: a check one standalone tool ran and golangci-lint's wrapper skips would pass silently. Re-adding a
+  tool is one `go get -tool` line and one `lint-*` step in the canonical `go.mk`.

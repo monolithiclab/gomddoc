@@ -25,8 +25,8 @@ make run                    # Run locally (go run ./cmd/gomddoc serve testsite)
 Always use Makefile targets. `make ci` is the single command to validate changes. The Makefile is
 `include common.mk` + `include go.mk`, byte-identical copies of the lab canonicals (never edit them
 here); linters are pinned in `tools/go.mod` and run via `go tool -modfile=tools/go.mod`. Every
-individual check lives under `lint-*` (`lint-format`, `lint-vet`, `lint-staticcheck`, `lint-golangci`,
-`lint-gosec`, `lint-gocritic`, `lint-vulncheck`, `lint-mod`, `lint-pins`) and is reachable directly by
+individual check lives under `lint-*` (`lint-golangci`, `lint-vulncheck`, `lint-mod`, `lint-pins`) and is
+reachable directly by
 name (`make lint-vulncheck`) when you only want to re-run one.
 
 ## Documentation
@@ -144,8 +144,8 @@ testsite/              # Lorem ipsum test site for quick testing
   `/{lang}` before the language handler runs, so `URLRedirectMap` **keys** stay content-root-relative
   while **values** must be absolute site paths. `BuildRedirectMap`'s and `ExtensionRedirect`'s
   `basePath` parameter applies to targets only.
-- **Every package carries a package comment, and it says the non-obvious thing** — `staticcheck.conf`
-  re-enables ST1000, which `make lint` had been running with off, so a new package now fails the
+- **Every package carries a package comment, and it says the non-obvious thing** — the lab `.golangci.yml`
+  enables ST1000, which `make lint` had been running with off, so a new package now fails the
   build until it has one. The bar is not "Package x does x": each comment states the package's job in
   a sentence and then the one contract a caller gets wrong — why `negotiate` owns the `.md` MIME
   registration, why `metadata`'s slice accessors clone deeply, why `navigation`'s Generator must come
@@ -185,7 +185,7 @@ testsite/              # Lorem ipsum test site for quick testing
 - **Never name a local after a builtin or an imported package** — `min`, `max`, `path`, `text`, `fs`,
   `metadata`, `real`. The compiler accepts the shadow silently and the code keeps working until
   someone reaches for the shadowed name inside that scope, so the class is invisible by construction.
-  `make lint` gates it (`gocritic -enable="builtinShadow,importShadow"`); aliasing the import
+  `make lint` gates it (gocritic `builtinShadow`/`importShadow` in `.golangci.yml`); aliasing the import
   (`txt "…/internal/text"`) is the fallback when the local really has no better name, but usually it
   does — the shadowing name is vague precisely because it was borrowed.
 - **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains

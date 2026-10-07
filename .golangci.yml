@@ -1,26 +1,41 @@
-# golangci-lint v2 config.
-#
-# The project ran bare `golangci-lint run ./...` under v1 with no config file,
-# relying on v1's built-in default issue exclusions (EXC0001 etc.) — the ones
-# that keep errcheck quiet about unchecked defer f.Close()/os.Remove()/
-# fmt.Fprint* returns, the idiomatic Go pattern this codebase uses throughout.
-# v2 dropped those defaults; this file is `golangci-lint migrate`'s output
-# against a v1 config equivalent to the old implicit defaults, so v2 lints the
-# same set of things v1 did. See docs/decisions.md.
+# Monolithic Lab golangci-lint v2 config: the one Go linter run. It absorbs gofmt -s, go vet, staticcheck (ST1000
+# on), gosec and gocritic's shadow checks. Canonical copy: ~/.claude/skills/go-cli-development/golangci.yml.
 version: "2"
 linters:
+  enable:
+    - gosec
+    - gocritic
+  settings:
+    staticcheck:
+      checks: ["all", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022", "-ST1023"]
+    gocritic:
+      enabled-checks:
+        - builtinShadow
+        - importShadow
   exclusions:
     generated: lax
     presets:
-      - comments
-      - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # Standalone gosec skips _test.go files; keep that scope.
+      - path: _test\.go$
+        linters:
+          - gosec
     paths:
       - third_party$
       - builtin$
       - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
 formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
   exclusions:
     generated: lax
     paths:
