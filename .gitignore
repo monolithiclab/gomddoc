@@ -1,8 +1,14 @@
+.DS_Store
+.build/
+.claude/settings.local.json
+.claude/worktrees/
+.superpowers/
+.worktrees/
+
 .claude/
 GEMINI.md
 .agents/
 
-.DS_Store
 *.log
 cover.out
 *.test
@@ -10,4 +16,3 @@ cover.out
 build/
 dist/
 docs/.gomddoc/
-.worktrees/
