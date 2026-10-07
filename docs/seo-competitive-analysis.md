@@ -10,7 +10,7 @@ author: "research"
 > what to build. The competitor survey and the rationale for each recommendation still hold; the
 > recommendation sections describe gomddoc as it was then. [Implementation Status](#implementation-status)
 > and the other statements about gomddoc's own capabilities were checked against the code on 2026-09-25.
-> [roadmap.md](roadmap.md) Phase 9 is the record of when each item shipped.
+> [ROADMAP.md](../ROADMAP.md) Phase 9 is the record of when each item shipped.
 
 ## Implementation Status
 

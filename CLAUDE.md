@@ -31,10 +31,10 @@ individual check lives under `lint-*` (`lint-vet`, `lint-staticcheck`, `lint-gol
 
 ```
 REVIEW.md                   # Codebase review tracker (issues, recommendations, scores)
+ROADMAP.md                  # Phased roadmap, deferred ideas
 docs/
 ├── architecture.md         # Component relationships, data flow, middleware, themes
 ├── decisions.md            # Technical choices log (with alternatives considered)
-├── roadmap.md              # Phased roadmap, deferred ideas
 ├── seo-competitive-analysis.md  # Pre-Phase-9 SEO research vs. MkDocs/Docusaurus/Hugo
 ├── guide.go                # Embeds guide/ into the binary (docs.Guide)
 ├── guide/                  # Feature documentation (agent + human audience)
@@ -76,7 +76,7 @@ docs/
 3. Developer validates the spec
 4. For a multi-step feature, break the spec into a plan in `docs/plans/` — not `docs/specs/`
 5. Implement the feature
-6. Update `docs/roadmap.md`, `docs/architecture.md`, `docs/decisions.md`, and `docs/guide/` as needed
+6. Update `ROADMAP.md`, `docs/architecture.md`, `docs/decisions.md`, and `docs/guide/` as needed
 
 ## Project Structure
 

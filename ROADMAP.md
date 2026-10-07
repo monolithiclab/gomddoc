@@ -359,7 +359,7 @@ configured MCP client, for a reader who has a gomddoc page open and nothing conf
       `internal/template/navigation` indexes behind `/api/search`. An in-tab agent gets structured
       search and navigation instead of scraping the DOM, without the reader or the agent's harness
       configuring an MCP client. Gate behind a `.Feature` like every other optional UI component
-      (see `docs/roadmap.md`'s Theme Configuration section), off by default until the API is
+      (see `ROADMAP.md`'s Theme Configuration section), off by default until the API is
       unflagged in at least one shipping browser.
       **Not implementable end-to-end yet** — `build` output is static HTML with no backend for the
       tool's `execute` callback to call, so like Content Annotations this is `serve`/`preview` only

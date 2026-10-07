@@ -14,7 +14,7 @@ pretty-printed page.
 > code outside this module can import it, and renderers are registered in `setupPipeline`
 > (`cmd/gomddoc/pipeline.go`) — a `package main` you do not control. Adding a renderer means forking
 > gomddoc or contributing upstream. There is no runtime plugin mechanism, and adding one is not on
-> the [roadmap](../../roadmap.md).
+> the [roadmap](../../../ROADMAP.md).
 
 ## The ContentRenderer contract
 
