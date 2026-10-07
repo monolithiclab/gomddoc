@@ -29,7 +29,7 @@ updates:
       actions-minor-patch:
         update-types: [minor, patch]
 
-  # The release image is built FROM gcr.io/distroless/static-debian12:nonroot;
+  # The release image is built FROM gcr.io/distroless/static-debian13:nonroot;
   # base-image CVEs are the main reason to rebuild between releases.
   - package-ecosystem: docker
     directory: "/"

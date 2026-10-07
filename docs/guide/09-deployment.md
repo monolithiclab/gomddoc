@@ -171,7 +171,7 @@ rm gomddoc
 ```
 
 The runtime image is [distroless](https://github.com/GoogleContainerTools/distroless)
-(`gcr.io/distroless/static-debian12:nonroot`) and runs as a non-root user. It contains only the
+(`gcr.io/distroless/static-debian13:nonroot`) and runs as a non-root user. It contains only the
 gomddoc binary at `/gomddoc`: no shell, no package manager, no unnecessary system libraries. Theme assets are
 embedded in the binary via `//go:embed`, so nothing else is copied in. The image exposes port 8080 and its
 entrypoint is `/gomddoc`.
