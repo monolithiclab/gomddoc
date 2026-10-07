@@ -149,6 +149,14 @@ and `linux/arm64`, and signed with cosign:
 docker pull ghcr.io/monolithiclab/gomddoc:latest
 ```
 
+The signature is keyless, tied to the release workflow; verify an image before running it:
+
+```bash
+cosign verify ghcr.io/monolithiclab/gomddoc:<version> \
+  --certificate-identity-regexp '^https://github.com/monolithiclab/gomddoc/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 Tags: `{version}` (multi-arch manifest, e.g. `0.1.2`), `{version}-amd64`, `{version}-arm64`, and `latest`, which is
 not moved by prereleases. For other installation methods (Homebrew, install script, `go install`, release archives),
 see the [Quickstart](01-quickstart.md).

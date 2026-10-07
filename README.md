@@ -67,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/monolithiclab/gomddoc/main/scripts/
   | GOMDDOC_VERSION=0.1.3 GOMDDOC_INSTALL_DIR="$HOME/bin" sh
 ```
 
-Prebuilt binaries and checksums for Linux and macOS (amd64/arm64) are attached to each
+Prebuilt binaries, an SPDX SBOM per archive and checksums for Linux and macOS (amd64/arm64) are attached to each
 [GitHub Release](https://github.com/monolithiclab/gomddoc/releases). Checksums are signed with
 [cosign](https://github.com/sigstore/cosign) — verify them with:
 

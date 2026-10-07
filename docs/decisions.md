@@ -770,3 +770,18 @@ and gocritic's `builtinShadow`/`importShadow`. `lint-format`, `lint-vet`, `lint-
   `common-false-positives` presets; the lab config drops them because they hide ST1000 and G304.
 - *Cost if wrong*: a check one standalone tool ran and golangci-lint's wrapper skips would pass silently. Re-adding a
   tool is one `go get -tool` line and one `lint-*` step in the canonical `go.mk`.
+
+## Release Pipeline on the Lab's Canonical Shape
+
+**Decision** (2026-10-07): the release converges on go-cli-development's canonical choices. GoReleaser's `before` hook
+is `go mod verify` instead of `go mod tidy` (tidy can rewrite go.mod/go.sum mid-release from whatever the proxy serves;
+verify writes nothing). Each archive gets an SPDX SBOM (`<archive>.sbom.json`, written by syft with `--enrich` off),
+covered by `SHA256SUMS` and so by its Sigstore bundle. `goreleaser-action` runs an exact `v2.18.2` rather than
+`~> v2.17`, and the binfmt and buildkit images are pinned by digest, since both run inside the job holding the
+release, package and OIDC write scopes.
+
+- *Evidence*: `goreleaser check` (config valid; only the already-documented `dockers`/`brews` deprecations) and
+  `goreleaser release --snapshot --clean --skip=publish,sign,docker` with syft on `PATH` produced four archives, four
+  SBOMs and a `SHA256SUMS` listing all eight. Signing and the image push are only exercised by a real tag.
+- *Cost if wrong*: a release fails at the SBOM step (syft missing or changed flags), which fails before anything is
+  published; the digest pins need a Dependabot-style manual refresh when binfmt or buildkit ship a fix.

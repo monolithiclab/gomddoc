@@ -33,6 +33,23 @@ the same origin as the archive, so the checksum alone does not prove where the b
 `GOMDDOC_REQUIRE_COSIGN=1` turns the missing-cosign warning into an abort. The install also fails
 closed if no SHA-256 tool is available, rather than skipping the checksum.
 
+### Verifying a release by hand
+
+Each [GitHub Release](https://github.com/monolithiclab/gomddoc/releases) carries the archives, one SPDX SBOM per
+archive (`<archive>.sbom.json`), `SHA256SUMS` over all of them, and `SHA256SUMS.sigstore.json`, a cosign bundle
+(signature, certificate and transparency-log proof) signed keylessly by the release workflow:
+
+```bash
+cosign verify-blob SHA256SUMS \
+  --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/monolithiclab/gomddoc/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --ignore-missing -c SHA256SUMS   # macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+```
+
+Releases up to v0.1.2 predate the bundle and ship `SHA256SUMS.sig` + `SHA256SUMS.pem` instead; pass
+`--certificate SHA256SUMS.pem --signature SHA256SUMS.sig` in place of `--bundle`. Releases up to v0.1.3 carry no SBOM.
+
 Building from source:
 
 ```bash
