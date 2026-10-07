@@ -35,7 +35,7 @@ var (
 // ThemeFeatures reports the feature keys ({{ .Feature "x" }}) and CSS
 // variables (var(--theme-x)) the named theme reads. It is best effort — names
 // only, no descriptions or defaults — until themes declare their features (see
-// docs/plans/2026-09-23-theme-manifest-parked.md).
+// docs/superpowers/plans/2026-09-23-theme-manifest.md).
 //
 // It scans the files the renderer would parse, not merely the theme's
 // directory: parseThemeTemplate layers the default theme's partials under a

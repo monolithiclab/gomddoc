@@ -1,7 +1,7 @@
 # See Also Section (Tag Components Sub-Spec 2 of 3)
 
 **Status**: Implemented 2026-05-15 (commits `dd62e36`..`32f9b56`, merged in `0084783` on 2026-05-16). Design approved
-2026-04-24. Sub-spec 3 (`tag:` search syntax) has since shipped: `docs/specs/2026-05-19-tag-search-syntax.md`.
+2026-04-24. Sub-spec 3 (`tag:` search syntax) has since shipped: `docs/superpowers/specs/2026-05-19-tag-search-syntax-design.md`.
 **Sub-spec**: 2 of 3 in the broader Tag Components roadmap entry
 **Sub-specs in scope**: "See also" section at the bottom of every page that has at least one
 related page (linked by shared frontmatter tags)

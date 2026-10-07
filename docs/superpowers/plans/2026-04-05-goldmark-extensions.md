@@ -11,7 +11,7 @@
 
 **Tech Stack:** goldmark AST (`github.com/yuin/goldmark/ast`), goldmark parser/renderer interfaces
 
-**Spec:** `docs/specs/2026-04-05-goldmark-extensions-design.md`
+**Spec:** `docs/superpowers/specs/2026-04-05-goldmark-extensions-design.md`
 
 ---
 

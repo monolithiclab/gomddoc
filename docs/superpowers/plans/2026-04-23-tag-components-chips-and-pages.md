@@ -11,7 +11,7 @@ on 2026-05-15). The coordinated `gomddoc-themes` change shipped: all 7 themes ca
 
 **Tech Stack:** Go 1.25+, `html/template`, `net/http` (Go 1.22+ pattern syntax), `fstest.MapFS` for tests, existing `internal/locale` package for translations.
 
-**Spec:** `docs/specs/2026-04-23-tag-components-chips-and-pages.md`
+**Spec:** `docs/superpowers/specs/2026-04-23-tag-components-chips-and-pages-design.md`
 
 ---
 
@@ -1753,7 +1753,7 @@ A separate `gomddoc-website` PR should follow, documenting:
 
 ## Divergences from implementation
 
-See the spec's divergences section (`docs/specs/2026-04-23-tag-components-chips-and-pages.md`) for behavior.
+See the spec's divergences section (`docs/superpowers/specs/2026-04-23-tag-components-chips-and-pages-design.md`) for behavior.
 Plan-specific:
 
 - Task 1: tags are lowercased and trimmed by `normalizeTag`, which also rejects `\`; later commits added per-page

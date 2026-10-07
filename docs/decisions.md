@@ -676,7 +676,7 @@ will need bumping again as new stdlib CVEs land, same as any dependency.
 
 **Context**: gomddoc should be usable by an AI harness with nothing but the binary: how configuration works (flag vs.
 env vs. file, keys, defaults), what the theme supports, and its own guide
-(`docs/specs/2026-09-23-self-documentation-design.md`).
+(`docs/superpowers/specs/2026-09-23-self-documentation-design.md`).
 
 **Decision 1 — config facts live on the struct fields.** A `doc` tag on every leaf (plus `max`, `default_doc`), read by
 the same reflection walk that already derived env var names. `config.Schema()` → JSON Schema, `info`, the MCP report.
@@ -696,7 +696,7 @@ the same reflection walk that already derived env var names. `config.Schema()` �
 
 **Decision 3 — theme facts by template scan, for now.** Feature keys and CSS vars are names scanned from the active
 theme (`"source": "template-scan"`). A `theme.yml` manifest was designed and parked with open questions
-(`docs/plans/2026-09-23-theme-manifest-parked.md`).
+(`docs/superpowers/plans/2026-09-23-theme-manifest.md`).
 
 **Decision 4 — flags that set a config value under a different env var carry `setting:"<key>"`.** `--domain`
 (`GOMDDOC_DOMAIN`) sets `site.meta.domain` (`GOMDDOC_SITE_META_DOMAIN`); joining flags to settings by env var alone
@@ -706,7 +706,7 @@ change (docs/reviews/2026-07-29-codebase-review.md §11.1).
 ## `doctor`'s Findings Come From the Code That Detects Each Problem
 
 **Context**: `gomddoc doctor` must report every configuration problem and the cheap content problems
-(`docs/specs/2026-09-23-doctor-design.md`). Several of them were already detected at runtime and only logged —
+(`docs/superpowers/specs/2026-09-23-doctor-design.md`). Several of them were already detected at runtime and only logged —
 or silently dropped.
 
 **Decision**: producers (`config` normalize/validate/env, `resolve.Build`, `server.BuildRedirectMap`, the tag-route

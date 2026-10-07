@@ -4,7 +4,7 @@
 package, roadmap item "Theme manifest — parked" open). Do not implement until the open questions below are settled
 with the developer. `gomddoc doctor` (`2497403` and earlier) has since shipped theme checks on top of the template
 scan; see Divergences.
-**Context**: `docs/specs/2026-09-23-self-documentation-design.md` — the self-documentation sub-spec uses a
+**Context**: `docs/superpowers/specs/2026-09-23-self-documentation-design.md` — the self-documentation sub-spec uses a
 best-effort template scan (`template.ThemeFeatures`) for theme facts in the meantime.
 
 ## Problem

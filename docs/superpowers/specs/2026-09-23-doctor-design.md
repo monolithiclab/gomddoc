@@ -4,7 +4,7 @@
 `88da0d0`, `d307429`). Design approved 2026-09-23. Link and anchor checking is still not implemented (open roadmap
 item). Sub-spec 3 (`gomddoc help <topic>`) shipped in `37250b5` with no spec document.
 **Roadmap entry**: "Self-Documentation via MCP" → `gomddoc doctor`
-**Builds on**: `docs/specs/2026-09-23-self-documentation-design.md` (capabilities report, `config.Schema()`,
+**Builds on**: `docs/superpowers/specs/2026-09-23-self-documentation-design.md` (capabilities report, `config.Schema()`,
 `template.ThemeFeatures`, `metadata.FrontmatterFields`, the stdio-only `gomddoc://` namespace)
 **Deferred**: link and anchor checking (follow-up), `gomddoc help <topic>` (sub-spec 3)
 

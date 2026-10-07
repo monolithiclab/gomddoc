@@ -1161,7 +1161,7 @@ docs.Guide ──► internal/guide (topics, sections, lazy search) ──► go
 - Flags are joined onto settings by env var name, or by a Kong `setting:"<key>"` tag where a flag's env var differs
   from the setting's (`--domain`, preview's `--dir-index`).
 - Theme facts are a best-effort template scan (`.Feature "x"`, `var(--theme-x)`) until theme manifests are designed
-  (`docs/plans/2026-09-23-theme-manifest-parked.md`).
+  (`docs/superpowers/plans/2026-09-23-theme-manifest.md`).
 - `docs/guide.go` (`package docs`) embeds `docs/guide/`; drift tests hold the guide to the env vars, config keys and
   frontmatter fields the code declares.
 

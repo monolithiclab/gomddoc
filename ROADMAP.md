@@ -146,7 +146,7 @@ _Usability improvements to the serve, build, and preview subcommands._
 _Technical SEO features to compete with MkDocs Material, Docusaurus, and Hugo for search rankings.
 gomddoc's server-rendered HTML with no client-side framework is a natural Core Web Vitals advantage —
 these items close the gap on crawl management, structured data, and social sharing.
-See `docs/seo-competitive-analysis.md` for the full competitive analysis — it is the pre-Phase-9
+See `docs/research/seo-competitive-analysis.md` for the full competitive analysis — it is the pre-Phase-9
 research that produced this list, so its verdicts on gomddoc are historical; this section is the
 authoritative record of what shipped._
 
@@ -375,18 +375,18 @@ how to build documentation sites with gomddoc without external docs._
 - [x] **`gomddoc mcp` serves bundled guide**: always, alongside the site's content rather than only when no
       directory is given (`gomddoc mcp` defaults its directory to `.`, so "no directory" never happens). It lives
       under `gomddoc://guide/{+path}` and the `gomddoc_guide` tool; stdio only, not on `serve`'s `/_mcp/`. See
-      `docs/specs/2026-09-23-self-documentation-design.md`.
+      `docs/superpowers/specs/2026-09-23-self-documentation-design.md`.
 - [x] **Agent onboarding prompt**: `learn_gomddoc`.
 - [x] **Machine-readable capabilities**: `gomddoc info [--json]`, `gomddoc schema`, `gomddoc://capabilities`,
       `gomddoc://schema/config` — all projected from the config structs' tags.
 - [x] **`gomddoc doctor`** (sub-spec 2): every configuration problem and the cheap content problems, each with
       location and fix; `--json`, `--strict`, `-v`; the stdio `gomddoc_doctor` MCP tool. See
-      `docs/specs/2026-09-23-doctor-design.md` and the guide's Doctor page.
+      `docs/superpowers/specs/2026-09-23-doctor-design.md` and the guide's Doctor page.
 - [ ] **`doctor` link checking**: broken internal links and anchors, resolved the way serve and build resolve them.
 - [x] **`gomddoc help <topic>`** (sub-spec 3): list, read, section and search the embedded guide in the terminal
       (`$PAGER` on a terminal, plain markdown when piped); every command's `--help` names its guide topic.
 - [ ] **Theme manifest — parked**: themes declaring their features and vars (`theme.yml`), replacing the template
-      scan. Design and open questions in `docs/plans/2026-09-23-theme-manifest-parked.md`.
+      scan. Design and open questions in `docs/superpowers/plans/2026-09-23-theme-manifest.md`.
 
 **Why:** gomddoc's MCP server already lets agents query _user_ documentation. Bundling its own
 guide closes the loop — agents can learn how to _use_ gomddoc itself via the same protocol.

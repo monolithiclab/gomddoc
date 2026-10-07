@@ -36,11 +36,11 @@ ROADMAP.md                  # Phased roadmap, deferred ideas
 docs/
 ├── architecture.md         # Component relationships, data flow, middleware, themes
 ├── decisions.md            # Technical choices log (with alternatives considered)
-├── seo-competitive-analysis.md  # Pre-Phase-9 SEO research vs. MkDocs/Docusaurus/Hugo
+├── research/               # Pre-Phase-9 SEO research vs. MkDocs/Docusaurus/Hugo
 ├── guide.go                # Embeds guide/ into the binary (docs.Guide)
 ├── guide/                  # Feature documentation (agent + human audience)
-├── specs/                  # Feature specifications (written before implementation)
-├── plans/                  # Task-by-task implementation plans derived from a spec
+├── superpowers/specs/      # Feature specifications (written before implementation)
+├── superpowers/plans/      # Task-by-task implementation plans derived from a spec
 ├── reviews/                # Codebase review rounds (2026-07-29-codebase-review.md: open findings, scores)
 └── skills/                 # Agent skills (SKILL.md + scripts/) — excluded from coverage
 ```
@@ -74,9 +74,9 @@ docs/
 **Feature workflow:**
 
 1. Features originate from `docs/reviews/` findings or user requests (roadmap additions)
-2. Write a spec in `docs/specs/`, asking the developer clarifying questions
+2. Write a spec in `docs/superpowers/specs/`, asking the developer clarifying questions
 3. Developer validates the spec
-4. For a multi-step feature, break the spec into a plan in `docs/plans/` — not `docs/specs/`
+4. For a multi-step feature, break the spec into a plan in `docs/superpowers/plans/` — not `docs/superpowers/specs/`
 5. Implement the feature
 6. Update `ROADMAP.md`, `docs/architecture.md`, `docs/decisions.md`, and `docs/guide/` as needed
 

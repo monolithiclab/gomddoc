@@ -11,7 +11,7 @@ unticked: REVIEW.md in git starts at d648daf (2026-04-23) and never carried the 
 
 **Tech Stack:** Go 1.26+, goldmark AST renderers, vanilla JS web components (Shadow DOM for heading-anchor, light DOM for admonition)
 
-**Spec:** `docs/specs/2026-04-07-html-in-go-to-web-components.md`
+**Spec:** `docs/superpowers/specs/2026-04-07-html-in-go-to-web-components-design.md`
 
 ---
 

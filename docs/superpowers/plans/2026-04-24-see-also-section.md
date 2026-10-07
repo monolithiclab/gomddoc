@@ -12,7 +12,7 @@ all 7 themes call `{{ template "see-also" . }}`.
 
 **Tech Stack:** Go 1.25+, `html/template`, `slices.SortFunc` for sort, existing `internal/locale` for i18n.
 
-**Spec:** `docs/specs/2026-04-24-see-also-section.md`
+**Spec:** `docs/superpowers/specs/2026-04-24-see-also-section-design.md`
 
 ---
 

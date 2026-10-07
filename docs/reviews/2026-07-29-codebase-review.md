@@ -372,7 +372,7 @@ All 15 lettered findings (D1-D15: stale `--dev` flag docs, wrong navigation temp
 references, admin-port health-endpoint claims, the dead custom-renderers doc, Docker/theme-count/
 binary-size/RAM claims, sitemap-index-as-live-endpoint, README.html-that-doesn't-exist, and more)
 are ✅ **FIXED**. Corrected files: `README.md`, `CLAUDE.md`, `docs/architecture.md`,
-`docs/decisions.md`, `docs/guide/*.md` (multiple), `docs/seo-competitive-analysis.md` (dated rather
+`docs/decisions.md`, `docs/guide/*.md` (multiple), `docs/research/seo-competitive-analysis.md` (dated rather
 than rewritten). Two items were website/themes-repo-only and not committable from here (tracked
 there). Full detail in git history if needed.
 
@@ -562,7 +562,7 @@ All still **open**:
   default even though BCP 47 codes are case-insensitive and the parameter is documented as such.
 - **LOW: no test runs detection → pipelines → serve end-to-end** — existing fixtures hand-build
   `LangPipelines` with codes `DetectLanguages` could never actually produce.
-- **LOW: a frozen plan doc (`docs/plans/2026-04-10-i18n-l10n.md`) still shows the deleted
+- **LOW: a frozen plan doc (`docs/superpowers/plans/2026-04-10-i18n-l10n.md`) still shows the deleted
   `IsBCP47Dir`** — defensible to leave (it's a dated record), noted so a future grep isn't surprised.
 
 ### 10.12 NEW — RFC 9110 §12.5.1 is evaluated globally, not per candidate

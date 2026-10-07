@@ -10,7 +10,7 @@
 
 **Tech Stack:** Go 1.25+, standard library, existing gomddoc packages.
 
-**Spec:** `docs/specs/2026-04-04-url-extension-stripping.md`
+**Spec:** `docs/superpowers/specs/2026-04-04-url-extension-stripping-design.md`
 
 ---
 

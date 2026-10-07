@@ -11,7 +11,7 @@ shipped. See the spec's divergences: `Features` sits on `ThemeConfig`, and templ
 
 **Tech Stack:** Go 1.25+, goldmark, html/template
 
-**Spec:** `docs/specs/2026-03-31-theme-feature-toggles-design.md`
+**Spec:** `docs/superpowers/specs/2026-03-31-theme-feature-toggles-design.md`
 
 ---
 

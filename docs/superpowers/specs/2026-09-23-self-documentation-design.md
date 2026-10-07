@@ -2,14 +2,14 @@
 
 **Status**: Implemented 2026-09-23 (commits `6b912cf` through `c449d06`, with follow-up fixes `f1173ea`, `23aad3b`,
 `4f4a79c`, `442424c`, `fddfc40`). Design approved 2026-09-23. All three sub-specs have shipped: sub-spec 2
-(`gomddoc doctor`, `docs/specs/2026-09-23-doctor-design.md`, implemented 2026-09-23) and sub-spec 3 (`gomddoc help
+(`gomddoc doctor`, `docs/superpowers/specs/2026-09-23-doctor-design.md`, implemented 2026-09-23) and sub-spec 3 (`gomddoc help
 <topic>`, commit `37250b5` "feat(cli): add gomddoc help", 2026-09-23). Sub-spec 3 has no spec or plan document. The
 theme manifest remains parked.
 **Roadmap entry**: "Self-Documentation via MCP" (`docs/roadmap.md`)
 **Sub-specs in scope**: machine-readable capabilities model (config schema, env vars, commands, frontmatter, theme
 features) and the embedded guide, exposed over stdio MCP and the CLI (`info`, `info --json`, `schema`)
 **Sub-specs deferred**: `gomddoc doctor` (sub-spec 2), topic help `gomddoc help <topic>` (sub-spec 3)
-**Parked**: theme manifest (`theme.yml`) — see `docs/plans/2026-09-23-theme-manifest-parked.md`
+**Parked**: theme manifest (`theme.yml`) — see `docs/superpowers/plans/2026-09-23-theme-manifest.md`
 
 ## Goal
 

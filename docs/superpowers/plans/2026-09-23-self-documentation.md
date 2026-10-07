@@ -19,7 +19,7 @@ the report; `internal/mcp` serves it plus the guide under a `gomddoc://` namespa
 **Tech Stack:** Go 1.26, `embed`, `reflect`, `encoding/json`, Kong v1.15 (`kong.Application` model, `Tag.Get`),
 `github.com/modelcontextprotocol/go-sdk/mcp`, existing `metadata`/`search` indexes. No new dependencies.
 
-**Spec:** `docs/specs/2026-09-23-self-documentation-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-23-self-documentation-design.md`
 
 ## Global Constraints
 
@@ -1243,7 +1243,7 @@ var (
 // ThemeFeatures scans a theme's templates for {{ .Feature "x" }} and its
 // templates and CSS for var(--theme-x). It is best effort — names only, no
 // descriptions or defaults — until themes declare their features (see
-// docs/plans/2026-09-23-theme-manifest-parked.md). It reads through the same
+// docs/superpowers/plans/2026-09-23-theme-manifest.md). It reads through the same
 // overlay the renderer uses, so a site-level override is seen. A theme that is
 // not installed, or has no templates, is reported unavailable rather than as an
 // error: the caller is describing, not rendering.
@@ -2705,7 +2705,7 @@ Expected: PASS
 - [x] **Step 5: `roadmap.md`** — tick the three "Self-Documentation via MCP" items (noting `mcp` always serves
   the guide alongside content rather than only when no directory is given), add two open items for sub-spec 2
   (`gomddoc doctor`) and sub-spec 3 (`gomddoc help <topic>`), add a "Theme manifest — parked" item linking
-  `docs/plans/2026-09-23-theme-manifest-parked.md`, and update the Tier 3 priority list.
+  `docs/superpowers/plans/2026-09-23-theme-manifest.md`, and update the Tier 3 priority list.
 
 - [x] **Step 6: `REVIEW.md`** — record, as an open LOW issue: env var names for the same setting differ between
   flags and config (`GOMDDOC_DOMAIN` vs `GOMDDOC_SITE_META_DOMAIN`; preview's `GOMDDOC_DIR_INDEX` vs

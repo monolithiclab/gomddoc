@@ -2,8 +2,8 @@
 
 **Status**: Implemented 2026-04-23 (commits `38e5557`..`13dc45e`, merged in `711990a` on 2026-05-15). Design approved
 2026-04-23. The deferred sub-specs have since shipped: see-also section (sub-spec 2,
-`docs/specs/2026-04-24-see-also-section.md`) and `tag:` search syntax (sub-spec 3,
-`docs/specs/2026-05-19-tag-search-syntax.md`).
+`docs/superpowers/specs/2026-04-24-see-also-section-design.md`) and `tag:` search syntax (sub-spec 3,
+`docs/superpowers/specs/2026-05-19-tag-search-syntax-design.md`).
 **Sub-spec**: 1 of 3 in the broader Tag Components roadmap entry
 **Sub-specs in scope**: chips, per-tag listing pages, tag index page
 **Sub-specs deferred**: related-pages section (sub-spec 2), `tag:` search syntax (sub-spec 3)
