@@ -12,20 +12,22 @@ with a stateless, git-native architecture. No databases, no CMS, no editorial wo
 ## Commands
 
 ```bash
-make ci                     # Full pipeline: codefix + format + lint + tests (USE THIS; needs network, lint runs govulncheck)
-make test                   # Tests with coverage (target: 87%+)
+make ci                     # The gate: lint + tests, never mutates (USE THIS; needs network, lint runs govulncheck)
+make test                   # Tests with -race and coverage (COVERAGE_MIN = 87 enforced)
 make lint -j8               # Parallelize linting (includes govulncheck as lint-vulncheck)
+make lint-fix               # go fix, then gofmt -s (the only mutating step; ci never runs it)
 make build                  # Production binary → build/gomddoc
 make install                # go install with the version ldflag → $GOBIN (or $GOPATH/bin)
 make bench                  # Benchmarks
 make run                    # Run locally (go run ./cmd/gomddoc serve testsite)
-FORCE_UPDATE=1 make lint    # Reinstall every linter, including govulncheck
 ```
 
-Always use Makefile targets. `make ci` is the single command to validate changes. Every
-individual check lives under `lint-*` (`lint-vet`, `lint-staticcheck`, `lint-golangci-lint`,
-`lint-gosec`, `lint-gocritic`, `lint-vulncheck`) and is reachable directly by name
-(`make lint-vulncheck`) when you only want to re-run one; there is no bare `vulncheck` target.
+Always use Makefile targets. `make ci` is the single command to validate changes. The Makefile is
+`include common.mk` + `include go.mk`, byte-identical copies of the lab canonicals (never edit them
+here); linters are pinned in `tools/go.mod` and run via `go tool -modfile=tools/go.mod`. Every
+individual check lives under `lint-*` (`lint-format`, `lint-vet`, `lint-staticcheck`, `lint-golangci`,
+`lint-gosec`, `lint-gocritic`, `lint-vulncheck`, `lint-mod`, `lint-pins`) and is reachable directly by
+name (`make lint-vulncheck`) when you only want to re-run one.
 
 ## Documentation
 

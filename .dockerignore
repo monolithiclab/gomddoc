@@ -6,6 +6,8 @@ build/
 *.md
 !README.md
 Makefile
-common-go.mk
+common.mk
+go.mk
+tools/
 PLAN.md
 docs/

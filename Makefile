@@ -1,56 +1,12 @@
-include common-go.mk
+include common.mk
+include go.mk
 
-ROOT_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+# Scoped to what ships, for the same reason .covignore excludes docs/skills/: nothing under docs/ reaches the binary,
+# but govulncheck traces its imports all the same, so an image/png CVE would fail the gate over a tool that is never
+# distributed. image/png enters the graph solely via favicon-check.go.
+VULNCHECK_PACKAGES = ./cmd/... ./internal/...
+COVERAGE_MIN = 87
 
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS := -ldflags "-X main.version=$(VERSION)"
-
-# Scoped to what ships, for the same reason .covignore excludes docs/skills/:
-# nothing under docs/ reaches the binary, but govulncheck traces its imports
-# all the same, so an image/png CVE would red this job over a tool that is
-# never distributed. image/png enters the graph solely via favicon-check.go.
-VULNCHECK_PACKAGES := ./cmd/... ./internal/...
-
-
-build:  ## Build binary
-	go build $(LDFLAGS) -o build/gomddoc ./cmd/gomddoc
-
-
-install:  ## Install gomddoc to $GOBIN (or $GOPATH/bin)
-	go install $(LDFLAGS) ./cmd/gomddoc
-
-
-bench:  ## Run benchmarks with memory stats
-	go test -bench=. -benchmem -run=^$$ -count=1 ./...
-
-
-bench-save:  ## Save benchmark baseline to bench.txt
-	go test -bench=. -benchmem -run=^$$ -count=6 ./... | tee bench.txt
-
-
-bench-compare:  ## Compare benchmarks against saved baseline (bench.txt)
-	((test -z "$$FORCE_UPDATE" && which benchstat) || go install golang.org/x/perf/cmd/benchstat@latest) > /dev/null
-	go test -bench=. -benchmem -run=^$$ -count=6 ./... > bench-new.txt
-	$$(go env GOPATH)/bin/benchstat bench.txt bench-new.txt
-	rm -f bench-new.txt
-
-
-ci:  codefix format lint test  ## Run codefix, format, lint and tests
-
-
-deploy:  ## Deploy the project
-	echo "not implemented" && false
-
-
-run:  ## Run the application locally
-	go run ./cmd/gomddoc serve testsite
-
-
-test:  ## Run unit tests with coverage and race detection
-	go test -race -cover -coverprofile cover.out ./...
-	grep -v -E -f .covignore cover.out > cover.out.tmp && mv cover.out.tmp cover.out
-	go tool cover -func cover.out
-
-
-.SILENT: bench bench-compare bench-save build deploy install run test
-.PHONY: bench bench-compare bench-save build deploy install run test
+.PHONY: run
+run: ## Serve the lorem-ipsum testsite locally (preview server, writes nothing)
+	@go run $(MAIN) serve testsite

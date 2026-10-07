@@ -741,3 +741,18 @@ buys no downgrade — a forged pair fails exactly as a forged bundle does.
 - Verified before landing: the fallback installs v0.1.2 under cosign v3.1.3 with `GOMDDOC_REQUIRE_COSIGN=1`, and the
   bundle-path `verify-blob` command accepts GoReleaser's own v2.18.2 `checksums.txt.sigstore.json` and rejects it
   when the identity names another tag. The signing side is only exercised by a real tag.
+
+## Make Machinery From the Lab Canonicals, Tools Pinned in `tools/go.mod`
+
+**Decision** (2026-10-07): the hand-copied `common-go.mk` is gone. The Makefile is `include common.mk` +
+`include go.mk`, byte-identical copies of the Monolithic Lab canonicals (`lab-repo-standards` and
+`go-cli-development` skills), plus gomddoc's own `VULNCHECK_PACKAGES`, `COVERAGE_MIN = 87` and `run`. This supersedes
+the `common-go.mk` mechanics in the two entries above; their reasons (golangci-lint v2, govulncheck inside `lint`,
+the scoped vulncheck) still hold and carry over unchanged.
+
+- Linters are pinned per repo in `tools/go.mod` and run with `go tool -modfile=tools/go.mod`, instead of
+  `go install …@latest` into the shared `$GOPATH/bin`, where one repo's install silently changed every other repo's
+  linter. `FORCE_UPDATE` is gone: a tool bump is a `go get -tool -modfile=tools/go.mod <pkg>@<version>` commit.
+- `ci` is `lint test` and never mutates the tree; `codefix` + `format` became `lint-fix`, which `ci` does not run.
+- `lint` gained `lint-mod` (`go mod tidy -diff`) and `lint-pins` (actions by SHA, Docker bases by digest).
+- `COVERAGE_MIN` makes the 87% target a failing check rather than a number in CLAUDE.md.

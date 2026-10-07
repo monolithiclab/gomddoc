@@ -384,13 +384,12 @@ KaTeX math and Mermaid diagrams render client-side in the theme (features `katex
 ### Development Commands
 
 ```bash
-make ci           # codefix + format + lint + test — run this before committing
+make ci           # lint + test, never mutating — run this before committing
 make run          # Serve ./testsite locally (go run; no hot reload)
 make test         # Run tests with race detection and a coverage report
 make bench        # Run benchmarks (bench-save / bench-compare for benchstat baselines)
-make lint         # Run all linters (format, vet, staticcheck, golangci-lint, gosec, gocritic, govulncheck)
-make format       # Format code with gofmt
-make codefix      # Apply go fix modernizations
+make lint         # Run every check (format, vet, staticcheck, golangci-lint, gosec, gocritic, govulncheck, go mod tidy, pins)
+make lint-fix     # Apply go fix modernizations, then gofmt -s
 make build        # Build binary to build/gomddoc
 make install      # Install gomddoc to $GOBIN (or $GOPATH/bin)
 make clean        # Remove build artifacts
@@ -627,7 +626,7 @@ GOMDDOC_SERVER_DEV_MODE=true gomddoc serve
 
 1. Fork the repository
 2. Create a feature branch
-3. Run `make ci` (codefix, format, lint, tests)
+3. Run `make lint-fix`, then `make ci` (lint, tests)
 4. Submit a pull request
 
 All contributions must keep test coverage at 87% or above.
