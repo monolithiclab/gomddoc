@@ -54,6 +54,7 @@ It is designed for:
     4. [Custom Renderers](12-advanced/04-custom-renderers.md) — The `ContentRenderer` contract, negotiation, registration, testing
 13. [Internationalization](13-internationalization.md) — Multi-language sites, translations, hreflang, language switcher
 14. [Doctor](14-doctor.md) — Check configuration and content: every problem with its location and fix
+15. [Troubleshooting](15-troubleshooting.md) — What gets served for each file type, and fixes for common problems
 
 The same guide ships in the binary: `gomddoc help` lists its topics, `gomddoc help <topic>` reads one, and
 `gomddoc help --search <query>` searches it.

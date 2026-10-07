@@ -364,6 +364,10 @@ main port even when `--admin-port` is set, and skip authentication. See [Observa
 > `--basic-auth-file`. Do not publish it in a Docker `-p` mapping, a Kubernetes `Service` of type `LoadBalancer` or
 > `NodePort`, or an ingress; restrict it to the scraper with a network policy or firewall rule.
 
+**Startup work.** The path resolver, navigation tree, metadata index and search index are built once at startup;
+parsed templates and rendered partials are cached outside dev mode, every complete response carries an ETag (a
+matching conditional request gets a bodyless `304`), and responses are gzipped with pooled writers.
+
 **Resource limits.** gomddoc keeps the metadata index, search index and navigation tree in memory, plus the whole
 repository for a Git source without `--git-storage-dir`. A small site runs in about 35 MB of resident memory. Start
 with a 64 MB memory limit and 50-100m CPU, then adjust based on observed usage and content size.
