@@ -64,6 +64,12 @@ graph TD
 | `internal/text` | Title derivation and casing, frontmatter stripping, section extraction, log sanitization (`text.Safe`), `Closest` |
 | `internal/testutil` | Test-only helpers: `countfs`, `fanout`, `logcapture`, `markdown`, `provider`, `registry`. Excluded from coverage via `.covignore` |
 
+Outside the Go packages: `scripts/install.sh` (the `curl | sh` installer: checksum and cosign verification of a
+release archive), `testsite/` (the lorem-ipsum site `make run` serves for manual checks), `docs/skills/` (Claude
+Code skills; their Go scripts are linted but excluded from coverage and vulnerability scanning by path prefix), and
+`tools/go.mod` (the pinned lint and benchmark tools). The seven downloadable themes live in the `gomddoc-themes`
+repository and the marketing site in `gomddoc-website`.
+
 ## Commands
 
 Each subcommand lives in its own file under `cmd/gomddoc/`.

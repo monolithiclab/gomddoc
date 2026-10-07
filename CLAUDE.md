@@ -1,513 +1,120 @@
-# Agents Context
+# CLAUDE.md
 
-This file provides guidance to AI agents when working with code in this repository.
+gomddoc is a single-binary Go server and static site generator for Markdown documentation (content negotiation,
+search, SEO output, an MCP server), released through GoReleaser to GitHub Releases, the Homebrew tap and ghcr.io.
+See [README.md](README.md) for what it does and how to run it, `docs/` (table below) for the reasoning, and
+`make help` for every command.
 
-## Project Overview
+## Hard rules
 
-`gomddoc` is a production-ready HTTP server that serves Markdown files as HTML. Go application
-with a stateless, git-native architecture. No databases, no CMS, no editorial workflows.
+- **Every content index takes `Pipeline.Exclude`, never `cfg.Site.Exclude`.** That covers `resolve.Build`,
+  `metadata.BuildIndex`, `navigation.NewGenerator`, `search.BuildIndex` and build's static walk
+  (`buildContext.exclude`). With `strip_extensions` the served URL (`/TODO`) doesn't match the pattern (`TODO.md`),
+  so an index that ignores the pipeline's list makes excluded content reachable. `Pipeline.Exclude` is
+  `cfg.Site.Exclude` plus each pipeline's own additions (the default pipeline excludes every language directory, D36).
+- **Never derive a page URL from a file path by hand.** Call `(*resolve.PathResolver).PageURLPath` (D35); templates
+  link through `contentURL`, which also applies the language prefix, so a partial never adds `/{lang}` itself. Each
+  language pipeline gets its own `TemplateRenderer` (`LangPipelineConfig.TemplateRenderer`). Build's
+  `prettyOutputPath` is a separate file-to-output mapping (review §10.2).
+- **Per-language redirect maps: sources unprefixed, targets prefixed.** `stripPathPrefix` removes `/{lang}` before
+  the language handler runs, so `URLRedirectMap` keys stay content-root-relative and values are absolute site paths.
+- **Released software: pinned sites upgrade across versions.** Since v0.1.2 `.gomddoc/config.yml` is decoded with
+  `KnownFields(true)`, so a misplaced key (a top-level `color_chips:`) is a load error, not a silent no-op. A config,
+  flag or env var change is user-visible: say so in the guide and the release notes. The no-compat-shims rule covers
+  gomddoc's internals, not artifacts users already installed (`scripts/install.sh` keeps verifying v0.1.0–v0.1.2's
+  `.sig`/`.pem` pair, D43).
+- **The release token never leaves CI.** `HOMEBREW_TAP_TOKEN` is a repository secret only; never tag or run a real
+  release from a session (`goreleaser release --snapshot --clean --skip=publish,sign,docker` proves a change).
+- **Tests never touch the network**, apart from `govulncheck` inside `make lint`.
 
-**Key docs** (read these for deep context, don't duplicate their content here — see Documentation section below for purpose and workflow):
+## Constraints that look like bugs
 
-## Commands
+- **Trusted content model.** Theme templates and Markdown are author-controlled; no untrusted input reaches rendered
+  output. CSP, an HTML sanitizer or CSS sanitizing are not missing features: treat such review findings as false
+  positives.
+- **The `meta.Meta` goldmark extension stays in the renderer** (`internal/renderer/markdown.go`). The enricher
+  extracts frontmatter; `meta.Meta` is what strips it from the rendered page. Without it, frontmatter renders as
+  visible HTML.
+- **Navigation sorts alphabetically, directories and files interleaved**, not directories first. Deliberate
+  (`internal/template/navigation`).
+- **Cache validation is content hashes only:** a weak FNV-64a ETag of the rendered bytes, never a Git commit (D18).
+- **`HTTPServer.Shutdown` applies `GOMDDOC_SERVER_HTTP_SHUTDOWN_TIMEOUT` itself**; a timeout at the call site is redundant.
+- **Language directories need a script or region subtag** (`fr-FR`, `zh-Hant`), never a bare `fr`: full BCP 47
+  would claim `doc/`, `api/`, `bin/`, `it/`, and a claimed directory becomes its own pipeline and vanishes from the
+  default site (D37). `x/text/language`'s `Script()`/`Region()` infer subtags never written; recompose with
+  `language.Compose`.
+- **go-git reads are writes.** `object.Tree` memoises into unsynchronised maps, so tree and blob access holds an
+  exclusive mutex (`gitTreeState`), never an `RWMutex` (D34). Resolve a path once with `FindEntry` and work from the
+  hash (`resolveTreeNode`, `statTreeNode`).
+- **`ContentExclusion` answers 404, and every route in a language scope writes errors through that scope's one
+  `ErrorPage`** (`Handler.ErrorPage()`), so an excluded page is byte-identical to a missing one. Exemptions say why
+  at the call site (`/_assets/`, the 406, MethodFilter's 405, the XML endpoints).
+- **`/metrics` on `--admin-port` has no Basic Auth, by design** (pprof keeps it). The guide warns never to expose
+  the admin port.
 
-```bash
-make ci                     # The gate: lint + tests, never mutates (USE THIS; needs network, lint runs govulncheck)
-make test                   # Tests with -race and coverage (COVERAGE_MIN = 87 enforced)
-make lint -j8               # Parallelize linting (includes govulncheck as lint-vulncheck)
-make lint-fix               # go fix, then gofmt -s (the only mutating step; ci never runs it)
-make build                  # Production binary → build/gomddoc
-make install                # go install with the version ldflag → $GOBIN (or $GOPATH/bin)
-make bench                  # Benchmarks
-make run                    # Run locally (go run ./cmd/gomddoc serve testsite)
-```
+## Traps `make ci` won't explain
 
-Always use Makefile targets. `make ci` is the single command to validate changes. The Makefile is
-`include common.mk` + `include go.mk`, byte-identical copies of the lab canonicals (never edit them
-here); linters are pinned in `tools/go.mod` and run via `go tool -modfile=tools/go.mod`. Every
-individual check lives under `lint-*` (`lint-golangci`, `lint-vulncheck`, `lint-mod`, `lint-pins`) and is
-reachable directly by
-name (`make lint-vulncheck`) when you only want to re-run one.
+- **Package comments say the non-obvious thing.** ST1000 fails a package without one; the bar is the contract a
+  caller gets wrong (why `negotiate` owns the `.md` MIME registration), not "Package x does x".
+- **`#nosec Gxxx -- reason`, always with the reason.** The shared response writers carry `#nosec G705` because
+  gosec reads `w.Write` as XSS taint (`server/etag.go`, `server/compression.go`); the trusted content model is why.
+- **A process-global registration lives in the package that owns its accessor.** `mime.AddExtensionType` for `.md`
+  is in `internal/negotiate/mime.go`; a second one in a test file wins for that whole test binary.
+- **`funcMap` is bound at parse time and templates are shared**, so anything more than one consumer reads is a
+  `PageContext` field derived in `BuildPageContext`, never a template function.
+- **A cached object travels through the `Pipeline`**, never rebuilt by a consumer (`Pipeline.NavGenerator`); a
+  command that consumes it must enable the stage, and `setupPipeline`'s table test asserts the field is set.
+- **A cross-cutting middleware goes on the highest `RouteGroup`** (`base`); on a leaf, every sibling silently opts
+  out.
+- **A handler with a complete body serves it through `serveWithETag`** (`lazyBytes.serve`) and is tested with
+  `assertRevalidates`; `/api/*` (`writeJSON`) is the recorded exception.
+- **N transports asking the same question share one index answer** (`Index.LookupTag` owns bound, normalisation,
+  verdict and sort; the handlers only render it).
+- **One implementation per rule:** media-range precedence is `MediaType.Specificity()`; "last modified" is
+  `seo.LastModified`; the sitemap path is what `writeSitemapIndex` returns, never a predicate forecasting it;
+  `fs.PathError`s come from `provider.fsPathErr`.
+- **`docs/skills/<name>/scripts/` is a path-prefix contract.** Those Go scripts are linted, but `.covignore` and
+  `VULNCHECK_PACKAGES` exclude them by prefix; a script anywhere else re-enters the coverage total and the shipped
+  vulnerability graph. `internal/testutil/` is excluded from coverage the same way.
+- **`docs/` is a Go package** (`guide.go` embeds `docs/guide/`): every guide page needs `title` and `description`
+  frontmatter (`guide_test.go`), and `cmd/gomddoc`'s drift tests compare the guide with the code.
+- `make lint` and `make ci` need the network (govulncheck). `COVERAGE_MIN = 87` is enforced by `make test`.
+
+## Where things go
+
+- A command: `cmd/gomddoc/<name>.go`, wired in `main.go`'s Kong struct, tested through parse and dispatch; its
+  reference in `docs/guide/02-configuration.md`.
+- A config setting: a field with a `doc` tag (and `max`/`default_doc`); `config.Schema()`, `info`, the MCP report and
+  `doctor` derive from it (D41). A flag that sets a differently-named setting carries `setting:"<key>"`.
+- A detectable problem: the producer returns a `diag.Finding` with a code from the `diag` catalogue; serve logs it
+  and `doctor` reports it (D42). Never re-implement a check in `internal/doctor`.
+- A user-facing feature: a page or section in `docs/guide/` (it ships in the binary). Then check the sibling repos:
+  `gomddoc-website` (`docs/configuration.md` for a config change) and the seven `gomddoc-themes` (template or
+  feature changes).
+- Shared test helpers: `testhelpers_test.go` per package, `internal/testutil/<name>` once a second package needs one.
+  Lazy caches get a cold-cache test through `testutil/fanout.Run`; log assertions go through
+  `testutil/logcapture`.
+- Manual UI checks: Chrome DevTools MCP against `make run` (`testsite/`).
 
 ## Documentation
 
-```
-ROADMAP.md                  # Phased roadmap, deferred ideas
-docs/
-├── architecture.md         # Component relationships, data flow, middleware, themes
-├── decisions.md            # Technical choices log (with alternatives considered)
-├── research/               # Pre-Phase-9 SEO research vs. MkDocs/Docusaurus/Hugo
-├── guide.go                # Embeds guide/ into the binary (docs.Guide)
-├── guide/                  # Feature documentation (agent + human audience)
-├── superpowers/specs/      # Feature specifications (written before implementation)
-├── superpowers/plans/      # Task-by-task implementation plans derived from a spec
-├── reviews/                # Codebase review rounds (2026-07-29-codebase-review.md: open findings, scores)
-└── skills/                 # Agent skills (SKILL.md + scripts/) — excluded from coverage
-```
+| Document | Owns |
+| --- | --- |
+| `README.md` | What gomddoc is, status, install, the docs index |
+| `docs/guide/` | The user manual, embedded in the binary (`gomddoc help`, MCP); update with every user-facing change |
+| `docs/architecture.md` | Package map, commands, pipelines, middleware chain, data flow, themes, repository layout |
+| `docs/decisions.md` | Append-only, D-numbered decisions; D0 indexes the decision tables kept elsewhere |
+| `docs/superpowers/specs/`, `plans/` | Feature designs (`-design`) and plans, each plan ending in `## Execution notes` |
+| `docs/reviews/` | Review rounds; their open findings live in `ROADMAP.md` |
+| `docs/research/` | External research (the SEO competitive analysis) |
+| `docs/skills/` | Claude Code skills with their scripts; procedure, no business context (that is the ignored `.agents/`) |
+| `ROADMAP.md` | Ideas, the ranked backlog (Implementation Strategy) and open review findings |
 
-**Purpose of each:**
+Go lessons that apply beyond this repo live in the `go-cli-development` skill's `lessons.md`, not here.
 
-- **reviews/** — created by review tools (Claude, Gemini) and manual input. Tracks open issues,
-  fixed issues, scores, and prioritized recommendations. Source of truth for what needs fixing.
-- **architecture.md** — how the building blocks relate: pipeline stages, provider/renderer/template
-  layering, middleware chain, theme resolution. Update when adding or restructuring components.
-- **decisions.md** — log of technical choices with alternatives considered and rationale. Prevents
-  repeating past mistakes. Add an entry when making a non-obvious architectural decision.
-- **guide/** — feature documentation aimed primarily at agents (via MCP) so they can use gomddoc
-  correctly, but useful for humans too. Update when adding user-facing features.
-- **specs/** — complete feature specifications written _before_ implementation for non-trivial
-  features. Written by agents, validated by the developer. Implementation follows the spec.
-- **plans/** — the task-by-task breakdown of a spec: goal, architecture, then `- [ ]` steps an
-  agent works through. A spec says what and why; a plan says in what order. Four plans had been
-  filed under `specs/` — the `-plan.md` suffix is the tell, but the reliable one is the checkbox
-  list, since half the plans predate the suffix convention.
-- **skills/** — Claude Code skills: one directory per skill, each a `SKILL.md` plus any `scripts/`
-  it drives. Repo-agnostic engineering procedure, not product docs — keep business context out of
-  them (that is what the gitignored `.agents/` is for). A skill's Go scripts are real packages in
-  this module, so they are vetted and linted like everything else, but they are tools, not product
-  code, and both "what ships" filters exclude them by path prefix: `.covignore` drops `docs/skills/`
-  from the coverage total (same rationale as `internal/testutil/`) and `lint-vulncheck`
-  (`VULNCHECK_PACKAGES` in the Makefile) scans `./cmd/... ./internal/...` rather than `./...`.
-  Both are prefix contracts — a script placed anywhere but `docs/skills/<name>/scripts/`
-  re-enters the coverage total and puts its imports back in the product's vulnerability graph.
+## Workflow
 
-**Feature workflow:**
-
-1. Features originate from `docs/reviews/` findings or user requests (roadmap additions)
-2. Write a spec in `docs/superpowers/specs/`, asking the developer clarifying questions
-3. Developer validates the spec
-4. For a multi-step feature, break the spec into a plan in `docs/superpowers/plans/` — not `docs/superpowers/specs/`
-5. Implement the feature
-6. Update `ROADMAP.md`, `docs/architecture.md`, `docs/decisions.md`, and `docs/guide/` as needed
-
-## Project Structure
-
-```
-cmd/gomddoc/           # CLI (Kong): build, doctor, help, info, init, mcp, preview, schema, serve subcommands
-internal/
-├── assets/            # Overlay filesystem for theme overrides
-├── capabilities/      # Self-description report (settings, commands, theme, guide) for info and MCP
-├── config/            # Config loading (CLI > env > YAML > defaults), validation, Schema/JSONSchema, Inspect
-├── diag/              # Finding type + code catalogue; producers return findings, callers log them
-├── doctor/            # Site checks behind `gomddoc doctor` and gomddoc_doctor
-├── enricher/          # Pre-rendering extraction (metadata, TOC, navigation, related docs)
-├── guide/             # Embedded guide (docs.Guide) as topics: list, read, section, search
-├── locale/            # i18n: BCP 47 language detection, locale bundles, translation lookup
-├── mcp/               # Model Context Protocol server (tools, resources, prompts)
-├── metadata/          # Frontmatter indexing, tag API
-├── negotiate/         # HTTP content negotiation (Accept header, MIME types)
-├── provider/          # Content sources (filesystem, git, overlay)
-├── renderer/          # Content renderers (markdown→HTML, passthrough)
-├── resolve/           # Clean-URL ↔ real-path resolution (strip_extensions, redirects)
-├── search/            # Full-text search (inverted index, TF-IDF ranking)
-├── seo/               # Canonical URLs, JSON-LD, last-modified dates for sitemap/feed/SEO tags
-├── server/            # HTTP server, handlers, middleware, RouteGroup
-├── template/          # HTML rendering, caching, breadcrumbs, navigation
-├── testutil/          # Shared test helpers
-└── text/              # Text utilities (sanitize, title case, frontmatter strip, section extraction, closest match)
-scripts/install.sh     # curl | sh installer for release archives (checksum + cosign verification)
-testsite/              # Lorem ipsum test site for quick testing
-```
-
-**Related repositories:**
-
-- [gomddoc-themes](git@github.com:monolithiclab/gomddoc-themes.git) — 7 additional themes (academic, gitbook, material, midnight, minimal, nord, ocean)
-- [gomddoc-website](git@github.com:monolithiclab/gomddoc-website.git) — Marketing/public website
-
-## Development Workflow
-
-1. Make minimal, focused code changes
-2. Write/update tests (`*_test.go`) — target 87%+ coverage
-3. Run `make ci` — must pass before committing
-4. Update relevant documentation in `docs/`
-5. Commit (`type(scope): summary`, with the session's trailers); never push unless asked
-6. Never squash commits — each commit must be atomic and self-contained
-
-### Conventions
-
-- **No backward compatibility concerns**: gomddoc is unpublished. No legacy shims.
-- **Trusted content model**: Theme templates and markdown content are author-controlled. No
-  untrusted user input reaches rendered output. XSS/injection hardening (CSP, HTML sanitizer,
-  CSS sanitization) is not needed — treat these as false positives in reviews.
-- **Minimal dependencies** across all repos
-- **Prevent duplicated code** — extract shared helpers
-- **Every content index takes `Pipeline.Exclude`, never `cfg.Site.Exclude` directly** —
-  `resolve.Build`, `metadata.BuildIndex`, `navigation.NewGenerator`, `search.BuildIndex`, *and*
-  build's static walk (`buildContext.exclude`). Access control cannot live in the request-path
-  middleware alone: `strip_extensions` means the served URL (`/TODO`) does not match the pattern
-  (`TODO.md`), so an index that ignores exclusions makes excluded content reachable. `Pipeline.Exclude`
-  is `cfg.Site.Exclude` plus that pipeline's own additions (the default pipeline excludes every
-  detected BCP 47 directory — each language has its own pipeline). A consumer that reads
-  `cfg.Site.Exclude` instead walks content the pipeline's own resolver and indexes know nothing about:
-  that is how build rendered every translated page twice.
-- **Per-language redirect maps: sources unprefixed, targets prefixed** — `stripPathPrefix` removes
-  `/{lang}` before the language handler runs, so `URLRedirectMap` **keys** stay content-root-relative
-  while **values** must be absolute site paths. `BuildRedirectMap`'s and `ExtensionRedirect`'s
-  `basePath` parameter applies to targets only.
-- **Every package carries a package comment, and it says the non-obvious thing** — the lab `.golangci.yml`
-  enables ST1000, which `make lint` had been running with off, so a new package now fails the
-  build until it has one. The bar is not "Package x does x": each comment states the package's job in
-  a sentence and then the one contract a caller gets wrong — why `negotiate` owns the `.md` MIME
-  registration, why `metadata`'s slice accessors clone deeply, why `navigation`'s Generator must come
-  from the pipeline. Most of those facts were already written down here, one section below; the
-  package comment is where someone reading the code finds them.
-- **Manual testing**: Use Chrome DevTools MCP, target `testsite/`
-- **Options struct pattern** or **functional options**, depending on the case
-- **`path` not `filepath`** for `fs.FS` operations (forward slashes per `io/fs` spec)
-- **`filepath`** only for OS filesystem operations (writing files to disk)
-
-### Go Conventions
-
-- Modern Go 1.26+ patterns (`slices.Clone`, `strings.SplitSeq`, `b.Loop()`) — `go.mod` says 1.26
-- `any` over `interface{}`
-- Table-driven tests: `[]struct{...}` with `t.Parallel()`
-- Sentinel errors with `errors.Is()` for classification
-- Errors wrapped: `fmt.Errorf("context: %w", err)`
-- **A wrap must add context, not restate it** — check what the wrapped error already prints before
-  reaching for `%w`. `html/template`'s `ExecError` embeds the template name, so
-  `execute template %q: … executing "x" at <.Y>` says it three times; the context actually missing
-  is the asset path, which names the *theme* that supplied the file. Bare returns are correct where
-  the callee already identifies itself (and where the caller wraps, e.g. `render tags-list`) or
-  where the value is a sentinel classified with `errors.Is` (`ctx.Err()`). Conversely, when two
-  errors both matter, double-`%w` beats `errors.Join`: `Join` separates with `\n`, which mangles a
-  single-line slog field, and has nowhere to put the labels that say which error is which
-  (`theme %q: %w; default theme: %w`).
-- **A not-found mapping runs both ways** — collapsing every failure from a lookup into the package's
-  "missing" sentinel turns a corrupt store into a client error: `GitProvider.ReadFile`/`Stat` mapped
-  *any* `resolveTreeNode` failure to `ErrNotFound`, so an undecodable packfile served a themed 404 on
-  every page instead of a 500, and the operator's only signal that the repository — not the URL — was
-  broken never appeared. Classify on the specific sentinels (`isMissingGitObject`) and let everything
-  else through. Corollary: a predicate extracted so there is *one* list must be applied at *every*
-  site; leaving 2 of 4 behind is exactly the drift the extraction was for, and the two left behind
-  are usually the ones on the request path.
-- Path joining: `path.Join("assets", "themes", cfg.Theme)` (each segment separate)
-- **`for i := range N`** over `for i := 0; i < N; i++` (Go 1.22+ range-over-int)
-- **Never name a local after a builtin or an imported package** — `min`, `max`, `path`, `text`, `fs`,
-  `metadata`, `real`. The compiler accepts the shadow silently and the code keeps working until
-  someone reaches for the shadowed name inside that scope, so the class is invisible by construction.
-  `make lint` gates it (gocritic `builtinShadow`/`importShadow` in `.golangci.yml`); aliasing the import
-  (`txt "…/internal/text"`) is the fallback when the local really has no better name, but usually it
-  does — the shadowing name is vague precisely because it was borrowed.
-- **`slices.SortFunc` + `cmp.Compare`/`time.Compare`** — no manual insertion sorts or if/else chains
-- **A precondition belongs inside the function that has it, not at the call site** — `mergeSpans`
-  required its input sorted by `start`, and the sort lived one line above the only call. Nothing
-  failed if it stopped: every test row fed pre-sorted input, so the contract was unwritten *and*
-  unpinned. Fold it in (`mergeSpans` sorts, then merges) and the contract cannot be violated. If it
-  genuinely cannot be folded, the test suite owes it a row that violates the precondition.
-- **An accumulator is passed down, never returned and folded** — `walkAndBuildToDir` returned a fresh
-  `*buildStats` per walk and the caller folded each language's into the total by hand: four atomic
-  counters, three `Add` lines. Every file excluded under a language directory went uncounted in the
-  "Build complete" summary, and a language that failed mid-walk discarded the totals for files it had
-  already written. Folding through a method (`add`) fixes the arithmetic and leaves the shape that
-  produced it; taking `stats *buildStats` as a parameter — which `buildFile`, `copyFile` and
-  `copyStaticAssets` in the same file already did — deletes the fold, the per-walk allocation and the
-  bug class together. A counter that is never copied cannot be forgotten.
-- **A predicate that auto-classifies user-named things must be narrower than the standard it comes
-  from** — `isLanguageDir` runs against every directory at the content root and there is no
-  `languages:` config to override it, so a false positive is not a mislabel: the directory becomes
-  its own pipeline and the default pipeline excludes it, and the site loses that content. Full
-  BCP 47 would have claimed `doc/`, `api/`, `css/`, `bin/`, `id/`, `is/`, `no/` and `it/` — all real
-  language subtags. Widen to the shapes that cannot collide (here: a script and/or region subtag is
-  required) and say in `docs/decisions.md` what was deliberately left out, because "it is valid
-  BCP 47 and we reject it" reads as a bug to the next reader. Corollary for
-  `golang.org/x/text/language`: `Tag.Script()`/`Region()` **infer** subtags that were never written
-  (`Raw()` does not), and `Parse` preserves variants, extensions and privateuse verbatim — so
-  `tag.String() == name` is not a canonicality check. Recompose through
-  `language.Compose(base, script, region)`, which keeps only those three.
-- **Bounded results keep a sorted top-N window** — never collect-all, sort, then truncate on a path
-  that runs per request or per file. Drop a candidate ordered after the window's worst on sight; sort
-  only the window, only on admission. It also shrinks the dedup set: with a window, a duplicate can
-  only land *in* the window (an evicted entry is worse than the current worst and gets rejected), so
-  `slices.ContainsFunc` over N replaces a set over the whole corpus. See `findRelatedDocs`.
-- **Return an `iter.Seq` accessor next to any slice-returning one** — `Index.ByTag` copies a
-  `PageInfo` per page; `Index.PagesByTag` yields pointers and allocates nothing. Callers that read a
-  field or two, or discard most of what they see, take the iterator. The pair only works if the
-  slice-returning half copies *deeply* — a bare struct copy still shares every slice and map field,
-  so `ByPath`/`ByTag` handed out an aliased `Tags` and `Meta` from an index that is immutable after
-  construction, and the iterator had nothing left to be faster than. Route every such accessor
-  through one `clonePage`-style helper and pin them in a single table test, listing even the ones
-  that merely delegate — otherwise a later shortcut inside the delegator hides behind its
-  delegatee's row. The genuinely-aliasing accessor says so in its doc comment and stays out of the
-  table. Corollary for the *consumer* side: a function that writes into a caller-supplied map clones
-  it, and the comment names the write — not a hypothetical future cache.
-- **Never build a map at query time over data an index already ordered** — a build phase that appends
-  one document at a time leaves its lists sorted, so lookups become linear merges. `search.Search`
-  rebuilt a `map[int][]posting` per query token over the whole posting list; the postings were already
-  ascending by `docIdx`. Where a query relies on such an ordering, say so in a comment at the loop that
-  produces it (`BuildIndex` phase 3), not only at the loop that consumes it. Corollary: results derived
-  from map iteration are unordered — give the final sort a deterministic tiebreaker, or serve and build
-  disagree on equally-ranked hits.
-- **A cached object is shared through the pipeline, never reconstructed at the consumer** — publish it
-  as a `Pipeline` field and pass it down. `handleGetTOC` built its own `navigation.Generator` per MCP
-  call: a fresh `sync.Once` re-walked the content *and*, missing the title lookup the pipeline installs,
-  sent `buildTree` back to `extractTitle` — opening and line-scanning every `.md` file, per request. The
-  tell is a constructor call inside a request handler. Corollary: when the consumer needs the cached
-  object, its command must enable the pipeline stage that builds it (`gomddoc mcp` had
-  `EnableNavigation: false`), and `setupPipeline`'s option table test must assert the field is non-nil —
-  the two halves live in different files with no compile-time link between them.
-- **`yaml.Marshal`** for YAML output — never construct YAML with `fmt.Sprintf`/`fmt.Fprintf`
-  (special characters like colons, brackets produce malformed output)
-- **Every field of a marshalled XML struct needs an explicit `xml:` tag** — `encoding/xml` silently
-  falls back to the Go field name, so an untagged `Link atomLink` emits `<Link>`, which is not the
-  Atom element. A round-trip test through the same struct reads it back happily and cannot see it.
-- **Consistent behavior across code paths** — error/fallback paths must behave identically to happy
-  paths (e.g., if the fast path lowercases, the error path must too). When several documents answer
-  the same question about the same object, the *fallback* is part of the answer and belongs in one
-  function: "when was this page last modified" was hand-rolled four times, and sitemap's copy had no
-  frontmatter-date fallback, so a page whose stat failed was dated in `feed.xml` and undated in
-  `sitemap.xml`. `seo.LastModified` also folds in the `.UTC()` two of the four remembered, because a
-  normalization every caller must repeat is one some caller will not.
-- **An `init()` that writes a process-global registry belongs with the *consumers*, not the owner** —
-  an `init()` only runs if its package is linked. `.md`'s `mime.AddExtensionType` sat in
-  `renderer/markdown.go` because renderer owns the format, but `internal/resolve` calls
-  `negotiate.DetectMIME` and does not import renderer, so the whole clean-URL feature depended on
-  something else pulling renderer into the binary. The tell is a test file re-registering the value
-  to make its own package pass — there were four, one of them with a *different* value
-  (`text/markdown`, no charset), and because test-file inits run after imported-package inits it
-  silently won for that entire test binary. Put the registration in the package that owns the
-  accessor (`internal/negotiate`), and never add a second one.
-- **A guard must distinguish "absent" from "could not tell"** — `guardOutputDir` stands between
-  `os.RemoveAll` and a directory gomddoc did not create, and read *any* `os.Stat` error as "does not
-  exist, nothing to guard". Test `errors.Is(err, fs.ErrNotExist)`, not `err != nil`. The same applies
-  in reverse to a guard that fails closed: refusing is safe, but reporting "not created by gomddoc
-  build" when the stat failed for an unrelated reason asserts a fact the code does not have and
-  discards the one detail the operator needs. Corollary for exclusion predicates, where failing open
-  serves content the author excluded: match a pattern with the matcher it was written for.
-  `strings.HasPrefix(clean, "drafts/*/")` compares the glob literally, so every trailing-slash
-  pattern containing a wildcard matched nothing.
-- **A precedence ladder gets one implementation** — RFC 9110 §12.5.1's `exact=3, type/*=2, */*=1`
-  reached three hand-rolled copies (twice in `renderer/registry.go`, once more in `ParseAccept`'s
-  sort on a 0/1/2 scale of its own) after a `(negotiate.MediaType).Matches` method had already been
-  deleted for the same reason. It lives on `(negotiate.MediaType).Specificity()`; a matcher returns
-  that or 0. Ranking rules drift silently — nothing fails when two copies disagree, the wrong
-  representation is just served.
-- **When one step must name what another step produced, have the producer return it — never a
-  predicate that forecasts it** — `robots.txt`'s `Sitemap:` directive has to name the sitemap the
-  build actually wrote, and build wrote `sitemap-index.xml` under `len(detectedLangs) > 0 && domain
-  != ""` while `GenerateRobotsTxt` hardcoded `/sitemap.xml`: multi-language sites advertised the
-  default-language sitemap, which by design lists no translated page. Sharing the *condition*
-  (an exported `HasSitemapIndex(langs)`) is still two things that can disagree, and it puts
-  build-mode knowledge in `internal/server`. `writeSitemapIndex` writes the file and returns the path
-  it published (`""` for none); `GenerateRobotsTxt` takes that string. Serve reaches the same shape
-  from the other side: one `sitemapPath` computed at route registration feeds both
-  `NewRobotsHandler` and the `auth.Handle("GET "+sitemapPath, …)` it gates — which is how the
-  *whether* axis got fixed too, serve having emitted the directive on `domain != ""` while
-  registering the route on `opts.MetaIndex != nil && domain != ""`.
-- **Counters over string-length comparisons** — detect "nothing written" with a counter, not by
-  comparing buffer length against a magic string constant (breaks silently if format changes)
-- **`strings.ToLower` is not positionally aligned with its input, and can return something
-  *shorter*** — Go applies simple case mapping, so `İ` (U+0130, 2 bytes) becomes `i` (1 byte). Any
-  code that indexes the original with an offset found in the lowered copy — or the reverse, as
-  `findBestWindow` does with `lower[pos:end]` — needs a `len(lower) == len(s)` guard, and the guard
-  must come *before* the slice, not after: past enough lost bytes the slice is out of range and
-  panics. Fold once and reuse it (`strings.ToLower` returns its argument when there is nothing to
-  fold, so the common case is free); do not fold the same string once per loop iteration or once per
-  token. `findTokenSpansRunewise` is the aligned-offset path when you actually need the positions.
-- **A symbol whose only callers are `_test.go` files is dead, and its tests are what disguise it** —
-  `(MediaType).Matches` had a doc comment, a table test and a benchmark, and zero production callers;
-  `renderer/registry.go` hand-rolled the same RFC 9110 media-range match twice. Grep excluding
-  `_test.go` before believing a symbol is live. Deletion cascades, so follow the chain: removing
-  `HTMLRenderer.ClearCache` made `TemplateCache.Clear()` test-only, which made both implementations'
-  `Clear` test-only, which took the interface method. Corollary: an interface left with one real
-  implementation and one no-op is storing a boolean — say so where it is constructed, or collapse it.
-  The same grep run the other way finds the inverse — a struct field with a live *consumer* and no
-  production *producer*, which reads as a supported feature and ships as a silent omission.
-  `seo.JSONLDPage.Date` was set only by `internal/seo`'s own tests, so `GenerateJSONLD` had a
-  `datePublished` branch that no page ever took. A field is only wired when something outside
-  `_test.go` assigns it, and the end-to-end test that would have caught it asserts the *output*
-  document, not the struct.
-- **One mutable object, one lock** — never guard the same value with two independent mutexes. If two
-  types need it, give one type ownership and let the other borrow through it.
-- **A pooled buffer's slice header belongs to the pool, not the request** — `compressionWriter` wrote
-  its working slice back over the pooled header on return (`*bufPtr = cw.buf[:0]`), and every exit
-  path had niled that slice first, so the pool was refilled with zero-capacity slices and its
-  `cap(buf) <= maxPoolBufferSize` guard was dead code (`cap(nil)` passes any bound). Hand back the
-  pointer you got and leave `*bufPtr` alone; then size the pooled buffer so the working slice cannot
-  outgrow it (here: commit the compress/passthrough decision *before* appending, so the buffer never
-  reaches `minCompressionSize`). A slice that grows anyway is then dropped for free instead of parked.
-  Corollary: don't buffer what you can forward — when a write already answers the question the buffer
-  exists to answer, commit and write through. Test it by asserting `cap()`: `len()` and the response
-  body are identical whether the buffer survives or not.
-- **go-git reads are writes** — `object.Tree` memoises lookups into unsynchronised maps and go-git's
-  storers mutate on read. Tree/blob access needs an *exclusive* mutex; an `RWMutex` lets two
-  "readers" hit a concurrent map write (an unrecoverable runtime throw). See `gitTreeState`.
-- **Resolve a git path once, then work from the hash it produced** — `tree.File(p)` is `FindEntry` +
-  a full object decode, so probing with it and falling back to `tree.Tree(p)` on failure throws away
-  a packfile delta + zlib decode on every directory hit; `tree.Size(p)` and `tree.Tree(p)` re-walk
-  the path, and `Tree.FindEntry` only consults its subtree cache from three segments up
-  (`for i := len(pathParts) - 1; i > 1`), so the second walk of `docs/guide.md` re-decodes `docs`.
-  `FindEntry` once, switch on `entry.Mode`, then `object.GetTree(objects, entry.Hash)` /
-  `tree.TreeEntryFile(entry)` / `objects.EncodedObjectSize(entry.Hash)`. `object.Tree` keeps its
-  storer unexported, which is why `gitTreeState` carries `objects` beside `tree` — one lock, set and
-  cleared together. See `resolveTreeNode`, `statTreeNode`.
-- **A read-only `fs.FS` wrapper owes `io/fs` its optional interfaces** — `fs.Stat` and `fs.ReadFile`
-  fall back to `Open`, and for `gitTreeFS` that decoded the whole blob: sitemap and feed generation
-  stat every page for a `ModTime` that is one constant, and the metadata and search index builds read
-  every file in the repo through a fallback that copies the payload a second time. Implementing
-  `fs.StatFS` cut `fs.Stat` from 2469 ns/8823 B to 564 ns/352 B. Assert them
-  (`var _ fs.StatFS = (*T)(nil)`) — nothing else catches the regression, because the fallback is
-  always correct, only slow. The same trap in reverse: a type embedding the `fs.FS` *interface* does
-  not satisfy `fs.ReadDirFS`, so `fs.ReadDir` routes through `Open` (see `countingFS`).
-- **Never derive a page URL from a file path by hand** — call
-  `(*resolve.PathResolver).PageURLPath(realPath, defaultIndex)`. It is the only implementation of
-  the clean-path lookup plus default-index fold. Four hand-rolled copies silently disagreed, which
-  is how static builds shipped `.md` canonicals and dead prev/next links. (Build's
-  `prettyOutputPath` is a *separate* mapping — file to output path, not file to URL. They diverge
-  in some configs; see `docs/reviews/2026-07-29-codebase-review.md` §10.2.)
-- **Templates link content through `contentURL`, never a raw path** — it applies `PageURLPath` *and*
-  the renderer's language prefix, so a partial must not add `/{lang}` itself. The corollary: hand a
-  per-language pipeline its **own** `TemplateRenderer` (`LangPipelineConfig.TemplateRenderer`), never
-  the default one — the default resolver cannot map a page that exists only in that language, so the
-  link silently degrades to a raw `.md` path pointing at the wrong tree.
-- **Anything more than one consumer reads is a `PageContext` field, never a template function** —
-  `funcMap` is bound at parse time and parsed templates are cached and shared across concurrent
-  `Render` calls, so there is no per-render seam where a memo could live: a function with two callers
-  in a layout does its work twice per request, every request. Breadcrumbs cost a provider `Stat` and
-  were computed once by the breadcrumb bar and again by the JSON-LD partial. Derive it in
-  `BuildPageContext` instead, next to `TOC`/`Navigation`/`PrevPage`/`RelatedDocs`. Corollary: pass
-  `PageContextInput` the *producer* (`Renderer`), not the produced value — a caller can hand a
-  precomputed trail that disagrees with `Path`, but it cannot hand a renderer that does.
-
-### `io/fs` Spec Compliance
-
-- **`ReadDir(n <= 0)`** returns all remaining entries with **`nil` error**, not `io.EOF`.
-  Only `ReadDir(n > 0)` returns `io.EOF` when exhausted.
-- **`fs.ValidPath`** — no leading `/`, no trailing `/`, no `..` segments, no empty segments
-- **`path`** package for all `fs.FS` path operations (not `filepath`)
-- **`*fs.PathError` or nothing** — every method taking a name owes one. A bare `fs.ErrNotExist`
-  satisfies `errors.Is` but `errors.As` finds no path, so `fs.WalkDir` has nothing to report, and a
-  test asserting only `errors.Is` cannot see the difference — assert `Op` and `Path` too. Give the
-  package *one* construction (`provider.fsPathErr` + `op*` constants): two implementations spelling
-  `ReadFile`'s `Op` differently is a disagreement a per-implementation helper preserves. The mapping
-  onto the sentinels runs **both ways** — flattening every backend failure to `fs.ErrNotExist` makes
-  a corrupt repository render as an empty site instead of failing, so map only the not-found errors
-  and let the rest through (`provider.treeErr`).
-- **`fstest.TestFS` is the conformance check** — a new `fs.FS` implementation runs it in its test.
-  It catches what hand-written tests do not: an `Open(dir)` handle whose `ReadDir` disagrees with the
-  filesystem's own `ReadDir`, a `DirEntry.Info()` that disagrees with `Stat`.
-
-### HTTP Conventions
-
-- **`w.Header().Add()` not `Set()`** for multi-value headers (`Vary`, etc.) — `Set` overwrites
-  values from other middleware
-- **Weak ETag comparison**: strip `W/` prefix before comparing opaque-tags (RFC 9110 §8.8.3.2)
-- **A handler holding a complete body serves it through `serveWithETag`, never `Set`+`WriteHeader`+
-  `Write`** — `/sitemap.xml`, `/feed.xml` and `/robots.txt` are generated once and cached for the
-  process's lifetime, and all three hand-rolled the write: no ETag, no `Cache-Control`, so every
-  crawler hit re-downloaded a document that could not have changed. The rule now lives on
-  `lazyBytes.serve` rather than in however many handlers happen to wrap a `lazyBytes`, which is also
-  the one place the plain-text 500 (an HTML error body on an XML endpoint is worse than a bare one)
-  is written and commented. Test it with `assertRevalidates`: 200 with a body, Content-Type,
-  Cache-Control and an ETag, then a conditional GET answering 304 with the same Content-Type and no
-  body. Each half alone passes a broken handler — checking only the 304 status passes one that still
-  ships the payload, checking only the headers passes one that ignores `If-None-Match` — and the
-  three call sites that predated the helper each asserted a different subset.
-  Known exception: `writeJSON` (`/api/*`) streams through a `json.Encoder` with no byte slice in
-  hand, so it neither caches nor revalidates. That is recorded in the codebase review, not silently accepted.
-- **`http.MaxBytesReader`** on any endpoint accepting request bodies — prevents memory exhaustion
-- **Cap input lengths** (query params, form values) before processing — truncate, don't reject
-- **`Vary` header required** when response depends on a request header (e.g., `Accept` for content
-  negotiation, `Accept-Encoding` for compression)
-- **A cross-cutting middleware goes on the highest `RouteGroup` that wants it, never on a leaf** —
-  `Subgroup` inherits the parent's chain, so a concern attached to one leaf is a concern every
-  sibling opts out of *silently*, and every route added later opts out by default. `Compression` and
-  `Metrics` sat on the two content subgroups: `/tags/`, `/sitemap.xml`, `/feed.xml`, `/_assets/`,
-  `/api/*` and `/robots.txt` — the most compressible payloads on the site — were served plain, with
-  no `Vary`, and uncounted. They now hang off `base`. Exemptions are the exception and each carries
-  its reason at the registration site (`/metrics` must not count its own scrape; health probes would
-  swamp the counters). Corollary: hoisting `Metrics` above MethodFilter/ContentExclusion/
-  ExtensionRedirect is what makes 405/403/301 show up in `http_requests_total` at all.
-- **Every route in a language scope writes errors through the scope's one `ErrorPage`** — a status
-  code chosen to hide something is undone by a body that reveals it. `ContentExclusion` returns 404
-  precisely so an excluded path is indistinguishable from an absent one; because the statuses match
-  by construction, the *body* is the only thing a client can still compare, and it used to differ
-  (plain-text `File not found` against the handler's themed page, with the tag routes on
-  `net/http`'s default as a third shape). The `Handler` *owns* its scope's writer — `NewHandler`
-  builds it from the renderer, lang and `TFunc` it was given, so no caller can hand a scope a writer
-  that disagrees with it — and siblings borrow it via `Handler.ErrorPage()`. `NewHTTPServer`
-  therefore builds each scope's handler before the routes that borrow from it; registration order is
-  irrelevant under Go 1.22+ ServeMux specificity matching. Anything rendering the same page outside
-  the request path calls `ErrorPage.Render` rather than re-deriving the context — build's static
-  `404.html` did the latter and drifted. Test it by requesting the *same* URL against two sites, one
-  where the file exists and is excluded and one where it never existed, then comparing bodies
-  byte-for-byte; asserting each is "themed" passes even when they differ. Exemptions are legitimate
-  but must say why at the call site: `/_assets/` (a sub-resource fetch), the 406 (the client's
-  `Accept` excluded HTML), MethodFilter's bodyless 405, and the XML endpoints.
-- **When N transports ask the index the same question, the index answers it — they only choose how
-  to render the answer** — "is this a known tag" had *three* answers (`/tags/{tag}` 404,
-  `/api/tags/{tag}` 200 `[]`, MCP `docs://site/tag/{tag}` a successful read of JSON `null`), because
-  each handler re-derived it from a raw `ByTag`. `Index.LookupTag` now owns the length bound, the
-  normalization, the emptiness verdict *and* the sort; the handlers differ only in how a `false`
-  looks on the wire. Put the sort in the shared lookup too — it is what makes the JSON array, the
-  HTML page and the static build agree on order, and it deletes build's duplicate `slices.SortFunc`.
-  Corollary: a lookup helper must normalize its argument exactly as the build phase keyed the map —
-  `ByTag` lowercased where `BuildIndex` used `normalizeTag` (lowercase *plus* trim), so
-  `/api/tags/%20go` missed an indexed `go` and nothing failed. And keep the length guard *ahead* of
-  the normalize, so a megabyte of path segment is rejected before it is copied.
-
-### Testing Conventions
-
-- **No `t.Parallel()` when tests share global mutable state** (e.g., Prometheus counters, package-
-  level vars) — use before/after delta patterns with sequential execution instead
-- **`t.Parallel()` is incompatible with `t.Setenv`** (panics) and `testing.AllocsPerRun`\*\* (panics)
-- **Context cancellation tests**: use already-cancelled `context.WithCancel`, not nanosecond
-  timeouts + `time.Sleep` (deterministic, no flakiness, no unnecessary delays)
-- **One canonical test helper per pattern** — don't duplicate helpers across test files; place the
-  shared helper in a `testhelpers_test.go` file, or `internal/testutil/<name>` once a second package
-  needs it (`countfs` moved there the moment `navigation` wanted `mcp`'s counting `fs.FS`;
-  `logcapture` replaced six hand-rolled copies of the slog `SetDefault`/restore dance)
-- **Every lazy cache owes a cold-cache concurrency test** — a `sync.Once` or mutex populated on first
-  request is only ever *used* cold-and-concurrent, and that is the one state a sequential
-  call-it-twice test cannot reach. Go through `internal/testutil/fanout`.`Run(50, fn)`: the release
-  barrier is what makes it a race, because a bare `WaitGroup` lets the first goroutine finish before
-  the last is scheduled and the cache is warm by the time the contention was meant to happen. Assert
-  **pointer identity**, not equality, whenever the API returns one — `Tree()` and `PrevNext` hand out
-  pointers into the cached tree, so `==` on the pointer catches a rebuild that `reflect.DeepEqual`
-  would call correct, and `lazyBytes` compares `&b[0]` for the same reason. Count the underlying work
-  where you can: `countfs` measures one sequential walk, then requires the concurrent run to match it
-  exactly. Where the cached value is a pure function of already-held state no count can tell one build
-  from fifty — say so at the test, and fall back to `-race` (which `make test` runs, and which needs
-  the concurrent *execution* this test exists to provide) plus a zero-value check, since a caller
-  losing an `if x == ""` race returns the zero value.
-- **Assertions must be falsifiable** — before adding one, ask what production change would turn it
-  red. `strings.Contains(body, "https://x.com/")` is dead when every URL in the fixture starts with
-  that prefix; `len(r) > max` is dead when the fixture is smaller than `max`. Parse generated
-  documents (`xml.Unmarshal` into the production struct) and compare exhaustively with
-  `slices.Equal`/`maps.Equal`, or delimit the substring (`<loc>…</loc>`). Keep a few raw-string
-  checks for wire format — a round-trip through the production struct is blind to element names.
-  A `strings.Contains` on a *label* does not pin a `%w`: `errors.New("malformed URL")` and
-  `fmt.Errorf("malformed URL: %w", err)` both contain `"malformed URL"`, so the assertion has to
-  reach past the label into the wrapped error's own text.
-- **Tests over parallel write paths must read what was written, and deny the sibling's content** —
-  `os.Stat` cannot see one page's HTML landing in another page's `index.html`
-- **A `slog.Warn(…); continue` branch is tested both ways** — the whole point of degrading instead of
-  failing is that the survivors survive, so asserting only that the bad input was dropped passes a run
-  that dropped *everything*. That is the exact shape of the §9.7 `fs.Sub`/`fs.StatFS` bug: every read
-  failed and the build still exited 0. Assert the skip, the survivor, and the warning that names which
-  one was skipped — a silent skip and a logged one are indistinguishable to the caller, so the log
-  line *is* the contract, and a skip logged at `Debug` does not have one (`metadata.BuildIndex`'s
-  unreadable-file branch was the §9.7 blind spot and is now `Warn`; malformed frontmatter stays at
-  `Debug`, being a property of the content rather than an anomaly). Go through
-  `internal/testutil/logcapture`: `log.Has(msg, attrs...)` matches message and attributes on the
-  *same* record, where scanning rendered output for each separately passes when two records in the
-  same loop supply one each. Before writing a fake, check the branch is reachable at all —
-  `setupPipeline`'s per-language failure and `build.go`'s "Skipping language with no pipeline" are
-  unreachable through any real provider, and the codebase review says so rather than pretending a test covers
-  them.
-
-### After implementing changes
-
-#### New CLI feature
-
-1. Update [gomddoc-website](git@github.com:monolithiclab/gomddoc-website.git) if user-facing
-2. Check if themes in [gomddoc-themes](git@github.com:monolithiclab/gomddoc-themes.git) need updates
-
-#### Theme capability change
-
-1. Check if template system needs changes
-2. Update marketing site's custom theme if affected
-
-#### Configuration change
-
-1. Update `docs/configuration.md` in [gomddoc-website](git@github.com:monolithiclab/gomddoc-website.git)
-2. Update theme READMEs in [gomddoc-themes](git@github.com:monolithiclab/gomddoc-themes.git) if relevant
+1. Non-trivial feature: a spec in `docs/superpowers/specs/`, validated by Nicolas, then a plan in `plans/`
+2. Minimal change, with tests, plus the owning doc (guide, architecture, decisions) in the same commit
+3. `make ci` green
+4. Commit `type(scope): summary` with the session's trailers; never squash, push only when asked
