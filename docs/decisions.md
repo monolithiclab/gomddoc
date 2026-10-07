@@ -1,9 +1,26 @@
 # Architectural Decisions Log
 
-Key decisions made during gomddoc development, including alternatives considered and reasons for rejection.
-Extracted from completed spec files before deletion.
+Key decisions made during gomddoc development, with the alternatives considered and the reasons for rejection.
+Append-only: a new decision gets the next D-number and today's date, and an entry that turns out wrong is superseded
+by a new one, never edited. The D-numbers and dates were added on 2026-10-07, in the entries' existing order; a
+date is when the entry's heading entered the history (`git blame -C`). The repository's history starts on
+2026-04-22, so the entries written before then (D1–D31) carry that date rather than the day they were made.
 
-## CLI Framework
+## D0. Decisions Recorded Outside This File
+
+*2026-10-07*
+
+Index of decision logs that predate this file's numbering. They stay where they are; a new decision is a D-entry here.
+
+- `docs/architecture.md`, § *Design Decisions*: a table of the core architecture choices (MIME routing, the
+  provider/renderer split, MCP as a thin adapter, feature toggles, theme resolution…), one line of rationale each.
+- `docs/superpowers/specs/2026-04-23-tag-components-chips-and-pages-design.md`, § *Design Decisions*.
+- `docs/superpowers/specs/2026-04-24-see-also-section-design.md`, § *Design Decisions*.
+- `docs/superpowers/specs/2026-05-19-tag-search-syntax-design.md`, § *Design Decisions*.
+
+## D1. CLI Framework
+
+*2026-04-22*
 
 **Chosen**: Kong (`github.com/alecthomas/kong`)
 
@@ -14,7 +31,9 @@ Extracted from completed spec files before deletion.
 
 **Why Kong**: Declarative struct tags mirror existing `env:`/`yaml:` tag pattern. Native env var display in `--help`. Zero transitive deps. Compile-time checked subcommands. Auto-generated exhaustive help.
 
-## Git Library
+## D2. Git Library
+
+*2026-04-22*
 
 **Chosen**: go-git (`github.com/go-git/go-git/v5`) — pure Go
 
@@ -25,7 +44,9 @@ Extracted from completed spec files before deletion.
 
 **Why go-git**: Pure Go, no CGO, embedded-friendly, works with any Git server.
 
-## Content Rendering Architecture
+## D3. Content Rendering Architecture
+
+*2026-04-22*
 
 **Chosen**: MIME-type based registry with `ContentRenderer` interface returning `*RenderResult`
 
@@ -45,7 +66,9 @@ Extracted from completed spec files before deletion.
 MIME registration moved to `internal/negotiate/mime.go`'s `init()` (2bfa95c, 2026-08-07); `Provider` is now its own
 interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
-## Metadata / RenderResult
+## D4. Metadata / RenderResult
+
+*2026-04-22*
 
 **Chosen**: `RenderResult` struct instead of multiple return values
 
@@ -60,7 +83,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 **Superseded**: the content enricher (d13955b, Phase 6b, 2026-04-22) took over metadata and TOC extraction;
 `RenderResult` now holds only `Content` and `MimeType`, and `Render` receives the `*enricher.EnrichmentData`.
 
-## Configuration Architecture
+## D5. Configuration Architecture
+
+*2026-04-22*
 
 **Chosen**: Custom implementation with reflection-based env var walking
 
@@ -82,7 +107,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 - `PassthroughTemplateStore` (dev): Always re-parse, no caching
 - **Rejected alternatives**: Conditional in Render() (leaks config), two Renderer implementations (duplicates logic), config flag checking (couples renderer to config)
 
-## Git Provider Security
+## D6. Git Provider Security
+
+*2026-04-22*
 
 **Key security decisions**:
 - **SSH**: Fail-closed via known_hosts — no TOFU (Trust On First Use) fallback. SSH agent not supported (explicit key file only)
@@ -97,7 +124,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 **Superseded** in part: `--git-storage-dir` (`GOMDDOC_SERVER_GIT_STORAGE_DIR`) selects on-disk storage through
 `DiskStorageFactory` (e8df64f, 2026-04-22); in-memory remains the default. See "Disk-Based Git Storage".
 
-## Feature Toggle System
+## D7. Feature Toggle System
+
+*2026-04-22*
 
 **Chosen**: Generic `map[string]bool` with default-to-true semantics and three-layer override (config → env → frontmatter)
 
@@ -114,13 +143,17 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 - **Env var pattern**: `GOMDDOC_SITE_THEME_FEATURES_KATEX=false` uses reflection-based `walkStruct` extended with `reflect.Map` handling for `map[string]bool` types.
 - **Renderer gating**: Goldmark extensions (heading_anchors, admonitions, color_chips) check the merged feature map via parser context (AST transformers) or document attribute (node renderers). The renderer sets merged features on both channels before parsing/rendering.
 
-## API Design Patterns
+## D8. API Design Patterns
+
+*2026-04-22*
 
 - **Options struct** preferred over functional options (simpler, sufficient, zero-value gives sensible defaults)
 - Example: `NewMarkdownRenderer(MarkdownOptions{Features: map[string]bool{"color_chips": true}})` — empty struct gives defaults
 - **Constructor pattern**: `config.NewFromServeArgs(ServeArgs{...})` replaced `Load()` + `ParseFlags()`
 
-## Disk-Based Git Storage
+## D9. Disk-Based Git Storage
+
+*2026-04-22*
 
 **Chosen**: `DiskStorageFactory` using `go-git/v5/storage/filesystem` with LRU object cache
 
@@ -131,7 +164,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
 **Why filesystem.Storage**: Uses go-git's native `filesystem.Storage` with `cache.NewObjectLRUDefault()`. Zero new deps (go-billy already in go.mod). URL-hashed subdirectories under `--git-storage-dir` isolate per-repo caches. Factory pattern (`StorageFactory`) keeps memory storage as default for small repos.
 
-## Auto-Navigation Sidebar
+## D10. Auto-Navigation Sidebar
+
+*2026-04-22*
 
 **Chosen**: FS-walking navigation generator, rendered by the theme from a `PageContext` field
 
@@ -144,7 +179,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
 **Why not a template function**: the tree reaches templates as `PageContext.Navigation`, and the theme walks it with a recursive `nav-item` template. A function would have to re-project on every call, and `funcMap` is bound at parse time on templates that are cached and shared across concurrent renders, so there is nowhere to memoize. Breadcrumbs originally *were* a function and were moved to a field for exactly this reason — they cost a provider `Stat` twice per request, once for the breadcrumb bar and once for the JSON-LD partial. Markup ownership also belongs with the theme: a function fixes the `<details>/<summary>` structure for every theme at once.
 
-## Metadata Indexing
+## D11. Metadata Indexing
+
+*2026-04-22*
 
 **Chosen**: Lightweight YAML frontmatter parser with in-memory index + JSON API
 
@@ -155,7 +192,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
 **Why lightweight parser**: Custom `extractFrontmatter()` finds `---` delimiters and calls `yaml.Unmarshal` — no goldmark needed. Index built at startup with three-phase concurrent approach: collect file paths → parse frontmatter in parallel with `errgroup` → merge results sequentially (deterministic output). Tags normalized to lowercase. API: `GET /api/tags` (all tags) and `GET /api/tags/{tag}` (pages by tag). Routes registered before the catch-all handler in `server.go`.
 
-## Static Site Generation (`gomddoc build`)
+## D12. Static Site Generation (`gomddoc build`)
+
+*2026-04-22*
 
 **Chosen**: Walk-and-render approach reusing the serve pipeline
 
@@ -166,7 +205,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
 **Why walk-and-render**: Reuses the exact same provider → renderer → template pipeline as `serve.go`. Walks `contentRoot` with `fs.WalkDir`, renders `.md` files through the full pipeline, copies non-markdown files as-is. Writes the default index (`README.md`) as `index.html` and, when `strip_extensions` is set, every other page as `<name>/index.html` (`prettyOutputPath`). Config comes from `config.NewFromDir`, which calls `NewFromServeArgs` with a dummy port. Title derivation uses the shared `text.DeriveTitle` function (extracted to `internal/text/`).
 
-## Color Chip Web Component
+## D13. Color Chip Web Component
+
+*2026-04-22*
 
 **Chosen**: Shadow DOM `<gmd-color-chip>` custom element, shared via `inlineJSAsset`
 
@@ -179,7 +220,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
 **Pipeline integration**: The `ColorChipExtension` goldmark extension detects hex color codes in `ast.CodeSpan` nodes during AST transformation and replaces them with `ColorChipNode` custom nodes, rendered as `<gmd-color-chip>#HEX</gmd-color-chip>`. Only backtick-wrapped hex codes are transformed (fenced code blocks and plain text are unaffected). Controlled by the `color_chips` feature toggle (default: enabled) with per-page frontmatter override via `features: { color_chips: false }`.
 
-## TOC Scroll Highlighting
+## D14. TOC Scroll Highlighting
+
+*2026-04-22*
 
 **Chosen**: `getBoundingClientRect()` with scroll event listener (passive)
 
@@ -189,7 +232,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
 **Why getBoundingClientRect**: Simple, well-supported, directly answers "which heading last scrolled past the top?" with a single `<= 100` threshold. Passive scroll listener avoids jank. Includes fallback for TOC entries without a matching heading (walks backward to nearest ancestor heading that is in the TOC). Auto-scrolls the TOC sidebar to keep the active item centered.
 
-## Touch Device Accessibility
+## D15. Touch Device Accessibility
+
+*2026-04-22*
 
 **Chosen**: `@media (hover: none)` CSS media query
 
@@ -200,7 +245,9 @@ interface (`ReadFile`, `Stat`, `RootFS`), not an `fs.StatFS`.
 
 **Why**: Touch devices (phones, tablets) cannot hover. Without this, copy buttons and heading anchors are invisible and unreachable. The `hover: none` media query is well-supported (95%+ browser coverage) and cleanly separates touch from pointer interaction models.
 
-## Theme System
+## D16. Theme System
+
+*2026-04-22*
 
 **Chosen**: eight themes with full feature parity — `default` embedded in the binary, seven shipped separately in `gomddoc-themes` — on a single-file `default.html.tmpl` architecture
 
@@ -213,7 +260,9 @@ with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
 - **Client-side KaTeX/Mermaid**: Loaded from jsDelivr CDN. Zero server-side deps. Theme-aware (Mermaid initializes with dark/light theme based on `data-theme` attribute).
 - **`prefers-color-scheme` CSS fallback**: All themes include `@media (prefers-color-scheme: dark) { :root:not([data-theme]) { ... } }` so dark mode works even without JavaScript/localStorage.
 
-## Inline Asset Template Functions
+## D17. Inline Asset Template Functions
+
+*2026-04-22*
 
 **Chosen**: Three typed template functions (`inlineJSAsset`, `inlineCSSAsset`, `inlineHTMLAsset`) that load assets from theme directory with shared directory fallback
 
@@ -225,7 +274,9 @@ with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
 
 **Why three typed functions**: Search order (theme dir → shared dir) lets themes override shared assets without forking. Each function returns the correct `html/template` safe type for its context: `template.JS` for `<script>`, `template.CSS` for `<style>`, `template.HTML` for bare HTML (e.g. inline SVGs). Asset file reading is shared via an unexported `readAsset` method. Phase 8e shipped static asset serving at `/_assets/` (0638461) without an `assetURL` function; the default theme still inlines every shared `.mjs` file.
 
-## Cache Busting Strategy
+## D18. Cache Busting Strategy
+
+*2026-04-22*
 
 **Chosen**: Content-hash ETags (FNV-64a) on rendered output
 
@@ -234,7 +285,9 @@ with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
 
 **Why content hashes**: FNV-64a ETag on the rendered HTML means only genuinely changed pages are invalidated. No dependency on Git metadata at serve time. Works identically for filesystem and git providers.
 
-## Benchmark Strategy
+## D19. Benchmark Strategy
+
+*2026-04-22*
 
 **Chosen**: Per-package `*_bench_test.go` files with table-driven small/medium/large document sizes
 
@@ -245,7 +298,9 @@ with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
 - **`benchstat` comparison**: `make bench-save` captures baseline, `make bench-compare` detects regressions. Count=6 for statistical significance
 - **No CI integration**: `.github/workflows/ci.yml` does not run benchmarks
 
-## pprof Integration
+## D20. pprof Integration
+
+*2026-04-22*
 
 **Chosen**: `--pprof` CLI flag enabling `net/http/pprof` handlers on the existing mux
 
@@ -255,7 +310,9 @@ with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
 
 **Why CLI flag**: Simplest approach. Disabled by default, logs `slog.Warn` when enabled. Routes registered by `mountPprof` on whichever listener carries the admin endpoints (`--admin-port`, or the main listener when it is empty) and protected by BasicAuth when `--basic-auth-file` is set. Config flows through `ServerConfig.Pprof` and is overridable via `GOMDDOC_SERVER_PPROF` env var.
 
-## Pre-Launch SEO (Phase 9a)
+## D21. Pre-Launch SEO (Phase 9a)
+
+*2026-04-22*
 
 **Chosen**: Template functions + dedicated handlers + shared `internal/seo` package
 
@@ -268,7 +325,9 @@ with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
 - **robots.txt handler**: Always registered (useful even without domain). `Sitemap:` directive only included when domain is set.
 - **Build integration**: `robots.txt` always generated. `sitemap.xml` only generated when `Meta.Domain` is configured. Uses same `GenerateSitemap`/`GenerateRobotsTxt` functions as serve handlers.
 
-## Allocation Reduction (Phase 4)
+## D22. Allocation Reduction (Phase 4)
+
+*2026-04-22*
 
 **Goal**: Minimize heap allocations on the request hot path, targeting zero-alloc for ETag checks and content negotiation.
 
@@ -293,7 +352,9 @@ with CSS inline in `partials/head.html.tmpl` (a34e88f, 9d6306c, 2026-04-22).
 **Superseded**: `MediaType.Matches` was deleted as dead code (cfcb493, 2026-08-07); RFC 9110 precedence now lives in
 `(negotiate.MediaType).Specificity()`, which `outputMatchScore` calls.
 
-## Full-Text Search (Phase 5)
+## D23. Full-Text Search (Phase 5)
+
+*2026-04-22*
 
 **Chosen: Option C — Stdlib inverted index** for `gomddoc serve` mode.
 
@@ -317,7 +378,9 @@ mode compatibility — no per-theme CSS needed. Follows the `gmd-color-chip.mjs`
 
 **Build mode:** Option B (Pagefind) deferred as optional post-build step.
 
-## Search Index: Field-Tagged Postings
+## D24. Search Index: Field-Tagged Postings
+
+*2026-04-22*
 
 **Chosen**: Unified inverted index with field-tagged postings (`fieldBody`, `fieldTitle`, `fieldDesc`)
 
@@ -329,7 +392,9 @@ mode compatibility — no per-theme CSS needed. Follows the `gmd-color-chip.mjs`
 
 **Why field-tagged postings**: Single map lookup per query token. Postings carry a `field` tag, so scoring partitions by field naturally with a `switch`. Title/description go through the same `tokenizeToFreqs` pipeline as body — no separate lowering or substring matching. `document` struct drops `titleLower`, `descLower`, `termFreqs`, `totalTerms`. `Index` drops `avgDL`, adds `docTermCounts` for per-document body TF normalization. IDF precomputed once per query token in a `tokenInfo` struct. Boost factors (3x title, 1.5x description) adjustable without reindexing.
 
-## Systematic `t.Parallel()` Adoption
+## D25. Systematic `t.Parallel()` Adoption
+
+*2026-04-22*
 
 **Chosen**: Add `t.Parallel()` to every test function and subtest unless incompatible
 
@@ -344,7 +409,9 @@ all packages that had gaps identified in the 8th review pass.
 test suite wall-clock time. The Go testing framework enforces that `t.Setenv` and `t.Parallel` are
 mutually exclusive at runtime, so the exclusion is safe by construction.
 
-## MCP Server (Phase 10)
+## D26. MCP Server (Phase 10)
+
+*2026-04-22*
 
 **Chosen**: Official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk`, v1.4.x when chosen, v1.8.0 in `go.mod`
 now) with thin adapter architecture
@@ -366,7 +433,9 @@ now) with thin adapter architecture
 **Discarded: MCP for static sites (Phase 10c)**:
 Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` output, plus a build-time `_mcp/manifest.json` manifest. Dropped because `gomddoc mcp` already works with any content directory — running it against the source markdown provides richer metadata (frontmatter, tags) than post-build HTML. The manifest adds build complexity for a use case already covered by the existing command.
 
-## URL Extension Stripping
+## D27. URL Extension Stripping
+
+*2026-04-22*
 
 **Chosen**: Extensionless canonical URLs with a resolution table built at startup
 
@@ -383,7 +452,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 - **File vs. directory**: File wins. If `guide.md` and `guide/` both exist, `/guide` resolves to the file. A warning is logged at startup.
 - **Multi-extension conflicts**: The first extension in the `strip_extensions` config list wins. If both `guide.md` and `guide.html` exist and both extensions are strippable, the one whose extension appears first in the config claims `/guide`. The other is skipped with a warning.
 
-## Post-Processors to Goldmark Extensions
+## D28. Post-Processors to Goldmark Extensions
+
+*2026-04-22*
 
 **Chosen**: Replace regex-based HTML post-processors with proper goldmark AST extensions
 
@@ -401,7 +472,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 - **No custom node for heading anchors**: Headings don't change structurally — only the HTML output gains an anchor link. A renderer override for `ast.KindHeading` is sufficient.
 - **Custom nodes for admonitions/color chips**: `AdmonitionNode` (block) and `ColorChipNode` (inline) replace `ast.Blockquote` and `ast.CodeSpan` respectively. This makes the semantic change visible in the AST.
 
-## HTML-in-Go to Web Components
+## D29. HTML-in-Go to Web Components
+
+*2026-04-22*
 
 **Chosen**: Replace hardcoded HTML in goldmark renderers with `<gmd-*>` web components
 
@@ -418,7 +491,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 - **Shadow DOM for heading anchors and color chips**: Self-contained elements with no inner content from markdown. Encapsulation prevents style leakage.
 - **`gmd-` prefix**: Namespaces all custom elements to avoid collisions. Applied retroactively to `<color-chip>` → `<gmd-color-chip>`.
 
-## `cases.Title` Per-Call Allocation
+## D30. `cases.Title` Per-Call Allocation
+
+*2026-04-22*
 
 **Chosen**: Create a fresh `cases.Title(language.English)` at every call site
 
@@ -427,7 +502,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 
 **Why per-call**: The allocation is negligible. A `sync.Pool` of casers could be used if this becomes a hot path, but benchmarks show no need.
 
-## Deferred / Discarded Ideas
+## D31. Deferred / Discarded Ideas
+
+*2026-04-22*
 
 | Idea | Status | Reason |
 |------|--------|--------|
@@ -446,7 +523,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 | Rate limiting | Not planned | Not needed for doc viewer |
 | WebSocket (live reload) | Deferred | Phase 8+ |
 
-## Tag URL Format & Pages
+## D32. Tag URL Format & Pages
+
+*2026-04-23*
 
 **Chosen**: percent-encoded tag values in URLs (`/tags/machine%20learning`), centralized validator skipping invalid tags at index-build time
 
@@ -460,7 +539,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 
 **Renderer interface extension**: `RenderTagPage` and `RenderTagsIndex` were added to the `template.Renderer` interface (not just the `*HTMLRenderer` concrete type) so the server can register handlers via the abstract dependency without type-asserting. There's only one renderer implementation today; the interface is a layering signal more than a polymorphism enabler.
 
-## Version String Resolution
+## D33. Version String Resolution
+
+*2026-07-27*
 
 **Chosen**: `-ldflags -X main.version` as the primary source, with `debug.ReadBuildInfo().Main.Version` as a fallback, normalized to the unprefixed form.
 
@@ -474,7 +555,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 
 **Normalization**: GoReleaser injects `{{ .Version }}` (unprefixed, `0.1.1`), the Makefile injects `git describe` (prefixed, `v0.1.1-2-gabc1234`), and build info carries module versions (`v0.1.1`). All three are trimmed to the unprefixed form so `--version` output matches the archive names and docker tags.
 
-## Serialised Git Reads
+## D34. Serialised Git Reads
+
+*2026-07-29*
 
 **Chosen**: one exclusive `sync.Mutex` (`gitTreeState`) guarding every post-clone read of the git object graph — tree lookups, blob contents, and directory listings, for both `GitProvider` and the `gitTreeFS` handles it hands out.
 
@@ -487,7 +570,9 @@ Originally planned `gomddoc mcp --built-dir` to serve MCP from `gomddoc build` o
 
 **Consequence to remember**: git-backed sites now serve reads one at a time, including blob decompression. That is a real throughput reduction versus the (incorrect) previous behaviour. The scaling lever is independent repo handles, *not* a finer lock.
 
-## One Derivation of a Page's URL
+## D35. One Derivation of a Page's URL
+
+*2026-07-29*
 
 **Chosen**: `(*resolve.PathResolver).PageURLPath(realPath, defaultIndex)` is the only function that turns a content file path into the URL that file is published at.
 
@@ -509,7 +594,9 @@ URLs cannot match serve's), which is a larger question than `Page.Path`. Tracked
 
 **Deliberately not fixed here**: serve canonicalises a directory index to `/guides/` when requested that way and `/guides` when requested without the slash — `Page.Path` in serve is the request, not a stable page identity. Both forms return 200, so a directory index has two canonical URLs. That is a serve-side bug present before and after this change, tracked separately in `docs/reviews/2026-07-29-codebase-review.md`; build now consistently emits the no-slash form, matching the sitemap and every internal link.
 
-## One Effective Exclude List per Pipeline
+## D36. One Effective Exclude List per Pipeline
+
+*2026-08-03*
 
 **Chosen**: `Pipeline.Exclude` — a single list, `cfg.Site.Exclude` plus
 `PipelineOptions.ExtraExclude` — that every index of that pipeline is built with and that
@@ -545,7 +632,9 @@ pipeline's effective list. Its index now covers default-language content only �
 are duplicates and indexing them once is right — while `fr-FR/page.md` stays readable by
 explicit path.
 
-## A Language Directory Needs a Script or a Region Subtag
+## D37. A Language Directory Needs a Script or a Region Subtag
+
+*2026-08-07*
 
 **Chosen**: `locale.isLanguageDir` recognises `fr-FR`, `zh-Hans`, `es-419` and `sr-Latn-RS`,
 but not `fr`, `en` or `zh`. The tag must also be canonically cased and its primary subtag must
@@ -574,7 +663,9 @@ translation tree with no locale file of its own is a legitimate setup that rende
 **Cost**: a site that wants `/fr/` rather than `/fr-FR/` cannot have it. That is the price of
 auto-detection, and the guide states it.
 
-## golangci-lint Pinned to v2, With a Config File It Never Needed Before
+## D38. golangci-lint Pinned to v2, With a Config File It Never Needed Before
+
+*2026-09-06*
 
 **Chosen**: `common-go.mk`'s `lint-golangci-lint` target now installs
 `github.com/golangci/golangci-lint/v2/cmd/golangci-lint`, and the repo gained a `.golangci.yml`
@@ -607,7 +698,9 @@ still find another rewrite of the once-fixed expression, e.g. also inverting the
 relational operators — worth re-running `--fix` to a fixed point rather than accepting the
 first suggested form).
 
-## `govulncheck` Moved Into `make lint`, as `lint-vulncheck`
+## D39. `govulncheck` Moved Into `make lint`, as `lint-vulncheck`
+
+*2026-09-06*
 
 **Chosen**: `vulncheck` is no longer its own top-level Makefile target. It is `lint-vulncheck`
 in `common-go.mk`, alongside `lint-vet`/`lint-staticcheck`/`lint-gosec`/`lint-gocritic`, and a
@@ -637,7 +730,9 @@ itself could live in the shared file.
 (`GO-2026-5932`, `x/crypto/openpgp` is unmaintained) — `govulncheck` does not fail the build on
 vulnerabilities the code doesn't call, and there is no fixed version to move to.
 
-## `go.mod` Gets a `toolchain` Line, Not a Pinned `go` Patch Version
+## D40. `go.mod` Gets a `toolchain` Line, Not a Pinned `go` Patch Version
+
+*2026-09-07*
 
 **Chosen**: `go.mod` keeps `go 1.26.0` as the minimum language version and adds a separate
 `toolchain go1.26.8` line. Bumping the `go` line itself to chase a patch release is the wrong
@@ -672,7 +767,9 @@ latest patch of the same minor line (`go env GOTOOLCHAIN` / `go mod edit -toolch
 confirm every finding's `Fixed in` version is at or below it. Re-check periodically: this line
 will need bumping again as new stdlib CVEs land, same as any dependency.
 
-## Self-Description Comes From Struct Tags, Served Over Stdio Only
+## D41. Self-Description Comes From Struct Tags, Served Over Stdio Only
+
+*2026-09-23*
 
 **Context**: gomddoc should be usable by an AI harness with nothing but the binary: how configuration works (flag vs.
 env vs. file, keys, defaults), what the theme supports, and its own guide
@@ -703,7 +800,9 @@ theme (`"source": "template-scan"`). A `theme.yml` manifest was designed and par
 missed it. Kong exposes arbitrary struct tags via `Tag.Get`. Unifying the env var names is a separate, user-visible
 change (docs/reviews/2026-07-29-codebase-review.md §11.1).
 
-## `doctor`'s Findings Come From the Code That Detects Each Problem
+## D42. `doctor`'s Findings Come From the Code That Detects Each Problem
+
+*2026-09-23*
 
 **Context**: `gomddoc doctor` must report every configuration problem and the cheap content problems
 (`docs/superpowers/specs/2026-09-23-doctor-design.md`). Several of them were already detected at runtime and only logged —
@@ -721,7 +820,9 @@ reports is by construction what serve hits, and serve's log gains a stable `code
   not re-cloned on every call.
 
 
-## Release Checksums Signed as a Sigstore Bundle, With a Fallback for Older Tags
+## D43. Release Checksums Signed as a Sigstore Bundle, With a Fallback for Older Tags
+
+*2026-09-25*
 
 **Context**: `sigstore/cosign-installer` v4 installs cosign v3, whose `sign-blob` requires `--bundle` and drops the
 detached `--output-signature`/`--output-certificate` pair `.goreleaser.yaml` used. `release.yml` had been held at
@@ -742,7 +843,9 @@ buys no downgrade — a forged pair fails exactly as a forged bundle does.
   bundle-path `verify-blob` command accepts GoReleaser's own v2.18.2 `checksums.txt.sigstore.json` and rejects it
   when the identity names another tag. The signing side is only exercised by a real tag.
 
-## Make Machinery From the Lab Canonicals, Tools Pinned in `tools/go.mod`
+## D44. Make Machinery From the Lab Canonicals, Tools Pinned in `tools/go.mod`
+
+*2026-10-07*
 
 **Decision** (2026-10-07): the hand-copied `common-go.mk` is gone. The Makefile is `include common.mk` +
 `include go.mk`, byte-identical copies of the Monolithic Lab canonicals (`lab-repo-standards` and
@@ -757,7 +860,9 @@ the scoped vulncheck) still hold and carry over unchanged.
 - `lint` gained `lint-mod` (`go mod tidy -diff`) and `lint-pins` (actions by SHA, Docker bases by digest).
 - `COVERAGE_MIN` makes the 87% target a failing check rather than a number in CLAUDE.md.
 
-## One Linter: golangci-lint With the Lab Config
+## D45. One Linter: golangci-lint With the Lab Config
+
+*2026-10-07*
 
 **Decision** (2026-10-07): `make lint` runs golangci-lint v2 alone with the lab's canonical `.golangci.yml`, which
 absorbs `gofmt -s`, `go vet`, staticcheck (ST1000 on, the same six ST checks off as before), gosec (outside `_test.go`)
@@ -771,7 +876,9 @@ and gocritic's `builtinShadow`/`importShadow`. `lint-format`, `lint-vet`, `lint-
 - *Cost if wrong*: a check one standalone tool ran and golangci-lint's wrapper skips would pass silently. Re-adding a
   tool is one `go get -tool` line and one `lint-*` step in the canonical `go.mk`.
 
-## Release Pipeline on the Lab's Canonical Shape
+## D46. Release Pipeline on the Lab's Canonical Shape
+
+*2026-10-07*
 
 **Decision** (2026-10-07): the release converges on go-cli-development's canonical choices. GoReleaser's `before` hook
 is `go mod verify` instead of `go mod tidy` (tidy can rewrite go.mod/go.sum mid-release from whatever the proxy serves;
