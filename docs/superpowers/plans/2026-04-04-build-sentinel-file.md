@@ -315,7 +315,12 @@ Add test for sentinel removing stale content and for sentinel
 presence after build."
 ```
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 - `guardOutputDir` refuses an output path that exists but is not a directory, and a sentinel path that is a directory
   counts as no sentinel (2bfa95c).

@@ -1332,7 +1332,12 @@ find /tmp/testbuild -name "*.html" | head -20
 
 Verify directory structure shows `guide/index.html` pattern.
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 - The resolver is built once per pipeline at startup and never rebuilt. There is no git refresh mechanism for it to hook
   into.

@@ -714,6 +714,11 @@ git add REVIEW.md docs/architecture.md docs/decisions.md
 git commit -m "Update docs for HTML-in-Go to web components migration"
 ```
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 - `jsonLD` returns `template.JS`, not `template.HTML`.

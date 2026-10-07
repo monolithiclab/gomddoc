@@ -52,7 +52,12 @@ nothing declares them. Consequences:
 
 No task list: it gets one when the design is settled and a spec is written.
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 Changes since this was parked that bear on the Problem and the open questions:
 

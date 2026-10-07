@@ -199,7 +199,12 @@ Validates asset name before constructing path, preventing traversal
 outside the expected asset directories."
 ```
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 - The containment check lives in `resolveOutputPath` (d648daf), shared by `writeOutputFile` and `streamOutputFile`. It
   also rejects an absolute `relPath` outright and creates the parent directory.

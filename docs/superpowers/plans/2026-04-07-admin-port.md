@@ -696,7 +696,12 @@ Expected: PASS (or no matching tests)
 
 - [x] **Step 3: No commit needed if no changes**
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 - A host-less `--admin-port` such as `:9090` binds `127.0.0.1` (`Config.normalizeAdminAddr`). An explicit host,
   `0.0.0.0` included, is kept (354df05).

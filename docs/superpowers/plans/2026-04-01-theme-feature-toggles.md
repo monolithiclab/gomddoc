@@ -1162,7 +1162,12 @@ Open in browser, verify all features still load (default: all enabled).
 
 If any stale references or test failures were found, fix and commit.
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 - Toggles live on the theme config, not the site root: `ThemeConfig.Features`, YAML `theme.features`. The env var is
   `GOMDDOC_SITE_THEME_FEATURES_<NAME>=true|false`, not `GOMDDOC_SITE_FEATURES_<NAME>`.

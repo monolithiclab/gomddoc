@@ -1751,7 +1751,12 @@ A separate `gomddoc-website` PR should follow, documenting:
 - The tag-chips, tags-list, and tags-index partials in the theming guide.
 - A short "Tags" section in the user guide explaining how chips and the tag pages work.
 
-## Divergences from implementation
+## Execution notes
+
+Reconstructed on 2026-09-25 (`413d672`) from git history and the code, and retitled from "Divergences from
+implementation" on 2026-10-07; rulings taken during execution were not recorded. The **Status** line at the top
+names the commits that built this plan and anything that did not ship; the differences between the plan and the
+code follow.
 
 See the spec's divergences section (`docs/superpowers/specs/2026-04-23-tag-components-chips-and-pages-design.md`) for behavior.
 Plan-specific:
