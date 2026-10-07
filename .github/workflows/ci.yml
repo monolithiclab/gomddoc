@@ -9,33 +9,31 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  # scripts/install.sh is published for `curl ... | sh`, so a syntax error or a
-  # bashism ships straight to users' shells. shellcheck is preinstalled on the
-  # ubuntu runners, so this costs nothing.
-  shellcheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: shellcheck -s sh scripts/install.sh
+# Read-only, workflow-wide: nothing here publishes anything, and a job added later inherits the floor.
+permissions:
+  contents: read
 
-  # `make lint` includes `lint-vulncheck` (govulncheck, call-graph aware — only
-  # fails on vulnerabilities the code actually reaches), so there is no
-  # separate vulncheck job here. It runs once per OS in this matrix rather
-  # than once overall; accepted redundancy for reusing setup-go's cache.
-  test:
+jobs:
+  # The gate is exactly `make ci`, the same command run locally before every commit. It includes
+  # lint-vulncheck (govulncheck needs network) and runs once per OS; accepted redundancy for reusing
+  # setup-go's cache.
+  ci:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
-      - run: make lint test
+      - run: go version
+      - run: make ci
       - if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -43,3 +41,14 @@ jobs:
           path: cover.out
           if-no-files-found: error
           retention-days: 14
+
+  # scripts/install.sh is published for `curl ... | sh`, so a syntax error or a bashism ships straight to
+  # users' shells. `make ci` doesn't cover shell scripts; shellcheck is preinstalled on the ubuntu runners.
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: shellcheck -s sh scripts/install.sh

@@ -6,14 +6,18 @@ on:
       - 'v*.*.*'
       - 'v*.*.*-*'
 
-permissions:
-  contents: write       # GitHub Release create/upload
-  packages: write       # ghcr.io push
-  id-token: write       # cosign keyless via OIDC
+# Nothing at workflow scope: a token minted here is handed to every step of every job, third-party actions
+# included. The one job that needs write scopes asks for them itself.
+permissions: {}
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write       # GitHub Release create/upload
+      packages: write       # ghcr.io push
+      id-token: write       # cosign keyless via OIDC
     steps:
       # v0.1.0 failed *after* a 4-minute build: the tap token could authenticate but
       # lacked Contents:write on monolithiclab/homebrew-tap, so GoReleaser 403'd on the
@@ -60,6 +64,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # GoReleaser needs full history for changelog
+          # GoReleaser authenticates with GITHUB_TOKEN from env, so the token need not stay in .git/config.
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod

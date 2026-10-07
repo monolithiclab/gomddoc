@@ -34,7 +34,7 @@ v0.1.3 (2026-09-25). For a full description of current capabilities, see `docs/a
 complete), 7b (preview), 8 (theming engine), 9a (pre-launch SEO), 9b-9d (most post-launch SEO), 10a-10b (MCP server +
 HTTP), tag components (chips, listing/index pages, `tag:` search, related/see-also section), i18n/l10n (UI strings +
 multi-language content), self-documentation (`help`, `info`, `schema`, `doctor`, the guide over MCP), and distribution
-(GoReleaser, Homebrew, Docker, install script). A GitHub Actions CI pipeline (`make lint test`, which includes
+(GoReleaser, Homebrew, Docker, install script). A GitHub Actions CI pipeline (`make ci`, which includes
 `govulncheck`, on an ubuntu+macOS matrix, plus a shellcheck job for `scripts/install.sh`) is in place — see Distribution
 and Packaging. Features that shipped without a roadmap item are listed under Shipped Foundations. Four review passes
 (13th, i18n simplification, 14th, 15th — see docs/reviews/2026-07-29-codebase-review.md) have fixed every HIGH finding and the large majority of
@@ -435,7 +435,7 @@ GoReleaser's `{{ .Version }}` strips the `v`.
 - [x] **Homebrew tap**: GoReleaser `brews:` publishes a formula to `monolithiclab/homebrew-tap`
       (`brew install monolithiclab/tap/gomddoc`) with a `gomddoc --version` smoke test. Requires the
       `HOMEBREW_TAP_TOKEN` secret.
-- [x] **CI pipeline (GitHub Actions)**: `.github/workflows/ci.yml` runs `make lint test` (vet, gofmt, staticcheck,
+- [x] **CI pipeline (GitHub Actions)**: `.github/workflows/ci.yml` runs `make ci` (vet, gofmt, staticcheck,
       golangci-lint, gosec, gocritic, govulncheck, `go test -race -cover`) on an ubuntu+macOS matrix for pushes to
       `main` and all PRs, plus `shellcheck -s sh scripts/install.sh`, with Go module caching, concurrency cancellation
       of superseded runs, and coverage-artifact upload. _Remaining enhancement (deferred):_ coverage threshold
