@@ -6,7 +6,7 @@ toolchain go1.26.8
 
 require (
 	github.com/alecthomas/kong v1.16.1
-	github.com/go-git/go-billy/v5 v5.9.1
+	github.com/go-git/go-billy/v5 v5.9.2
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/prometheus/client_golang v1.24.1
