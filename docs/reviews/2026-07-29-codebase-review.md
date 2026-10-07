@@ -19,7 +19,7 @@
   a one-line pointer — full narratives (reproduction steps, benchmarks, rejected alternatives) are
   in git history before this date. **Section numbers (§9.1-9.10, §10.1-10.14) are preserved
   exactly** — dozens of test files and a few production comments cite them by section number
-  (`grep -rn "REVIEW.md §\|REVIEW §"`) as regression-test provenance. Do not renumber; add new
+  (`grep -rn "docs/reviews/2026-07-29-codebase-review.md §\|REVIEW §"`) as regression-test provenance. Do not renumber; add new
   subsections rather than reusing a number.
 
 ---

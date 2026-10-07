@@ -205,7 +205,7 @@ and to MCP clients through `search_docs`. It does not work on a static site: `go
 search index, and a static host has no `/api/search` endpoint.
 
 > [!WARNING]
-> Known bug, tracked in `REVIEW.md`: `build` still emits the search button and modal on every page while
+> Known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`: `build` still emits the search button and modal on every page while
 > the `search` feature is enabled (the default). On a static host every query gets a 404 and the modal
 > shows no results. Set `theme.features.search: false` for static builds, or run
 > [Pagefind](https://pagefind.app/) as a post-build step with its own search UI.

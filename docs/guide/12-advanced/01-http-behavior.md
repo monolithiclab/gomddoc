@@ -29,7 +29,7 @@ Five minutes is short enough that a redeploy propagates quickly and long enough 
 > `/_assets/css/site.css`, the same URL before and after you edit the file. Combined with
 > `max-age=31536000, immutable`, a browser that has fetched one will not ask about it again for a
 > year. Add your own cache-busting query string (`/_assets/css/site.css?v=3`) when you change a
-> published static file. Tracked in `REVIEW.md`.
+> published static file. Tracked in `docs/reviews/2026-07-29-codebase-review.md`.
 
 ### ETag / 304 Not Modified
 
@@ -219,7 +219,7 @@ The redirect only fires when the resolver has a mapping for the requested file. 
 extensions not in `strip_extensions` (e.g., `.css`, `.png`) pass through unmodified.
 
 > [!WARNING]
-> Known bug, tracked in `REVIEW.md`: the redirect target is the resolver's clean path, which keeps a default index
+> Known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`: the redirect target is the resolver's clean path, which keeps a default index
 > file's name. `/guide/README.md` redirects to `/guide/README`, not `/guide/`; `serve` answers that URL, but
 > `build` never writes it.
 
@@ -242,7 +242,7 @@ resolver involvement.
 A directory URL serves its `default_index` file (`README.md` by default). A directory without one
 renders a listing when `dir_index` is on, and otherwise answers `302 Found` with the first page of the
 site's navigation tree (the first page of the whole site, not of that directory: a known bug, tracked in
-`REVIEW.md`).
+`docs/reviews/2026-07-29-codebase-review.md`).
 
 ### 404 Behavior
 

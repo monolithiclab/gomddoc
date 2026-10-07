@@ -592,7 +592,7 @@ func (s subFailFS) Sub(dir string) (fs.FS, error) {
 
 // TestSetupLanguagePipelines_SkipsLanguageOnSubFSFailure covers the first of the
 // per-language "slog.Warn and continue" branches. These are the paths that hid
-// the fs.Sub/fs.StatFS bug in REVIEW.md §9.7: a language silently vanishing from
+// the fs.Sub/fs.StatFS bug in docs/reviews/2026-07-29-codebase-review.md §9.7: a language silently vanishing from
 // the site while the build reports success.
 //
 // The degradation is deliberate — one unreadable language must not take the site

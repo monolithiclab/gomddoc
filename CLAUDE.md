@@ -30,7 +30,6 @@ individual check lives under `lint-*` (`lint-vet`, `lint-staticcheck`, `lint-gol
 ## Documentation
 
 ```
-REVIEW.md                   # Codebase review tracker (issues, recommendations, scores)
 ROADMAP.md                  # Phased roadmap, deferred ideas
 docs/
 ├── architecture.md         # Component relationships, data flow, middleware, themes
@@ -40,12 +39,13 @@ docs/
 ├── guide/                  # Feature documentation (agent + human audience)
 ├── specs/                  # Feature specifications (written before implementation)
 ├── plans/                  # Task-by-task implementation plans derived from a spec
+├── reviews/                # Codebase review rounds (2026-07-29-codebase-review.md: open findings, scores)
 └── skills/                 # Agent skills (SKILL.md + scripts/) — excluded from coverage
 ```
 
 **Purpose of each:**
 
-- **REVIEW.md** — created by review tools (Claude, Gemini) and manual input. Tracks open issues,
+- **reviews/** — created by review tools (Claude, Gemini) and manual input. Tracks open issues,
   fixed issues, scores, and prioritized recommendations. Source of truth for what needs fixing.
 - **architecture.md** — how the building blocks relate: pipeline stages, provider/renderer/template
   layering, middleware chain, theme resolution. Update when adding or restructuring components.
@@ -71,7 +71,7 @@ docs/
 
 **Feature workflow:**
 
-1. Features originate from `REVIEW.md` issues or user requests (roadmap additions)
+1. Features originate from `docs/reviews/` findings or user requests (roadmap additions)
 2. Write a spec in `docs/specs/`, asking the developer clarifying questions
 3. Developer validates the spec
 4. For a multi-step feature, break the spec into a plan in `docs/plans/` — not `docs/specs/`
@@ -351,7 +351,7 @@ testsite/              # Lorem ipsum test site for quick testing
   the clean-path lookup plus default-index fold. Four hand-rolled copies silently disagreed, which
   is how static builds shipped `.md` canonicals and dead prev/next links. (Build's
   `prettyOutputPath` is a *separate* mapping — file to output path, not file to URL. They diverge
-  in some configs; see `REVIEW.md` §10.2.)
+  in some configs; see `docs/reviews/2026-07-29-codebase-review.md` §10.2.)
 - **Templates link content through `contentURL`, never a raw path** — it applies `PageURLPath` *and*
   the renderer's language prefix, so a partial must not add `/{lang}` itself. The corollary: hand a
   per-language pipeline its **own** `TemplateRenderer` (`LangPipelineConfig.TemplateRenderer`), never
@@ -401,7 +401,7 @@ testsite/              # Lorem ipsum test site for quick testing
   ships the payload, checking only the headers passes one that ignores `If-None-Match` — and the
   three call sites that predated the helper each asserted a different subset.
   Known exception: `writeJSON` (`/api/*`) streams through a `json.Encoder` with no byte slice in
-  hand, so it neither caches nor revalidates. That is recorded in REVIEW.md, not silently accepted.
+  hand, so it neither caches nor revalidates. That is recorded in the codebase review, not silently accepted.
 - **`http.MaxBytesReader`** on any endpoint accepting request bodies — prevents memory exhaustion
 - **Cap input lengths** (query params, form values) before processing — truncate, don't reject
 - **`Vary` header required** when response depends on a request header (e.g., `Accept` for content
@@ -490,7 +490,7 @@ testsite/              # Lorem ipsum test site for quick testing
   *same* record, where scanning rendered output for each separately passes when two records in the
   same loop supply one each. Before writing a fake, check the branch is reachable at all —
   `setupPipeline`'s per-language failure and `build.go`'s "Skipping language with no pipeline" are
-  unreachable through any real provider, and REVIEW.md says so rather than pretending a test covers
+  unreachable through any real provider, and the codebase review says so rather than pretending a test covers
   them.
 
 ### After implementing changes

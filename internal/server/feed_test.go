@@ -62,7 +62,7 @@ func TestGenerateFeed(t *testing.T) {
 
 	// Newest first: README (14:00) > guide (-24h) > docs/README (-48h). The last
 	// one is "/docs", not "/docs/" — a folded index URL carries no trailing slash
-	// in serve mode, which does not match what build mode writes (REVIEW.md §10.2).
+	// in serve mode, which does not match what build mode writes (docs/reviews/2026-07-29-codebase-review.md §10.2).
 	wantIDs := []string{
 		"https://docs.example.com/",
 		"https://docs.example.com/docs/guide.md",

@@ -1018,7 +1018,7 @@ buys avoid a whole gzip pass over that same body.
 
 Known gap: `writeJSON` (`/api/*`) streams through a `json.Encoder` with no byte slice in hand, so the
 JSON endpoints neither cache nor revalidate even though they read the same immutable index. Tracked
-in `REVIEW.md` §10.7.
+in `docs/reviews/2026-07-29-codebase-review.md` §10.7.
 
 ### Custom Error Type
 

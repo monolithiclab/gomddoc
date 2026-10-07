@@ -553,7 +553,7 @@ func (e erroringFS) Open(name string) (fs.File, error) {
 // YAML. Both return nil, so the build succeeds with the page simply absent.
 //
 // That is the intended contract — one corrupt page must not blank a site — but
-// it is also the mechanism that hid the fs.Sub/fs.StatFS bug in REVIEW.md §9.7,
+// it is also the mechanism that hid the fs.Sub/fs.StatFS bug in docs/reviews/2026-07-29-codebase-review.md §9.7,
 // so the assertions run both ways and the read failure's warning is part of
 // them. Absence alone would pass an index that skipped everything, silently,
 // which is exactly what §9.7 did.

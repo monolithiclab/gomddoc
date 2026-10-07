@@ -54,7 +54,7 @@ the resolver has a mapping for the file. Non-stripped extensions (`.css`, `.png`
 unaffected.
 
 > [!WARNING]
-> Known bug, tracked in `REVIEW.md`: a default index file redirects to its extensionless name instead of its
+> Known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`: a default index file redirects to its extensionless name instead of its
 > directory. `GET /guide/README.md` redirects to `/guide/README`, which `serve` answers but `build` never writes.
 
 **`redirect_from`:** A path listed in a page's `redirect_from` frontmatter answers `301` with the page's URL. This
@@ -62,7 +62,7 @@ lookup runs before the file is read.
 
 **Directories without an index:** When a directory has no `default_index` file and `dir_index` is off, the server
 answers `302 Found` with the first page of the site's navigation tree. That page is the first of the whole site, not
-of the requested directory (a known bug, tracked in `REVIEW.md`).
+of the requested directory (a known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`).
 
 **Hidden and excluded paths:** Dotfiles, dot-directories, and paths matching `exclude` return the same themed
 `404` page as a path that does not exist.
@@ -359,7 +359,7 @@ All tools are read-only and idempotent.
 | `find_related` | Find related pages by shared tags | `path` (required) |
 
 > [!WARNING]
-> Known bug, tracked in `REVIEW.md`: `get_table_of_contents` ignores `path` and always returns the whole tree.
+> Known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`: `get_table_of_contents` ignores `path` and always returns the whole tree.
 
 `gomddoc mcp` (stdio only) adds three tools that describe gomddoc itself rather than the site:
 

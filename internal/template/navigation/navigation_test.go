@@ -67,7 +67,7 @@ func TestTree_BasicShape(t *testing.T) {
 
 // TestTree_TitleLookup verifies leaf labels come from the indexed title lookup
 // (no file open) when available, and fall back to the file's heading otherwise.
-// Regression test for REVIEW.md §9.8.
+// Regression test for docs/reviews/2026-07-29-codebase-review.md §9.8.
 func TestTree_TitleLookup(t *testing.T) {
 	t.Parallel()
 

@@ -16,7 +16,7 @@ import (
 
 // TestNewHTTPServer_NilLocaleBundleWithLangPipelines proves NewHTTPServer does
 // not panic when LangPipelines is non-empty but LocaleBundle is nil. Regression
-// test for REVIEW.md §9.4: the per-language loop dereferenced LocaleBundle
+// test for docs/reviews/2026-07-29-codebase-review.md §9.4: the per-language loop dereferenced LocaleBundle
 // unconditionally while the default-language path guarded it.
 func TestNewHTTPServer_NilLocaleBundleWithLangPipelines(t *testing.T) {
 	t.Parallel()
@@ -61,7 +61,7 @@ func localeFSForLangTest() fstest.MapFS {
 
 // TestServer_ContentRoutes_PerLanguage proves that per-language content pages
 // are served (not 404'd) from the language-rooted provider. Regression test for
-// REVIEW.md §9.1: the /{lang} prefix was not stripped before the language
+// docs/reviews/2026-07-29-codebase-review.md §9.1: the /{lang} prefix was not stripped before the language
 // provider, so localized content pages always 404'd. The provider is rooted at
 // the language subdirectory, so the handler must serve "/fr/guide.md" by reading
 // "guide.md" from the French provider.
@@ -218,7 +218,7 @@ func TestServer_PerLanguageSitemaps_ButNoIndex(t *testing.T) {
 //
 //   - extension stripping — "/fr/guide.md" 301s to the language-prefixed clean URL
 //     "/fr/guide" (not the unprefixed "/guide"), which then resolves against the
-//     per-language resolver. Regression test for REVIEW.md §9.1.
+//     per-language resolver. Regression test for docs/reviews/2026-07-29-codebase-review.md §9.1.
 //   - redirect_from — only the default handler received URLRedirects before, so a
 //     French page's redirect_from was honoured only because the default pipeline
 //     indexed the fr/ directory, and it then pointed at the wrong language's page.

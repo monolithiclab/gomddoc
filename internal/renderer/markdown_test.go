@@ -283,7 +283,7 @@ func TestHeadingSlugs(t *testing.T) {
 			// slugifier keeps ASCII alphanumerics only, so an accent takes its
 			// letter with it. Documented in
 			// docs/guide/12-advanced/02-markdown-extensions.md and filed in
-			// REVIEW.md; this row exists to make the loss visible rather than
+			// docs/reviews/2026-07-29-codebase-review.md; this row exists to make the loss visible rather than
 			// to bless it.
 			name:  "non-ASCII letters are dropped",
 			input: "# Café Français",

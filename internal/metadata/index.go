@@ -102,7 +102,7 @@ func BuildIndex(ctx context.Context, rootFS fs.FS, excludePatterns []string) (*I
 				// Warn, not Debug: the walk one phase up already listed this
 				// path, so failing to read it is an anomaly rather than a
 				// property of the content. At Debug the operator saw nothing —
-				// which is how the fs.Sub/fs.StatFS bug in REVIEW.md §9.7
+				// which is how the fs.Sub/fs.StatFS bug in docs/reviews/2026-07-29-codebase-review.md §9.7
 				// managed to fail *every* read and still report a built site.
 				// Malformed frontmatter below stays at Debug: that is a
 				// property of the content, and the page is still served.

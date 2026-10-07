@@ -355,7 +355,7 @@ default-language tag page.
 > and render with the bundled `default` theme. `gomddoc build` applies the installed theme to every language.
 
 > [!WARNING]
-> Known bug, tracked in `REVIEW.md`: a translated page's canonical URL and `og:url` name the default-language path.
+> Known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`: a translated page's canonical URL and `og:url` name the default-language path.
 > See [SEO](11-seo.md#static-site-generation).
 
 ## Static Site Generation

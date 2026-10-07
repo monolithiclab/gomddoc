@@ -8,5 +8,4 @@ build/
 Makefile
 common-go.mk
 PLAN.md
-REVIEW.md
 docs/

@@ -277,7 +277,7 @@ func (h *HTMLRenderer) Configure(opts ...RendererOption) {
 // The layout cache is the injected TemplateCache, so caching is off by dynamic
 // type (PassthroughTemplateStore's Get always misses) rather than by a branch
 // here. The sibling asset and partial caches are plain sync.Maps gated on
-// cacheAssets instead — see REVIEW.md for the note on collapsing the two.
+// cacheAssets instead — see docs/reviews/2026-07-29-codebase-review.md for the note on collapsing the two.
 // The context is checked before expensive operations for cancellation support.
 func (h *HTMLRenderer) Render(ctx context.Context, templateName string, data any) ([]byte, error) {
 	cacheKey := "assets/themes/" + h.siteConfig.Theme.Name + "/layouts/" + templateName

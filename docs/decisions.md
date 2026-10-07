@@ -504,10 +504,10 @@ file-to-URL mapping. Build has a second, independent mapping — `prettyOutputPa
 where the HTML is *written* — and the two disagree when `strip_extensions` is empty or a directory
 holds both `README.md` and `index.md`. Reconciling them means deciding whether build may have a URL
 space of its own at all (with stripping off it renders `.md` to `.html` and copies no `.md`, so its
-URLs cannot match serve's), which is a larger question than `Page.Path`. Tracked in `REVIEW.md`
+URLs cannot match serve's), which is a larger question than `Page.Path`. Tracked in `docs/reviews/2026-07-29-codebase-review.md`
 §10.2.
 
-**Deliberately not fixed here**: serve canonicalises a directory index to `/guides/` when requested that way and `/guides` when requested without the slash — `Page.Path` in serve is the request, not a stable page identity. Both forms return 200, so a directory index has two canonical URLs. That is a serve-side bug present before and after this change, tracked separately in `REVIEW.md`; build now consistently emits the no-slash form, matching the sitemap and every internal link.
+**Deliberately not fixed here**: serve canonicalises a directory index to `/guides/` when requested that way and `/guides` when requested without the slash — `Page.Path` in serve is the request, not a stable page identity. Both forms return 200, so a directory index has two canonical URLs. That is a serve-side bug present before and after this change, tracked separately in `docs/reviews/2026-07-29-codebase-review.md`; build now consistently emits the no-slash form, matching the sitemap and every internal link.
 
 ## One Effective Exclude List per Pipeline
 
@@ -701,7 +701,7 @@ theme (`"source": "template-scan"`). A `theme.yml` manifest was designed and par
 **Decision 4 — flags that set a config value under a different env var carry `setting:"<key>"`.** `--domain`
 (`GOMDDOC_DOMAIN`) sets `site.meta.domain` (`GOMDDOC_SITE_META_DOMAIN`); joining flags to settings by env var alone
 missed it. Kong exposes arbitrary struct tags via `Tag.Get`. Unifying the env var names is a separate, user-visible
-change (REVIEW.md §11.1).
+change (docs/reviews/2026-07-29-codebase-review.md §11.1).
 
 ## `doctor`'s Findings Come From the Code That Detects Each Problem
 

@@ -802,7 +802,7 @@ func (b *BuildCmd) writeOutputFile(relPath string, content []byte) error {
 
 // renderErrorPage renders an error page through the same writer the server
 // uses, so the static 404 and the live one cannot drift — they did once, when
-// build passed nil where serve passed languageInfos (REVIEW.md §10.7).
+// build passed nil where serve passed languageInfos (docs/reviews/2026-07-29-codebase-review.md §10.7).
 func (b *BuildCmd) renderErrorPage(statusCode int, bc *buildContext) ([]byte, error) {
 	page := server.NewErrorPage(bc.templateRenderer, tmpl.ErrorContextInput{
 		Site:      bc.siteConfig,

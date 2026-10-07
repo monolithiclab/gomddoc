@@ -2331,7 +2331,7 @@ func TestRender_SeeAlso(t *testing.T) {
 // TestRender_SeeAlso_ContentURL proves see-also links are resolved through the
 // resolver like every other link, so on a strip_extensions site they point to
 // the clean URL (/api) rather than the raw index path (/api.md). Regression
-// test for REVIEW.md §9.2.
+// test for docs/reviews/2026-07-29-codebase-review.md §9.2.
 func TestRender_SeeAlso_ContentURL(t *testing.T) {
 	t.Parallel()
 
@@ -2385,7 +2385,7 @@ func seeAlsoPartialBytes(t *testing.T) []byte {
 
 // TestExecutePartial_Caching proves the parsed partial is cached when caching is
 // enabled (so tag pages do not re-parse per request) and re-read otherwise.
-// Regression test for REVIEW.md §9.3.
+// Regression test for docs/reviews/2026-07-29-codebase-review.md §9.3.
 func TestExecutePartial_Caching(t *testing.T) {
 	t.Parallel()
 

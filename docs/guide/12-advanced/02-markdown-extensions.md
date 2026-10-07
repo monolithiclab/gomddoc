@@ -306,7 +306,7 @@ character:
 >
 > There is currently no override: the `{#custom-id}` attribute syntax is **not** enabled, so
 > `# 日本語 {#japanese}` renders the braces as literal heading text and yields the ID `-japanese`.
-> Tracked in `REVIEW.md`.
+> Tracked in `docs/reviews/2026-07-29-codebase-review.md`.
 
 ## Table of Contents
 

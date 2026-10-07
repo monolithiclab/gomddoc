@@ -44,7 +44,7 @@ func TestSitemapHandler(t *testing.T) {
 	}
 
 	// A body cached for the process's lifetime must revalidate; it used to be
-	// written with a bare Set+WriteHeader+Write (REVIEW.md §10.7).
+	// written with a bare Set+WriteHeader+Write (docs/reviews/2026-07-29-codebase-review.md §10.7).
 	assertRevalidates(t, revalidationCase{
 		Handler:   handler,
 		Path:      "/sitemap.xml",
@@ -92,7 +92,7 @@ func TestGenerateSitemap(t *testing.T) {
 	}
 	// Exhaustive rather than a Contains sweep. Note "/docs" has no trailing slash
 	// while the tag index "/tags/" does — build mode writes docs/index.html and so
-	// serves the former at "/docs/". Tracked in REVIEW.md §10.2.
+	// serves the former at "/docs/". Tracked in docs/reviews/2026-07-29-codebase-review.md §10.2.
 	want := map[string]string{
 		"https://docs.example.com/":              "2025-06-15",
 		"https://docs.example.com/docs":          "2025-06-15",

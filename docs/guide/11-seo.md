@@ -53,7 +53,7 @@ content issues when the same page is accessible via multiple URLs, such as diffe
 load balancer.
 
 > [!WARNING]
-> Known bug, tracked in `REVIEW.md`: in `serve`, the canonical URL follows the request path, so `/guides` and
+> Known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`: in `serve`, the canonical URL follows the request path, so `/guides` and
 > `/guides/` give a directory index two different canonical URLs. `build` always emits one form.
 
 Default index files (like `README.md`) are stripped from canonical URLs — so a page at
@@ -419,6 +419,6 @@ The output includes:
 - **Canonical URLs, Open Graph tags, JSON-LD and hreflang tags**: embedded in each HTML page's `<head>`
 
 > [!WARNING]
-> Known bug, tracked in `REVIEW.md`: on translated pages, the canonical URL, `og:url` and JSON-LD `url` name the
+> Known bug, tracked in `docs/reviews/2026-07-29-codebase-review.md`: on translated pages, the canonical URL, `og:url` and JSON-LD `url` name the
 > default-language path (`https://docs.example.com/guide/setup` for `fr-FR/guide/setup.md`) in both `serve` and
 > `build`, which tells search engines the translation is a duplicate of the default-language page.
