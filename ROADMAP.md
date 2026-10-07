@@ -802,11 +802,11 @@ of a decision risks a second divergence to unwind later:
 1. **MEDIUM: unauthenticated bcrypt CPU amplification** — no rate limit or lockout on failed Basic
    Auth attempts; ~10× CPU cost per bad-credential request. Bounded semaphore around `Validate`, or
    per-IP rate limiting on 401s.
-2. **LOW cluster, low effort each**: `ci.yml` missing a `permissions:` block; `FilesystemProvider`
-   missing the `fs.ValidPath` guard the git provider has; MCP resource/prompt handlers missing the
-   `maxArgLen` cap their tool siblings apply; no query cap on `search_docs`; no max-file-size cap in
-   `FilesystemProvider.ReadFile`/`gitTreeFS.Open`; no SBOM/SLSA provenance; release workflow's
-   `go mod tidy` hook can mutate `go.sum` mid-release.
+2. **LOW cluster, low effort each**: `FilesystemProvider` missing the `fs.ValidPath` guard the git provider
+   has; MCP resource/prompt handlers missing the `maxArgLen` cap their tool siblings apply; no query cap on
+   `search_docs`; no max-file-size cap in `FilesystemProvider.ReadFile`/`gitTreeFS.Open`; no SLSA provenance.
+   (Fixed 2026-10-07: `ci.yml` has `permissions: contents: read`; releases ship an SPDX SBOM per archive; the
+   release's `before` hook is `go mod verify`, not `go mod tidy`. See `docs/decisions.md` D46.)
 
 ### Tier 3 — Roadmap features already in flight
 
@@ -850,6 +850,45 @@ sharing or a bounded response-body cache.
 
 **Deferred:** CI benchmark tracking (now unblocked but low priority), build-mode search (Phase 5,
 Pagefind), partial clones (blocked by go-git).
+
+### Open review findings not ranked above
+
+One line each, from [the 2026-07-29 codebase review](docs/reviews/2026-07-29-codebase-review.md) (§10's findings
+are ranked in Tiers 1–4; these are the rest). Rank them into a tier when picking one up.
+
+- [ ] §10.4 LOW: git directory-index reads (`handleDirectoryLocked`) bypass the `maxFileSize`/LFS guards; depth-2+
+      paths defeat go-git's subtree memo; three slightly different "is this a directory" checks remain.
+- [ ] §10.11 LOW: no test runs language detection → pipelines → serve end-to-end.
+- [ ] §10.13 LOW: `IsExcludedPath`'s pattern branches re-derive their structure per call instead of compiling once.
+- [ ] §11.1 LOW: `--domain` and `--dir-index` read env vars (`GOMDDOC_DOMAIN`, `GOMDDOC_DIR_INDEX`) that differ
+      from their setting's own variable; unify the names (user-visible change).
+- [ ] §11.2 LOW: MCP `search_docs` and `gomddoc_guide` return the search modal's escaped-HTML snippets; strip them
+      in one place, as `gomddoc help --search` already does locally.
+- [ ] §11.5 LOW: `slugifyHeading` doesn't suffix duplicate heading IDs as goldmark does, so `read_section` and
+      `gomddoc_guide` reach only the first of two same-named sections.
+- [ ] §12.1 MEDIUM: `--git-storage-dir` can't restart (always clones, never opens an existing repository).
+- [ ] §12.1 MEDIUM: Git sources accept branch refs only; tags and commit SHAs fail to clone.
+- [ ] §12.1 MEDIUM: a Git source's committed `.gomddoc/config.yml` is never read (`LoadFromFile` joins the URL as a
+      path).
+- [ ] §12.1 LOW: a Git site's default title is its URL; derive it from the repository name.
+- [ ] §12.1 LOW: `doctor` exits 0 on a site whose clone failed unless `--strict` is set.
+- [ ] §12.2 MEDIUM: the language switcher links the default language to a 404 (`/en-US/...`).
+- [ ] §12.2 MEDIUM: translated pages lose the site's `.gomddoc/` overlay in serve (themes, partials, shared assets).
+- [ ] §12.2 MEDIUM: search in a language tree links to default-language pages, and `search.mjs` never sends `lang`.
+- [ ] §12.2 MEDIUM: canonical URL and `og:url` on translated pages lack the language prefix in serve too.
+- [ ] §12.2 MEDIUM: a non-en-US default language with no locale file renders raw keys instead of en-US strings.
+- [ ] §12.2 LOW: hreflang links are root-relative and emitted for untranslated pages.
+- [ ] §12.3 MEDIUM: the edit link uses the request URL, so `strip_extensions` and directory index pages lose `.md` or
+      `README.md`.
+- [ ] §12.3 LOW: tag-page bodies (`partialTemplate`) ignore site partials in `.gomddoc/partials/`.
+- [ ] §12.3 LOW: build writes `guide.md` and `guide/README.md` to the same `guide/index.html` without a warning.
+- [ ] §12.3 LOW: the HSTS branch in `SecurityHeaders` is dead code (gomddoc never terminates TLS).
+- [ ] §12.3 LOW: JSON-LD `SearchAction` targets `/api/search`, a JSON endpoint, not a results page.
+- [ ] §12.3 LOW: `tags_empty` is unreachable.
+- [ ] §12.3 LOW: `gomddoc info` lists `--dir-index` without saying only `preview` has it.
+- [ ] §12.3 question: site-wide `meta.robots: noindex` doesn't empty the sitemap or feed (frontmatter `robots` does).
+- [ ] §12.4 (gomddoc-themes repo): the seven downloadable themes lag the default theme on search attributes, `.T`,
+      the language switcher, `error.html.tmpl` and heading anchors.
 
 ## Deferred (Not Planned)
 
