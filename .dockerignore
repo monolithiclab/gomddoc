@@ -7,7 +7,7 @@ build/
 !README.md
 Makefile
 common.mk
-go.mk
+common.go.mk
 tools/
 PLAN.md
 docs/

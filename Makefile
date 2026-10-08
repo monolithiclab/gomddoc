@@ -1,5 +1,5 @@
 include common.mk
-include go.mk
+include common.go.mk
 
 # Scoped to what ships, for the same reason .covignore excludes docs/skills/: nothing under docs/ reaches the binary,
 # but govulncheck traces its imports all the same, so an image/png CVE would fail the gate over a tool that is never
