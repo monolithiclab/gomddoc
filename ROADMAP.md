@@ -184,7 +184,7 @@ _High-impact features that differentiate gomddoc from competitors._
       HEAD commit's `Author.When`) applied to every file in the tree, not a per-file `git log` walk —
       so `datePublished`/`dateModified` above are a consistent *fallback*, not real "first commit" /
       "last commit" dates per page. Needs a per-path commit-log walk, cached at startup or lazily to
-      avoid per-request Git operations (real cost on a git-backed site — see CLAUDE.md's "go-git
+      avoid per-request Git operations (real cost on a git-backed site — see AGENTS.md's "go-git
       reads are writes"). Medium complexity.
 - [x] **Sitemap `<lastmod>` timestamps**: `<lastmod>` on each sitemap entry from `fs.Stat()`
       file mtime. Git provider returns commit timestamps. Omitted gracefully if stat fails.
@@ -501,7 +501,7 @@ design below exists to survive them.
    `TestHeadingSlugs`, `renderer/markdown_test.go:241`). So a `(line, char)` pair taken from the DOM addresses a document that exists
    only in the browser. Worse, it is invalidated by the *next* commit even when the sentence it points
    at is untouched. The anchor has to survive both translations.
-3. **It is the first untrusted input in the product.** CLAUDE.md's trusted content model — "no
+3. **It is the first untrusted input in the product.** AGENTS.md's trusted content model — "no
    untrusted user input reaches rendered output", which is why there is no sanitizer and no CSP, and
    why reviewers are told to treat XSS findings as false positives — holds only because every string
    in a page came from the author's git repo. An annotation body does not. That convention must either

@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 gomddoc is a single-binary Go server and static site generator for Markdown documentation (content negotiation,
 search, SEO output, an MCP server), released through GoReleaser to GitHub Releases, the Homebrew tap and ghcr.io.
