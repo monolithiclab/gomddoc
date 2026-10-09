@@ -110,7 +110,7 @@ See [README.md](README.md) for what it does and how to run it, `docs/` (table be
 | `docs/skills/` | Claude Code skills with their scripts; procedure, no business context (that is the ignored `.agents/`) |
 | `ROADMAP.md` | Ideas, the ranked backlog (Implementation Strategy) and open review findings |
 
-Go lessons that apply beyond this repo live in the `go-cli-development` skill's `lessons.md`, not here.
+Go lessons that apply beyond this repo live in the `lab-go-app` skill's `lessons.md`, not here.
 
 ## Workflow
 
