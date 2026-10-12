@@ -391,7 +391,7 @@ build/site/
 
 `sitemap.xml`, `feed.xml` and `sitemap-index.xml` need `meta.domain`. The `sitemap-index.xml` is only generated
 when at least one translation directory is detected, so a single-language site produces a standard `sitemap.xml` at
-the root and a `robots.txt` naming it. Each page `guide/setup.md` also gets a `guide/setup.md` redirect file pointing
+the root and a `robots.txt` naming it. Each page `guide/setup.md` also gets a `guide/setup.md/index.html` redirect stub pointing
 at its clean URL.
 
 ## Quick Start

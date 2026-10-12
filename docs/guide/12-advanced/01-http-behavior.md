@@ -273,6 +273,6 @@ the rendering pipeline — they are redirected immediately.
 
 In `gomddoc build`, the resolver drives pretty URL output. Instead of generating `guide.html`,
 the build command generates `guide/index.html` so that static hosts serve the page at `/guide/`.
-Extension redirect HTML files (e.g., `guide.md` containing a meta-refresh redirect to `/guide`)
+Extension redirect HTML files (e.g., `guide.md/index.html` containing a meta-refresh redirect to `/guide`)
 are also generated so old extension-based URLs work on static hosts that do not support server-side
 redirects. `redirect_from` sources get the same kind of meta-refresh page.

@@ -90,10 +90,13 @@ gomddoc build [DIR] [flags]
   In both modes the default index (`README.md`) becomes `index.html` in its own directory — never
   `README.html` — unless that directory also has an `index.md`, which wins.
 - In pretty mode, each source path is also written as a redirect stub, so `/guides/setup.md` still
-  resolves on a static host: the stub lives at `guides/setup.md` and points at `/guides/setup`.
+  resolves on a static host: the stub lives at `guides/setup.md/index.html` and points at `/guides/setup`.
+  A static host picks the Content-Type from the file name, so a stub named `setup.md` would go out as
+  `text/markdown`; as a directory, the host answers `/guides/setup.md` with its trailing-slash 301 and then
+  serves the stub as HTML.
   Default-index files get no stub, because their URL is the directory itself.
 - Pages with `redirect_from` frontmatter get a stub per source, at `<source>/index.html` (or at `<source>` itself
-  when its last segment contains a dot)
+  when it ends in `.html` or `.htm`)
 - Non-markdown files (images, CSS, JS) are copied as-is
 - Hidden files (starting with `.`) and `exclude` matches are skipped
 - `robots.txt` is always generated

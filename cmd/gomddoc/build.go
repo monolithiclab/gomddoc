@@ -652,15 +652,11 @@ func (b *BuildCmd) generateSEOFiles(idx *metadata.Index, siteConfig *config.Site
 func (b *BuildCmd) generateRedirectFiles(redirects server.URLRedirectMap, lang string) error {
 	for source, target := range redirects {
 		html := server.GenerateRedirectHTML(target)
-		// Write as source/index.html so the URL matches without extension
 		outPath := strings.TrimPrefix(source, "/")
 		if outPath == "" {
 			continue
 		}
-		if !strings.Contains(path.Base(outPath), ".") {
-			outPath = path.Join(outPath, "index.html")
-		}
-		if err := b.writeOutputFile(path.Join(lang, outPath), html); err != nil {
+		if err := b.writeOutputFile(redirectStubPath(path.Join(lang, outPath)), html); err != nil {
 			return fmt.Errorf("write redirect %s: %w", source, err)
 		}
 		slog.Debug("Generated redirect", slog.String("from", source), slog.String("to", target))
@@ -691,10 +687,22 @@ func prettyOutputPath(filePath, defaultIndex string, dirsWithIndexMD map[string]
 	return path.Join(stem, "index.html")
 }
 
+// redirectStubPath is where a redirect stub for urlPath is written. A static
+// host derives the Content-Type from the file name, so only an .html or .htm
+// URL can be the stub itself; any other one (guide.md, old-page) becomes a
+// directory holding index.html, which the host serves as HTML after its own
+// trailing-slash 301.
+func redirectStubPath(urlPath string) string {
+	switch strings.ToLower(path.Ext(urlPath)) {
+	case ".html", ".htm":
+		return urlPath
+	}
+	return path.Join(urlPath, "index.html")
+}
+
 // generateExtensionRedirects generates HTML redirect files so extension-bearing
-// URLs still work on static hosts. The stub is written at the *source* path, so
-// guide.md is a file containing redirect HTML that points at /guide — the
-// extension in the name is the URL being redirected, not the stub's format.
+// URLs still work on static hosts: guide.md becomes guide.md/index.html, a
+// meta-refresh page pointing at /guide (see redirectStubPath).
 // Default index files (e.g., README.md) are skipped — their URL is the
 // directory path, not the extensionless form.
 //
@@ -712,12 +720,12 @@ func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, de
 		}
 		target := "/" + path.Join(lang, cleanPath)
 		html := server.GenerateRedirectHTML(target)
-		outPath := path.Join(lang, realPath)
-		if err := b.writeOutputFile(outPath, html); err != nil {
-			return fmt.Errorf("write extension redirect %s: %w", outPath, err)
+		urlPath := path.Join(lang, realPath)
+		if err := b.writeOutputFile(redirectStubPath(urlPath), html); err != nil {
+			return fmt.Errorf("write extension redirect %s: %w", urlPath, err)
 		}
 		slog.Debug("Generated extension redirect",
-			slog.String("from", "/"+outPath),
+			slog.String("from", "/"+urlPath),
 			slog.String("to", target),
 		)
 	}

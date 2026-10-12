@@ -5,6 +5,8 @@ import (
 	"encoding/xml"
 	"errors"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -459,11 +461,8 @@ func TestWalkAndBuildLang_CountsIntoSharedStats(t *testing.T) {
 	}
 }
 
-// The extension redirect stub is written at the *source* path, so the file is
-// named guides/setup.md and its body is HTML. Nothing else pinned that: the doc
-// comment on generateExtensionRedirects claimed `guide.html -> guide/` and
-// 02-configuration.md claimed README.md produced a README.html, both of which
-// survived because no test read a stub back.
+// The extension redirect stub must redirect on a static host (http.FileServer
+// stands in for one); see redirectStubPath.
 func TestBuildCmd_Run_ExtensionRedirectStubs(t *testing.T) {
 	t.Parallel()
 
@@ -483,13 +482,31 @@ func TestBuildCmd_Run_ExtensionRedirectStubs(t *testing.T) {
 		t.Errorf("guides/setup/index.html does not contain the page: %q", page)
 	}
 
-	// The stub sits at the source path and points at the pretty URL.
-	stub := readTestFile(t, filepath.Join(outDir, "guides"), "setup.md")
+	host := http.FileServer(http.Dir(outDir))
+	get := func(target string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		host.ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
+		return w
+	}
+
+	// The extension URL redirects...
+	w := get("/guides/setup.md")
+	loc := w.Header().Get("Location")
+	if w.Code != http.StatusMovedPermanently || loc == "" {
+		t.Fatalf("GET /guides/setup.md = %d, Location %q; want 301 with a Location", w.Code, loc)
+	}
+
+	// ...to an HTML stub pointing at the pretty URL.
+	w = get("/guides/setup.md/")
+	stub := w.Body.String()
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("stub Content-Type = %q, want text/html", ct)
+	}
 	if !strings.Contains(stub, `url=/guides/setup"`) {
-		t.Errorf("guides/setup.md should redirect to /guides/setup, got %q", stub)
+		t.Errorf("the stub should redirect to /guides/setup, got %q", stub)
 	}
 	if strings.Contains(stub, "Setup</h1>") {
-		t.Error("guides/setup.md holds the rendered page, not a redirect stub")
+		t.Error("the stub holds the rendered page, not a redirect")
 	}
 
 	// A default index has no extensionless form, so it gets no stub.
@@ -498,6 +515,22 @@ func TestBuildCmd_Run_ExtensionRedirectStubs(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "guides", "setup.html")); !os.IsNotExist(err) {
 		t.Error("guides/setup.html should not exist — the stub carries the source extension, not .html")
+	}
+}
+
+func TestRedirectStubPath(t *testing.T) {
+	t.Parallel()
+
+	for urlPath, want := range map[string]string{
+		"old-page":         "old-page/index.html",
+		"guides/setup.md":  "guides/setup.md/index.html",
+		"legacy/page.php":  "legacy/page.php/index.html",
+		"legacy/page.html": "legacy/page.html",
+		"legacy/PAGE.HTM":  "legacy/PAGE.HTM",
+	} {
+		if got := redirectStubPath(urlPath); got != want {
+			t.Errorf("redirectStubPath(%q) = %q, want %q", urlPath, got, want)
+		}
 	}
 }
 
@@ -1276,8 +1309,8 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "ancien-guide"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide"`) {
 		t.Errorf("fr-FR/ancien-guide/index.html should redirect to /fr-FR/guide, got:\n%s", got)
 	}
-	if got := readTestFile(t, filepath.Join(outDir, "fr-FR"), "guide.md"); !strings.Contains(got, `url=/fr-FR/guide"`) {
-		t.Errorf("fr-FR/guide.md should redirect to /fr-FR/guide, got:\n%s", got)
+	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "guide.md"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide"`) {
+		t.Errorf("fr-FR/guide.md/index.html should redirect to /fr-FR/guide, got:\n%s", got)
 	}
 
 	// The default-language sitemap must not index the fr-FR pages: they already
