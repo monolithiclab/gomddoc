@@ -23,8 +23,10 @@ See [README.md](README.md) for what it does and how to run it, `docs/` (table be
   flag or env var change is user-visible: say so in the guide and the release notes. The no-compat-shims rule covers
   gomddoc's internals, not artifacts users already installed (`scripts/install.sh` keeps verifying v0.1.0–v0.1.2's
   `.sig`/`.pem` pair, D43).
-- **The release token never leaves CI.** `HOMEBREW_TAP_TOKEN` is a repository secret only; never tag or run a real
-  release from a session (`goreleaser release --snapshot --clean --skip=publish,sign,docker` proves a change).
+- **Releases: a session tags, CI publishes.** Claude may tag and push a `vX.Y.Z` release when a fix or feature
+  warrants one (asking first when unsure); the tag push runs the release workflow. `HOMEBREW_TAP_TOKEN` stays a
+  repository secret, so `goreleaser release` itself never runs locally beyond
+  `goreleaser release --snapshot --clean --skip=publish,sign,docker`, which proves a change.
 - **Tests never touch the network**, apart from `govulncheck` inside `make lint`.
 
 ## Constraints that look like bugs
