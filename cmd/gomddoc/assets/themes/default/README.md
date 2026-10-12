@@ -3,7 +3,7 @@ name: "Default"
 category: "General Purpose"
 tags: ["clean", "modern", "responsive", "dark-mode"]
 author: "gomddoc"
-license: "MIT"
+license: "PolyForm-Noncommercial-1.0.0 + commercial"
 fonts:
   heading: "Inter"
   body: "Inter"
