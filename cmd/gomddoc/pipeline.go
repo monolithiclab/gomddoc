@@ -51,6 +51,10 @@ type PipelineOptions struct {
 	// "" for the default language. Everything the pipeline emits as an absolute
 	// site path — template content URLs, redirect targets — carries it.
 	Lang string
+
+	// TrailingSlash is resolve.BuildOptions.TrailingSlash: build sets it, since
+	// a static host publishes each page directory at a slash-terminated URL.
+	TrailingSlash bool
 }
 
 // Pipeline holds the assembled rendering pipeline components.
@@ -261,6 +265,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	resolver := resolve.Build(contentRoot, resolve.BuildOptions{
 		StripExtensions: cfg.Site.StripExtensions,
 		Exclude:         exclude,
+		TrailingSlash:   opts.TrailingSlash,
 		HasRenderer: func(mimeType string) bool {
 			_, _, err := registry.Get(mimeType, []negotiate.MediaType{{Type: "text", Subtype: "html", Q: 1.0}})
 			return err == nil

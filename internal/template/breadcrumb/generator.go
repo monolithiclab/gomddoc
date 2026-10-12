@@ -31,7 +31,8 @@ func NewGenerator(isDir IsDirFunc) *DefaultGenerator {
 
 // Generate creates breadcrumb navigation from a file path
 // Returns an ordered slice of breadcrumb items with path and label
-// Directories get trailing slashes in URLs, files don't
+// Directories get trailing slashes in URLs, files don't. A path that already
+// ends in "/" keeps it: build publishes pages at slash-terminated URLs (D47).
 func (g *DefaultGenerator) Generate(filepath string) []Breadcrumb {
 	const (
 		initialCapacity = 8
@@ -52,6 +53,8 @@ func (g *DefaultGenerator) Generate(filepath string) []Breadcrumb {
 		return breadcrumbs
 	}
 
+	slashed := strings.HasSuffix(filepath, "/")
+
 	// Clean the path but keep the full path including filename
 	filepath = strings.Trim(path.Clean(filepath), "/")
 
@@ -61,7 +64,7 @@ func (g *DefaultGenerator) Generate(filepath string) []Breadcrumb {
 	}
 
 	// Check if target is a directory
-	targetIsDir := g.isDir("/" + filepath)
+	targetIsDir := slashed || g.isDir("/"+filepath)
 
 	// Split the full path into segments
 	segments := strings.Split(filepath, "/")

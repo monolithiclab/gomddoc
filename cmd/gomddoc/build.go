@@ -136,6 +136,7 @@ func (b *BuildCmd) Run() error {
 		EnableCache:      true,
 		EnableNavigation: true, // needed for prev/next page links
 		EnableMetadata:   true, // needed for SEO and redirect generation
+		TrailingSlash:    true, // pages are written as <url>/index.html
 	})
 	if err != nil {
 		return fmt.Errorf("build pipeline: %w", err)
@@ -702,7 +703,7 @@ func redirectStubPath(urlPath string) string {
 
 // generateExtensionRedirects generates HTML redirect files so extension-bearing
 // URLs still work on static hosts: guide.md becomes guide.md/index.html, a
-// meta-refresh page pointing at /guide (see redirectStubPath).
+// meta-refresh page pointing at /guide/ (see redirectStubPath).
 // Default index files (e.g., README.md) are skipped — their URL is the
 // directory path, not the extensionless form.
 //
@@ -714,11 +715,15 @@ func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, de
 		return nil
 	}
 
-	for realPath, cleanPath := range resolver.AllMappings() {
+	langPrefix := ""
+	if lang != "" {
+		langPrefix = "/" + lang
+	}
+	for realPath := range resolver.AllMappings() {
 		if resolve.IsDefaultIndex(realPath, defaultIndex) {
 			continue
 		}
-		target := "/" + path.Join(lang, cleanPath)
+		target := langPrefix + resolver.PageURLPath(realPath, defaultIndex)
 		html := server.GenerateRedirectHTML(target)
 		urlPath := path.Join(lang, realPath)
 		if err := b.writeOutputFile(redirectStubPath(urlPath), html); err != nil {

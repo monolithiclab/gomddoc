@@ -112,6 +112,11 @@ _Features from the completed phases that have no item elsewhere in this document
       Static error pages). What's left is narrower than the original scope suggested — see Asset
       optimization above, and the still-open serve/build parity gaps tracked in this doc's
       Implementation Strategy.
+- [ ] **Build output path from the URL, not beside it**: `prettyOutputPath` and `PageURLPath` (D47) encode the
+      same layout twice and already disagree: a `README.md` next to an `index.md` is written as `README/index.html`
+      while its URL is the directory's, and with `strip_extensions: []` a page is written as `guide.html` while its
+      URL is `/guide.md`. Derive the output file from the URL in one place. Related: `BuildRedirectMap` passes no
+      `defaultIndex`, so a `redirect_from` on `guides/README.md` targets `/guides/README`, which build never writes.
 
 ## CLI and Developer Experience
 

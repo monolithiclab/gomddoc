@@ -95,7 +95,7 @@ func (h *SitemapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // GenerateSitemap produces the sitemap XML bytes.
 // When prov is non-nil, each entry includes a <lastmod> from seo.LastModified —
 // the file's modification time, or the frontmatter date when it is unavailable.
-// When resolver is non-nil, URLs use extensionless paths.
+// When resolver is non-nil, URLs are the published ones (resolve.PageURLPath, DirURL).
 // pathPrefix is prepended to all page paths (e.g. "/fr-FR" for per-language sitemaps).
 func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, defaultIndex string, prov provider.Provider, resolver *resolve.PathResolver, pathPrefix string) ([]byte, error) {
 	var contentRoot fs.FS
@@ -134,7 +134,7 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 
 	// One URL per unique tag.
 	for _, tag := range tags {
-		tagURL := seo.PageURL(domain, pathPrefix+"/tags/"+url.PathEscape(tag), "")
+		tagURL := seo.PageURL(domain, resolver.DirURL(pathPrefix+"/tags/"+url.PathEscape(tag)), "")
 		if tagURL != "" {
 			urls = append(urls, sitemapURL{Loc: tagURL})
 		}

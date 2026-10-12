@@ -892,3 +892,23 @@ release, package and OIDC write scopes.
   SBOMs and a `SHA256SUMS` listing all eight. Signing and the image push are only exercised by a real tag.
 - *Cost if wrong*: a release fails at the SBOM step (syft missing or changed flags), which fails before anything is
   published; the digest pins need a Dependabot-style manual refresh when binfmt or buildkit ship a fix.
+
+## D47. Build URLs End in a Slash
+
+*2026-10-12*
+
+**Decision** (2026-10-12): a resolver built with `BuildOptions.TrailingSlash` (only `gomddoc build` sets it, through
+`PipelineOptions.TrailingSlash`) makes `PageURLPath` end a page's URL in `/` when the page is written as a directory's
+`index.html`: clean-mapped pages and nested default indexes, not `index.md` (written in place) or unmapped files.
+`(*PathResolver).DirURL` applies the same rule to pages not derived from a file (tag listings). D35 still holds: the
+canonical, `og:url`, JSON-LD, hreflang, sitemap, feed, navigation, tag links and both kinds of redirect stub all derive
+from it; `BuildRedirectMap` and `generateExtensionRedirects` stopped composing `CleanPath` themselves. The breadcrumb
+generator keeps a trailing slash it is handed, so the last `BreadcrumbList` item matches the canonical.
+
+- *Evidence*: monolithiclab.fr on GitHub Pages answered `/mentions-legales` with `301 Location: /mentions-legales/`
+  while the page's canonical named `/mentions-legales`, so every canonical, sitemap entry and internal link pointed at
+  a redirect.
+- *Alternatives*: trailing slashes in `serve` too, for one URL shape across modes; rejected for now, since serve answers
+  `/guide` with a 200 and a matching canonical, and changing it would redirect every existing served URL.
+- *Cost if wrong*: a static host that serves `guide/index.html` at `/guide` without redirecting gets canonicals with a
+  slash it does not need; both forms then answer 200, and the canonical still names one of them.

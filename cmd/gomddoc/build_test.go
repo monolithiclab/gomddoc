@@ -502,8 +502,8 @@ func TestBuildCmd_Run_ExtensionRedirectStubs(t *testing.T) {
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
 		t.Errorf("stub Content-Type = %q, want text/html", ct)
 	}
-	if !strings.Contains(stub, `url=/guides/setup"`) {
-		t.Errorf("the stub should redirect to /guides/setup, got %q", stub)
+	if !strings.Contains(stub, `url=/guides/setup/"`) {
+		t.Errorf("the stub should redirect to /guides/setup/, got %q", stub)
 	}
 	if strings.Contains(stub, "Setup</h1>") {
 		t.Error("the stub holds the rendered page, not a redirect")
@@ -1212,24 +1212,24 @@ func TestBuildCmd_EmitsTagPages(t *testing.T) {
 	// page that lists the wrong members, which is the failure a parallel render
 	// path actually produces.
 	goPage := readTestFile(t, filepath.Join(outDir, "tags", "go"), "index.html")
-	for _, want := range []string{`href="/a">A<`, `href="/b">B<`} {
+	for _, want := range []string{`href="/a/">A<`, `href="/b/">B<`} {
 		if !strings.Contains(goPage, want) {
 			t.Errorf("tags/go/index.html missing %s, got:\n%s", want, goPage)
 		}
 	}
 
 	mlPage := readTestFile(t, filepath.Join(outDir, "tags", "machine%20learning"), "index.html")
-	if !strings.Contains(mlPage, `href="/a">A<`) {
+	if !strings.Contains(mlPage, `href="/a/">A<`) {
 		t.Errorf("tags/machine%%20learning/index.html missing A, got:\n%s", mlPage)
 	}
-	if strings.Contains(mlPage, `href="/b">B<`) {
+	if strings.Contains(mlPage, `href="/b/">B<`) {
 		t.Error(`tags/machine%20learning/index.html lists B, which carries only the "go" tag`)
 	}
 
 	tagIndex := readTestFile(t, filepath.Join(outDir, "tags"), "index.html")
 	for _, want := range []string{
-		`href="/tags/go">go</a>`,
-		`href="/tags/machine%20learning">machine learning</a>`,
+		`href="/tags/go/">go</a>`,
+		`href="/tags/machine%20learning/">machine learning</a>`,
 		`<span class="tag-index-count">(2)</span>`, // go
 		`<span class="tag-index-count">(1)</span>`, // machine learning
 	} {
@@ -1288,15 +1288,15 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 	// bug the pathPrefix plumbing exists to prevent.
 	wantFrLocs := []string{
 		"https://build.example.com/fr-FR/",
-		"https://build.example.com/fr-FR/guide",
+		"https://build.example.com/fr-FR/guide/",
 		"https://build.example.com/fr-FR/tags/",
-		"https://build.example.com/fr-FR/tags/docs",
+		"https://build.example.com/fr-FR/tags/docs/",
 	}
 	if got := sitemapLocs(t, filepath.Join(outDir, "fr-FR"), "sitemap.xml"); !slices.Equal(got, wantFrLocs) {
 		t.Errorf("fr-FR/sitemap.xml locs = %v, want %v", got, wantFrLocs)
 	}
 	wantFrIDs := []string{
-		"https://build.example.com/fr-FR/guide",
+		"https://build.example.com/fr-FR/guide/",
 		"https://build.example.com/fr-FR/",
 	}
 	if got := feedEntryIDs(t, filepath.Join(outDir, "fr-FR"), "feed.xml"); !slices.Equal(got, wantFrIDs) {
@@ -1306,11 +1306,11 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 	// redirect_from and extension redirects are generated per language. Neither
 	// existed before the default pipeline stopped indexing fr-FR: the default
 	// pipeline owned both, and it emitted default-language targets.
-	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "ancien-guide"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide"`) {
-		t.Errorf("fr-FR/ancien-guide/index.html should redirect to /fr-FR/guide, got:\n%s", got)
+	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "ancien-guide"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide/"`) {
+		t.Errorf("fr-FR/ancien-guide/index.html should redirect to /fr-FR/guide/, got:\n%s", got)
 	}
-	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "guide.md"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide"`) {
-		t.Errorf("fr-FR/guide.md/index.html should redirect to /fr-FR/guide, got:\n%s", got)
+	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "guide.md"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide/"`) {
+		t.Errorf("fr-FR/guide.md/index.html should redirect to /fr-FR/guide/, got:\n%s", got)
 	}
 
 	// The default-language sitemap must not index the fr-FR pages: they already
@@ -1412,6 +1412,10 @@ func TestBuildCmd_EmitsSeeAlsoSection(t *testing.T) {
 // TestBuildCmd_Run_PagePathIsTheURLPath pins build mode's Page.Path to the URL
 // the page is actually published at.
 //
+// Build writes a page as guides/alpha/index.html, which a static host serves at
+// /guides/alpha/ and 301s /guides/alpha to: every URL the build emits carries
+// the trailing slash, or the canonical names a redirect.
+//
 // Build walks files while serve is handed URLs, so build has to derive the URL
 // itself. When it passed the raw file path instead, every path-keyed lookup
 // missed: canonical/og:url/JSON-LD advertised a `.md` URL the site does not
@@ -1425,7 +1429,7 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 
 	writeTestFile(t, srcDir, "README.md", "---\ntitle: Home\n---\n# Home")
 	writeTestFile(t, srcDir, "guides/README.md", "---\ntitle: Guides\n---\n# Guides")
-	writeTestFile(t, srcDir, "guides/alpha.md", "---\ntitle: Alpha\n---\n# Alpha")
+	writeTestFile(t, srcDir, "guides/alpha.md", "---\ntitle: Alpha\ntags: [howto]\n---\n# Alpha")
 	// Three siblings so the middle one has both a prev and a next.
 	writeTestFile(t, srcDir, "guides/beta.md", "---\ntitle: Beta\n---\n# Beta")
 	writeTestFile(t, srcDir, "guides/gamma.md", "---\ntitle: Gamma\n---\n# Gamma")
@@ -1445,9 +1449,12 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 	// canonical, og:url and JSON-LD @id all derive from Page.Path, so checking
 	// each one separately guards against a fix that only reaches the first.
 	for _, want := range []string{
-		`<link rel="canonical" href="https://build.example.com/guides/alpha">`,
-		`<meta property="og:url" content="https://build.example.com/guides/alpha">`,
-		`"@id":"https://build.example.com/guides/alpha"`,
+		`<link rel="canonical" href="https://build.example.com/guides/alpha/">`,
+		`<meta property="og:url" content="https://build.example.com/guides/alpha/">`,
+		`"@id":"https://build.example.com/guides/alpha/"`,
+		`"item":"https://build.example.com/guides/alpha/","name":"Alpha"`, // last breadcrumb
+		`href="/guides/beta/"`, // sidebar
+		`href="/tags/howto/"`,  // tag chip
 	} {
 		if !strings.Contains(alpha, want) {
 			t.Errorf("guides/alpha/index.html missing %s", want)
@@ -1457,8 +1464,25 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 	// The sitemap and the page must agree on one URL per page — the
 	// self-contradiction that made this bug visible.
 	sitemap := readTestFile(t, outDir, "sitemap.xml")
-	if !strings.Contains(sitemap, "<loc>https://build.example.com/guides/alpha</loc>") {
-		t.Errorf("sitemap disagrees with the page canonical:\n%s", sitemap)
+	for _, want := range []string{
+		"<loc>https://build.example.com/guides/alpha/</loc>",
+		"<loc>https://build.example.com/guides/</loc>",
+		"<loc>https://build.example.com/tags/howto/</loc>",
+	} {
+		if !strings.Contains(sitemap, want) {
+			t.Errorf("sitemap missing %s:\n%s", want, sitemap)
+		}
+	}
+
+	// Tag pages are written as tags/{tag}/index.html too.
+	tag := readTestFile(t, filepath.Join(outDir, "tags", "howto"), "index.html")
+	if !strings.Contains(tag, `<link rel="canonical" href="https://build.example.com/tags/howto/">`) {
+		t.Error("tags/howto/index.html canonical lacks the trailing slash")
+	}
+
+	// The extension redirect stub points straight at the published URL.
+	if stub := readTestFile(t, filepath.Join(outDir, "guides", "alpha.md"), "index.html"); !strings.Contains(stub, `url=/guides/alpha/"`) {
+		t.Errorf("guides/alpha.md stub should redirect to /guides/alpha/, got:\n%s", stub)
 	}
 
 	// Navigation and prev/next index on clean paths, so a `.md` Page.Path made
@@ -1468,8 +1492,8 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 	}
 	beta := readTestFile(t, filepath.Join(outDir, "guides", "beta"), "index.html")
 	for _, want := range []string{
-		`rel="prev" href="https://build.example.com/guides/alpha"`,
-		`rel="next" href="https://build.example.com/guides/gamma"`,
+		`rel="prev" href="https://build.example.com/guides/alpha/"`,
+		`rel="next" href="https://build.example.com/guides/gamma/"`,
 	} {
 		if !strings.Contains(beta, want) {
 			t.Errorf("guides/beta/index.html missing %s", want)
@@ -1479,7 +1503,7 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 	// A directory's default index is published at the directory, not at
 	// /guides/README.
 	guides := readTestFile(t, filepath.Join(outDir, "guides"), "index.html")
-	if !strings.Contains(guides, `<link rel="canonical" href="https://build.example.com/guides">`) {
+	if !strings.Contains(guides, `<link rel="canonical" href="https://build.example.com/guides/">`) {
 		t.Error("guides/index.html canonical is not the directory URL")
 	}
 	root := readTestFile(t, outDir, "index.html")
@@ -1513,9 +1537,9 @@ func TestBuildCmd_Run_DefaultThemeLinksAndHreflang(t *testing.T) {
 	// that block and dropped the one line it could not afford to lose.
 	alpha := readTestFile(t, filepath.Join(outDir, "guides", "alpha"), "index.html")
 	for _, want := range []string{
-		`<link rel="alternate" hreflang="en-US" href="/guides/alpha">`,
-		`<link rel="alternate" hreflang="x-default" href="/guides/alpha">`,
-		`<link rel="alternate" hreflang="fr-FR" href="/fr-FR/guides/alpha">`,
+		`<link rel="alternate" hreflang="en-US" href="/guides/alpha/">`,
+		`<link rel="alternate" hreflang="x-default" href="/guides/alpha/">`,
+		`<link rel="alternate" hreflang="fr-FR" href="/fr-FR/guides/alpha/">`,
 	} {
 		if !strings.Contains(alpha, want) {
 			t.Errorf("guides/alpha/index.html missing %s", want)
@@ -1532,7 +1556,7 @@ func TestBuildCmd_Run_DefaultThemeLinksAndHreflang(t *testing.T) {
 	if strings.Contains(tagPage, ".md\"") {
 		t.Errorf("tags/guide/index.html links a raw .md path:\n%s", tagPage)
 	}
-	if !strings.Contains(tagPage, `<a class="tag-result-title" href="/guides/alpha">`) {
+	if !strings.Contains(tagPage, `<a class="tag-result-title" href="/guides/alpha/">`) {
 		t.Errorf("tags/guide/index.html does not link the clean page URL:\n%s", tagPage)
 	}
 
@@ -1540,7 +1564,7 @@ func TestBuildCmd_Run_DefaultThemeLinksAndHreflang(t *testing.T) {
 	// must apply the pipeline's language prefix — otherwise this href is
 	// "/guides/beta", which does not exist.
 	frTagPage := readTestFile(t, filepath.Join(outDir, "fr-FR", "tags", "guide"), "index.html")
-	if !strings.Contains(frTagPage, `<a class="tag-result-title" href="/fr-FR/guides/beta">`) {
+	if !strings.Contains(frTagPage, `<a class="tag-result-title" href="/fr-FR/guides/beta/">`) {
 		t.Errorf("fr-FR/tags/guide/index.html does not link into the fr-FR tree:\n%s", frTagPage)
 	}
 }

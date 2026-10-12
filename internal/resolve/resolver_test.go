@@ -312,8 +312,11 @@ func TestResolver_PageURLPath(t *testing.T) {
 		"guides/quickstart.md":   {},
 		"guides/data.csv":        {},
 		"reference/api.markdown": {},
+		"docs/index.md":          {},
 	}
 	r := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown")})
+	// Build's resolver: pages are published as <url>/index.html.
+	slash := Build(fsys, BuildOptions{StripExtensions: []string{".md"}, HasRenderer: mockRenderer("text/markdown"), TrailingSlash: true})
 
 	tests := []struct {
 		name         string
@@ -339,6 +342,12 @@ func TestResolver_PageURLPath(t *testing.T) {
 		// With no default index configured, README.md is an ordinary page and
 		// gets an ordinary clean URL rather than its directory's.
 		{"empty default index disables index folding", r, "guides/README.md", "", "/guides/README"},
+		{"trailing slash on a mapped file", slash, "guides/quickstart.md", "README.md", "/guides/quickstart/"},
+		{"trailing slash on a nested default index", slash, "guides/README.md", "README.md", "/guides/"},
+		{"root default index stays the site root", slash, "README.md", "README.md", "/"},
+		// index.md is written as index.html in place, not as index/index.html.
+		{"index.md gets no trailing slash", slash, "docs/index.md", "README.md", "/docs/index"},
+		{"unmapped file gets no trailing slash", slash, "guides/data.csv", "README.md", "/guides/data.csv"},
 	}
 
 	for _, tt := range tests {
@@ -437,5 +446,24 @@ func TestResolver_CollisionFindings(t *testing.T) {
 				t.Errorf("findings = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolver_DirURL(t *testing.T) {
+	t.Parallel()
+
+	slash := Build(fstest.MapFS{}, BuildOptions{TrailingSlash: true})
+	for _, tt := range []struct {
+		resolver *PathResolver
+		in, want string
+	}{
+		{slash, "/tags/go", "/tags/go/"},
+		{slash, "/tags/", "/tags/"},
+		{Build(fstest.MapFS{}, BuildOptions{}), "/tags/go", "/tags/go"},
+		{nil, "/tags/go", "/tags/go"},
+	} {
+		if got := tt.resolver.DirURL(tt.in); got != tt.want {
+			t.Errorf("DirURL(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }

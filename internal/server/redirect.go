@@ -18,8 +18,8 @@ type URLRedirectMap map[string]string
 
 // BuildRedirectMap scans the metadata index for pages with redirect_from
 // frontmatter and builds a reverse mapping from old URLs to current page paths.
-// When a resolver is provided, redirect targets use clean (extensionless) paths
-// to avoid double redirects (old-url → /page.md → /page).
+// Targets are resolver.PageURLPath, the page's published URL, so a redirect
+// takes one hop (old-url → /page, not → /page.md → /page).
 //
 // basePath is prepended to the targets only. Per-language handlers are mounted
 // under /{lang} with the prefix already stripped, so the sources stay
@@ -54,14 +54,7 @@ func BuildRedirectMap(index *metadata.Index, resolver *resolve.PathResolver, bas
 			continue
 		}
 
-		target := page.Path
-		if resolver != nil {
-			cleanPath := strings.TrimPrefix(target, "/")
-			if clean, found := resolver.CleanPath(cleanPath); found {
-				target = "/" + clean
-			}
-		}
-		target = basePath + target
+		target := basePath + resolver.PageURLPath(page.Path, "")
 
 		for _, src := range sources {
 			s, ok := src.(string)

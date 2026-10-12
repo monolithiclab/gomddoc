@@ -24,6 +24,8 @@ type PathResolver struct {
 	toReal  map[string]string // extensionless -> real file path
 	toClean map[string]string // real file path -> extensionless
 
+	trailingSlash bool // see BuildOptions.TrailingSlash
+
 	// findings are the problems Build met: unreadable subtrees and clean-path
 	// collisions. Build does not log them; the pipeline does (diag.Log), and
 	// doctor reports them.
@@ -45,6 +47,12 @@ type BuildOptions struct {
 	// HasRenderer reports whether a MIME type has an HTML renderer. Files
 	// whose MIME type fails this check are not mapped.
 	HasRenderer RendererCheck
+
+	// TrailingSlash makes the URLs of pages published as a directory's
+	// index.html end in "/". Build sets it: a static host serves
+	// guide/index.html at /guide/ and 301s /guide there, so a URL without the
+	// slash names a redirect. Serve answers /guide itself and leaves it unset.
+	TrailingSlash bool
 }
 
 // Build walks fsys and builds a PathResolver that strips the configured
@@ -57,8 +65,9 @@ type BuildOptions struct {
 // URL even though its real path 404s.
 func Build(fsys fs.FS, opts BuildOptions) *PathResolver {
 	r := &PathResolver{
-		toReal:  make(map[string]string),
-		toClean: make(map[string]string),
+		toReal:        make(map[string]string),
+		toClean:       make(map[string]string),
+		trailingSlash: opts.TrailingSlash,
 	}
 
 	if len(opts.StripExtensions) == 0 {
@@ -180,7 +189,8 @@ func (r *PathResolver) AllMappings() map[string]string {
 
 // PageURLPath returns the absolute URL path a content file is published at:
 // the containing directory for a default-index file, the extensionless clean
-// path when stripping mapped it, and the real path otherwise.
+// path when stripping mapped it, and the real path otherwise. Under
+// BuildOptions.TrailingSlash the first two end in "/" (but not index.md's).
 //
 // Serve mode never needs it — it is handed the URL and resolves backwards to a
 // file — but anything holding a real path and rendering a link does. See
@@ -196,15 +206,30 @@ func (r *PathResolver) PageURLPath(realPath, defaultIndex string) string {
 		if dir == "." {
 			return "/"
 		}
-		return "/" + dir
+		return r.DirURL("/" + dir)
 	}
 
 	if r != nil {
 		if clean, found := r.CleanPath(realPath); found {
-			return "/" + clean
+			// index.md is written as index.html in place, not as a directory.
+			if strings.EqualFold(path.Base(realPath), "index.md") {
+				return "/" + clean
+			}
+			return r.DirURL("/" + clean)
 		}
 	}
 	return "/" + realPath
+}
+
+// DirURL returns urlPath, the URL of a page published as a directory's
+// index.html, with the trailing slash BuildOptions.TrailingSlash asks for.
+// Pages not derived from a file (tag listings) go through it too. A nil
+// receiver returns urlPath unchanged.
+func (r *PathResolver) DirURL(urlPath string) string {
+	if r == nil || !r.trailingSlash || strings.HasSuffix(urlPath, "/") {
+		return urlPath
+	}
+	return urlPath + "/"
 }
 
 // IsDefaultIndex reports whether filePath's basename is the site's default

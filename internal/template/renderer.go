@@ -361,7 +361,7 @@ func (h *HTMLRenderer) RenderTagPage(ctx context.Context, lang string, tFunc fun
 		return nil, fmt.Errorf("render tags-list: %w", err)
 	}
 
-	pagePath := tagURL(h.siteConfig.Language, lang, tag)
+	pagePath := h.tagURL(lang, tag)
 	page := PageContext{
 		Path:        pagePath,
 		Content:     template.HTML(body), // #nosec G203 -- partial output is trusted
@@ -586,10 +586,8 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"inlineJSAsset":   h.inlineJSAsset,
 		"inlineCSSAsset":  h.inlineCSSAsset,
 		"inlineHTMLAsset": h.inlineHTMLAsset,
-		"tagURL": func(lang, tag string) string {
-			return tagURL(h.siteConfig.Language, lang, tag)
-		},
-		"pageTags": pageTags,
+		"tagURL":          h.tagURL,
+		"pageTags":        pageTags,
 	}
 }
 
@@ -735,10 +733,16 @@ func (h *HTMLRenderer) contentURL(filePath string) string {
 	return h.langPrefix + h.resolver.PageURLPath(filePath, h.siteConfig.DefaultIndex)
 }
 
-// tagURL builds the URL for a tag's listing page, scoped to the active
+// tagURL is the published URL of a tag's listing page: tagPath plus the
+// resolver's trailing slash, since build writes it as tags/{tag}/index.html.
+func (h *HTMLRenderer) tagURL(lang, tag string) string {
+	return h.resolver.DirURL(tagPath(h.siteConfig.Language, lang, tag))
+}
+
+// tagPath builds the path of a tag's listing page, scoped to the active
 // language. The default language uses /tags/{tag}; other languages use
 // /{lang}/tags/{tag}. Tag values are percent-encoded for URL safety.
-func tagURL(defaultLang, lang, tag string) string {
+func tagPath(defaultLang, lang, tag string) string {
 	if lang == "" || lang == defaultLang {
 		return "/tags/" + url.PathEscape(tag)
 	}

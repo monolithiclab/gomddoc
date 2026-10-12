@@ -48,6 +48,11 @@ When a domain is configured, every page includes a `<link rel="canonical">` tag 
 <link rel="canonical" href="https://docs.example.com/guide/getting-started">
 ```
 
+`gomddoc build` writes that page as `guide/getting-started/index.html`, which a static host serves at
+`/guide/getting-started/` and redirects the bare path to, so every URL a build emits (canonical, `og:url`, JSON-LD,
+hreflang, sitemap, feed, navigation and tag links, redirect stubs) ends in `/`:
+`https://docs.example.com/guide/getting-started/`. `serve` answers the bare path itself and keeps the form above.
+
 Canonical URLs tell search engines the authoritative URL for each page. This prevents duplicate
 content issues when the same page is accessible via multiple URLs, such as different hostnames behind a
 load balancer.

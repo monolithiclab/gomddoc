@@ -57,6 +57,17 @@ func TestGenerate(t *testing.T) {
 			},
 		},
 		{
+			// Build's page URLs end in "/" (D47); the page is no directory on disk.
+			name: "slash-terminated page URL",
+			path: "/docs/api/guide/",
+			expected: []Breadcrumb{
+				{Path: "/", Label: "Home"},
+				{Path: "/docs/", Label: "Docs"},
+				{Path: "/docs/api/", Label: "Api"},
+				{Path: "/docs/api/guide/", Label: "Guide"},
+			},
+		},
+		{
 			name: "path with dots",
 			path: "/docs/./api/../images/logo.png",
 			expected: []Breadcrumb{
