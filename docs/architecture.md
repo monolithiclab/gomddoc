@@ -1024,7 +1024,7 @@ buys avoid a whole gzip pass over that same body.
 
 Known gap: `writeJSON` (`/api/*`) streams through a `json.Encoder` with no byte slice in hand, so the
 JSON endpoints neither cache nor revalidate even though they read the same immutable index. Tracked
-in `docs/reviews/2026-07-29-codebase-review.md` §10.7.
+in `docs/reviews/20260729.codebase-review.md` §10.7.
 
 ### Custom Error Type
 
@@ -1167,7 +1167,7 @@ docs.Guide ──► internal/guide (topics, sections, lazy search) ──► go
 - Flags are joined onto settings by env var name, or by a Kong `setting:"<key>"` tag where a flag's env var differs
   from the setting's (`--domain`, preview's `--dir-index`).
 - Theme facts are a best-effort template scan (`.Feature "x"`, `var(--theme-x)`) until theme manifests are designed
-  (`docs/superpowers/plans/2026-09-23-theme-manifest.md`).
+  (`docs/plans/20260923.theme-manifest.md`).
 - `docs/guide.go` (`package docs`) embeds `docs/guide/`; drift tests hold the guide to the env vars, config keys and
   frontmatter fields the code declares.
 

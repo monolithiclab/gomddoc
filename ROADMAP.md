@@ -22,7 +22,7 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 - Provide generic gomddoc skill.
 - Build-time assertion that no static-build output path matches an `exclude` pattern, failing the
   build if one does. Would have caught the §10.1 clean-URL bypass's `build`-mode stub leak
-  (docs/reviews/2026-07-29-codebase-review.md §10.1) without anyone needing to think to look for it — a second, independent check
+  (docs/reviews/20260729.codebase-review.md §10.1) without anyone needing to think to look for it — a second, independent check
   on top of the fix itself.
 
 ## Current State
@@ -37,8 +37,8 @@ multi-language content), self-documentation (`help`, `info`, `schema`, `doctor`,
 (GoReleaser, Homebrew, Docker, install script). A GitHub Actions CI pipeline (`make ci`, which includes
 `govulncheck`, on an ubuntu+macOS matrix, plus a shellcheck job for `scripts/install.sh`) is in place — see Distribution
 and Packaging. Features that shipped without a roadmap item are listed under Shipped Foundations. Four review passes
-(13th, i18n simplification, 14th, 15th — see docs/reviews/2026-07-29-codebase-review.md) have fixed every HIGH finding and the large majority of
-MEDIUM/LOW ones; the remainder is tracked in docs/reviews/2026-07-29-codebase-review.md and prioritized in this doc's Implementation Strategy section.
+(13th, i18n simplification, 14th, 15th — see docs/reviews/20260729.codebase-review.md) have fixed every HIGH finding and the large majority of
+MEDIUM/LOW ones; the remainder is tracked in docs/reviews/20260729.codebase-review.md and prioritized in this doc's Implementation Strategy section.
 
 **Phase 5 note:** Server-side full-text search and client-side search UI are complete for `serve`
 and `preview` modes. Build-mode search (Pagefind) deferred.
@@ -60,19 +60,19 @@ _Features from the completed phases that have no item elsewhere in this document
 - [x] **Configuration**: flag > env > `.gomddoc/config.yml` > default, strict decoding that rejects unknown keys
       (`internal/config`).
 - [x] **Renderer enhancement (Phase 6)**: goldmark with GFM, Chroma highlighting, heading anchors, admonitions and
-      color chips; KaTeX and Mermaid client-side (`internal/renderer`, spec `2026-04-05-goldmark-extensions-design.md`).
+      color chips; KaTeX and Mermaid client-side (`internal/renderer`, spec `20260405.goldmark-extensions-design.md`).
 - [x] **Theming engine (Phase 8)**: `layouts/` + `partials/` per theme with default-theme partials as the base and
       site partials in `.gomddoc/partials/`; `theme.vars` as CSS custom properties; `theme.features` toggles with
-      per-page frontmatter `features` overrides (spec `2026-03-31-theme-feature-toggles-design.md`); shared web
-      components in `cmd/gomddoc/assets/shared/` (spec `2026-04-07-html-in-go-to-web-components.md`); seven themes
+      per-page frontmatter `features` overrides (spec `20260331.theme-feature-toggles-design.md`); shared web
+      components in `cmd/gomddoc/assets/shared/` (spec `20260407.html-in-go-to-web-components.md`); seven themes
       in `gomddoc-themes`.
 - [x] **Page chrome**: breadcrumbs, TOC, navigation sidebar, "Edit this page" links (`edit_url`), generated
       directory listings (`dir_index`).
 - [x] **Operations**: `/health/live`, `/health/ready`, Prometheus `/metrics`, `--pprof`, and a separate
-      `--admin-port` listener (spec `2026-04-07-admin-port-design.md`); gzip compression, ETags with `304`,
+      `--admin-port` listener (spec `20260407.admin-port-design.md`); gzip compression, ETags with `304`,
       request IDs, security headers, GET/HEAD method filtering, htpasswd Basic Auth (`--basic-auth-file`).
 - [x] **Search index postings tagged by field** (title, description, body) for field boosts (spec
-      `2026-04-06-search-index-field-tagged-postings.md`).
+      `20260406.search-index-field-tagged-postings.md`).
 
 ## Phase 4: Performance and Scaling
 
@@ -211,7 +211,7 @@ _Enhances competitiveness and closes remaining gaps._
       (`internal/renderer/markdown_test.go`) pins goldmark's `WithAutoHeadingID` output across both
       the renderer's and the enricher's parser instances; `docs/guide/12-advanced/02-markdown-extensions.md`
       documents the five-rule algorithm and a worked table.
-- [ ] **Heading anchor escape hatch + non-ASCII handling** (docs/reviews/2026-07-29-codebase-review.md §10.5): goldmark's slugifier
+- [ ] **Heading anchor escape hatch + non-ASCII handling** (docs/reviews/20260729.codebase-review.md §10.5): goldmark's slugifier
       drops every non-ASCII character rather than transliterating it — `# Café Français` becomes
       `caf-franais`, and an all-non-Latin heading (Japanese, Korean, Greek, Cyrillic) falls back to
       a positional `heading-1`, `heading-2`, ... that reorders itself the moment a section is added.
@@ -380,18 +380,18 @@ how to build documentation sites with gomddoc without external docs._
 - [x] **`gomddoc mcp` serves bundled guide**: always, alongside the site's content rather than only when no
       directory is given (`gomddoc mcp` defaults its directory to `.`, so "no directory" never happens). It lives
       under `gomddoc://guide/{+path}` and the `gomddoc_guide` tool; stdio only, not on `serve`'s `/_mcp/`. See
-      `docs/superpowers/specs/2026-09-23-self-documentation-design.md`.
+      `docs/specs/20260923.self-documentation-design.md`.
 - [x] **Agent onboarding prompt**: `learn_gomddoc`.
 - [x] **Machine-readable capabilities**: `gomddoc info [--json]`, `gomddoc schema`, `gomddoc://capabilities`,
       `gomddoc://schema/config` — all projected from the config structs' tags.
 - [x] **`gomddoc doctor`** (sub-spec 2): every configuration problem and the cheap content problems, each with
       location and fix; `--json`, `--strict`, `-v`; the stdio `gomddoc_doctor` MCP tool. See
-      `docs/superpowers/specs/2026-09-23-doctor-design.md` and the guide's Doctor page.
+      `docs/specs/20260923.doctor-design.md` and the guide's Doctor page.
 - [ ] **`doctor` link checking**: broken internal links and anchors, resolved the way serve and build resolve them.
 - [x] **`gomddoc help <topic>`** (sub-spec 3): list, read, section and search the embedded guide in the terminal
       (`$PAGER` on a terminal, plain markdown when piped); every command's `--help` names its guide topic.
 - [ ] **Theme manifest — parked**: themes declaring their features and vars (`theme.yml`), replacing the template
-      scan. Design and open questions in `docs/superpowers/plans/2026-09-23-theme-manifest.md`.
+      scan. Design and open questions in `docs/plans/20260923.theme-manifest.md`.
 
 **Why:** gomddoc's MCP server already lets agents query _user_ documentation. Bundling its own
 guide closes the loop — agents can learn how to _use_ gomddoc itself via the same protocol.
@@ -713,15 +713,15 @@ _Enable community theme sharing via a GitHub-based registry._
 
 ## Bugs
 
-- [x] **Per-language content pages 404 in `serve` mode** (HIGH — docs/reviews/2026-07-29-codebase-review.md §9.1). FIXED: the
+- [x] **Per-language content pages 404 in `serve` mode** (HIGH — docs/reviews/20260729.codebase-review.md §9.1). FIXED: the
       `/{lang}` prefix is now stripped before the language handler and each language pipeline builds
       its own resolver; serve+build integration tests added (§9.5). A follow-on provider bug
       (`fs.Sub(os.DirFS)` not being `fs.StatFS`, §9.7) that silently dropped per-language pipelines
       was also fixed.
-- [x] **See-also links emit raw `.md` paths** (MEDIUM — docs/reviews/2026-07-29-codebase-review.md §9.2). FIXED: `see-also.html.tmpl`
+- [x] **See-also links emit raw `.md` paths** (MEDIUM — docs/reviews/20260729.codebase-review.md §9.2). FIXED: `see-also.html.tmpl`
       now resolves `$doc.Path` via the `contentURL` template func, matching every other link type on
       `strip_extensions` sites.
-- [x] **Tag pages re-parse their partial template on every request** (MEDIUM perf — docs/reviews/2026-07-29-codebase-review.md §9.3).
+- [x] **Tag pages re-parse their partial template on every request** (MEDIUM perf — docs/reviews/20260729.codebase-review.md §9.3).
       FIXED: parsed partials are now cached (keyed by `theme/name`), so `/tags/` requests use the same
       cache path as the main content path.
 - [ ] When falling back to the default theme for layout (eg. error.html.tmpl), the template loads the
@@ -750,24 +750,24 @@ _Enable community theme sharing via a GitHub-based registry._
 ## Implementation Strategy
 
 Development proceeds in phases building on stable foundations. Each phase delivers complete, tested
-functionality. **This section is the one prioritized backlog** — it merges docs/reviews/2026-07-29-codebase-review.md's still-open
+functionality. **This section is the one prioritized backlog** — it merges docs/reviews/20260729.codebase-review.md's still-open
 findings (15th pass, §10) with this roadmap's own unimplemented features into a single ranked list,
-so the two documents can't quietly disagree about what's next. docs/reviews/2026-07-29-codebase-review.md tracks *what's wrong*; this
+so the two documents can't quietly disagree about what's next. docs/reviews/20260729.codebase-review.md tracks *what's wrong*; this
 section tracks *what to do about it and in what order*.
 
 ### Tier 0 — Ship blocking
 
 1. **Ship `v0.1.2` (security + canonical URLs)** — done. `v0.1.2` was tagged on 2026-09-07 with the `exclude`
-   bypass fix (`c80981e`, docs/reviews/2026-07-29-codebase-review.md §10.1) and the static-build canonical URL fix (`5dfc253`, docs/reviews/2026-07-29-codebase-review.md §10.2);
+   bypass fix (`c80981e`, docs/reviews/20260729.codebase-review.md §10.1) and the static-build canonical URL fix (`5dfc253`, docs/reviews/20260729.codebase-review.md §10.2);
    `v0.1.3` followed on 2026-09-25. Both releases published the Homebrew formula through GoReleaser's `brews:`,
    and `monolithiclab/website` pins `GOMDDOC_VERSION: "v0.1.2"` in its deploy workflow.
 
-### Tier 1 — Correctness (serve/build parity and tag/i18n bugs, docs/reviews/2026-07-29-codebase-review.md §10.2/§10.3/§10.14)
+### Tier 1 — Correctness (serve/build parity and tag/i18n bugs, docs/reviews/20260729.codebase-review.md §10.2/§10.3/§10.14)
 
 Start with the design question — several of the bugs below are symptoms of it, and fixing them ahead
 of a decision risks a second divergence to unwind later:
 
-1. **Decide build's URL-space policy under `strip_extensions: []`** (docs/reviews/2026-07-29-codebase-review.md §10.2, HIGH — design
+1. **Decide build's URL-space policy under `strip_extensions: []`** (docs/reviews/20260729.codebase-review.md §10.2, HIGH — design
    question). `PageURLPath` (what serve publishes) and `htmlPath`/`prettyOutputPath` (what build
    writes) are two independently-diverging functions once extension stripping is disabled or a
    `README.md`+`index.md` collision occurs. Either build must force extension stripping, or it needs
@@ -784,7 +784,7 @@ of a decision risks a second divergence to unwind later:
    no hreflang on `/tags/*`); every translated page's feed `<link rel="alternate">` points at the
    default-language feed (§10.14); `SiteConfig.Validate` never validates `language`; `?lang=` is
    case-sensitive.
-4. **HIGH: two declared-and-documented parameters are silently ignored** (docs/reviews/2026-07-29-codebase-review.md §10.3, verified).
+4. **HIGH: two declared-and-documented parameters are silently ignored** (docs/reviews/20260729.codebase-review.md §10.3, verified).
    `get_table_of_contents`'s `path` input is in the MCP tool's JSON Schema and documented as scoping
    the result to a subtree, but `handleGetTOC` never reads it — a client asking for one subtree gets
    the whole site back with no error. `redirectFinderAdapter` ignores its path argument and always
@@ -799,10 +799,10 @@ of a decision risks a second divergence to unwind later:
    now through `Index.PagesByTag`; search ties, now broken by `docIdx` in `compareScored`.)
 6. **Bug fix**: theme-fallback layout loads partials from the default theme instead of the active
    overloaded theme (see Bugs).
-7. **Heading anchor escape hatch + non-ASCII handling** (docs/reviews/2026-07-29-codebase-review.md §10.5, MEDIUM): see Phase 9c —
+7. **Heading anchor escape hatch + non-ASCII handling** (docs/reviews/20260729.codebase-review.md §10.5, MEDIUM): see Phase 9c —
    cheap win (`parser.WithHeadingAttribute()`), closes a real gap on an i18n-capable server.
 
-### Tier 2 — Security hardening (docs/reviews/2026-07-29-codebase-review.md §10.1, all findings past the v0.1.2 fix)
+### Tier 2 — Security hardening (docs/reviews/20260729.codebase-review.md §10.1, all findings past the v0.1.2 fix)
 
 1. **MEDIUM: unauthenticated bcrypt CPU amplification** — no rate limit or lockout on failed Basic
    Auth attempts; ~10× CPU cost per bad-credential request. Bounded semaphore around `Validate`, or
@@ -822,10 +822,10 @@ of a decision risks a second divergence to unwind later:
 4. **True per-file Git commit dates** (see Phase 9b) — the consistent-fallback half already shipped;
    this is the real per-path `git log` walk, medium complexity.
 
-### Tier 4 — Code quality & performance cleanup (opportunistic, docs/reviews/2026-07-29-codebase-review.md §10.4/§10.6/§10.7/§10.13)
+### Tier 4 — Code quality & performance cleanup (opportunistic, docs/reviews/20260729.codebase-review.md §10.4/§10.6/§10.7/§10.13)
 
 Not release-blocking; pick up alongside adjacent work rather than as standalone tasks. Grouped by
-theme rather than listed exhaustively — see docs/reviews/2026-07-29-codebase-review.md for the full set:
+theme rather than listed exhaustively — see docs/reviews/20260729.codebase-review.md for the full set:
 
 - **API consistency**: unmatched `/api/*` routes answer `text/plain` not JSON; `/api/*` responses are
   never cached/ETagged (`writeJSON` streams with no byte slice to hash).
@@ -847,7 +847,7 @@ theme rather than listed exhaustively — see docs/reviews/2026-07-29-codebase-r
   auth, basic-auth branches, `cloneLocked`; missing benchmarks on `metadata.BuildIndex`,
   `internal/provider`, `resolve`, `template/breadcrumb`, `locale.Bundle.T`.
 
-**Maintenance:** The 14th review pass (docs/reviews/2026-07-29-codebase-review.md §9, landed 2026-06-11) is **concluded** as of
+**Maintenance:** The 14th review pass (docs/reviews/20260729.codebase-review.md §9, landed 2026-06-11) is **concluded** as of
 2026-06-16, and the 15th pass (§10, landed 2026-07-29) has all HIGH findings fixed with the remainder
 folded into the tiers above. One perf opportunity remains deferred from the 14th pass (not a
 defect): double markdown parsing for enrichment + rendering (§9.8) — architectural, would need AST
@@ -858,7 +858,7 @@ Pagefind), partial clones (blocked by go-git).
 
 ### Open review findings not ranked above
 
-One line each, from [the 2026-07-29 codebase review](docs/reviews/2026-07-29-codebase-review.md) (§10's findings
+One line each, from [the 2026-07-29 codebase review](docs/reviews/20260729.codebase-review.md) (§10's findings
 are ranked in Tiers 1–4; these are the rest). Rank them into a tier when picking one up.
 
 - [ ] §10.4 LOW: git directory-index reads (`handleDirectoryLocked`) bypass the `maxFileSize`/LFS guards; depth-2+

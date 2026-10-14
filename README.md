@@ -90,7 +90,7 @@ serve:
 | Problems and fixes | [Doctor](docs/guide/14-doctor.md), [Troubleshooting](docs/guide/15-troubleshooting.md) |
 
 For contributors: [docs/architecture.md](docs/architecture.md) (how the pieces fit),
-[docs/decisions.md](docs/decisions.md) (why, D-numbered), `docs/superpowers/specs/` and `plans/` (feature designs and
+[docs/decisions.md](docs/decisions.md) (why, D-numbered), `docs/specs/` and `plans/` (feature designs and
 their execution notes), [docs/reviews/](docs/reviews/) (review rounds) and [ROADMAP.md](ROADMAP.md).
 
 ## Development
