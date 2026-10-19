@@ -27,7 +27,7 @@ See [README.md](README.md) for what it does and how to run it, `docs/` (table be
   warrants one (asking first when unsure); the tag push runs the release workflow. `HOMEBREW_TAP_TOKEN` stays a
   repository secret, so `goreleaser release` itself never runs locally beyond
   `goreleaser release --snapshot --clean --skip=publish,sign,docker`, which proves a change.
-- **Tests never touch the network**, apart from `govulncheck` inside `make lint`.
+- **Tests never touch the network**, apart from `govulncheck` inside `make lint` (so `make lint` and `make ci` need it).
 
 ## Constraints that look like bugs
 
@@ -75,12 +75,12 @@ See [README.md](README.md) for what it does and how to run it, `docs/` (table be
 - **One implementation per rule:** media-range precedence is `MediaType.Specificity()`; "last modified" is
   `seo.LastModified`; the sitemap path is what `writeSitemapIndex` returns, never a predicate forecasting it;
   `fs.PathError`s come from `provider.fsPathErr`.
-- **`docs/skills/<name>/scripts/` is a path-prefix contract.** Those Go scripts are linted, but `.covignore` and
-  `VULNCHECK_PACKAGES` exclude them by prefix; a script anywhere else re-enters the coverage total and the shipped
-  vulnerability graph. `internal/testutil/` is excluded from coverage the same way.
+- **`docs/skills/<name>/scripts/` is a path-prefix contract.** Those Go scripts are linted, but `.covignore` excludes
+  them by prefix and `VULNCHECK_PACKAGES` scans only `./cmd/...` `./internal/...`; a script anywhere else
+  re-enters the coverage total and the shipped vulnerability graph. `internal/testutil/` is excluded from coverage the same way.
 - **`docs/` is a Go package** (`guide.go` embeds `docs/guide/`): every guide page needs `title` and `description`
   frontmatter (`guide_test.go`), and `cmd/gomddoc`'s drift tests compare the guide with the code.
-- `make lint` and `make ci` need the network (govulncheck). `COVERAGE_MIN = 87` is enforced by `make test`.
+- `COVERAGE_MIN = 87` is enforced by `make test`.
 
 ## Where things go
 
@@ -106,7 +106,7 @@ See [README.md](README.md) for what it does and how to run it, `docs/` (table be
 | `docs/guide/` | The user manual, embedded in the binary (`gomddoc help`, MCP); update with every user-facing change |
 | `docs/architecture.md` | Package map, commands, pipelines, middleware chain, data flow, themes, repository layout |
 | `docs/decisions.md` | Append-only, D-numbered decisions; D0 indexes the decision tables kept elsewhere |
-| `docs/specs/`, `plans/` | Feature designs (`-design`) and plans, each plan ending in `## Execution notes` |
+| `docs/specs/`, `docs/plans/` | Feature designs (`-design`) and plans, each plan ending in `## Execution notes` |
 | `docs/reviews/` | Review rounds; their open findings live in `ROADMAP.md` |
 | `docs/research/` | External research (the SEO competitive analysis) |
 | `docs/skills/` | Claude Code skills with their scripts; procedure, no business context (that is the ignored `.agents/`) |
@@ -116,7 +116,7 @@ Go lessons that apply beyond this repo live in the `lab-go-app` skill's `lessons
 
 ## Workflow
 
-1. Non-trivial feature: a spec in `docs/specs/`, validated by Nicolas, then a plan in `plans/`
+1. Non-trivial feature: a spec in `docs/specs/`, validated by Nicolas, then a plan in `docs/plans/`
 2. Minimal change, with tests, plus the owning doc (guide, architecture, decisions) in the same commit
 3. `make ci` green
 4. Commit `type(scope): summary` with the session's trailers; never squash, push only when asked
