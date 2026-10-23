@@ -320,13 +320,16 @@ function mount(doc, win, content, notice, signal) {
 
   // ---- Elements
 
+  // P picks the name_one label for a count of 1 when the locale has one.
+  const P = (name, n) =>
+    L(n === 1 && config.labels?.[`${name}_one`] ? `${name}_one` : name, n);
   const E = (name, ...nums) => escapeHTML(L(name, ...nums));
   const layer = build(
     doc,
     `<div class="gmd-annotation-layer">
       <button type="button" data-gmd-annotation-pen aria-label="${E("annotate")}" title="${E("annotate")} (Alt+Shift+A)" hidden>${PEN_SVG}</button>
       <div></div>
-      <div data-gmd-annotation-popover role="dialog" aria-label="${E("annotation_note")}" hidden>
+      <div data-gmd-annotation-popover role="dialog" aria-modal="true" aria-label="${E("annotation_note")}" hidden>
         <div class="gmd-annotation-row">${button("prev", "‹", E("annotation_prev"))}<span data-gmd-annotation-position aria-live="polite"></span>${button("next", "›", E("annotation_next"))}</div>
         <textarea rows="5" aria-label="${E("annotation_note")}"></textarea>
         <div class="gmd-annotation-row">${button("delete", E("annotation_delete"))}<span class="gmd-annotation-spacer"></span>${button("discard", E("annotation_discard"))}${button("save", E("annotation_save"))}</div>
@@ -437,6 +440,9 @@ function mount(doc, win, content, notice, signal) {
         return icon;
       }),
     );
+    if (state?.mode === "edit") {
+      iconFor(state.ids[0])?.setAttribute("aria-expanded", "true");
+    }
     if (focusedID) iconFor(focusedID)?.focus();
   }
 
@@ -474,7 +480,7 @@ function mount(doc, win, content, notice, signal) {
       toggle.setAttribute(
         "aria-label",
         notes.length
-          ? `${L("annotations_open")} (${L("annotations_count", notes.length)})`
+          ? P("annotations_open_count", notes.length)
           : L("annotations_open"),
       );
     }
@@ -551,7 +557,10 @@ function mount(doc, win, content, notice, signal) {
   // given, else back to the opener when restore is set.
   function closePopover({ restore = true, focusID } = {}) {
     if (!state) return;
-    const { opener, mode } = state;
+    const { mode, ids } = state;
+    // Icons are rebuilt on layout: a detached opener means its group's new icon.
+    let { opener } = state;
+    if (mode === "edit" && !opener.isConnected) opener = iconFor(ids[0]);
     state = null;
     popover.hidden = true;
     opener?.setAttribute?.("aria-expanded", "false");
@@ -565,7 +574,15 @@ function mount(doc, win, content, notice, signal) {
     notes = notes.filter((n) => n.id !== id);
     persist();
     render();
-    closePopover({ restore: false, focusID: rest[0] });
+    if (rest.length) return closePopover({ restore: false, focusID: rest[0] });
+    closePopover({ restore: false });
+    // The group's icon is gone: focus moves to the next control a reader
+    // would look for, the header toggle, else the content itself.
+    if (toggles[0]) toggles[0].focus();
+    else {
+      content.setAttribute("tabindex", "-1");
+      content.focus();
+    }
   }
 
   function saveNote() {
@@ -780,7 +797,7 @@ function mount(doc, win, content, notice, signal) {
   }
   if (dropped) {
     persist();
-    announce(L("annotations_removed", dropped));
+    announce(P("annotations_removed", dropped));
   }
   render();
 

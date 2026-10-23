@@ -83,7 +83,7 @@ create locale files.
 
 ### Built-in Translation Keys
 
-The built-in `en-US.yml` provides these 51 keys. `TestBuiltinTranslationKeysAreDocumented`
+The built-in `en-US.yml` provides these 55 keys. `TestBuiltinTranslationKeysAreDocumented`
 (`cmd/gomddoc/locale_docs_test.go`) asserts this block and the shipped file name exactly the same
 set — a key added to one and not the other fails the build:
 
@@ -124,6 +124,9 @@ annotation_next: "Next note"
 annotation_position: "%d of %d"
 annotations_open: Annotations
 annotations_count: "%d notes"
+annotations_count_one: "1 note"
+annotations_open_count: "Annotations (%d notes)"
+annotations_open_count_one: "Annotations (1 note)"
 annotations_copy: Copy
 annotations_copied: Copied
 annotations_clear: "Clear all"
@@ -133,6 +136,7 @@ annotations_cancel: Cancel
 annotations_close: Close
 annotations_empty: "No notes on this page yet."
 annotations_removed: "%d notes no longer match this page and were removed."
+annotations_removed_one: "1 note no longer matches this page and was removed."
 annotations_not_kept: "Notes can't be saved in this browser and will be lost on reload."
 annotations_export_title: "Review notes"
 annotations_export_source: "Source file"
@@ -144,7 +148,8 @@ annotations_export_top: "(top of page)"
 `tags_tagged_as` and `tags_empty` carry a single `%s`, which is substituted with the tag name.
 The `annotation_*` and `annotations_*` keys label the [page annotations](06-writing-workflow.md#annotating-a-page)
 interface and its Markdown export; each `%d` is replaced, in order, by a number (`annotation_position` carries two:
-the note's position, then the count).
+the note's position, then the count). A key ending in `_one` is the singular form of the key without it, used
+when the number is 1. Locales merge per key, so a translation must give both forms, or the English singular shows.
 
 The `language_name` key is special — it provides the display name shown in the language switcher (e.g., "Français",
 "Español", "日本語").

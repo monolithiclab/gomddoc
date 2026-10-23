@@ -159,9 +159,11 @@ func (tc *TemplateContext) T(key string) string {
 var annotationLabelKeys = []string{
 	"annotate", "annotation_note", "annotation_save", "annotation_discard", "annotation_delete",
 	"annotation_prev", "annotation_next", "annotation_position",
-	"annotations_open", "annotations_count", "annotations_copy", "annotations_copied",
+	"annotations_open", "annotations_open_count", "annotations_open_count_one",
+	"annotations_count", "annotations_count_one", "annotations_copy", "annotations_copied",
 	"annotations_clear", "annotations_clear_confirm", "annotations_clear_yes", "annotations_cancel",
-	"annotations_close", "annotations_empty", "annotations_removed", "annotations_not_kept",
+	"annotations_close", "annotations_empty", "annotations_removed", "annotations_removed_one",
+	"annotations_not_kept",
 	"annotations_export_title", "annotations_export_source", "annotations_export_page",
 	"annotations_export_intro", "annotations_export_top",
 }

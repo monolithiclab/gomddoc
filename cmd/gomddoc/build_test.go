@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -1421,6 +1422,10 @@ func TestBuildCmd_EmitsSeeAlsoSection(t *testing.T) {
 // missed: canonical/og:url/JSON-LD advertised a `.md` URL the site does not
 // serve — contradicting the sitemap the same build emitted — and prev/next
 // links plus sidebar active state silently vanished from every static build.
+// mdURLLeak matches a URL naming guides/alpha.md: an href, src or content
+// attribute, or a JSON-LD URL field.
+var mdURLLeak = regexp.MustCompile(`(?:href|src|content)="[^"]*guides/alpha\.md|"(?:@id|url|item)":"[^"]*guides/alpha\.md`)
+
 func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 	t.Parallel()
 
@@ -1441,11 +1446,11 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 
 	alpha := readTestFile(t, filepath.Join(outDir, "guides", "alpha"), "index.html")
 
-	// The whole point: no rendered URL may carry the source extension. A URL
-	// path starts with "/"; the bare "guides/alpha.md" is the annotations
-	// export's source path, which is a file path on purpose.
-	if strings.Contains(alpha, "/guides/alpha.md") {
-		t.Errorf("guides/alpha/index.html leaks the .md path:\n%s", alpha)
+	// The whole point: no rendered URL may carry the source extension. URLs
+	// sit in attributes and JSON-LD URL fields, relative or absolute; the
+	// annotations configuration's "sourcePath" names the file on purpose.
+	if leak := mdURLLeak.FindString(alpha); leak != "" {
+		t.Errorf("guides/alpha/index.html leaks the .md path in %s:\n%s", leak, alpha)
 	}
 
 	// canonical, og:url and JSON-LD @id all derive from Page.Path, so checking

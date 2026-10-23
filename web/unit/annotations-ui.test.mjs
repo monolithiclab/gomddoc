@@ -17,6 +17,9 @@ const LABELS = {
   annotation_position: "%d of %d",
   annotations_open: "Annotations",
   annotations_count: "%d notes",
+  annotations_count_one: "1 note",
+  annotations_open_count: "Annotations (%d notes)",
+  annotations_open_count_one: "Annotations (1 note)",
   annotations_copy: "Copy",
   annotations_copied: "Copied",
   annotations_clear: "Clear all",
@@ -26,6 +29,8 @@ const LABELS = {
   annotations_close: "Close",
   annotations_empty: "No notes on this page yet.",
   annotations_removed: "%d notes no longer match this page and were removed.",
+  annotations_removed_one:
+    "1 note no longer matches this page and was removed.",
   annotations_not_kept:
     "Notes can't be saved in this browser and will be lost on reload.",
   annotations_export_title: "Review notes",
@@ -299,23 +304,91 @@ describe("existing notes", () => {
   });
 });
 
+describe("focus", () => {
+  beforeEach(() => {
+    page();
+    ui = init(document, window);
+  });
+
+  it("Escape after a layout returns focus to the note's rebuilt icon", async () => {
+    await addNote("a", 6, 10, "note");
+    const before = $("[data-gmd-annotation-icon]");
+    before.click();
+    window.dispatchEvent(new Event("resize"));
+    await new Promise((r) => requestAnimationFrame(r));
+    const after = $("[data-gmd-annotation-icon]");
+    expect(after).not.toBe(before);
+    expect(after.getAttribute("aria-expanded")).toBe("true");
+    key_(textarea(), "Escape");
+    expect(document.activeElement).toBe(after);
+    expect(after.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("deleting the last note moves focus to the header toggle", async () => {
+    await addNote("a", 6, 10, "note");
+    $("[data-gmd-annotation-icon]").click();
+    action(popover(), "delete").click();
+    expect(document.activeElement).toBe($("[data-gmd-annotations-toggle]"));
+  });
+
+  it("a click outside closes the popover", async () => {
+    await select("a", 6, 10);
+    $("[data-gmd-annotation-pen]").click();
+    expect(popover().getAttribute("aria-modal")).toBe("true");
+    document.body.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
+    expect(popover().hidden).toBe(true);
+    expect(localStorage.getItem(key())).toBeNull();
+  });
+
+  it("Shift+Tab wraps inside the popover", async () => {
+    await select("a", 6, 10);
+    $("[data-gmd-annotation-pen]").click();
+    expect(document.activeElement).toBe(textarea());
+    key_(textarea(), "Tab", { shiftKey: true });
+    expect(document.activeElement).toBe(action(popover(), "save"));
+  });
+
+  it("Tab stays inside the dialog and Escape returns focus to the toggle", async () => {
+    await addNote("a", 6, 10, "note");
+    const toggle = $("[data-gmd-annotations-toggle]");
+    toggle.click();
+    const dialog = $("dialog[data-gmd-annotations-dialog]");
+    action(dialog, "close").focus();
+    key_(action(dialog, "close"), "Tab");
+    expect(document.activeElement).toBe(dialog.querySelector("textarea"));
+    key_(dialog.querySelector("textarea"), "Escape");
+    await tick();
+    expect(dialog.open).toBe(false);
+    expect(document.activeElement).toBe(toggle);
+  });
+});
+
 describe("reload", () => {
-  it("drops a stale note and announces the count", () => {
+  it.each([
+    [1, "1 note no longer matches this page and was removed."],
+    [2, "2 notes no longer match this page and were removed."],
+  ])("drops %i stale notes and announces the count", (count, message) => {
     const article = page();
     const p = document.getElementById("a").firstChild;
     const range = document.createRange();
     range.setStart(p, 6);
     range.setEnd(p, 10);
     const live = selectorFromRange(buildTextModel(article), range);
-    const stale = { quote: "zeta", prefix: "", suffix: "", offset: 0 };
+    const stale = Array.from({ length: count }, (_, i) => ({
+      id: `s${i}`,
+      quote: `zeta${i}`,
+      prefix: "",
+      suffix: "",
+      offset: 0,
+      note: "gone",
+    }));
     localStorage.setItem(
       key(),
       JSON.stringify({
         v: 1,
-        notes: [
-          { id: "1", ...live, note: "keep" },
-          { id: "2", ...stale, note: "gone" },
-        ],
+        notes: [{ id: "1", ...live, note: "keep" }, ...stale],
       }),
     );
 
@@ -325,9 +398,7 @@ describe("reload", () => {
     expect($$("[data-gmd-annotation-icon]")).toHaveLength(1);
     const notice = $("[data-gmd-annotation-notice]");
     expect(notice.getAttribute("role")).toBe("status");
-    expect(notice.textContent).toContain(
-      "1 notes no longer match this page and were removed.",
-    );
+    expect(notice.textContent).toContain(message);
   });
 
   it("says nothing when every note matches", () => {
@@ -389,11 +460,14 @@ describe("header", () => {
 
   it("badge hidden at zero, shows the count otherwise", async () => {
     const badge = $("[data-gmd-annotations-count]");
+    const toggle = $("[data-gmd-annotations-toggle]");
     expect(badge.hidden).toBe(true);
     await addNote("a", 6, 10, "one");
+    expect(toggle.getAttribute("aria-label")).toBe("Annotations (1 note)");
     await addNote("b", 4, 7, "two");
     expect(badge.hidden).toBe(false);
     expect(badge.textContent).toBe("2");
+    expect(toggle.getAttribute("aria-label")).toBe("Annotations (2 notes)");
     expect(document.documentElement.hasAttribute("data-gmd-annotations")).toBe(
       true,
     );
