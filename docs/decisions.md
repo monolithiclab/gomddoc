@@ -912,3 +912,24 @@ generator keeps a trailing slash it is handed, so the last `BreadcrumbList` item
   `/guide` with a 200 and a matching canonical, and changing it would redirect every existing served URL.
 - *Cost if wrong*: a static host that serves `guide/index.html` at `/guide` without redirecting gets canonicals with a
   slash it does not need; both forms then answer 200, and the canonical still names one of them.
+
+## D48. A Node Test Toolchain for the Front End
+
+*2026-10-23*
+
+**Decision** (2026-10-23): the client-side scripts get their own tests in `web/`, a Node project with exact-pinned
+devDependencies and a committed lockfile: Vitest with happy-dom for the pure parts of a module (the annotation text
+model, anchoring, export and storage), Playwright with `@axe-core/playwright` for end-to-end and accessibility checks.
+Playwright drives the system Chrome through `channel` rather than a downloaded browser where one is installed. The
+toolchain is test-only: nothing under `web/` is embedded, and the binary still ships the `.mjs` files as they are. `make
+test-ui` hashes the front-end inputs (shared scripts and styles, the default theme's templates, the locales, `web/`
+minus `node_modules` and Playwright output) and skips with one line when the hash matches `.cache/test-ui.sha`, which
+it writes only after a green run. The gate reaches it through `CI_EXTRA = test-ui`, so `make ci` stays the one command.
+
+- *Evidence*: the anchoring and export rules (exact match of prefix, quote and suffix; the spec's export layout) are
+  string logic over a DOM walk, tested in under a second in happy-dom; a browser is only needed for selection, the
+  Highlight API and focus.
+- *Alternatives*: Go tests driving a headless browser through chromedp (a Go dependency in the shipped module graph,
+  and no DOM unit layer); running the suite on every `make ci` (a Node install becomes mandatory for a Go-only change).
+- *Cost if wrong*: a front-end input missing from the hash lets a change skip the suite, and a missing Node fails the
+  gate with an install hint only when front-end files changed.
