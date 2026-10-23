@@ -1250,7 +1250,9 @@ the packages listed in `.covignore` (`internal/testutil/`, `docs/skills/`), so t
 - **Front end**: `web/` is a Node project (D48): Vitest with happy-dom for the shared modules (`web/unit/`),
   Playwright for end-to-end and accessibility checks against a `gomddoc preview` of `web/e2e/fixture/`. `make test-ui`
   runs it only when a front-end input changed, and `make ci` reaches it through `CI_EXTRA`; in CI the ubuntu leg runs
-  it (`.cache/` cached by the inputs' hash) and the macOS leg skips it with `make ci CI_EXTRA=`
+  it (`.cache/` cached by the inputs' hash) and the macOS leg skips it with `make ci CI_EXTRA=`. Playwright always
+  drives the system Chrome (`channel: "chrome"`), never a downloaded browser: D48's "where one is installed" has no
+  fallback, and without Chrome `make test-ui` fails with a one-line install hint
 - **Benchmarks**: Hot-path benchmarks for rendering (`BenchmarkMarkdownRender`, `BenchmarkHTMLRendererRender`),
   enrichment (`BenchmarkMarkdownEnricher_*`), negotiation (`BenchmarkRegistryGet_*`, `BenchmarkParseAccept`),
   compression and ETags, navigation, search and index builds, and Git reads (`BenchmarkGitProvider_*`,

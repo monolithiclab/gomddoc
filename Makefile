@@ -28,6 +28,10 @@ UI_INPUTS_HASH = shasum -a 256 $(UI_INPUTS) | shasum -a 256 | cut -d' ' -f1
 ui-inputs-hash:
 	@$(UI_INPUTS_HASH)
 
+# Where Playwright's "chrome" channel looks for the system Chrome; nothing is downloaded (D48).
+CHROME_MAC = /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+CHROME_LINUX = /opt/google/chrome/chrome
+
 .PHONY: test-ui
 test-ui: ## Front-end tests (Vitest, Playwright), skipped when their inputs are unchanged
 	@hash=$$($(UI_INPUTS_HASH)); \
@@ -39,5 +43,8 @@ test-ui: ## Front-end tests (Vitest, Playwright), skipped when their inputs are 
 		npm ci --prefix web --no-audit --no-fund || exit 1; \
 	fi; \
 	npm --prefix web run --silent unit || exit 1; \
-	npm --prefix web run --silent e2e || exit 1; \
+	npm --prefix web run --silent e2e || { \
+		[ -x "$(CHROME_MAC)" ] || [ -x "$(CHROME_LINUX)" ] || \
+			echo "test-ui: Playwright drives the system Google Chrome, which is not installed (https://www.google.com/chrome/)"; \
+		exit 1; }; \
 	mkdir -p .cache && echo "$$hash" > .cache/test-ui.sha
