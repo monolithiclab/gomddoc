@@ -154,9 +154,9 @@ annotations_export_top: "(top of page)"
 `color_chip_label` carries one too, the color value.
 The `annotation_*` and `annotations_*` keys label the [page annotations](06-writing-workflow.md#annotating-a-page)
 interface and its Markdown export; each `%d` is replaced, in order, by a number (`annotation_position` carries two:
-the note's position, then the count). A key can carry plural variants: the key with a `_zero`, `_one`, `_two`, `_few` or `_many` suffix is the form for that
-CLDR plural category, and the key without a suffix is the general (`other`) form. Which numbers fall in which category
-depends on the language: English `one` is 1 only, French `one` covers 0 and 1, Russian has `one`, `few` and `many`.
+the note's position, then the count). A key can carry plural variants: the key with a `_zero`, `_one`, `_two`, `_few`
+or `_many` suffix is the form for that CLDR plural category, and the key without a suffix is the general (`other`)
+form. Which numbers fall in which category depends on the language: English `one` is 1 only, French `one` covers 0 and 1, Russian has `one`, `few` and `many`.
 Write each variant for the numbers its language puts in that category, and put `%d` in every variant rather than a
 literal number (`"%d note no longer matches…"`, never `"One note no longer matches…"`), so the count is shown whatever
 the category covers. A language that omits a variant uses its general form for those numbers, never the English one.
@@ -373,7 +373,8 @@ JSON block per namespace, filled by the `i18nStrings` template function:
 ```
 
 `i18nStrings . "search"` returns the page language's translations of every key starting with `search`, as JSON.
-Keys the language has not translated are left out, so the script falls back to the key itself. The default layouts
+Keys with no translation in the page language or the default language are left out, and so are plural variants the
+language has not translated while the general form is, so the script falls back to the key itself. The default layouts
 emit the blocks for `code_copy`, `search`, `annotation` and `color_chip` from `scripts-shared`, inside each feature's
 guard and just before its module.
 
@@ -381,16 +382,18 @@ A module reads its block with `i18n(namespace)` from `/_assets/gmd-i18n.mjs`, wh
 
 ```js
 import { i18n } from "/_assets/gmd-i18n.mjs";
-const { t, tn } = i18n("search");
-t("search_placeholder");              // "Rechercher…"
-t("annotation_position", 2, 5);       // "2 sur 5"
-tn("annotations_removed", 3);         // annotations_removed_<category>, else annotations_removed
+const { t } = i18n("search");
+t("search_placeholder");              // "Rechercher..."
+
+const notes = i18n("annotation");
+notes.t("annotation_position", 2, 5); // "2 sur 5"
+notes.tn("annotations_removed", 3);   // annotations_removed_<category>, else annotations_removed
 ```
 
 - `t(key, ...args)` returns the translation, or `key` when the block lacks it. A missing or invalid block gives
   every key back unchanged. Two blocks with the same namespace log a console warning and the first one wins.
 - `tn(key, n, ...args)` picks `key_<category>` for the CLDR plural category of `n` in the page's `lang`, else
-  `key`, then fills the placeholders with `n` first.
+  `key`, then fills the placeholders with `n` as argument 1, so `%[2]d` refers to the next argument after `n`.
 - Placeholders: `%s` and `%d` take the next argument in order, `%[2]d` and `%[1]s` take argument 1, 2, … by
   position (Go's syntax, so a translator can reorder: `"%[2]d sur %[1]d"`), and `%%` is a literal `%`. The same
   strings work in templates through `printf`.

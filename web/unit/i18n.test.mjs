@@ -80,6 +80,11 @@ describe("tn", () => {
     expect(tn("n", 2)).toBe("2 notes");
   });
 
+  it("ignores a stray key_other: the bare key is the other form", () => {
+    const { tn } = i18n("a", docWith({ a: { x: "bare %d", x_other: "stray %d" } }));
+    expect(tn("x", 2)).toBe("bare 2");
+  });
+
   it("fr-FR treats 0 and 1 as one", () => {
     const { tn } = i18n("a", docWith({ a: block }, "fr-FR"));
     expect(tn("n", 0)).toBe("0 note");

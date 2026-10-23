@@ -74,8 +74,10 @@ export function i18n(namespace, doc = document) {
   const has = (k) => Object.hasOwn(dict, k) && typeof dict[k] === "string";
   const t = (key, ...args) => format(has(key) ? dict[key] : key, args);
   const tn = (key, n, ...args) => {
-    const variant = `${key}_${rules.select(n)}`;
-    return t(has(variant) ? variant : key, n, ...args);
+    const category = rules.select(n);
+    // "other" is the bare key; a stray key_other is not a variant.
+    const variant = `${key}_${category}`;
+    return t(category !== "other" && has(variant) ? variant : key, n, ...args);
   };
   return { t, tn };
 }
