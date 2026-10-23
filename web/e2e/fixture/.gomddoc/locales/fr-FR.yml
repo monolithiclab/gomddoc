@@ -1,0 +1,5 @@
+# Site translations for the fr-FR fixture page (i18n.spec.mjs).
+language_name: Français
+code_copy_label: Copier
+search_placeholder: "Rechercher dans la documentation..."
+annotations_open: "Notes de lecture"

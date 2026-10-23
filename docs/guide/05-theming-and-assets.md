@@ -413,7 +413,7 @@ All web components are prefixed with `gmd-` to avoid collisions with other custo
 
 | Element | Source File | DOM | Feature Flag | Description |
 |---|---|---|---|---|
-| `<gmd-color-chip>` | `gmd-color-chip.mjs` | Shadow | `color_chips` | Inline color swatch from hex codes. Click to copy. Its `aria-label` is `color_chip_label` from the `color_chip` data block. |
+| `<gmd-color-chip>` | `gmd-color-chip.mjs` | Shadow | `color_chips` | Inline color swatch from hex codes. Click to copy, confirmed with `color_chip_done`. Its `aria-label` is `color_chip_label` from the `color_chip` data block. |
 | `<gmd-admonition>` | `gmd-admonition.mjs` | Light | `admonitions` | Styled callout block (note, tip, warning, etc.) |
 | `<gmd-heading-anchor>` | `gmd-heading-anchor.mjs` | Shadow | `heading_anchors` | Anchor link (#) appended to headings, revealed on hover |
 | `<gmd-annotations>` | `gmd-annotations.mjs` | Light | `annotations` | Wraps the page content; anchors, highlights and stores notes |

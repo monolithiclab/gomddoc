@@ -2564,8 +2564,7 @@ func TestRender_AnnotationsContract(t *testing.T) {
 			t.Parallel()
 
 			siteConfig := config.NewSiteConfig(".")
-			r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
-				WithLocaleKeys([]string{"annotations_count", "annotations_count_one", "annotations_export_title"}))
+			r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"))
 			tc := &TemplateContext{Site: &siteConfig, Page: PageContext{
 				Path:       "/specs/a</script>",
 				Content:    "<p>Body</p>",
@@ -2573,13 +2572,7 @@ func TestRender_AnnotationsContract(t *testing.T) {
 				Features:   tt.features,
 				SourcePath: "docs/specs/a</script>.md",
 			}}
-			// The locale lacks the _one variant: T answers the key itself.
-			tc.WithI18n("", func(k string) string {
-				if k == "annotations_count_one" {
-					return k
-				}
-				return "L:" + k
-			}, nil)
+			tc.WithI18n("", func(k string) string { return "L:" + k }, nil)
 
 			out, err := r.Render(context.Background(), "default.html.tmpl", tc)
 			if err != nil {
@@ -2601,16 +2594,13 @@ func TestRender_AnnotationsContract(t *testing.T) {
 			if !ok || !closed {
 				t.Fatal("configuration script not found")
 			}
-			var got AnnotationsConfig
+			var got map[string]any
 			if err := json.Unmarshal([]byte(raw), &got); err != nil {
 				t.Fatalf("configuration is not JSON: %v\n%s", err, raw)
 			}
-			if got.SourcePath != "docs/specs/a</script>.md" || got.Title != "Spec <b>" {
-				t.Errorf("config = %+v, want the page's source path and title", got)
-			}
-			want := map[string]string{"annotations_count": "L:annotations_count", "annotations_export_title": "L:annotations_export_title"}
-			if !maps.Equal(got.Labels, want) {
-				t.Errorf("labels = %v, want %v: every key that translates, none that does not", got.Labels, want)
+			want := map[string]any{"sourcePath": "docs/specs/a</script>.md", "title": "Spec <b>"}
+			if !maps.Equal(got, want) {
+				t.Errorf("config = %v, want only the page's source path and title (labels travel in the annotation block)", got)
 			}
 		})
 	}
@@ -2622,6 +2612,7 @@ var i18nBlockModules = map[string]string{
 	"code_copy":  "code-copy.mjs",
 	"search":     "search.mjs",
 	"color_chip": "gmd-color-chip.mjs",
+	"annotation": "gmd-annotations.mjs",
 }
 
 // i18nBlock returns the JSON text of the page's data-gmd-i18n block for ns and
@@ -2635,8 +2626,8 @@ func i18nBlock(page, ns string) (raw, after string, count int) {
 }
 
 // TestRender_I18nBlocksContract renders the real default theme's two layouts
-// and checks the strings contract of the code-copy, search and color-chip
-// modules: no data-* attribute on <html>, one block per enabled module placed
+// and checks the strings contract of the code-copy, search, color-chip and
+// annotations modules: no data-* attribute on <html>, one block per enabled module placed
 // immediately before it, and neither block nor module for a disabled feature.
 func TestRender_I18nBlocksContract(t *testing.T) {
 	t.Parallel()
@@ -2649,16 +2640,16 @@ func TestRender_I18nBlocksContract(t *testing.T) {
 		}
 		modules[ns] = `<script type="module">` + string(data[:80])
 	}
-	features := map[string]string{"code_copy": "code_copy", "search": "search", "color_chip": "color_chips"}
+	features := map[string]string{"code_copy": "code_copy", "search": "search", "color_chip": "color_chips", "annotation": "annotations"}
 
 	for _, layout := range []string{"default.html.tmpl", "error.html.tmpl"} {
-		for _, off := range []string{"", "code_copy", "search", "color_chip"} {
+		for _, off := range []string{"", "code_copy", "search", "color_chip", "annotation"} {
 			t.Run(layout+"/off="+off, func(t *testing.T) {
 				t.Parallel()
 
 				siteConfig := config.NewSiteConfig(".")
 				r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
-					WithLocaleKeys([]string{"code_copy_label", "search_label", "color_chip_label"}))
+					WithLocaleKeys([]string{"code_copy_label", "search_label", "color_chip_label", "annotation_add"}))
 				var pageFeatures map[string]bool
 				if off != "" {
 					pageFeatures = map[string]bool{features[off]: false}
@@ -2728,7 +2719,8 @@ func TestRender_I18nBlocksFromSiteLocale(t *testing.T) {
 		"code_copy": {"code_copy_label": "Copier", "code_copy_done": "Copied!", "code_copy_aria": "Copy code to clipboard"},
 		"search": {"search_label": "Search documentation", "search_query": "Search query",
 			"search_results": "Search results", "search_placeholder": "Search documentation..."},
-		"color_chip": {"color_chip_label": "Color %s"},
+		"color_chip": {"color_chip_label": "Color %s", "color_chip_done": "Copied!"},
+		"annotation": {"annotation_add": "Annotate selection", "annotations_open_count_one": "Annotations (%d note)"},
 	}
 	for ns, keys := range want {
 		raw, _, _ := i18nBlock(string(out), ns)
@@ -2740,35 +2732,6 @@ func TestRender_I18nBlocksFromSiteLocale(t *testing.T) {
 			if got[k] != v {
 				t.Errorf("%s[%s] = %q, want %q", ns, k, got[k], v)
 			}
-		}
-	}
-}
-
-// TestAnnotationsConfig_SingularFromPageLanguage hands annotationsConfig a
-// real bundle whose fr-FR translates a general form but not its _one variant:
-// the French page gets no _one key, so the module uses the French general
-// form instead of the English singular.
-func TestAnnotationsConfig_SingularFromPageLanguage(t *testing.T) {
-	t.Parallel()
-
-	bundle, err := locale.LoadBundle("en-US", fstest.MapFS{
-		"locales/en-US.yml": &fstest.MapFile{Data: []byte("annotations_removed: \"%d notes removed\"\nannotations_removed_one: \"1 note removed\"\n")},
-		"locales/fr-FR.yml": &fstest.MapFile{Data: []byte("annotations_removed: \"%d notes supprimées\"\n")},
-	}, "locales")
-	if err != nil {
-		t.Fatalf("LoadBundle: %v", err)
-	}
-	siteConfig := config.NewSiteConfig(".")
-	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
-		WithLocaleKeys(bundle.Keys("annotation")))
-
-	for lang, want := range map[string]map[string]string{
-		"fr-FR": {"annotations_removed": "%d notes supprimées"},
-		"en-US": {"annotations_removed": "%d notes removed", "annotations_removed_one": "1 note removed"},
-	} {
-		tc := (&TemplateContext{Site: &siteConfig}).WithI18n(lang, bundle.TFunc(lang), nil)
-		if got := r.annotationsConfig(tc).Labels; !maps.Equal(got, want) {
-			t.Errorf("%s labels = %v, want %v", lang, got, want)
 		}
 	}
 }

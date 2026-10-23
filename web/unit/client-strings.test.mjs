@@ -74,10 +74,28 @@ describe("search.mjs", () => {
 });
 
 describe("gmd-color-chip.mjs", () => {
-  it("names the chip from color_chip_label", async () => {
-    page({ color_chip: { color_chip_label: "Couleur %s" } }, "<gmd-color-chip>#FF5733</gmd-color-chip>");
+  // One test: the element can be defined once per registry.
+  it("names the chip from color_chip_label and confirms a copy with color_chip_done", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    page(
+      { color_chip: { color_chip_label: "Couleur %s", color_chip_done: "Copié !" } },
+      "<gmd-color-chip>#FF5733</gmd-color-chip>",
+    );
     await import("../../cmd/gomddoc/assets/shared/gmd-color-chip.mjs");
 
-    expect(document.querySelector("gmd-color-chip").getAttribute("aria-label")).toBe("Couleur #FF5733");
+    const chip = document.querySelector("gmd-color-chip");
+    expect(chip.getAttribute("aria-label")).toBe("Couleur #FF5733");
+    const label = chip.shadowRoot.querySelector(".label");
+    chip.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("#FF5733");
+    expect(label.textContent).toBe("Copié !");
+    vi.runAllTimers();
+    expect(label.querySelector("slot")).not.toBeNull();
+    vi.useRealTimers();
   });
 });

@@ -17,32 +17,30 @@
  */
 import { i18n } from "/_assets/gmd-i18n.mjs";
 
-(function() {
-  var t = i18n('code_copy').t;
-  var copyLabel = t('code_copy_label');
-  var copiedLabel = t('code_copy_done');
-  var copyAria = t('code_copy_aria');
+var t = i18n('code_copy').t;
+var copyLabel = t('code_copy_label');
+var copiedLabel = t('code_copy_done');
+var copyAria = t('code_copy_aria');
 
-  document.querySelectorAll('pre > code').forEach(function(codeBlock) {
-    var pre = codeBlock.parentNode;
-    var btn = document.createElement('button');
-    btn.className = 'copy-btn';
-    btn.textContent = copyLabel;
-    btn.setAttribute('aria-label', copyAria);
+document.querySelectorAll('pre > code').forEach(function(codeBlock) {
+  var pre = codeBlock.parentNode;
+  var btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = copyLabel;
+  btn.setAttribute('aria-label', copyAria);
 
-    btn.addEventListener('click', function() {
-      navigator.clipboard.writeText(codeBlock.textContent).then(function() {
-        btn.textContent = copiedLabel;
-        btn.classList.add('copied');
-        setTimeout(function() {
-          btn.textContent = copyLabel;
-          btn.classList.remove('copied');
-        }, 2000);
-      }).catch(function(err) {
-        console.error('Failed to copy:', err);
-      });
+  btn.addEventListener('click', function() {
+    navigator.clipboard.writeText(codeBlock.textContent).then(function() {
+      btn.textContent = copiedLabel;
+      btn.classList.add('copied');
+      setTimeout(function() {
+        btn.textContent = copyLabel;
+        btn.classList.remove('copied');
+      }, 2000);
+    }).catch(function(err) {
+      console.error('Failed to copy:', err);
     });
-
-    pre.appendChild(btn);
   });
-})();
+
+  pre.appendChild(btn);
+});

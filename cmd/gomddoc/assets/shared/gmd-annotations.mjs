@@ -13,6 +13,8 @@
  * tie-breaking by position).
  */
 
+import { i18n } from "/_assets/gmd-i18n.mjs";
+
 // Everything excluded from the text model, in one place: UI other scripts
 // inject (code-copy buttons, heading anchors, admonition titles, color-chip
 // swatches, this module's own UI), rendered output that is not prose (KaTeX, Mermaid) and
@@ -261,8 +263,8 @@ const button = (action, text, label, extra = "") =>
 // act returns root's [data-action=name] button.
 const act = (root, name) => root.querySelector(`[data-action="${name}"]`);
 
-// readConfig parses the page's configuration once per document: every
-// element reads it on connect.
+// readConfig parses the page's configuration (its source path and title)
+// once per document: every element reads it on connect.
 const configs = new WeakMap();
 function readConfig(doc) {
   if (!configs.has(doc)) {
@@ -272,26 +274,19 @@ function readConfig(doc) {
         doc.getElementById("gmd-annotations-config").textContent,
       );
     } catch {
-      // No (valid) configuration: every label falls back to its key.
+      // No (valid) configuration: no source path or title in the export.
     }
     configs.set(doc, config);
   }
   return configs.get(doc);
 }
 
-// labeler returns the label lookups over a configuration: L fills each %d in
-// order, P picks the name_one variant for a count of 1 when the locale has
-// one, E escapes for markup.
-function labeler(config) {
-  const L = (name, ...nums) => {
-    let i = 0;
-    const label = config.labels?.[name] ?? name;
-    return label.replace(/%d/g, () => String(nums[i++] ?? ""));
-  };
-  const P = (name, n) =>
-    L(n === 1 && config.labels?.[`${name}_one`] ? `${name}_one` : name, n);
-  const E = (name, ...nums) => escapeHTML(L(name, ...nums));
-  return { L, P, E };
+// labeler returns the page's "annotation" strings (gmd-i18n.mjs): t and tn
+// for text, E for t escaped into markup.
+function labeler(doc) {
+  const { t, tn } = i18n("annotation", doc);
+  const E = (key, ...args) => escapeHTML(t(key, ...args));
+  return { t, tn, E };
 }
 
 // localStorageOf returns the window's storage, or null where merely reading
@@ -453,9 +448,9 @@ class GmdAnnotationMargin extends Base {
 class GmdAnnotationEditor extends Base {
   connectedCallback() {
     if (this.firstChild) return;
-    const { L, E } = labeler(readConfig(this.ownerDocument));
+    const { t, E } = labeler(this.ownerDocument);
     this.setAttribute("role", "dialog");
-    this.setAttribute("aria-label", L("annotation_note"));
+    this.setAttribute("aria-label", t("annotation_note"));
     this.innerHTML = `
       <div class="gmd-annotation-row">${button("prev", "‹", E("annotation_prev"))}<span class="gmd-annotation-position" aria-live="polite"></span>${button("next", "›", E("annotation_next"))}</div>
       <textarea rows="5" aria-label="${E("annotation_note")}"></textarea>
@@ -565,7 +560,7 @@ class GmdAnnotationsToggle extends Base {
 
   connectedCallback() {
     const doc = this.ownerDocument;
-    const { L, P, E } = labeler(readConfig(doc));
+    const { t, tn, E } = labeler(doc);
     // A theme may pre-fill the button; anything missing is added.
     let toggle = this.querySelector("button");
     if (!toggle) {
@@ -585,7 +580,7 @@ class GmdAnnotationsToggle extends Base {
       badge.hidden = count === 0;
       toggle.setAttribute(
         "aria-label",
-        count ? P("annotations_open_count", count) : L("annotations_open"),
+        count ? tn("annotations_open_count", count) : t("annotations_open"),
       );
     };
     this.#abort = new AbortController();
@@ -609,7 +604,7 @@ function mount(doc, win, content, notice, signal) {
   const on = (target, type, fn, opts = {}) =>
     target.addEventListener(type, fn, { ...opts, signal });
   const config = readConfig(doc);
-  const { L, P, E } = labeler(config);
+  const { t, tn, E } = labeler(doc);
   const key = storageKey(win.location);
   const store = createStore(localStorageOf(win), key);
 
@@ -641,8 +636,8 @@ function mount(doc, win, content, notice, signal) {
   doc.body.append(margin, editor, dialog);
 
   const { pen } = margin;
-  pen.setAttribute("aria-label", L("annotation_add"));
-  pen.title = `${L("annotation_add")} (Alt+Shift+A)`;
+  pen.setAttribute("aria-label", t("annotation_add"));
+  pen.title = `${t("annotation_add")} (Alt+Shift+A)`;
   const { textarea } = editor;
   const [prev, next, del, discard] = ["prev", "next", "delete", "discard"].map(
     (name) => act(editor, name),
@@ -664,7 +659,7 @@ function mount(doc, win, content, notice, signal) {
     store.save(notes.map(({ range, start, ...stored }) => stored));
     if (!store.persistent && !warnedNotKept) {
       warnedNotKept = true;
-      notice.announce(L("annotations_not_kept"), L("annotations_close"));
+      notice.announce(t("annotations_not_kept"), t("annotations_close"));
     }
   };
 
@@ -689,7 +684,7 @@ function mount(doc, win, content, notice, signal) {
     for (const group of groups) {
       group.ids.sort((a, b) => start.get(a) - start.get(b));
       const n = group.ids.length;
-      group.label = n > 1 ? L("annotations_count", n) : L("annotation_note");
+      group.label = n > 1 ? t("annotations_count", n) : t("annotation_note");
     }
     margin.renderIcons(groups, column());
   }
@@ -793,7 +788,7 @@ function mount(doc, win, content, notice, signal) {
   function showNote() {
     const { ids, index } = state;
     textarea.value = byID(ids[index]).note;
-    position.textContent = L("annotation_position", index + 1, ids.length);
+    position.textContent = t("annotation_position", index + 1, ids.length);
     prev.disabled = index === 0;
     next.disabled = index === ids.length - 1;
   }
@@ -893,11 +888,11 @@ function mount(doc, win, content, notice, signal) {
       ),
     }));
     return formatExport(page, items, {
-      exportTitle: L("annotations_export_title"),
-      exportSource: L("annotations_export_source"),
-      exportPage: L("annotations_export_page"),
-      exportIntro: L("annotations_export_intro"),
-      exportTop: L("annotations_export_top"),
+      exportTitle: t("annotations_export_title"),
+      exportSource: t("annotations_export_source"),
+      exportPage: t("annotations_export_page"),
+      exportIntro: t("annotations_export_intro"),
+      exportTop: t("annotations_export_top"),
     });
   }
 
@@ -935,11 +930,11 @@ function mount(doc, win, content, notice, signal) {
       }
     }
     if (!copied) {
-      copyHint.textContent = L("annotations_copy_manual");
+      copyHint.textContent = t("annotations_copy_manual");
       return;
     }
-    copy.textContent = L("annotations_copied");
-    win.setTimeout(() => (copy.textContent = L("annotations_copy")), COPIED_MS);
+    copy.textContent = t("annotations_copied");
+    win.setTimeout(() => (copy.textContent = t("annotations_copy")), COPIED_MS);
   }
 
   // ---- Events
@@ -1069,7 +1064,7 @@ function mount(doc, win, content, notice, signal) {
   const dropped = load();
   if (dropped) {
     persist();
-    notice.announce(P("annotations_removed", dropped), L("annotations_close"));
+    notice.announce(tn("annotations_removed", dropped), t("annotations_close"));
   }
   render();
 

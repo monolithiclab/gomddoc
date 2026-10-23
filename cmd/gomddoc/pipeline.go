@@ -170,7 +170,7 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 		slog.Warn("Failed to merge site locale overrides", slog.Any("error", err))
 	}
 
-	// Shared by every pipeline: the bundle's annotation label keys, and the
+	// Shared by every pipeline: every locale key (for i18nStrings), and the
 	// content directory's place in its git work tree (a walk up the disk).
 	opts.LocaleKeys = bundle.Keys("")
 	opts.SourcePrefix = sourcePrefix(cfg.Server.Dir)

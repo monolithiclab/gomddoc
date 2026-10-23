@@ -113,6 +113,7 @@ search_label: "Search documentation"
 search_query: "Search query"
 search_results: "Search results"
 color_chip_label: "Color %s"
+color_chip_done: "Copied!"
 tags_title: Tags
 tags_index_title: All tags
 tags_tagged_as: "Pages tagged %s"
@@ -129,7 +130,7 @@ annotation_position: "%d of %d"
 annotations_open: Annotations
 annotations_count: "%d notes"
 annotations_open_count: "Annotations (%d notes)"
-annotations_open_count_one: "Annotations (1 note)"
+annotations_open_count_one: "Annotations (%d note)"
 annotations_copy: Copy
 annotations_copied: Copied
 annotations_copy_manual: "Press Ctrl+C (⌘C) to copy the selected text."
@@ -140,7 +141,7 @@ annotations_cancel: Cancel
 annotations_close: Close
 annotations_empty: "No notes on this page yet."
 annotations_removed: "%d notes no longer match this page and were removed."
-annotations_removed_one: "1 note no longer matches this page and was removed."
+annotations_removed_one: "%d note no longer matches this page and was removed."
 annotations_not_kept: "Notes can't be saved in this browser and will be lost on reload."
 annotations_export_title: "Review notes"
 annotations_export_source: "Source file"

@@ -28,7 +28,8 @@ type Bundle struct {
 }
 
 // pluralSuffixes are the CLDR plural categories a key may carry beyond its
-// general form (which doubles as "other").
+// general form (which doubles as "other"). They are reserved for plural
+// variants: no other key may end in one.
 var pluralSuffixes = []string{"_zero", "_one", "_two", "_few", "_many"}
 
 // T returns the translated string for the given language and key.

@@ -383,7 +383,7 @@ The FuncMap (`renderer.go:funcMap`) has exactly these fourteen entries:
 | `inlineHTMLAsset` | `inlineHTMLAsset(name) → HTML` | Loads asset as `template.HTML` for HTML context (e.g. SVGs) |
 | `tagURL` | `tagURL(lang, tag) → string` | URL of a tag page, language-prefixed unless `lang` is the site default |
 | `pageTags` | `pageTags(meta) → []string` | A page's frontmatter tags, normalized and deduplicated like the metadata index, in frontmatter order |
-| `annotationsConfig` | `annotationsConfig(tc) → AnnotationsConfig` | The annotations module's JSON configuration: source path, title and the page language's `annotation*` labels |
+| `annotationsConfig` | `annotationsConfig(tc) → AnnotationsConfig` | The annotations module's JSON configuration: source path and title |
 | `i18nStrings` | `i18nStrings(tc, namespace) → map[string]string` | The locale keys starting with `namespace` that translate in the page's language (a plural variant the language lacks is omitted), for a `<script type="application/json" data-gmd-i18n>` block |
 
 Functions degrade rather than fail when their input is missing: `canonicalURL` and `jsonLD` return empty without
@@ -807,10 +807,9 @@ name in the theme directory, which `inlineJSAsset` reads before `assets/shared/`
 
 **Page annotations** (`gmd-annotations.mjs`, `gmd-annotations.css`, feature `annotations`). A browser-only overlay:
 notes live in `localStorage`, one entry per page URL. `head-meta` calls `head-annotations`, which inlines the styles;
-`scripts-shared` emits a `<script type="application/json" id="gmd-annotations-config">` (the page's `SourcePath`, title
-and the localized labels, from the `annotationsConfig` template function, which `html/template` marshals) and then the
-module. The labels are `i18nStrings(tc, "annotation")`: the locale keys under that prefix (`locale.Bundle.Keys("")`, handed to
-every renderer by `setupLanguagePipelines`) that translate in the page's language; the module falls back for any left out.
+`scripts-shared` emits a `<script type="application/json" id="gmd-annotations-config">` (the page's `SourcePath` and
+title, from the `annotationsConfig` template function, which `html/template` marshals), the `annotation` strings block
+(`i18nStrings`, read through `gmd-i18n.mjs`) and then the module.
 Themes only carry the contract: `<gmd-annotations>` around `{{ .Page.Content }}` and `<gmd-annotations-toggle>` in the
 header, both behind `.Feature "annotations"`; neither needs a new template field, so an updated theme still renders on
 an older gomddoc, where the elements stay undefined. The module defines its custom elements (once, even if inlined

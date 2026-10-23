@@ -21,7 +21,7 @@ const LABELS = {
   annotations_open: "Annotations",
   annotations_count: "%d notes",
   annotations_open_count: "Annotations (%d notes)",
-  annotations_open_count_one: "Annotations (1 note)",
+  annotations_open_count_one: "Annotations (%d note)",
   annotations_copy: "Copy",
   annotations_copied: "Copied",
   annotations_copy_manual: "Press Ctrl+C (⌘C) to copy the selected text.",
@@ -33,7 +33,7 @@ const LABELS = {
   annotations_empty: "No notes on this page yet.",
   annotations_removed: "%d notes no longer match this page and were removed.",
   annotations_removed_one:
-    "1 note no longer matches this page and was removed.",
+    "%d note no longer matches this page and was removed.",
   annotations_not_kept:
     "Notes can't be saved in this browser and will be lost on reload.",
   annotations_export_title: "Review notes",
@@ -51,13 +51,15 @@ const PAGE =
 const TOPS = { a: 100, b: 200 };
 
 let highlights;
+// The stubs below replace CSS; gmd-i18n.mjs still needs its escape.
+const { escape } = CSS;
 
 // page renders a page as the default theme does: the toggle in the header,
 // the content wrapped in gmd-annotations (unless wrapped is false), and the
-// configuration. Connecting the wrapper mounts the interface; a second call
-// replaces the page, as a reload does.
+// configuration and the annotation strings block. Connecting the wrapper
+// mounts the interface; a second call replaces the page, as a reload does.
 function page({ wrapped = true, html = PAGE } = {}) {
-  const config = { sourcePath: "docs/spec.md", title: "Spec", labels: LABELS };
+  const config = { sourcePath: "docs/spec.md", title: "Spec" };
   const content = wrapped
     ? `<gmd-annotations>${html}</gmd-annotations>`
     : `<article>${html}</article>`;
@@ -66,6 +68,7 @@ function page({ wrapped = true, html = PAGE } = {}) {
   const template = document.createElement("template");
   template.innerHTML =
     `<script type="application/json" id="gmd-annotations-config">${JSON.stringify(config)}</script>` +
+    `<script type="application/json" data-gmd-i18n="annotation">${JSON.stringify(LABELS)}</script>` +
     `<header><gmd-annotations-toggle></gmd-annotations-toggle></header>${content}`;
   document.body.replaceChildren(template.content);
   return $("gmd-annotations, article");
@@ -136,7 +139,7 @@ beforeEach(() => {
   highlights = new Map();
   // happy-dom has no Custom Highlight API and no CSS.supports; CSS itself is
   // read-only. Without supports, the editor takes its JavaScript placement.
-  vi.stubGlobal("CSS", { highlights });
+  vi.stubGlobal("CSS", { escape, highlights });
   vi.stubGlobal(
     "Highlight",
     class {
@@ -349,7 +352,7 @@ describe("creating a note", () => {
   });
 
   it("ignored showPopover source falls back to script placement", async () => {
-    vi.stubGlobal("CSS", { highlights, supports: () => true });
+    vi.stubGlobal("CSS", { escape, highlights, supports: () => true });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function () {
         // The pen at the margin; the editor left where the UA puts it.
@@ -379,7 +382,7 @@ describe("creating a note", () => {
   });
 
   it("with CSS anchor positioning the stylesheet places it", async () => {
-    vi.stubGlobal("CSS", { highlights, supports: () => true });
+    vi.stubGlobal("CSS", { escape, highlights, supports: () => true });
     await select("a", 6, 10);
     press(pen());
     expect(editor().style.position).toBe("");

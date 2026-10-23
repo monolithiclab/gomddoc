@@ -158,9 +158,8 @@ func (tc *TemplateContext) T(key string) string {
 // marshals it to JSON in that script context. Only gomddoc's own partial reads
 // it (annotationsConfig): a theme using it would not render on an older gomddoc.
 type AnnotationsConfig struct {
-	SourcePath string            `json:"sourcePath"`
-	Title      string            `json:"title"`
-	Labels     map[string]string `json:"labels"`
+	SourcePath string `json:"sourcePath"`
+	Title      string `json:"title"`
 }
 
 // Lang returns the BCP 47 language code for the current page.
@@ -213,7 +212,7 @@ type HTMLRenderer struct {
 	resolver       *resolve.PathResolver // Optional path resolver for clean URLs
 	langPrefix     string                // "/{lang}" for a language pipeline, "" for the default one
 	sourcePrefix   string                // Content root's path inside the git work tree (see WithSourcePrefix)
-	labelKeys      []string              // Every locale key, for i18nStrings (see WithLocaleKeys)
+	localeKeys     []string              // Every locale key, for i18nStrings (see WithLocaleKeys)
 	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
 	hasSearchIndex bool                  // Whether a search index was successfully built
 	loggedMissing  sync.Map              // Tracks template names already warned about
@@ -265,7 +264,7 @@ func WithSourcePrefix(prefix string) RendererOption {
 // the locale bundle's whole key list, in every loaded language.
 func WithLocaleKeys(keys []string) RendererOption {
 	return func(r *HTMLRenderer) {
-		r.labelKeys = keys
+		r.localeKeys = keys
 	}
 }
 
@@ -630,15 +629,11 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 	}
 }
 
-// annotationsConfig returns the page's annotations module configuration:
-// every label key that translates in the page's language. A key left out (T
-// answers the key itself) falls back to the key in the module. T answers a
-// _one variant itself when the page's language translates the general form
-// but not the variant (locale.Bundle.T), so the module then uses that general
-// form, never the default language's singular.
+// annotationsConfig returns the page's annotations module configuration: page
+// data only, its labels travel in the "annotation" block (i18nStrings).
 func (h *HTMLRenderer) annotationsConfig(tc *TemplateContext) AnnotationsConfig {
 	title, _ := tc.Page.Meta["title"].(string)
-	return AnnotationsConfig{SourcePath: tc.Page.SourcePath, Title: title, Labels: h.i18nStrings(tc, "annotation")}
+	return AnnotationsConfig{SourcePath: tc.Page.SourcePath, Title: title}
 }
 
 // i18nStrings returns the locale keys starting with namespace that translate
@@ -652,7 +647,7 @@ func (h *HTMLRenderer) annotationsConfig(tc *TemplateContext) AnnotationsConfig 
 // request's language.
 func (h *HTMLRenderer) i18nStrings(tc *TemplateContext, namespace string) map[string]string {
 	out := make(map[string]string)
-	for _, key := range h.labelKeys {
+	for _, key := range h.localeKeys {
 		if !strings.HasPrefix(key, namespace) {
 			continue
 		}

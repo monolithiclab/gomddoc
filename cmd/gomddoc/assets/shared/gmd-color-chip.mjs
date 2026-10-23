@@ -7,7 +7,7 @@
  * Features:
  *   - Shadow DOM encapsulation
  *   - Inherits theme colors via CSS custom properties
- *   - Click to copy hex value
+ *   - Click to copy hex value, confirmed with color_chip_done
  *   - Accessible (role="img", aria-label from color_chip_label in the page's
  *     "color_chip" block, read through gmd-i18n.mjs)
  *   - Exposed parts: ::part(swatch), ::part(label)
@@ -107,10 +107,11 @@ class GmdColorChip extends HTMLElement {
     try {
       await navigator.clipboard.writeText(this.value);
       const label = this.shadowRoot.querySelector(".label");
-      const original = label.textContent;
-      label.textContent = "Copied!";
+      // The label holds the <slot> showing the value: keep the node itself.
+      const original = [...label.childNodes];
+      label.textContent = t("color_chip_done");
       setTimeout(() => {
-        label.textContent = original;
+        label.replaceChildren(...original);
       }, 1500);
     } catch {
       /* clipboard not available */

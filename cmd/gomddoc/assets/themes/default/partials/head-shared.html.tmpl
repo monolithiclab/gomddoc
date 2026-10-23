@@ -77,6 +77,7 @@
         {{- end }}
         {{- if .Feature "annotations" }}
         <script type="application/json" id="gmd-annotations-config">{{ annotationsConfig . }}</script>
+        <script type="application/json" data-gmd-i18n="annotation">{{ i18nStrings . "annotation" }}</script>
         <script type="module">{{ inlineJSAsset "gmd-annotations.mjs" }}</script>
         {{- end }}
 {{- end }}
