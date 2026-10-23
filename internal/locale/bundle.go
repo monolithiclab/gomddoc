@@ -27,19 +27,27 @@ type Bundle struct {
 	strings     map[string]map[string]string // lang → key → value
 }
 
+// pluralSuffixes are the CLDR plural categories a key may carry beyond its
+// general form (which doubles as "other").
+var pluralSuffixes = []string{"_zero", "_one", "_two", "_few", "_many"}
+
 // T returns the translated string for the given language and key.
-// Fallback chain: lang → defaultLang → key itself. A singular variant (a key
-// ending in _one) follows its general form: where lang translates the general
-// form but not the variant, T answers the key itself, so the caller keeps
-// lang's general form rather than the default language's singular.
+// Fallback chain: lang → defaultLang → key itself. A CLDR plural variant (a
+// key ending in _zero, _one, _two, _few or _many) follows its general form:
+// where lang translates the general form but not the variant, T answers the
+// key itself, so the caller keeps lang's general form rather than the default
+// language's variant, which would follow another language's plural rules.
 func (b *Bundle) T(lang, key string) string {
 	langStrings := b.strings[lang]
 	if val, ok := langStrings[key]; ok {
 		return val
 	}
-	if general, ok := strings.CutSuffix(key, "_one"); ok {
-		if _, ok := langStrings[general]; ok {
-			return key
+	for _, suffix := range pluralSuffixes {
+		if general, ok := strings.CutSuffix(key, suffix); ok {
+			if _, ok := langStrings[general]; ok {
+				return key
+			}
+			break
 		}
 	}
 	if val, ok := b.strings[b.defaultLang][key]; ok {

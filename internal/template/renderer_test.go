@@ -2565,7 +2565,7 @@ func TestRender_AnnotationsContract(t *testing.T) {
 
 			siteConfig := config.NewSiteConfig(".")
 			r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
-				WithAnnotationLabelKeys([]string{"annotations_count", "annotations_count_one", "annotations_export_title"}))
+				WithLocaleKeys([]string{"annotations_count", "annotations_count_one", "annotations_export_title"}))
 			tc := &TemplateContext{Site: &siteConfig, Page: PageContext{
 				Path:       "/specs/a</script>",
 				Content:    "<p>Body</p>",
@@ -2632,7 +2632,7 @@ func TestAnnotationsConfig_SingularFromPageLanguage(t *testing.T) {
 	}
 	siteConfig := config.NewSiteConfig(".")
 	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
-		WithAnnotationLabelKeys(bundle.Keys("annotation")))
+		WithLocaleKeys(bundle.Keys("annotation")))
 
 	for lang, want := range map[string]map[string]string{
 		"fr-FR": {"annotations_removed": "%d notes supprimées"},
@@ -2642,6 +2642,68 @@ func TestAnnotationsConfig_SingularFromPageLanguage(t *testing.T) {
 		if got := r.annotationsConfig(tc).Labels; !maps.Equal(got, want) {
 			t.Errorf("%s labels = %v, want %v", lang, got, want)
 		}
+	}
+}
+
+// TestI18nStrings covers the namespace filter and the omission rule: only keys
+// with the prefix, only those that translate, and no plural variant the page
+// language lacks while it translates the general form.
+func TestI18nStrings(t *testing.T) {
+	t.Parallel()
+
+	bundle, err := locale.LoadBundle("en-US", fstest.MapFS{
+		"locales/en-US.yml": &fstest.MapFile{Data: []byte("search_placeholder: Search\nsearch_results: \"%d results\"\nsearch_results_one: \"1 result\"\nsearch_results_few: \"%d few\"\naria_search: Search box\nsearch_only_en: En only\n")},
+		"locales/fr-FR.yml": &fstest.MapFile{Data: []byte("search_placeholder: Rechercher\nsearch_results: \"%d résultats\"\naria_search: Zone de recherche\n")},
+	}, "locales")
+	if err != nil {
+		t.Fatalf("LoadBundle: %v", err)
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"), WithLocaleKeys(bundle.Keys("")))
+
+	for lang, want := range map[string]map[string]string{
+		"fr-FR": {"search_placeholder": "Rechercher", "search_results": "%d résultats", "search_only_en": "En only"},
+		"en-US": {"search_placeholder": "Search", "search_results": "%d results", "search_results_one": "1 result", "search_results_few": "%d few", "search_only_en": "En only"},
+	} {
+		tc := (&TemplateContext{Site: &siteConfig}).WithI18n(lang, bundle.TFunc(lang), nil)
+		if got := r.i18nStrings(tc, "search"); !maps.Equal(got, want) {
+			t.Errorf("%s: i18nStrings = %v, want %v", lang, got, want)
+		}
+	}
+}
+
+// TestI18nStrings_ScriptEscaping renders i18nStrings inside a JSON data block
+// with a translation that tries to close the script element: the block stays
+// one element and its text decodes back to the original string.
+func TestI18nStrings_ScriptEscaping(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"), WithLocaleKeys([]string{"t_x"}))
+	const value = `</script><b>"x"`
+	tc := (&TemplateContext{Site: &siteConfig}).WithI18n("", func(k string) string { return value }, nil)
+
+	tmpl, err := template.New("t").Funcs(r.funcMap()).Parse(
+		`<script type="application/json" data-gmd-i18n="t">{{ i18nStrings . "t" }}</script>`)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, tc); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := buf.String()
+	if n := strings.Count(out, "<script"); n != 1 || strings.Count(out, "</script>") != 1 {
+		t.Fatalf("want exactly one script element, got %q", out)
+	}
+	_, rest, _ := strings.Cut(out, ">")
+	raw, _, _ := strings.Cut(rest, "</script>")
+	var got map[string]string
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, raw)
+	}
+	if got["t_x"] != value {
+		t.Errorf("t_x = %q, want %q", got["t_x"], value)
 	}
 }
 

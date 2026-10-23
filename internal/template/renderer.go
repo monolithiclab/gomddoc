@@ -213,7 +213,7 @@ type HTMLRenderer struct {
 	resolver       *resolve.PathResolver // Optional path resolver for clean URLs
 	langPrefix     string                // "/{lang}" for a language pipeline, "" for the default one
 	sourcePrefix   string                // Content root's path inside the git work tree (see WithSourcePrefix)
-	labelKeys      []string              // Locale keys the annotations module reads (see WithAnnotationLabelKeys)
+	labelKeys      []string              // Every locale key, for i18nStrings (see WithLocaleKeys)
 	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
 	hasSearchIndex bool                  // Whether a search index was successfully built
 	loggedMissing  sync.Map              // Tracks template names already warned about
@@ -261,9 +261,9 @@ func WithSourcePrefix(prefix string) RendererOption {
 	}
 }
 
-// WithAnnotationLabelKeys sets the locale keys annotationsConfig hands the
-// annotations module: the locale bundle's keys under the "annotation" prefix.
-func WithAnnotationLabelKeys(keys []string) RendererOption {
+// WithLocaleKeys sets the locale keys i18nStrings filters by namespace prefix:
+// the locale bundle's whole key list, in every loaded language.
+func WithLocaleKeys(keys []string) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.labelKeys = keys
 	}
@@ -626,6 +626,7 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"tagURL":            h.tagURL,
 		"pageTags":          pageTags,
 		"annotationsConfig": h.annotationsConfig,
+		"i18nStrings":       h.i18nStrings,
 	}
 }
 
@@ -636,14 +637,30 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 // but not the variant (locale.Bundle.T), so the module then uses that general
 // form, never the default language's singular.
 func (h *HTMLRenderer) annotationsConfig(tc *TemplateContext) AnnotationsConfig {
-	labels := make(map[string]string, len(h.labelKeys))
+	title, _ := tc.Page.Meta["title"].(string)
+	return AnnotationsConfig{SourcePath: tc.Page.SourcePath, Title: title, Labels: h.i18nStrings(tc, "annotation")}
+}
+
+// i18nStrings returns the locale keys starting with namespace that translate
+// in the page's language, for a <script type="application/json"> data block
+// that html/template marshals (and escapes against "</script>"). A key T
+// answers with itself is left out, so the client falls back exactly like the
+// server: a plural variant (_one, _few...) the page language lacks while it
+// translates the general form is omitted rather than filled from the default
+// language (locale.Bundle.T). It takes the template context because funcMap is
+// bound at parse time and templates are shared, so it cannot close over a
+// request's language.
+func (h *HTMLRenderer) i18nStrings(tc *TemplateContext, namespace string) map[string]string {
+	out := make(map[string]string)
 	for _, key := range h.labelKeys {
-		if label := tc.T(key); label != key {
-			labels[key] = label
+		if !strings.HasPrefix(key, namespace) {
+			continue
+		}
+		if val := tc.T(key); val != key {
+			out[key] = val
 		}
 	}
-	title, _ := tc.Page.Meta["title"].(string)
-	return AnnotationsConfig{SourcePath: tc.Page.SourcePath, Title: title, Labels: labels}
+	return out
 }
 
 // generateJSONLD produces JSON-LD structured data for a page.

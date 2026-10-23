@@ -57,10 +57,9 @@ type PipelineOptions struct {
 	// a static host publishes each page directory at a slash-terminated URL.
 	TrailingSlash bool
 
-	// AnnotationLabelKeys are the locale keys the annotations module reads
-	// (template.WithAnnotationLabelKeys). setupLanguagePipelines sets them from
-	// the locale bundle.
-	AnnotationLabelKeys []string
+	// LocaleKeys are every key of the locale bundle (template.WithLocaleKeys),
+	// which i18nStrings filters by namespace. setupLanguagePipelines sets them.
+	LocaleKeys []string
 
 	// SourcePrefix is the content directory's path inside its git work tree
 	// (sourcePrefix), which setupLanguagePipelines computes once for every
@@ -173,7 +172,7 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 
 	// Shared by every pipeline: the bundle's annotation label keys, and the
 	// content directory's place in its git work tree (a walk up the disk).
-	opts.AnnotationLabelKeys = bundle.Keys("annotation")
+	opts.LocaleKeys = bundle.Keys("")
 	opts.SourcePrefix = sourcePrefix(cfg.Server.Dir)
 
 	// Build default pipeline.
@@ -294,7 +293,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	templateRenderer.Configure(
 		template.WithResolver(resolver),
 		template.WithSourcePrefix(path.Join(opts.SourcePrefix, opts.Lang)),
-		template.WithAnnotationLabelKeys(opts.AnnotationLabelKeys),
+		template.WithLocaleKeys(opts.LocaleKeys),
 	)
 	if opts.Lang != "" {
 		langPrefix = "/" + opts.Lang
