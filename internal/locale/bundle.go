@@ -28,17 +28,22 @@ type Bundle struct {
 }
 
 // T returns the translated string for the given language and key.
-// Fallback chain: lang → defaultLang → key itself.
+// Fallback chain: lang → defaultLang → key itself. A singular variant (a key
+// ending in _one) follows its general form: where lang translates the general
+// form but not the variant, T answers the key itself, so the caller keeps
+// lang's general form rather than the default language's singular.
 func (b *Bundle) T(lang, key string) string {
-	if langStrings, ok := b.strings[lang]; ok {
-		if val, ok := langStrings[key]; ok {
-			return val
+	langStrings := b.strings[lang]
+	if val, ok := langStrings[key]; ok {
+		return val
+	}
+	if general, ok := strings.CutSuffix(key, "_one"); ok {
+		if _, ok := langStrings[general]; ok {
+			return key
 		}
 	}
-	if langStrings, ok := b.strings[b.defaultLang]; ok {
-		if val, ok := langStrings[key]; ok {
-			return val
-		}
+	if val, ok := b.strings[b.defaultLang][key]; ok {
+		return val
 	}
 	return key
 }

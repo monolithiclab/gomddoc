@@ -149,7 +149,8 @@ annotations_export_top: "(top of page)"
 The `annotation_*` and `annotations_*` keys label the [page annotations](06-writing-workflow.md#annotating-a-page)
 interface and its Markdown export; each `%d` is replaced, in order, by a number (`annotation_position` carries two:
 the note's position, then the count). A key ending in `_one` is the singular form of the key without it, used
-when the number is 1. Locales merge per key, so a translation must give both forms, or the English singular shows.
+when the number is 1. A translation that gives the general form without the `_one` variant uses its general form
+for 1 too, never the English singular.
 
 The `language_name` key is special — it provides the display name shown in the language switcher (e.g., "Français",
 "Español", "日本語").

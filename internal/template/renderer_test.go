@@ -15,6 +15,7 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
@@ -2612,6 +2613,35 @@ func TestRender_AnnotationsContract(t *testing.T) {
 				t.Errorf("labels = %v, want %v: every key that translates, none that does not", got.Labels, want)
 			}
 		})
+	}
+}
+
+// TestAnnotationsConfig_SingularFromPageLanguage hands annotationsConfig a
+// real bundle whose fr-FR translates a general form but not its _one variant:
+// the French page gets no _one key, so the module uses the French general
+// form instead of the English singular.
+func TestAnnotationsConfig_SingularFromPageLanguage(t *testing.T) {
+	t.Parallel()
+
+	bundle, err := locale.LoadBundle("en-US", fstest.MapFS{
+		"locales/en-US.yml": &fstest.MapFile{Data: []byte("annotations_removed: \"%d notes removed\"\nannotations_removed_one: \"1 note removed\"\n")},
+		"locales/fr-FR.yml": &fstest.MapFile{Data: []byte("annotations_removed: \"%d notes supprimées\"\n")},
+	}, "locales")
+	if err != nil {
+		t.Fatalf("LoadBundle: %v", err)
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
+		WithAnnotationLabelKeys(bundle.Keys("annotation")))
+
+	for lang, want := range map[string]map[string]string{
+		"fr-FR": {"annotations_removed": "%d notes supprimées"},
+		"en-US": {"annotations_removed": "%d notes removed", "annotations_removed_one": "1 note removed"},
+	} {
+		tc := (&TemplateContext{Site: &siteConfig}).WithI18n(lang, bundle.TFunc(lang), nil)
+		if got := r.annotationsConfig(tc).Labels; !maps.Equal(got, want) {
+			t.Errorf("%s labels = %v, want %v", lang, got, want)
+		}
 	}
 }
 

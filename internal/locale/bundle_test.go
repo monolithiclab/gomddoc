@@ -201,6 +201,33 @@ func TestLoadBundle_SeeAlsoKey(t *testing.T) {
 	}
 }
 
+// TestBundle_T_SingularFollowsGeneralForm loads a translation that gives a
+// general form without its _one variant: the variant must not come from the
+// default language, or a French page would say "1 note" in English.
+func TestBundle_T_SingularFollowsGeneralForm(t *testing.T) {
+	t.Parallel()
+
+	b, err := LoadBundle("en-US", fstest.MapFS{
+		"locales/en-US.yml": &fstest.MapFile{Data: []byte("removed: \"%d removed\"\nremoved_one: \"1 removed\"\nopen: \"%d open\"\nopen_one: \"1 open\"\n")},
+		"locales/fr-FR.yml": &fstest.MapFile{Data: []byte("removed: \"%d supprimées\"\n")},
+	}, "locales")
+	if err != nil {
+		t.Fatalf("LoadBundle: %v", err)
+	}
+
+	tests := []struct{ lang, key, want string }{
+		{"fr-FR", "removed", "%d supprimées"},
+		{"fr-FR", "removed_one", "removed_one"}, // general form translated: no English singular
+		{"fr-FR", "open_one", "1 open"},         // neither translated: both English
+		{"en-US", "removed_one", "1 removed"},
+	}
+	for _, tt := range tests {
+		if got := b.T(tt.lang, tt.key); got != tt.want {
+			t.Errorf("T(%q, %q) = %q, want %q", tt.lang, tt.key, got, tt.want)
+		}
+	}
+}
+
 func TestBundle_Keys(t *testing.T) {
 	t.Parallel()
 

@@ -631,8 +631,10 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 
 // annotationsConfig returns the page's annotations module configuration:
 // every label key that translates in the page's language. A key left out (T
-// answers the key itself) falls back in the module, so a _one plural variant a
-// locale lacks never shadows the general form.
+// answers the key itself) falls back to the key in the module. T answers a
+// _one variant itself when the page's language translates the general form
+// but not the variant (locale.Bundle.T), so the module then uses that general
+// form, never the default language's singular.
 func (h *HTMLRenderer) annotationsConfig(tc *TemplateContext) AnnotationsConfig {
 	labels := make(map[string]string, len(h.labelKeys))
 	for _, key := range h.labelKeys {
