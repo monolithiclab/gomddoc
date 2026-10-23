@@ -84,7 +84,7 @@ test("create, edit and delete a note", async ({ page }) => {
 
   await annotate(page, "bold claim", "Source?");
   await expect(icons(page)).toHaveCount(1);
-  expect(await highlights(page)).toBe(1);
+  await expect.poll(() => highlights(page)).toBe(1);
   await expect(page.locator("[data-gmd-annotations-count]")).toHaveText("1");
 
   await icons(page).click();
@@ -97,7 +97,7 @@ test("create, edit and delete a note", async ({ page }) => {
 
   await action(popover(page), "delete").click();
   await expect(icons(page)).toHaveCount(0);
-  expect(await highlights(page)).toBe(0);
+  await expect.poll(() => highlights(page)).toBe(0);
   await expect(page.locator("[data-gmd-annotations-count]")).toBeHidden();
 });
 
@@ -107,7 +107,7 @@ test("two notes on one line: one icon, prev/next", async ({ page }) => {
   await annotate(page, "lazy dog", "second");
   await expect(icons(page)).toHaveCount(1);
   await expect(icons(page)).toHaveAttribute("data-count", "2");
-  expect(await highlights(page)).toBe(2);
+  await expect.poll(() => highlights(page)).toBe(2);
 
   await icons(page).click();
   const position = popover(page).locator("[data-gmd-annotation-position]");
@@ -158,9 +158,9 @@ test("header dialog copies the export and clear all asks first", async ({
 
   await action(dialog(page), "clear").click();
   await expect(action(dialog(page), "cancel-clear")).toBeFocused();
-  expect(await highlights(page)).toBe(1);
+  await expect.poll(() => highlights(page)).toBe(1);
   await action(dialog(page), "confirm-clear").click();
-  expect(await highlights(page)).toBe(0);
+  await expect.poll(() => highlights(page)).toBe(0);
   await expect(icons(page)).toHaveCount(0);
   await action(dialog(page), "close").click();
   await expect(dialog(page)).toBeHidden();
@@ -183,7 +183,7 @@ test("editing the source drops a stale note and shows the notice", async ({
       "1 note no longer matches this page and was removed.",
     );
     await expect(icons(page)).toHaveCount(0);
-    expect(await highlights(page)).toBe(0);
+    await expect.poll(() => highlights(page)).toBe(0);
   } finally {
     writeFileSync(file, source);
   }
@@ -195,7 +195,7 @@ test("note in a heading section survives reload", async ({ page }) => {
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-gmd-annotations");
   await expect(icons(page)).toHaveCount(1);
-  expect(await highlights(page)).toBe(1);
+  await expect.poll(() => highlights(page)).toBe(1);
 
   await page.locator("[data-gmd-annotations-toggle]").click();
   await expect(dialog(page).locator("textarea")).toHaveValue(

@@ -588,6 +588,37 @@ func TestBuildCmd_Run_WithFrontmatter(t *testing.T) {
 	}
 }
 
+// TestBuildCmd_Run_PageFeatureOverride drives a per-page features: override
+// through the real enricher (goldmark-meta's YAML decoding) and the default
+// theme. The markers are the elements, not bare attribute names, which the
+// inlined script and styles also spell.
+func TestBuildCmd_Run_PageFeatureOverride(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	writeTestFile(t, srcDir, "on.md", "# On\n\nAnnotatable.")
+	writeTestFile(t, srcDir, "off.md", "---\nfeatures:\n  annotations: false\n---\n# Off\n\nNot annotatable.")
+
+	cmd := &BuildCmd{Dir: srcDir, Output: outDir}
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	markers := []string{`<div data-gmd-annotatable>`, `<button data-gmd-annotations-toggle`, `id="gmd-annotations-config"`}
+	on := readTestFile(t, filepath.Join(outDir, "on"), "index.html")
+	off := readTestFile(t, filepath.Join(outDir, "off"), "index.html")
+	for _, marker := range markers {
+		if !strings.Contains(on, marker) {
+			t.Errorf("on/index.html lacks %s", marker)
+		}
+		if strings.Contains(off, marker) {
+			t.Errorf("off/index.html carries %s despite features: {annotations: false}", marker)
+		}
+	}
+}
+
 func TestBuildCmd_Run_WithDomain(t *testing.T) {
 	t.Parallel()
 

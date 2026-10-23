@@ -54,11 +54,20 @@ export default async function globalSetup() {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const url = `http://127.0.0.1:${port}`;
-  await ready(child, url);
+  try {
+    await ready(child, url);
+  } catch (err) {
+    rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
   process.env.GMD_E2E_URL = url;
   process.env.GMD_E2E_DIR = dir;
-  return () => {
-    child.kill();
+  return async () => {
+    const exited = new Promise((done) => child.once("exit", done));
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill();
+      await exited;
+    }
     rmSync(dir, { recursive: true, force: true });
   };
 }
