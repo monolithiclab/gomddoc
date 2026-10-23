@@ -41,6 +41,13 @@ describe("buildTextModel", () => {
     expect(model.nodes.map((n) => n.start)).toEqual([0, 5, 6]);
   });
 
+  it("skips the title gmd-admonition injects", () => {
+    const root = content(
+      '<gmd-admonition><p class="admonition-title">warning</p><p>Body</p></gmd-admonition>',
+    );
+    expect(buildTextModel(root).text).toBe("Body");
+  });
+
   it("skips text that never renders", () => {
     const root = content("<style>p{}</style><p>Body</p><script>x()</script>");
     expect(buildTextModel(root).text).toBe("Body");

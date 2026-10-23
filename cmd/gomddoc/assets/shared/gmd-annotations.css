@@ -71,8 +71,10 @@
 }
 
 /* The toggle shows once the module defines it; until then (an older
-   gomddoc, the module not loaded) the theme's markup stays invisible. */
-gmd-annotations-toggle:not(:defined) {
+   gomddoc, the module not loaded) the theme's markup stays invisible, and
+   so does a list item a theme wraps it in. */
+gmd-annotations-toggle:not(:defined),
+li:has(> gmd-annotations-toggle:not(:defined)) {
   display: none;
 }
 

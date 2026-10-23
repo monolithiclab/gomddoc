@@ -20,11 +20,11 @@ const LABELS = {
   annotation_position: "%d of %d",
   annotations_open: "Annotations",
   annotations_count: "%d notes",
-  annotations_count_one: "1 note",
   annotations_open_count: "Annotations (%d notes)",
   annotations_open_count_one: "Annotations (1 note)",
   annotations_copy: "Copy",
   annotations_copied: "Copied",
+  annotations_copy_manual: "Press Ctrl+C (⌘C) to copy the selected text.",
   annotations_clear: "Clear all",
   annotations_clear_confirm: "Delete every note on this page?",
   annotations_clear_yes: "Delete all",
@@ -162,6 +162,7 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = "";
+  delete document.execCommand; // happy-dom has none; copy tests add it
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -322,6 +323,13 @@ describe("creating a note", () => {
     keydown(document.body, "Å", { code: "KeyA", altKey: true, shiftKey: true });
     expect(popoverOpen(editor())).toBe(true);
     expect(deepActive()).toBe(textarea());
+  });
+
+  it("Alt+Shift+A also matches the letter where the layout moves it", async () => {
+    await select("b", 4, 7);
+    // AZERTY: the A key is KeyQ.
+    keydown(document.body, "A", { code: "KeyQ", altKey: true, shiftKey: true });
+    expect(popoverOpen(editor())).toBe(true);
   });
 
   it("the editor is non-modal: no aria-modal, Tab is not trapped", async () => {
@@ -652,6 +660,45 @@ describe("header", () => {
     expect(action(dialog(), "copy").textContent).toBe("Copied");
   });
 
+  it("without the Clipboard API, copy selects the export for execCommand", async () => {
+    vi.spyOn(navigator, "clipboard", "get").mockReturnValue(undefined);
+    const execCommand = vi.fn(() => true);
+    document.execCommand = execCommand;
+    await addNote("a", 6, 10, "n");
+    press(toggle());
+    const area = dialog().querySelector("textarea");
+    action(dialog(), "copy").click();
+    await tick();
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(document.activeElement).toBe(area);
+    expect(area.selectionStart).toBe(0);
+    expect(area.selectionEnd).toBe(area.value.length);
+    expect(action(dialog(), "copy").textContent).toBe("Copied");
+  });
+
+  it("when no copy works, the export stays selected with a hint", async () => {
+    const writeText = vi.fn(() => Promise.reject(new Error("denied")));
+    vi.spyOn(navigator, "clipboard", "get").mockReturnValue({ writeText });
+    document.execCommand = vi.fn(() => false);
+    await addNote("a", 6, 10, "n");
+    press(toggle());
+    const area = dialog().querySelector("textarea");
+    const hint = dialog().querySelector('[role="status"]');
+    expect(hint.textContent).toBe("");
+    action(dialog(), "copy").click();
+    await tick();
+    expect(document.activeElement).toBe(area);
+    expect(area.selectionEnd).toBe(area.value.length);
+    expect(hint.textContent).toBe(
+      "Press Ctrl+C (⌘C) to copy the selected text.",
+    );
+    expect(action(dialog(), "copy").textContent).toBe("Copy");
+
+    action(dialog(), "close").click();
+    press(toggle());
+    expect(hint.textContent).toBe("");
+  });
+
   it("badge hidden at zero, shows the count otherwise", async () => {
     const badge = $(".gmd-annotations-count");
     expect(badge.hidden).toBe(true);
@@ -661,6 +708,62 @@ describe("header", () => {
     expect(badge.hidden).toBe(false);
     expect(badge.textContent).toBe("2");
     expect(toggle().getAttribute("aria-label")).toBe("Annotations (2 notes)");
+  });
+});
+
+describe("another tab", () => {
+  // otherTab writes notes as a second tab of the page does, then delivers
+  // the storage event the browser fires in this one.
+  function otherTab(notes) {
+    const old = localStorage.getItem(key());
+    const value = notes.length ? JSON.stringify({ v: 1, notes }) : null;
+    if (value) localStorage.setItem(key(), value);
+    else localStorage.removeItem(key());
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: key(),
+        oldValue: old,
+        newValue: value,
+      }),
+    );
+  }
+
+  beforeEach(() => page());
+
+  it("shows the notes another tab saved, without a notice", async () => {
+    await addNote("a", 6, 10, "mine");
+    const text = document.getElementById("b").firstChild;
+    const range = document.createRange();
+    range.setStart(text, 4);
+    range.setEnd(text, 7);
+    const model = buildTextModel($("gmd-annotations"));
+    otherTab([
+      ...stored(),
+      { ...selectorFromRange(model, range), id: "2", note: "theirs" },
+    ]);
+    expect(icons()).toHaveLength(2);
+    expect(highlights.get("gmd-annotation").ranges).toHaveLength(2);
+    expect(toggle().getAttribute("aria-label")).toBe("Annotations (2 notes)");
+    expect(popoverOpen($("gmd-annotation-notice"))).toBe(false);
+
+    otherTab([]);
+    expect(icons()).toHaveLength(0);
+    expect(toggle().getAttribute("aria-label")).toBe("Annotations");
+  });
+
+  it("closes the editor of a note the other tab deleted", async () => {
+    await addNote("a", 6, 10, "mine");
+    press(icons()[0]);
+    expect(popoverOpen(editor())).toBe(true);
+    otherTab([]);
+    expect(popoverOpen(editor())).toBe(false);
+  });
+
+  it("ignores other keys", async () => {
+    await addNote("a", 6, 10, "mine");
+    localStorage.removeItem(key());
+    window.dispatchEvent(new StorageEvent("storage", { key: "other" }));
+    expect(icons()).toHaveLength(1);
   });
 });
 

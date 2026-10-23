@@ -124,11 +124,11 @@ annotation_next: "Next note"
 annotation_position: "%d of %d"
 annotations_open: Annotations
 annotations_count: "%d notes"
-annotations_count_one: "1 note"
 annotations_open_count: "Annotations (%d notes)"
 annotations_open_count_one: "Annotations (1 note)"
 annotations_copy: Copy
 annotations_copied: Copied
+annotations_copy_manual: "Press Ctrl+C (⌘C) to copy the selected text."
 annotations_clear: "Clear all"
 annotations_clear_confirm: "Delete every note on this page?"
 annotations_clear_yes: "Delete all"

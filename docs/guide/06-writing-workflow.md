@@ -129,19 +129,28 @@ there is no server side.
 2. Click it, or press `Alt+Shift+A` (`Option+Shift+A` on macOS), which also works for a keyboard selection made with
    `Shift`+arrows. Type the note, then **Save** (`Ctrl+Enter`, `Cmd+Enter` on macOS). **Discard**, `Esc` or a click
    outside drops it; saving an empty note is a discard.
+
+   The shortcut answers to the key that types `A` and to the key in the `A` position of a US keyboard, so it works
+   on any layout (on an AZERTY keyboard, `Alt+Shift+Q` also opens the editor). Chrome on Windows and Linux binds
+   `Alt+Shift+A` to "focus inactive dialogs": with a selection that can be annotated the page handles the keys
+   first. Windows switches the input language on `Alt+Shift` when several are installed; change that hotkey in the
+   Windows settings if it gets in the way.
+
 3. The passage is highlighted and a note icon sits in the margin. Click it to edit or **Delete** the note; `Esc`
    closes it unchanged. Notes starting on the same line share one icon showing their count, with previous and next
    controls.
 4. The **Annotations** button in the header (its badge counts the page's notes) opens every note as Markdown.
-   Edit it if you like, **Copy** it, paste it into the harness. **Clear all** deletes every note of the page after
-   a confirmation.
+   Edit it if you like, **Copy** it, paste it into the harness. On a site served over plain `http` from another
+   machine the browser withholds the clipboard; **Copy** then selects the export and asks you to press `Ctrl+C`.
+   **Clear all** deletes every note of the page after a confirmation.
 
-Selections inside code-copy buttons, heading anchors, rendered math or Mermaid diagrams cannot be annotated, and
-neither can a passage whose surrounding words repeat elsewhere on the page.
+Selections inside code-copy buttons, heading anchors, admonition titles, rendered math or Mermaid diagrams cannot be
+annotated, and neither can a passage whose surrounding words repeat elsewhere on the page.
 
 **Where notes live.** In the browser's `localStorage`, one entry per page URL (the `#fragment` is ignored), so
 they stay on that browser and that address: `localhost:8080` and `localhost:8081` keep separate notes. Where the
-browser refuses storage (some private modes), notes work until you reload and a notice says so.
+browser refuses storage (some private modes), notes work until you reload and a notice says so. Two tabs of the
+same page stay in step: a note saved or deleted in one shows in the other.
 
 **After the source changes.** On load each note looks for its passage again: the quoted text with up to 32
 characters of context on each side, which must match exactly once. A note whose passage was edited, deleted or

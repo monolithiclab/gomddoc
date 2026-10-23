@@ -14,11 +14,11 @@
  */
 
 // Everything excluded from the text model, in one place: UI other scripts
-// inject (code-copy buttons, heading anchors, color-chip swatches, this
-// module's own UI), rendered output that is not prose (KaTeX, Mermaid) and
+// inject (code-copy buttons, heading anchors, admonition titles, color-chip
+// swatches, this module's own UI), rendered output that is not prose (KaTeX, Mermaid) and
 // elements whose text never renders (raw HTML <style> or <script>).
 export const SKIP_SELECTOR =
-  ".copy-btn, gmd-heading-anchor, gmd-color-chip, .katex, .language-mermaid, .mermaid, gmd-annotation-margin, gmd-annotation-editor, gmd-annotation-notice, style, script, template";
+  ".copy-btn, gmd-heading-anchor, .admonition-title, gmd-color-chip, .katex, .language-mermaid, .mermaid, gmd-annotation-margin, gmd-annotation-editor, gmd-annotation-notice, style, script, template";
 
 const CONTEXT_CHARS = 32;
 const STORAGE_PREFIX = "gomddoc:annotations:";
@@ -610,7 +610,8 @@ function mount(doc, win, content, notice, signal) {
     target.addEventListener(type, fn, { ...opts, signal });
   const config = readConfig(doc);
   const { L, P, E } = labeler(config);
-  const store = createStore(localStorageOf(win), storageKey(win.location));
+  const key = storageKey(win.location);
+  const store = createStore(localStorageOf(win), key);
 
   let notes = []; // stored fields plus the live range and its model start
   let pending = null; // the current annotatable selection
@@ -631,7 +632,7 @@ function mount(doc, win, content, notice, signal) {
       <h2 id="gmd-annotations-title">${E("annotations_open")}</h2>
       <p>${E("annotations_empty")}</p>
       <textarea aria-label="${E("annotations_open")}" spellcheck="false"></textarea>
-      <div class="gmd-annotation-row">${button("clear", E("annotations_clear"))}<span class="gmd-annotation-spacer"></span>${button("copy", E("annotations_copy"))}${button("close", E("annotations_close"), "", ` commandfor="${DIALOG_ID}" command="close"`)}</div>
+      <div class="gmd-annotation-row">${button("clear", E("annotations_clear"))}<span class="gmd-annotation-spacer" role="status"></span>${button("copy", E("annotations_copy"))}${button("close", E("annotations_close"), "", ` commandfor="${DIALOG_ID}" command="close"`)}</div>
       <div class="gmd-annotation-row" hidden><span class="gmd-annotation-spacer">${E("annotations_clear_confirm")}</span>${button("cancel-clear", E("annotations_cancel"))}${button("confirm-clear", E("annotations_clear_yes"))}</div>
     </dialog>`,
   );
@@ -652,6 +653,7 @@ function mount(doc, win, content, notice, signal) {
   const [copy, clear, close] = ["copy", "clear", "close"].map((name) =>
     act(dialog, name),
   );
+  const copyHint = copy.previousElementSibling;
 
   // ---- Notes
 
@@ -908,15 +910,32 @@ function mount(doc, win, content, notice, signal) {
     exportArea.hidden = !has;
     copy.disabled = clear.disabled = !has;
     confirmRow.hidden = true;
+    copyHint.textContent = "";
     exportArea.toggleAttribute("autofocus", has);
     close.toggleAttribute("autofocus", !has);
     if (!keepExport) exportArea.value = has ? exportText() : "";
   }
 
+  // copyExport writes through the Clipboard API, which exists only in a
+  // secure context (https, localhost): a site served over plain http
+  // elsewhere falls back to selecting the export for execCommand("copy"),
+  // and where that fails too, the selection stays for the reader to copy.
   async function copyExport() {
+    let copied;
     try {
       await win.navigator.clipboard.writeText(exportArea.value);
+      copied = true;
     } catch {
+      exportArea.focus();
+      exportArea.select();
+      try {
+        copied = doc.execCommand("copy");
+      } catch {
+        copied = false;
+      }
+    }
+    if (!copied) {
+      copyHint.textContent = L("annotations_copy_manual");
       return;
     }
     copy.textContent = L("annotations_copied");
@@ -985,13 +1004,15 @@ function mount(doc, win, content, notice, signal) {
 
   on(doc, "selectionchange", schedulePen);
   on(doc, "keydown", (e) => {
-    // e.code, not e.key: on macOS Alt+Shift+A types "Å".
+    // e.code where the modifiers change the character (macOS: Option+Shift+A
+    // types "Å"), e.key where the layout moves the letter (AZERTY: "a" sits
+    // on KeyQ).
     if (!(
       e.altKey &&
       e.shiftKey &&
       !e.ctrlKey &&
       !e.metaKey &&
-      e.code === "KeyA"
+      (e.code === "KeyA" || e.key?.toLowerCase() === "a")
     ))
       return;
     if (state) return;
@@ -1010,23 +1031,42 @@ function mount(doc, win, content, notice, signal) {
 
   // ---- Re-anchor stored notes
 
-  const model = buildTextModel(content);
-  let dropped = 0;
-  for (const stored of store.load()) {
-    const at =
-      typeof stored?.quote === "string" &&
-      typeof stored.note === "string" &&
-      anchor(model, stored);
-    if (!at) {
-      dropped++;
-      continue;
+  // load replaces notes with the stored ones that still anchor and returns
+  // how many do not.
+  function load() {
+    const model = buildTextModel(content);
+    let dropped = 0;
+    notes = [];
+    for (const stored of store.load()) {
+      const at =
+        typeof stored?.quote === "string" &&
+        typeof stored.note === "string" &&
+        anchor(model, stored);
+      if (!at) {
+        dropped++;
+        continue;
+      }
+      notes.push({
+        ...stored,
+        start: at.start,
+        range: rangeFromOffsets(model, at.start, at.end),
+      });
     }
-    notes.push({
-      ...stored,
-      start: at.start,
-      range: rangeFromOffsets(model, at.start, at.end),
-    });
+    return dropped;
   }
+
+  // Another tab of this page saved: show its notes. Nothing is written or
+  // announced here; that tab already did both. A note being edited that the
+  // other tab deleted closes its editor.
+  on(win, "storage", (e) => {
+    if (e.key !== key && e.key !== null) return;
+    load();
+    if (state?.mode === "edit" && !state.ids.every(byID)) closeEditor();
+    render();
+    if (dialog.open) refreshDialog();
+  });
+
+  const dropped = load();
   if (dropped) {
     persist();
     notice.announce(P("annotations_removed", dropped), L("annotations_close"));
