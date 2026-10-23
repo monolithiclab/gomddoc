@@ -154,9 +154,13 @@ annotations_export_top: "(top of page)"
 `color_chip_label` carries one too, the color value.
 The `annotation_*` and `annotations_*` keys label the [page annotations](06-writing-workflow.md#annotating-a-page)
 interface and its Markdown export; each `%d` is replaced, in order, by a number (`annotation_position` carries two:
-the note's position, then the count). A key ending in `_one` is the singular form of the key without it, used
-when the number is 1. A translation that gives the general form without the `_one` variant uses its general form
-for 1 too, never the English singular.
+the note's position, then the count). A key can carry plural variants: the key with a `_zero`, `_one`, `_two`, `_few` or `_many` suffix is the form for that
+CLDR plural category, and the key without a suffix is the general (`other`) form. Which numbers fall in which category
+depends on the language: English `one` is 1 only, French `one` covers 0 and 1, Russian has `one`, `few` and `many`.
+Write each variant for the numbers its language puts in that category, and put `%d` in every variant rather than a
+literal number (`"%d note no longer matches…"`, never `"One note no longer matches…"`), so the count is shown whatever
+the category covers. A language that omits a variant uses its general form for those numbers, never the English one.
+Those five suffixes are reserved for plural variants.
 
 The `language_name` key is special — it provides the display name shown in the language switcher (e.g., "Français",
 "Español", "日本語").
@@ -175,7 +179,7 @@ code_copy_label: Copier
 code_copy_done: "Copié !"
 ```
 
-Merging is per key, so this file is deliberately a fragment rather than a copy of all 26 — anything
+Merging is per key, so this file is deliberately a fragment rather than a copy of every key — anything
 it omits keeps the built-in English. Start with the strings your readers see most and add the rest
 as you go; there is no "incomplete locale" error to avoid.
 
@@ -357,10 +361,67 @@ When building a custom theme, use these patterns for i18n support:
    {{ template "hreflang" . }}
    ```
 
-5. **Pass translations to JavaScript** via data attributes:
-   ```html
-   <html data-copy-label="{{ .T "copy" }}" data-copied-label="{{ .T "copied" }}">
-   ```
+5. **Pass translations to JavaScript** through a namespaced JSON block, read by `gmd-i18n.mjs` (below).
+
+### Translations in JavaScript
+
+Client scripts never read `data-*` attributes for text. Each feature has a namespace, and the page carries one
+JSON block per namespace, filled by the `i18nStrings` template function:
+
+```html
+<script type="application/json" data-gmd-i18n="search">{{ i18nStrings . "search" }}</script>
+```
+
+`i18nStrings . "search"` returns the page language's translations of every key starting with `search`, as JSON.
+Keys the language has not translated are left out, so the script falls back to the key itself. The default layouts
+emit the blocks for `code_copy`, `search`, `annotation` and `color_chip` from `scripts-shared`, inside each feature's
+guard and just before its module.
+
+A module reads its block with `i18n(namespace)` from `/_assets/gmd-i18n.mjs`, which returns `t` and `tn`:
+
+```js
+import { i18n } from "/_assets/gmd-i18n.mjs";
+const { t, tn } = i18n("search");
+t("search_placeholder");              // "Rechercher…"
+t("annotation_position", 2, 5);       // "2 sur 5"
+tn("annotations_removed", 3);         // annotations_removed_<category>, else annotations_removed
+```
+
+- `t(key, ...args)` returns the translation, or `key` when the block lacks it. A missing or invalid block gives
+  every key back unchanged. Two blocks with the same namespace log a console warning and the first one wins.
+- `tn(key, n, ...args)` picks `key_<category>` for the CLDR plural category of `n` in the page's `lang`, else
+  `key`, then fills the placeholders with `n` first.
+- Placeholders: `%s` and `%d` take the next argument in order, `%[2]d` and `%[1]s` take argument 1, 2, … by
+  position (Go's syntax, so a translator can reorder: `"%[2]d sur %[1]d"`), and `%%` is a literal `%`. The same
+  strings work in templates through `printf`.
+- The result is plain text: set `textContent`, or escape it before building markup.
+
+**Adding a namespace to a theme's own script.** Prefix the keys with the theme's namespace and translate them in
+`.gomddoc/locales/{lang}.yml` like any other key; a key a language lacks falls back to the default language, then to the key:
+
+```yaml
+# .gomddoc/locales/en-US.yml
+mytheme_open: "Open menu"
+mytheme_count_one: "%d result"
+mytheme_count: "%d results"
+```
+
+Emit one block in the layout, before the script:
+
+```html
+<script type="application/json" data-gmd-i18n="mytheme">{{ i18nStrings . "mytheme" }}</script>
+```
+
+```js
+import { i18n } from "/_assets/gmd-i18n.mjs";
+const { t, tn } = i18n("mytheme");
+button.textContent = t("mytheme_open");
+status.textContent = tn("mytheme_count", n);
+```
+
+The import path is absolute (`/_assets/`), like `assetURL`: gomddoc has no sub-path hosting. A theme that inlines
+`search.mjs` or `code-copy.mjs` itself, instead of calling `scripts-shared`, must emit their blocks (`search`,
+`code_copy`) too, or they show their key names. Attributes on `<html>` such as `data-copy-label` are no longer read.
 
 ## Per-Language Features
 

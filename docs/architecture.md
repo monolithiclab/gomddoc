@@ -840,8 +840,9 @@ Two-layer YAML locale loading: `locale.LoadBundle` reads the built-in `assets/lo
 `T(lang, key)` for string lookup with fallback chain: requested language → default language → raw key, and
 `LanguageName(lang)` from the `language_name` key.
 
-Templates call `{{ .T "key" }}` which delegates to the bound translator. JavaScript strings are passed via `data-`
-attributes on `<html>` (e.g., `data-search-placeholder`, `data-copy-label`).
+Templates call `{{ .T "key" }}` which delegates to the bound translator. JavaScript strings are passed as
+namespaced JSON blocks (`<script type="application/json" data-gmd-i18n="search">{{ i18nStrings . "search" }}</script>`) that
+`/_assets/gmd-i18n.mjs` reads (D51).
 
 **Multi-Language Content:**
 

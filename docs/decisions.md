@@ -980,3 +980,25 @@ ignored (detected by measuring where the editor landed), a few lines of script p
   audience).
 - *Cost if wrong*: a reader on an older browser sees the page without annotation controls (the elements stay
   undefined, so the toggle is hidden and the wrapper inert); the content itself is unaffected.
+
+## D51. Namespaced JSON Data Blocks for Client-Side Strings
+
+*2026-10-23*
+
+**Decision** (2026-10-23): client scripts get their text from `<script type="application/json"
+data-gmd-i18n="<namespace>">` blocks that `scripts-shared` emits with `{{ i18nStrings . "<prefix>" }}`, read through
+`i18n(namespace)` in `gmd-i18n.mjs`, served at `/_assets/gmd-i18n.mjs`. The helper fills `%s`/`%d`/`%[n]d`
+placeholders and picks CLDR plural variants (`key_one`, `key_few`…) with `Intl.PluralRules` on the page's `lang`; a
+missing string falls back to its key. The three keys `copy`, `copied` and `aria_copy_code` became `code_copy_label`,
+`code_copy_done` and `code_copy_aria` so every key sits under its namespace prefix.
+
+- *Context*: the `data-*` attributes on `<html>` that carried search and code-copy text were missing from all seven
+  downloadable themes, so those strings never localized there; annotations had a mechanism of their own. Each feature
+  needed its own wiring and no theme could add a namespace.
+- *Alternatives*: a global variable such as `window.gmdStrings` (order-dependent, collides between scripts, not
+  testable without a window); `data-*` attributes (the failure above, one attribute per string, no plurals);
+  one merged dictionary for all features (sends every string to every page and has no ownership of a key);
+  `Intl.MessageFormat` (TC39 Stage 1, not shipped).
+- *Consequences*: a site overriding the three renamed keys must rename them; attributes on `<html>` are ignored; a
+  theme that inlines `search.mjs` or `code-copy.mjs` itself must emit their blocks. Modules import the helper from
+  `/_assets/`, which has the same no-sub-path limitation as `assetURL`.

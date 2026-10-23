@@ -680,13 +680,21 @@ _Multi-language documentation sites with translated UI chrome._
 ### UI String Localization
 
 - [x] **Locale file format**: Three-layer YAML locale loading (built-in → theme → site overrides)
-      with BCP 47 filenames (e.g., `en-US.yml`, `fr-FR.yml`). Built-in `en-US.yml` ships with 26
+      with BCP 47 filenames (e.g., `en-US.yml`, `fr-FR.yml`). Built-in `en-US.yml` ships with the
       UI string keys. Sites override via `.gomddoc/locales/`.
 - [x] **`language` config integration**: Default language changed to BCP 47 `en-US`. Templates
       access strings via `{{ .T "key" }}` with fallback chain: requested lang → default → raw key.
       `locale.Bundle` manages loading and lookup.
 - [x] **Per-page language override**: Frontmatter `lang` overrides site-level language for
       `<html lang>` and locale string selection via `TemplateContext.Lang()`.
+
+### Client Strings Follow-Ups
+
+- [ ] Render the search modal server-side as a native `<dialog>` with its text from `.T`: that removes most search
+      client strings from `search.mjs` and follows the native-dialog rule.
+- [ ] gomddoc-website's marketing theme must switch to the namespaced blocks in the session that releases the
+      client-i18n change. It builds with the installed release, inlines `search.mjs` and `gmd-color-chip.mjs`, and
+      reads `data-copy-*` in its own script; `i18nStrings` does not exist before the release.
 
 ### Multi-Language Content
 
