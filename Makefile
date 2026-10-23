@@ -1,9 +1,7 @@
-# Before the includes, unlike every other setting: make expands a rule's prerequisites as it reads them, so `ci:` in
-# common.go.mk sees CI_EXTRA only if it is already set.
-CI_EXTRA = test-ui
-
 include common.mk
 include common.go.mk
+
+CI_EXTRA = test-ui
 
 # Scoped to what ships, for the same reason .covignore excludes docs/skills/: nothing under docs/ reaches the binary,
 # but govulncheck traces its imports all the same, so an image/png CVE would fail the gate over a tool that is never
