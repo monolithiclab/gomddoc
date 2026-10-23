@@ -23,7 +23,8 @@ func FeatureEnabled(name string, features map[string]bool) bool {
 }
 
 // ExtractPageFeatures extracts feature toggles from page frontmatter metadata.
-// It looks for a "features" key containing map[string]any with bool values.
+// It looks for a "features" key holding a map (map[string]any, or map[any]any
+// as goldmark-meta decodes frontmatter) with bool values.
 // Non-bool values are silently ignored. Returns nil if no features found.
 func ExtractPageFeatures(pageMeta map[string]any) map[string]bool {
 	if pageMeta == nil {
@@ -33,14 +34,20 @@ func ExtractPageFeatures(pageMeta map[string]any) map[string]bool {
 	if !exists || featuresRaw == nil {
 		return nil
 	}
-	featuresMap, ok := featuresRaw.(map[string]any)
-	if !ok {
-		return nil
-	}
-	result := make(map[string]bool, len(featuresMap))
-	for key, value := range featuresMap {
-		if boolValue, isBool := value.(bool); isBool {
-			result[key] = boolValue
+	result := make(map[string]bool)
+	switch featuresMap := featuresRaw.(type) {
+	case map[string]any:
+		for key, value := range featuresMap {
+			if boolValue, isBool := value.(bool); isBool {
+				result[key] = boolValue
+			}
+		}
+	case map[any]any: // goldmark-meta decodes frontmatter with yaml.v2, whose nested maps are keyed by any
+		for key, value := range featuresMap {
+			name, isString := key.(string)
+			if boolValue, isBool := value.(bool); isString && isBool {
+				result[name] = boolValue
+			}
 		}
 	}
 	if len(result) == 0 {
