@@ -487,6 +487,7 @@ func (b *BuildCmd) buildFile(
 		Content:    template.HTML(renderResult.Content), // #nosec G203
 		Enrichment: enrichment,
 		ModTime:    modTime,
+		SourceFile: filePath,
 		Renderer:   bc.templateRenderer,
 		Lang:       bc.lang,
 		TFunc:      bc.tFunc,

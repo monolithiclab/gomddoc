@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -188,33 +190,36 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 // filePath is the file that produced htmlContent, which is not r.URL.Path when
 // strip_extensions is on.
 func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData, filePath string) {
-	// The only consumer is JSON-LD's dateModified, and seo.GenerateJSONLD emits
-	// nothing at all without a domain — so gate the stat on the same condition
-	// rather than spending a syscall per render on every site that has not
-	// configured one. Under the git provider the stat is a tree walk holding the
-	// exclusive tree lock, which makes the gate worth more than it looks.
-	// A failure is not an error: JSON-LD falls back to the frontmatter date.
+	// One stat serves both the source path (a directory request was answered
+	// by its default index or a generated listing) and JSON-LD's dateModified.
+	// The mtime is used only with a domain: seo.GenerateJSONLD emits nothing
+	// without one. A failure is not an error: JSON-LD falls back to the
+	// frontmatter date.
+	info, statErr := h.provider.Stat(r.Context(), filePath)
 	var modTime time.Time
-	if h.siteConfig.Meta.Domain != "" {
-		if info, err := h.provider.Stat(r.Context(), filePath); err == nil {
-			modTime = info.ModTime()
-		}
+	if statErr == nil && h.siteConfig.Meta.Domain != "" {
+		modTime = info.ModTime()
+	}
+	sourceFile := strings.TrimPrefix(filePath, "/")
+	if statErr == nil && info.IsDir() {
+		sourceFile = h.dirIndexFile(r.Context(), sourceFile)
 	}
 
-	context := tmpl.BuildPageContext(tmpl.PageContextInput{
+	pageCtx := tmpl.BuildPageContext(tmpl.PageContextInput{
 		Site:       h.siteConfig,
 		Path:       r.URL.Path,
 		Content:    template.HTML(htmlContent), // #nosec G203
 		Enrichment: enrichment,
 		ModTime:    modTime,
+		SourceFile: sourceFile,
 		Renderer:   h.templateRenderer,
 		Lang:       h.lang,
 		TFunc:      h.tFunc,
 		Languages:  h.languages,
 	})
 
-	templateName := tmpl.ResolveLayout(h.templateRenderer, context.Page.Meta)
-	rendered, err := h.templateRenderer.Render(r.Context(), templateName, context)
+	templateName := tmpl.ResolveLayout(h.templateRenderer, pageCtx.Page.Meta)
+	rendered, err := h.templateRenderer.Render(r.Context(), templateName, pageCtx)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return
@@ -223,13 +228,23 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	serveWithETag(w, r, rendered, mimeHTML, cacheDynamic)
 }
 
+// dirIndexFile returns the default index file that answered a request for dir,
+// or "" when the provider generated a listing because there is none.
+func (h *Handler) dirIndexFile(ctx context.Context, dir string) string {
+	index := path.Join(dir, h.provider.DefaultIndex())
+	if _, err := h.provider.Stat(ctx, index); err != nil {
+		return ""
+	}
+	return index
+}
+
 // serveRaw serves content directly without template wrapping (passthrough).
 func (h *Handler) serveRaw(w http.ResponseWriter, r *http.Request, content []byte, mimeType string) {
 	serveWithETag(w, r, content, mimeType, cacheDynamic)
 }
 
 // handleError handles errors and sends appropriate HTTP responses.
-func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error, path string) {
+func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error, reqPath string) {
 	statusCode := classifyError(err)
 
 	// Log based on severity
@@ -238,23 +253,23 @@ func (h *Handler) handleError(w http.ResponseWriter, r *http.Request, err error,
 		slog.Info("File not found", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
 			slog.String("request_id", GetRequestID(r.Context())),
-			text.Safe("path", path),
+			text.Safe("path", reqPath),
 		)
 	case http.StatusForbidden:
 		slog.Info("Access forbidden", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
 			slog.String("request_id", GetRequestID(r.Context())),
-			text.Safe("path", path),
+			text.Safe("path", reqPath),
 			slog.String("error", err.Error()),
 		)
 	default:
 		slog.Error("Request failed", // #nosec G706 -- path sanitized via text.Safe (slog.LogValuer)
 			slog.Int("status", statusCode),
 			slog.String("request_id", GetRequestID(r.Context())),
-			text.Safe("path", path),
+			text.Safe("path", reqPath),
 			slog.String("error", err.Error()),
 		)
 	}
 
-	h.errorPage.Write(w, r, statusCode, path)
+	h.errorPage.Write(w, r, statusCode, reqPath)
 }

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -740,5 +741,45 @@ func TestSetupLanguagePipelines_FindingsPerLanguage(t *testing.T) {
 	}
 	if lp.Default.ContentRoot == nil || lp.ByLang["fr-FR"].ContentRoot == nil {
 		t.Error("pipelines must expose their content root")
+	}
+}
+
+// Each pipeline's renderer prefixes source files with the content directory's
+// path inside its git work tree, plus the language directory for a language
+// pipeline: the annotation export names the file to edit from the repo root.
+func TestSetupLanguagePipelines_SourcePrefix(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	srcDir := filepath.Join(repo, "docs")
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	writeTestFile(t, filepath.Join(srcDir, "fr-FR"), "README.md", "# Accueil")
+
+	cfg, err := config.NewFromServeArgs(config.ServeArgs{Dir: srcDir, Port: ":8080"})
+	if err != nil {
+		t.Fatalf("config error: %v", err)
+	}
+	prov, err := provider.NewProvider(srcDir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, nil)
+	if err != nil {
+		t.Fatalf("provider error: %v", err)
+	}
+	defer prov.Close()
+
+	lp, err := setupLanguagePipelines(cfg, prov, PipelineOptions{})
+	if err != nil {
+		t.Fatalf("setupLanguagePipelines error: %v", err)
+	}
+	if got := lp.Default.TemplateRenderer.SourcePath("README.md"); got != "docs/README.md" {
+		t.Errorf("default SourcePath = %q, want docs/README.md", got)
+	}
+	frPipe := lp.ByLang["fr-FR"]
+	if frPipe == nil {
+		t.Fatalf("no fr-FR pipeline built; languages = %v", lp.Languages)
+	}
+	if got := frPipe.TemplateRenderer.SourcePath("README.md"); got != "docs/fr-FR/README.md" {
+		t.Errorf("fr-FR SourcePath = %q, want docs/fr-FR/README.md", got)
 	}
 }

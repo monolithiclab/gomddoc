@@ -57,6 +57,11 @@ type Renderer interface {
 	// Breadcrumbs returns the trail from the site root down to path.
 	// BuildPageContext calls it; templates read PageContext.Breadcrumbs.
 	Breadcrumbs(path string) []breadcrumb.Breadcrumb
+
+	// SourcePath returns file, a path relative to the pipeline's content root,
+	// as a path relative to the git work tree root; "" for "".
+	// BuildPageContext calls it; templates read PageContext.SourcePath.
+	SourcePath(file string) string
 }
 
 // LanguageInfo holds display information for a language.
@@ -131,6 +136,7 @@ type PageContext struct {
 	RelatedDocs []enricher.RelatedDoc   // Pages sharing frontmatter tags with this page
 	Breadcrumbs []breadcrumb.Breadcrumb // Trail from the site root to this page
 	ModTime     time.Time               // Source file mtime; zero when unknown (see seo.LastModified)
+	SourcePath  string                  // Source file relative to the git work tree root; "" for a generated listing
 }
 
 // Feature returns whether a named feature is enabled for this page.
@@ -196,6 +202,7 @@ type HTMLRenderer struct {
 	breadcrumbGen  breadcrumb.Generator  // Optional breadcrumb generator
 	resolver       *resolve.PathResolver // Optional path resolver for clean URLs
 	langPrefix     string                // "/{lang}" for a language pipeline, "" for the default one
+	sourcePrefix   string                // Content root's path inside the git work tree (see WithSourcePrefix)
 	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
 	hasSearchIndex bool                  // Whether a search index was successfully built
 	loggedMissing  sync.Map              // Tracks template names already warned about
@@ -231,6 +238,15 @@ func WithBreadcrumbGenerator(gen breadcrumb.Generator) RendererOption {
 func WithLangPrefix(lang string) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.langPrefix = "/" + lang
+	}
+}
+
+// WithSourcePrefix sets the path SourcePath prepends to a content-root-relative
+// file: the content root's path inside its git work tree, plus the language
+// directory for a language pipeline.
+func WithSourcePrefix(prefix string) RendererOption {
+	return func(r *HTMLRenderer) {
+		r.sourcePrefix = prefix
 	}
 }
 
@@ -660,6 +676,15 @@ func (h *HTMLRenderer) Breadcrumbs(pagePath string) []breadcrumb.Breadcrumb {
 		return nil
 	}
 	return h.breadcrumbGen.Generate(pagePath)
+}
+
+// SourcePath returns file, relative to the content root, as a path relative to
+// the git work tree root, or "" when file is "" (a generated listing).
+func (h *HTMLRenderer) SourcePath(file string) string {
+	if file == "" {
+		return ""
+	}
+	return path.Join(h.sourcePrefix, file)
 }
 
 // filterTOC returns a filtered list of TOCNode children for template rendering.

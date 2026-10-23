@@ -765,3 +765,59 @@ func TestHandlerServeHTML_ModTime(t *testing.T) {
 		t.Errorf("JSON-LD should carry the resolved file's mtime %s; got %s", want, w.Body.String())
 	}
 }
+
+// TestHandlerServeHTML_SourcePath pins which file a page's SourcePath names:
+// the resolved file under strip_extensions (not the URL), a directory's default
+// index, and nothing for a generated listing, each under the pipeline prefix.
+func TestHandlerServeHTML_SourcePath(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":         &fstest.MapFile{Data: []byte("# Guide")},
+		"api/README.md":    &fstest.MapFile{Data: []byte("# API")},
+		"misc/notes.txt":   &fstest.MapFile{Data: []byte("notes")},
+		"README.md":        &fstest.MapFile{Data: []byte("# Home")},
+		"api/reference.md": &fstest.MapFile{Data: []byte("# Ref")},
+	}
+	resolver := resolve.Build(files, resolve.BuildOptions{
+		StripExtensions: []string{".md"},
+		HasRenderer:     func(mimeType string) bool { return mimeType == "text/markdown" },
+	})
+	siteConfig := config.NewSiteConfig(".")
+	rend := tmpl.NewHTMLRenderer(&siteConfig, fstest.MapFS{
+		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(`[{{ .Page.SourcePath }}]`)},
+	}, tmpl.WithSourcePrefix("docs"))
+
+	handler := NewHandler(HandlerConfig{
+		Provider:         newMemoryProvider(files, "README.md", true),
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: rend,
+		SiteConfig:       &siteConfig,
+		Resolver:         resolver,
+	})
+
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "/guide", want: "[docs/guide.md]"},
+		{path: "/api/reference.md", want: "[docs/api/reference.md]"},
+		{path: "/api", want: "[docs/api/README.md]"},
+		{path: "/", want: "[docs/README.md]"},
+		{path: "/misc", want: "[]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
+			w := httptest.NewRecorder()
+			handler.ServeContent(w, httptest.NewRequest("GET", tt.path, nil))
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+			}
+			if got := w.Body.String(); got != tt.want {
+				t.Errorf("body = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

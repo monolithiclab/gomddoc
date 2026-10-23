@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/http"
 	"testing"
+	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -113,6 +114,52 @@ func TestBuildPageContext(t *testing.T) {
 		// The clone still carries what the caller supplied.
 		if ctx.Page.Meta["category"] != "docs" {
 			t.Errorf("category = %v, want docs", ctx.Page.Meta["category"])
+		}
+	})
+}
+
+func TestBuildPageContext_SourcePath(t *testing.T) {
+	t.Parallel()
+
+	site := &config.SiteConfig{Language: "en-US"}
+	tests := []struct {
+		name   string
+		prefix string
+		file   string
+		want   string
+	}{
+		{name: "content dir inside the work tree", prefix: "docs", file: "specs/x.md", want: "docs/specs/x.md"},
+		{name: "language pipeline", prefix: "docs/fr-FR", file: "index.md", want: "docs/fr-FR/index.md"},
+		{name: "content dir is the work tree root", prefix: "", file: "guide.md", want: "guide.md"},
+		{name: "generated listing has no source", prefix: "docs", file: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := NewHTMLRenderer(site, fstest.MapFS{}, WithSourcePrefix(tt.prefix))
+			ctx := BuildPageContext(PageContextInput{
+				Site:       site,
+				Path:       "/x",
+				Enrichment: &enricher.EnrichmentData{},
+				SourceFile: tt.file,
+				Renderer:   r,
+			})
+			if ctx.Page.SourcePath != tt.want {
+				t.Errorf("SourcePath = %q, want %q", ctx.Page.SourcePath, tt.want)
+			}
+		})
+	}
+
+	t.Run("nil renderer keeps the file as given", func(t *testing.T) {
+		t.Parallel()
+		ctx := BuildPageContext(PageContextInput{
+			Site:       site,
+			Path:       "/x",
+			Enrichment: &enricher.EnrichmentData{},
+			SourceFile: "a/b.md",
+		})
+		if ctx.Page.SourcePath != "a/b.md" {
+			t.Errorf("SourcePath = %q, want a/b.md", ctx.Page.SourcePath)
 		}
 	})
 }

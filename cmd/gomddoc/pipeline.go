@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"path"
 	"path/filepath"
 	"slices"
 
@@ -275,7 +276,10 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	// Every absolute site path this pipeline emits carries the language prefix:
 	// template content URLs and redirect targets alike.
 	langPrefix := ""
-	templateRenderer.Configure(template.WithResolver(resolver))
+	templateRenderer.Configure(
+		template.WithResolver(resolver),
+		template.WithSourcePrefix(path.Join(sourcePrefix(cfg.Server.Dir), opts.Lang)),
+	)
 	if opts.Lang != "" {
 		langPrefix = "/" + opts.Lang
 		templateRenderer.Configure(template.WithLangPrefix(opts.Lang))
