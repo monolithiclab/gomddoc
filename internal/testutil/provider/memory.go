@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"io/fs"
+	pathpkg "path"
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/negotiate"
@@ -36,7 +37,7 @@ func NewMemoryProvider(files fs.FS, defaultIndex string, dirIndex bool) *MemoryP
 	}
 }
 
-func (m *MemoryProvider) ReadFile(ctx context.Context, path string) ([]byte, string, error) {
+func (m *MemoryProvider) ReadFile(ctx context.Context, path string) ([]byte, string, string, error) {
 	path = strings.TrimPrefix(path, "/")
 	if path == "" || path == "." {
 		path = m.defaultIndex
@@ -46,35 +47,30 @@ func (m *MemoryProvider) ReadFile(ctx context.Context, path string) ([]byte, str
 	info, err := m.Stat(ctx, path)
 	if err == nil && info.IsDir() {
 		// Try default index in directory
-		indexPath := path
-		if indexPath != "." {
-			indexPath += "/"
-		}
-		indexPath += m.defaultIndex
-
+		indexPath := pathpkg.Join(path, m.defaultIndex)
 		if data, err := fs.ReadFile(m.fsys, indexPath); err == nil {
-			return data, negotiate.DetectMIME(indexPath), nil
+			return data, negotiate.DetectMIME(indexPath), indexPath, nil
 		}
 
 		if m.dirIndex {
 			// Generate directory listing
 			entries, err := fs.ReadDir(m.fsys, path)
 			if err != nil {
-				return nil, "", provider.ErrNotFound
+				return nil, "", "", provider.ErrNotFound
 			}
 			listing := provider.GenerateMarkdownListing(path, entries, nil)
-			return listing, "text/markdown; charset=utf-8", nil
+			return listing, "text/markdown; charset=utf-8", "", nil
 		}
 
-		return nil, "", provider.ErrDirListingDisabled
+		return nil, "", "", provider.ErrDirListingDisabled
 	}
 
 	data, err := fs.ReadFile(m.fsys, path)
 	if err != nil {
-		return nil, "", provider.ErrNotFound
+		return nil, "", "", provider.ErrNotFound
 	}
 
-	return data, negotiate.DetectMIME(path), nil
+	return data, negotiate.DetectMIME(path), path, nil
 }
 
 func (m *MemoryProvider) Stat(_ context.Context, path string) (fs.FileInfo, error) {

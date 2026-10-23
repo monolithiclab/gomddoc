@@ -10,7 +10,9 @@ import (
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	contentprovider "github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
+	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/testutil/provider"
 	registryutil "github.com/monolithiclab/gomddoc/internal/testutil/registry"
@@ -21,6 +23,25 @@ type memoryProvider = provider.MemoryProvider
 
 func newMemoryProvider(files fstest.MapFS, defaultIndex string, dirIndex bool) *memoryProvider {
 	return provider.NewMemoryProvider(files, defaultIndex, dirIndex)
+}
+
+// newSourcePathHandler serves files from prov with .md extensions stripped,
+// rendering every page through layout: the setup the tests pinning which file
+// a page was read from (SourcePath, the mtime stat) share.
+func newSourcePathHandler(files fstest.MapFS, prov contentprovider.Provider, site *config.SiteConfig, layout string, opts ...tmpl.RendererOption) *Handler {
+	return NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: tmpl.NewHTMLRenderer(site, fstest.MapFS{
+			"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(layout)},
+		}, opts...),
+		SiteConfig: site,
+		Resolver: resolve.Build(files, resolve.BuildOptions{
+			StripExtensions: []string{".md"},
+			HasRenderer:     func(mimeType string) bool { return mimeType == "text/markdown" },
+		}),
+	})
 }
 
 // testPassword is the password matching the sole "admin" credential in the

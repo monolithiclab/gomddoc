@@ -94,7 +94,8 @@ Each subcommand lives in its own file under `cmd/gomddoc/`.
 
 ```go
 type Provider interface {
-    ReadFile(ctx context.Context, path string) (content []byte, mimeType string, err error)
+    // file: the content file read (path, a directory's index), "" for a generated listing
+    ReadFile(ctx context.Context, path string) (content []byte, mimeType, file string, err error)
     Stat(ctx context.Context, path string) (fs.FileInfo, error)
     DefaultIndex() string
     RootFS(ctx context.Context) (fs.FS, error)
@@ -407,14 +408,15 @@ rather than a precomputed trail, so the trail and `Path` cannot disagree. Error 
 `PageContext.SourcePath` names the file a page was rendered from, relative to the root of the git work tree holding
 the content directory (`docs/specs/x-design.md` for `gomddoc serve docs`), so an annotation export tells a harness
 working from the repository root which file to edit. Callers pass the content-root-relative file
-(`PageContextInput.SourceFile`: build's walked path, or serve's resolved file, a directory's default index, or `""`
-for a generated listing) and `BuildPageContext` asks `Renderer.SourcePath` to prefix it. `setupPipeline` sets the
+(`PageContextInput.SourceFile`: build's walked path, or the file serve's `Provider.ReadFile` reports having read: the
+resolved file, a directory's default index, or `""` for a generated listing) and `BuildPageContext` asks
+`Renderer.SourcePath` to prefix it. `setupPipeline` sets the
 prefix (`WithSourcePrefix`) from `sourcePrefix(cfg.Server.Dir)`, which walks up to the first ancestor holding a
 `.git` entry, plus the language directory for a language pipeline. Outside a work tree the prefix is empty; for
-git-URL content it is the URL's `#ref:subdir` (`provider.GitURLSubdir`), the provider's root inside the tree. Serve
-tells a file from a directory by the MIME type the read returned (a file's is always its own path's), so only a
-directory request costs a provider `Stat` (D34). It is never derived from the URL, which `strip_extensions` and
-language prefixes make ambiguous. Error pages leave it empty.
+git-URL content it is the URL's `#ref:subdir` (`provider.GitURLSubdir`), the provider's root inside the tree. Naming the file costs serve no `Stat`
+(D34), and the JSON-LD mtime stat (only with a domain) is of the same file, so a directory page is dated by its index.
+It is never derived from the URL, which `strip_extensions` and language prefixes make ambiguous. Error pages leave it
+empty.
 
 ### 7. Navigation Layer
 

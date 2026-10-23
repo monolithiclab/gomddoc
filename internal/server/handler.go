@@ -1,12 +1,10 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
-	"path"
 	"strings"
 	"time"
 
@@ -111,14 +109,12 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Read file + get MIME type.
-	filePath := r.URL.Path
-	content, mimeType, err := h.provider.ReadFile(r.Context(), filePath)
+	content, mimeType, sourceFile, err := h.provider.ReadFile(r.Context(), r.URL.Path)
 	if err != nil && errors.Is(err, provider.ErrNotFound) && h.resolver != nil {
 		// Try resolver for extensionless paths
 		cleanPath := strings.TrimPrefix(r.URL.Path, "/")
 		if realPath, found := h.resolver.Resolve(cleanPath); found {
-			filePath = "/" + realPath
-			content, mimeType, err = h.provider.ReadFile(r.Context(), filePath)
+			content, mimeType, sourceFile, err = h.provider.ReadFile(r.Context(), "/"+realPath)
 		}
 	}
 	if err != nil {
@@ -175,7 +171,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Vary", "Accept")
 	outputNormalized := negotiate.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
-		h.serveHTML(w, r, renderResult.Content, enrichment, filePath, mimeType)
+		h.serveHTML(w, r, renderResult.Content, enrichment, sourceFile)
 	} else {
 		// Use the full MIME type from RenderResult if available, otherwise the selected output
 		serveMimeType := renderResult.MimeType
@@ -187,9 +183,10 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveHTML wraps HTML content in the site template and serves it.
-// filePath is the file that produced htmlContent, which is not r.URL.Path when
-// strip_extensions is on, and mimeType the type the provider read it as.
-func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData, filePath, mimeType string) {
+// sourceFile is the file the provider read to produce htmlContent, which is
+// not r.URL.Path under strip_extensions or for a directory, and "" for a
+// generated listing.
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData, sourceFile string) {
 	// The only consumer is JSON-LD's dateModified, and seo.GenerateJSONLD emits
 	// nothing at all without a domain — so gate the stat on the same condition
 	// rather than spending a syscall per render on every site that has not
@@ -197,8 +194,8 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	// exclusive tree lock, which makes the gate worth more than it looks.
 	// A failure is not an error: JSON-LD falls back to the frontmatter date.
 	var modTime time.Time
-	if h.siteConfig.Meta.Domain != "" {
-		if info, err := h.provider.Stat(r.Context(), filePath); err == nil {
+	if h.siteConfig.Meta.Domain != "" && sourceFile != "" {
+		if info, err := h.provider.Stat(r.Context(), sourceFile); err == nil {
 			modTime = info.ModTime()
 		}
 	}
@@ -209,7 +206,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		Content:    template.HTML(htmlContent), // #nosec G203
 		Enrichment: enrichment,
 		ModTime:    modTime,
-		SourceFile: h.sourceFile(r.Context(), filePath, mimeType),
+		SourceFile: sourceFile,
 		Renderer:   h.templateRenderer,
 		Lang:       h.lang,
 		TFunc:      h.tFunc,
@@ -224,26 +221,6 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	}
 
 	serveWithETag(w, r, rendered, mimeHTML, cacheDynamic)
-}
-
-// sourceFile returns the content file that answered a read of filePath, which
-// the provider returned as mimeType: filePath itself for a file, the default
-// index for a directory, or "" for a generated listing. A file's type is
-// always DetectMIME of its own path, so a mismatch, or a slash-terminated
-// path, means a directory, and only a directory costs a Stat (D34: under the
-// git provider it is a tree walk holding the exclusive lock). A directory with
-// an extension that matches its index's type ("notes.md/") is read as a file
-// unless requested with the trailing slash.
-func (h *Handler) sourceFile(ctx context.Context, filePath, mimeType string) string {
-	file := strings.TrimPrefix(filePath, "/")
-	if file != "" && !strings.HasSuffix(file, "/") && negotiate.DetectMIME(file) == mimeType {
-		return file
-	}
-	index := path.Join(file, h.provider.DefaultIndex())
-	if _, err := h.provider.Stat(ctx, index); err != nil {
-		return ""
-	}
-	return index
 }
 
 // serveRaw serves content directly without template wrapping (passthrough).

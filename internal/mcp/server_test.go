@@ -22,13 +22,13 @@ type testProvider struct {
 	defaultIndex string
 }
 
-func (p *testProvider) ReadFile(_ context.Context, path string) ([]byte, string, error) {
+func (p *testProvider) ReadFile(_ context.Context, path string) ([]byte, string, string, error) {
 	path = strings.TrimPrefix(path, "/")
 	data, err := fs.ReadFile(p.fsys, path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
-	return data, "text/markdown", nil
+	return data, "text/markdown", path, nil
 }
 
 func (p *testProvider) Stat(_ context.Context, path string) (fs.FileInfo, error) {

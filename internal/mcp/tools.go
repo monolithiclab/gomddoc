@@ -151,7 +151,7 @@ func (s *MCPServer) handleReadPage(ctx context.Context, _ *mcp.CallToolRequest, 
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
-	content, _, err := s.deps.Provider.ReadFile(ctx, input.Path)
+	content, _, _, err := s.deps.Provider.ReadFile(ctx, input.Path)
 	if err != nil {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
@@ -250,7 +250,7 @@ func (s *MCPServer) handleReadSection(ctx context.Context, _ *mcp.CallToolReques
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}
 
-	content, _, err := s.deps.Provider.ReadFile(ctx, input.Path)
+	content, _, _, err := s.deps.Provider.ReadFile(ctx, input.Path)
 	if err != nil {
 		return textResult(fmt.Sprintf("Page not found: %s", input.Path)), nil, nil
 	}

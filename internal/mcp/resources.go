@@ -83,7 +83,7 @@ func (s *MCPServer) handlePageResource(ctx context.Context, req *mcp.ReadResourc
 		return nil, mcp.ResourceNotFoundError(uri)
 	}
 
-	content, _, err := s.deps.Provider.ReadFile(ctx, filePath)
+	content, _, _, err := s.deps.Provider.ReadFile(ctx, filePath)
 	if err != nil {
 		return nil, mcp.ResourceNotFoundError(uri)
 	}

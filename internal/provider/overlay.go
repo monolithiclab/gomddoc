@@ -25,18 +25,18 @@ func NewOverlayProvider(primary Provider, fallback fs.FS) *OverlayProvider {
 }
 
 // ReadFile reads from the primary provider, falling back to the filesystem if not found.
-func (o *OverlayProvider) ReadFile(ctx context.Context, requestPath string) ([]byte, string, error) {
-	content, mimeType, err := o.primary.ReadFile(ctx, requestPath)
+func (o *OverlayProvider) ReadFile(ctx context.Context, requestPath string) ([]byte, string, string, error) {
+	content, mimeType, file, err := o.primary.ReadFile(ctx, requestPath)
 	if err != nil && o.fallback != nil && errors.Is(err, ErrNotFound) {
 		cleanPath := normalizePath(requestPath)
 		if cleanPath == "." {
-			return nil, "", err
+			return nil, "", "", err
 		}
 		if data, readErr := fs.ReadFile(o.fallback, cleanPath); readErr == nil {
-			return data, negotiate.DetectMIME(requestPath), nil
+			return data, negotiate.DetectMIME(requestPath), cleanPath, nil
 		}
 	}
-	return content, mimeType, err
+	return content, mimeType, file, err
 }
 
 // Stat returns info from the primary provider, falling back to the filesystem if not found.

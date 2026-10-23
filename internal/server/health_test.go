@@ -20,8 +20,8 @@ var _ = (interface {
 	Stat(context.Context, string) (fs.FileInfo, error)
 })((*errorProvider)(nil))
 
-func (e *errorProvider) ReadFile(_ context.Context, _ string) ([]byte, string, error) {
-	return nil, "", errors.New("not implemented")
+func (e *errorProvider) ReadFile(_ context.Context, _ string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (e *errorProvider) Stat(_ context.Context, _ string) (fs.FileInfo, error) {

@@ -207,6 +207,7 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 		path        string
 		wantContent string
 		wantMIME    string
+		wantFile    string
 		wantErr     error
 	}{
 		{
@@ -214,24 +215,28 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 			path:        "/README.md",
 			wantContent: "# Test\n\nHello",
 			wantMIME:    "text/markdown",
+			wantFile:    "README.md",
 		},
 		{
 			name:        "read nested file",
 			path:        "/docs/guide.md",
 			wantContent: "# Guide",
 			wantMIME:    "text/markdown",
+			wantFile:    "docs/guide.md",
 		},
 		{
 			name:        "read JSON file",
 			path:        "/data.json",
 			wantContent: `{"key": "value"}`,
 			wantMIME:    "application/json",
+			wantFile:    "data.json",
 		},
 		{
 			name:        "root returns README",
 			path:        "/",
 			wantContent: "# Test\n\nHello",
 			wantMIME:    "text/markdown",
+			wantFile:    "README.md",
 		},
 		{
 			name:    "not found",
@@ -249,7 +254,7 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, mimeType, err := p.ReadFile(t.Context(), tt.path)
+			content, mimeType, file, err := p.ReadFile(t.Context(), tt.path)
 
 			if tt.wantErr != nil {
 				if err == nil {
@@ -272,6 +277,10 @@ func TestGitProvider_ReadFileMocked(t *testing.T) {
 
 			if tt.wantMIME != "" && !strings.Contains(mimeType, tt.wantMIME) {
 				t.Errorf("ReadFile() mimeType = %q, want to contain %q", mimeType, tt.wantMIME)
+			}
+
+			if file != tt.wantFile {
+				t.Errorf("ReadFile() file = %q, want %q", file, tt.wantFile)
 			}
 		})
 	}
@@ -400,9 +409,12 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			commitTime:   commitTime,
 		}
 
-		content, mimeType, err := p.ReadFile(t.Context(), "/docs")
+		content, mimeType, file, err := p.ReadFile(t.Context(), "/docs")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
+		}
+		if file != "" {
+			t.Errorf("file = %q, want \"\" for a generated listing", file)
 		}
 
 		if mimeType != "text/markdown; charset=utf-8" {
@@ -435,7 +447,7 @@ func TestGitProvider_DirectoryListingMocked(t *testing.T) {
 			commitTime:   commitTime,
 		}
 
-		_, _, err := p.ReadFile(t.Context(), "/docs")
+		_, _, _, err := p.ReadFile(t.Context(), "/docs")
 		if err == nil {
 			t.Error("ReadFile() error = nil, want error")
 		}
@@ -471,7 +483,7 @@ func TestGitProvider_LFSPointerDetection(t *testing.T) {
 		commitTime:   commitTime,
 	}
 
-	_, _, err := p.ReadFile(t.Context(), "/large-file.bin")
+	_, _, _, err := p.ReadFile(t.Context(), "/large-file.bin")
 	if err == nil {
 		t.Error("ReadFile() error = nil, want error for LFS pointer")
 	}
@@ -830,7 +842,7 @@ func TestGitProvider_FileSizeLimit(t *testing.T) {
 		commitTime:   commitTime,
 	}
 
-	_, _, err := p.ReadFile(t.Context(), "/file.txt")
+	_, _, _, err := p.ReadFile(t.Context(), "/file.txt")
 	if err == nil {
 		t.Error("ReadFile() error = nil, want error for file too large")
 	}
@@ -878,7 +890,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 	}
 
 	t.Run("root returns docs README", func(t *testing.T) {
-		content, _, err := p.ReadFile(t.Context(), "/")
+		content, _, _, err := p.ReadFile(t.Context(), "/")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
@@ -888,7 +900,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 	})
 
 	t.Run("can access files in subdir", func(t *testing.T) {
-		content, _, err := p.ReadFile(t.Context(), "/guide.md")
+		content, _, _, err := p.ReadFile(t.Context(), "/guide.md")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
@@ -898,7 +910,7 @@ func TestGitProvider_SubdirMocked(t *testing.T) {
 	})
 
 	t.Run("can access nested subdirectory", func(t *testing.T) {
-		content, _, err := p.ReadFile(t.Context(), "/api/types.md")
+		content, _, _, err := p.ReadFile(t.Context(), "/api/types.md")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
@@ -986,7 +998,7 @@ func TestGitProvider_EnsureCloned_AlreadyClosed(t *testing.T) {
 	}
 	_ = p.Close()
 
-	_, _, err = p.ReadFile(t.Context(), "/README.md")
+	_, _, _, err = p.ReadFile(t.Context(), "/README.md")
 	if err == nil {
 		t.Error("ReadFile() on closed provider should return error")
 	}
@@ -1109,7 +1121,7 @@ func TestGitProvider_ConcurrentReadsAreRaceFree(t *testing.T) {
 	for i := range goroutines {
 		wg.Go(func() {
 			reqPath := paths[i%len(paths)]
-			if _, _, err := p.ReadFile(t.Context(), reqPath); err != nil {
+			if _, _, _, err := p.ReadFile(t.Context(), reqPath); err != nil {
 				errs[i] = fmt.Errorf("ReadFile(%s): %w", reqPath, err)
 				return
 			}
@@ -1147,7 +1159,7 @@ func TestGitProvider_NilTreeIsAnErrorNotAPanic(t *testing.T) {
 		repo:         createTestRepo(t, map[string]string{"README.md": "# Root"}),
 	}
 
-	if _, _, err := p.ReadFile(t.Context(), "/README.md"); !errors.Is(err, ErrProviderClosed) {
+	if _, _, _, err := p.ReadFile(t.Context(), "/README.md"); !errors.Is(err, ErrProviderClosed) {
 		t.Errorf("ReadFile() error = %v, want %v", err, ErrProviderClosed)
 	}
 	if _, err := p.Stat(t.Context(), "/README.md"); !errors.Is(err, ErrProviderClosed) {
@@ -1678,7 +1690,7 @@ func TestGitProvider_StorerFaultIsNotNotFound(t *testing.T) {
 	p := gitProviderOver(t, repo, &faultyStorer{Storer: repo.Storer, fail: guide.Hash})
 
 	t.Run("ReadFile", func(t *testing.T) {
-		_, _, err := p.ReadFile(t.Context(), "/docs/guide.md")
+		_, _, _, err := p.ReadFile(t.Context(), "/docs/guide.md")
 		assertStorerFault(t, err)
 	})
 
@@ -1688,7 +1700,7 @@ func TestGitProvider_StorerFaultIsNotNotFound(t *testing.T) {
 	})
 
 	t.Run("a genuinely missing path is still ErrNotFound", func(t *testing.T) {
-		if _, _, err := p.ReadFile(t.Context(), "/nope.md"); !errors.Is(err, ErrNotFound) {
+		if _, _, _, err := p.ReadFile(t.Context(), "/nope.md"); !errors.Is(err, ErrNotFound) {
 			t.Errorf("ReadFile() error = %v, want ErrNotFound", err)
 		}
 		if _, err := p.Stat(t.Context(), "/nope.md"); !errors.Is(err, ErrNotFound) {

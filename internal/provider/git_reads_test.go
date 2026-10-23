@@ -103,7 +103,7 @@ func TestGitProvider_ReadFile_NoWastedDecodeOnDirectory(t *testing.T) {
 		"docs/guide.md": "# Guide",
 	})
 
-	body, _, err := p.ReadFile(t.Context(), "/docs")
+	body, _, _, err := p.ReadFile(t.Context(), "/docs")
 	if err != nil {
 		t.Fatalf("ReadFile(/docs) error = %v", err)
 	}
@@ -126,7 +126,7 @@ func TestGitProvider_ReadFile_ExactSizeBuffer(t *testing.T) {
 
 	p := benchProvider(t)
 
-	body, _, err := p.ReadFile(t.Context(), "/docs/guide.md")
+	body, _, _, err := p.ReadFile(t.Context(), "/docs/guide.md")
 	if err != nil {
 		t.Fatalf("ReadFile error = %v", err)
 	}
@@ -240,7 +240,7 @@ func BenchmarkGitProvider_ReadFile(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, _, err := p.ReadFile(ctx, "/docs/guide.md"); err != nil {
+		if _, _, _, err := p.ReadFile(ctx, "/docs/guide.md"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -252,7 +252,7 @@ func BenchmarkGitProvider_ReadDir(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, _, err := p.ReadFile(ctx, "/docs"); err != nil {
+		if _, _, _, err := p.ReadFile(ctx, "/docs"); err != nil {
 			b.Fatal(err)
 		}
 	}

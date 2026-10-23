@@ -64,45 +64,35 @@ func NewFilesystemProviderFromFS(fsys fs.FS, defaultIndex string, dirIndex bool,
 //   - Uses mime.TypeByExtension() for file extension mapping
 //   - Returns "text/markdown" for README.md and directory listings
 //   - Defaults to "application/octet-stream" for unknown types
-func (f *FilesystemProvider) ReadFile(_ context.Context, requestPath string) ([]byte, string, error) {
+func (f *FilesystemProvider) ReadFile(_ context.Context, requestPath string) ([]byte, string, string, error) {
 	cleanPath := normalizePath(requestPath)
 
 	// Check if path is directory
 	info, err := fs.Stat(f.root, cleanPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
+			return nil, "", "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
 		}
-		return nil, "", &PathError{Op: "stat", Path: requestPath, Err: err}
+		return nil, "", "", &PathError{Op: "stat", Path: requestPath, Err: err}
 	}
 
 	if info.IsDir() {
-		return f.handleDirectory(cleanPath, requestPath)
+		return handleDirectory(requestPath, cleanPath, f.defaultIndex, f.dirIndex, f.excludePatterns,
+			func() ([]byte, error) { return fs.ReadFile(f.root, path.Join(cleanPath, f.defaultIndex)) },
+			func() ([]fs.DirEntry, error) { return fs.ReadDir(f.root, cleanPath) },
+		)
 	}
 
 	// Read regular file
 	content, err := fs.ReadFile(f.root, cleanPath)
 	if err != nil {
-		return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
+		return nil, "", "", &PathError{Op: "read", Path: requestPath, Err: err}
 	}
 
 	// Detect MIME type (returns full type with charset if registered)
 	mimeType := negotiate.DetectMIME(requestPath)
 
-	return content, mimeType, nil
-}
-
-// handleDirectory processes directory requests with default index fallback and optional listing.
-func (f *FilesystemProvider) handleDirectory(dirPath, requestPath string) ([]byte, string, error) {
-	indexPath := path.Join(dirPath, f.defaultIndex)
-	if dirPath == "." {
-		indexPath = f.defaultIndex
-	}
-
-	return handleDirectory(requestPath, f.defaultIndex, f.dirIndex, f.excludePatterns,
-		func() ([]byte, error) { return fs.ReadFile(f.root, indexPath) },
-		func() ([]fs.DirEntry, error) { return fs.ReadDir(f.root, dirPath) },
-	)
+	return content, mimeType, cleanPath, nil
 }
 
 // Stat returns a FileInfo describing the named file

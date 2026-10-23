@@ -59,7 +59,7 @@ func TestOverlayProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, _, err := overlay.ReadFile(ctx, tt.path)
+			content, _, file, err := overlay.ReadFile(ctx, tt.path)
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("err = %v, want %v", err, tt.wantErr)
@@ -71,6 +71,9 @@ func TestOverlayProvider(t *testing.T) {
 			}
 			if string(content) != tt.wantContent {
 				t.Errorf("content = %q, want %q", string(content), tt.wantContent)
+			}
+			if want := tt.path[1:]; file != want {
+				t.Errorf("file = %q, want %q", file, want)
 			}
 		})
 	}
@@ -236,7 +239,7 @@ func TestOverlayProvider_ReadFile_RootPath(t *testing.T) {
 	primary, _ := NewFilesystemProviderFromFS(primaryFiles, "README.md", false, nil)
 	overlay := NewOverlayProvider(primary, fallbackFiles)
 
-	_, _, err := overlay.ReadFile(context.Background(), "/")
+	_, _, _, err := overlay.ReadFile(context.Background(), "/")
 	if err == nil {
 		t.Fatal("ReadFile(\"/\") error = nil, want error")
 	}

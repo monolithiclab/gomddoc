@@ -121,7 +121,7 @@ func (s *MCPServer) handleSummarizePage(ctx context.Context, req *mcp.GetPromptR
 		return nil, fmt.Errorf("page not found: %s", pagePath)
 	}
 
-	content, _, err := s.deps.Provider.ReadFile(ctx, pagePath)
+	content, _, _, err := s.deps.Provider.ReadFile(ctx, pagePath)
 	if err != nil {
 		return nil, fmt.Errorf("page not found: %s", pagePath)
 	}

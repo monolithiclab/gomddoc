@@ -20,8 +20,11 @@ import (
 type Provider interface {
 	// ReadFile reads a file at the given path and detects its MIME type
 	// Returns full MIME type with parameters (e.g., "text/html; charset=utf-8")
-	// For directories, may return README.md content or directory listing based on configuration
-	ReadFile(ctx context.Context, path string) (content []byte, mimeType string, err error)
+	// For directories, may return README.md content or directory listing based on configuration.
+	// file is the content file actually read, relative to the content root
+	// without a leading slash: path itself, a directory's default index, or
+	// "" for a generated directory listing.
+	ReadFile(ctx context.Context, path string) (content []byte, mimeType, file string, err error)
 	// Stat returns a FileInfo describing the named file
 	Stat(ctx context.Context, path string) (fs.FileInfo, error)
 	// DefaultIndex returns the default index file name

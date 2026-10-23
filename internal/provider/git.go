@@ -378,14 +378,14 @@ func (g *GitProvider) classifyCloneError(err error) error {
 }
 
 // ReadFile reads a file at the given path and returns its content with MIME type.
-func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte, string, error) {
+func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte, string, string, error) {
 	if err := g.ensureCloned(ctx); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	cleanPath := normalizePath(requestPath)
 	if cleanPath != "." && !fs.ValidPath(cleanPath) {
-		return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
+		return nil, "", "", &PathError{Op: "read", Path: requestPath, Err: ErrNotFound}
 	}
 
 	g.treeState.mu.Lock()
@@ -393,13 +393,13 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 
 	// Close may have run between ensureCloned and the lock.
 	if g.treeState.tree == nil {
-		return nil, "", &PathError{Op: "read", Path: requestPath, Err: ErrProviderClosed}
+		return nil, "", "", &PathError{Op: "read", Path: requestPath, Err: ErrProviderClosed}
 	}
 	tree, modTime := g.treeState.tree, g.treeState.modTime
 
 	// Handle root directory
 	if cleanPath == "." {
-		return g.handleDirectoryLocked(tree, modTime, requestPath)
+		return g.handleDirectoryLocked(tree, modTime, cleanPath, requestPath)
 	}
 
 	file, subtree, err := resolveTreeNode(tree, g.treeState.objects, cleanPath)
@@ -407,12 +407,16 @@ func (g *GitProvider) ReadFile(ctx context.Context, requestPath string) ([]byte,
 		if isMissingGitObject(err) {
 			err = ErrNotFound
 		}
-		return nil, "", &PathError{Op: "read", Path: requestPath, Err: err}
+		return nil, "", "", &PathError{Op: "read", Path: requestPath, Err: err}
 	}
 	if subtree != nil {
-		return g.handleDirectoryLocked(subtree, modTime, requestPath)
+		return g.handleDirectoryLocked(subtree, modTime, cleanPath, requestPath)
 	}
-	return g.readFileLocked(file, requestPath)
+	content, mimeType, err := g.readFileLocked(file, requestPath)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return content, mimeType, cleanPath, nil
 }
 
 // readFileLocked reads the content of a file object.
@@ -447,8 +451,8 @@ func (g *GitProvider) readFileLocked(file *object.File, requestPath string) ([]b
 
 // handleDirectoryLocked processes a directory request against an
 // already-resolved tree. Must be called with g.treeState.mu held.
-func (g *GitProvider) handleDirectoryLocked(dirTree *object.Tree, modTime time.Time, requestPath string) ([]byte, string, error) {
-	return handleDirectory(requestPath, g.defaultIndex, g.dirIndex, g.excludePatterns,
+func (g *GitProvider) handleDirectoryLocked(dirTree *object.Tree, modTime time.Time, dirPath, requestPath string) ([]byte, string, string, error) {
+	return handleDirectory(requestPath, dirPath, g.defaultIndex, g.dirIndex, g.excludePatterns,
 		func() ([]byte, error) {
 			indexFile, err := dirTree.File(g.defaultIndex)
 			if err != nil {

@@ -92,7 +92,7 @@ func TestFilesystemProvider_ReadFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, mimeType, err := provider.ReadFile(t.Context(), tt.path)
+			content, mimeType, _, err := provider.ReadFile(t.Context(), tt.path)
 
 			if tt.wantErr {
 				if err == nil {
@@ -120,6 +120,43 @@ func TestFilesystemProvider_ReadFile(t *testing.T) {
 	}
 }
 
+// TestFilesystemProvider_ReadFile_ReportsFile pins the file ReadFile reports
+// having read: the request path itself, a directory's default index, or ""
+// for a generated listing.
+func TestFilesystemProvider_ReadFile_ReportsFile(t *testing.T) {
+	t.Parallel()
+
+	p, err := NewFilesystemProviderFromFS(fstest.MapFS{
+		"README.md":          &fstest.MapFile{Data: []byte("# Home")},
+		"guide.md":           &fstest.MapFile{Data: []byte("# Guide")},
+		"api/README.md":      &fstest.MapFile{Data: []byte("# API")},
+		"misc/notes.txt":     &fstest.MapFile{Data: []byte("notes")},
+		"notes.md/README.md": &fstest.MapFile{Data: []byte("# Notes")},
+	}, "README.md", true, nil)
+	if err != nil {
+		t.Fatalf("NewFilesystemProviderFromFS: %v", err)
+	}
+
+	for reqPath, want := range map[string]string{
+		"/guide.md":  "guide.md",
+		"guide.md":   "guide.md",
+		"/api":       "api/README.md",
+		"/api/":      "api/README.md",
+		"/":          "README.md",
+		"/misc":      "",
+		"/notes.md":  "notes.md/README.md",
+		"/notes.md/": "notes.md/README.md",
+	} {
+		_, _, file, err := p.ReadFile(t.Context(), reqPath)
+		if err != nil {
+			t.Fatalf("ReadFile(%q): %v", reqPath, err)
+		}
+		if file != want {
+			t.Errorf("ReadFile(%q) file = %q, want %q", reqPath, file, want)
+		}
+	}
+}
+
 func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 	readmeContent := "Directory README"
 	mapFS := fstest.MapFS{
@@ -135,7 +172,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
 
-		content, mimeType, err := provider.ReadFile(t.Context(), "test_dir_provider")
+		content, mimeType, _, err := provider.ReadFile(t.Context(), "test_dir_provider")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v, want nil", err)
 		}
@@ -157,7 +194,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 
 		// fstest.MapFS implicitly handles directories if files exist within them
 		// checking "test_dir_provider/empty" which has files but no README
-		_, _, err = provider.ReadFile(t.Context(), "test_dir_provider/empty")
+		_, _, _, err = provider.ReadFile(t.Context(), "test_dir_provider/empty")
 		if err == nil {
 			t.Error("ReadFile() error = nil, want error")
 		}
@@ -173,7 +210,7 @@ func TestFilesystemProvider_ReadFile_Directory(t *testing.T) {
 			t.Fatalf("Failed to create provider: %v", err)
 		}
 
-		content, mimeType, err := provider.ReadFile(t.Context(), "test_dir_provider/empty")
+		content, mimeType, _, err := provider.ReadFile(t.Context(), "test_dir_provider/empty")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v, want nil", err)
 		}
@@ -220,7 +257,7 @@ func TestFilesystemProvider_PathCleaning(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, mimeType, err := provider.ReadFile(t.Context(), tt.path)
+			content, mimeType, _, err := provider.ReadFile(t.Context(), tt.path)
 			if err != nil {
 				t.Errorf("ReadFile() error = %v, want nil", err)
 			}
@@ -296,7 +333,7 @@ func TestFilesystemProvider_MimeTypeDetection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, mimeType, err := provider.ReadFile(t.Context(), tt.filename)
+			_, mimeType, _, err := provider.ReadFile(t.Context(), tt.filename)
 			if err != nil {
 				t.Fatalf("ReadFile() error = %v, want nil", err)
 			}
@@ -426,7 +463,7 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 	}
 
 	t.Run("ReadFile wraps ErrNotFound", func(t *testing.T) {
-		_, _, err := provider.ReadFile(t.Context(), "nonexistent.txt")
+		_, _, _, err := provider.ReadFile(t.Context(), "nonexistent.txt")
 		if err == nil {
 			t.Fatal("ReadFile() error = nil, want error")
 		}
@@ -438,7 +475,7 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 
 	t.Run("ReadFile wraps ErrDirListingDisabled", func(t *testing.T) {
 		// "test_err_wrap" is a directory because it contains files in mapFS
-		_, _, err := provider.ReadFile(t.Context(), "test_err_wrap")
+		_, _, _, err := provider.ReadFile(t.Context(), "test_err_wrap")
 		if err == nil {
 			t.Fatal("ReadFile() error = nil, want error")
 		}
@@ -460,7 +497,7 @@ func TestFilesystemProvider_ErrorWrapping(t *testing.T) {
 	})
 
 	t.Run("PathError contains operation and path info", func(t *testing.T) {
-		_, _, err := provider.ReadFile(t.Context(), "nonexistent.txt")
+		_, _, _, err := provider.ReadFile(t.Context(), "nonexistent.txt")
 		if err == nil {
 			t.Fatal("ReadFile() error = nil, want error")
 		}

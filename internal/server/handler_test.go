@@ -715,56 +715,36 @@ func TestHandlerResolverHonoursExclusions(t *testing.T) {
 }
 
 // TestHandlerServeHTML_ModTime pins the mtime plumbing that feeds JSON-LD's
-// dateModified. Two things can break independently and neither shows up in any
-// other test:
-//
-// no stat at all, or a stat of r.URL.Path rather than of the file that was
-// read. Requesting the extensionless URL is what separates them: under
-// strip_extensions /guide is not guide.md, so only the resolved path has an
-// mtime to find, and both mistakes produce the same undated output.
+// dateModified: the stat is of the file the provider read, not r.URL.Path.
+// Under strip_extensions /guide is not guide.md, and /api is a directory whose
+// date is its README's, so a stat of the URL finds no mtime or the wrong one.
 func TestHandlerServeHTML_ModTime(t *testing.T) {
 	t.Parallel()
 
-	modTime := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	files := fstest.MapFS{
-		"guide.md": &fstest.MapFile{Data: []byte("# Guide"), ModTime: modTime},
+		"guide.md":      &fstest.MapFile{Data: []byte("# Guide"), ModTime: time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)},
+		"api":           &fstest.MapFile{Mode: fs.ModeDir, ModTime: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
+		"api/README.md": &fstest.MapFile{Data: []byte("# API"), ModTime: time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC)},
 	}
-
-	resolver := resolve.Build(files, resolve.BuildOptions{
-		StripExtensions: []string{".md"},
-		HasRenderer:     func(mimeType string) bool { return mimeType == "text/markdown" },
-	})
-
 	siteConfig := config.NewSiteConfig(".")
 	siteConfig.Meta.Domain = "docs.example.com"
+	// Inside a script element, as the default theme's jsonld partial does:
+	// html/template HTML-escapes the payload anywhere else.
+	handler := newSourcePathHandler(files, newMemoryProvider(files, "README.md", false), &siteConfig,
+		`<html><body><script type="application/ld+json">{{ jsonLD .Page }}</script></body></html>`)
 
-	jsonldFS := fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl": {
-			// Inside a script element, as the default theme's jsonld partial
-			// does: html/template HTML-escapes the payload anywhere else.
-			Data: []byte(`<html><body><script type="application/ld+json">{{ jsonLD .Page }}</script></body></html>`),
-		},
-	}
-	rend := tmpl.NewHTMLRenderer(&siteConfig, jsonldFS)
-
-	handler := NewHandler(HandlerConfig{
-		Provider:         newMemoryProvider(files, "README.md", false),
-		Registry:         setupTestRegistry(),
-		EnricherRegistry: setupTestEnricherRegistry(),
-		TemplateRenderer: rend,
-		SiteConfig:       &siteConfig,
-		Resolver:         resolver,
-	})
-
-	req := httptest.NewRequest("GET", "/guide", nil)
-	w := httptest.NewRecorder()
-	handler.ServeContent(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
-	}
-	if want := `"dateModified":"2026-03-04T05:06:07Z"`; !strings.Contains(w.Body.String(), want) {
-		t.Errorf("JSON-LD should carry the resolved file's mtime %s; got %s", want, w.Body.String())
+	for url, want := range map[string]string{
+		"/guide": `"dateModified":"2026-03-04T05:06:07Z"`,
+		"/api":   `"dateModified":"2026-05-06T07:08:09Z"`,
+	} {
+		w := httptest.NewRecorder()
+		handler.ServeContent(w, httptest.NewRequest("GET", url, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want %d", url, w.Code, http.StatusOK)
+		}
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("GET %s: JSON-LD should carry the read file's mtime %s; got %s", url, want, w.Body.String())
+		}
 	}
 }
 
@@ -775,29 +755,16 @@ func TestHandlerServeHTML_SourcePath(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{
-		"guide.md":         &fstest.MapFile{Data: []byte("# Guide")},
-		"api/README.md":    &fstest.MapFile{Data: []byte("# API")},
-		"misc/notes.txt":   &fstest.MapFile{Data: []byte("notes")},
-		"README.md":        &fstest.MapFile{Data: []byte("# Home")},
-		"api/reference.md": &fstest.MapFile{Data: []byte("# Ref")},
+		"guide.md":           &fstest.MapFile{Data: []byte("# Guide")},
+		"api/README.md":      &fstest.MapFile{Data: []byte("# API")},
+		"misc/notes.txt":     &fstest.MapFile{Data: []byte("notes")},
+		"README.md":          &fstest.MapFile{Data: []byte("# Home")},
+		"api/reference.md":   &fstest.MapFile{Data: []byte("# Ref")},
+		"notes.md/README.md": &fstest.MapFile{Data: []byte("# Notes")},
 	}
-	resolver := resolve.Build(files, resolve.BuildOptions{
-		StripExtensions: []string{".md"},
-		HasRenderer:     func(mimeType string) bool { return mimeType == "text/markdown" },
-	})
 	siteConfig := config.NewSiteConfig(".")
-	rend := tmpl.NewHTMLRenderer(&siteConfig, fstest.MapFS{
-		"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(`[{{ .Page.SourcePath }}]`)},
-	}, tmpl.WithSourcePrefix("docs"))
-
-	handler := NewHandler(HandlerConfig{
-		Provider:         newMemoryProvider(files, "README.md", true),
-		Registry:         setupTestRegistry(),
-		EnricherRegistry: setupTestEnricherRegistry(),
-		TemplateRenderer: rend,
-		SiteConfig:       &siteConfig,
-		Resolver:         resolver,
-	})
+	handler := newSourcePathHandler(files, newMemoryProvider(files, "README.md", true), &siteConfig,
+		`[{{ .Page.SourcePath }}]`, tmpl.WithSourcePrefix("docs"))
 
 	tests := []struct {
 		path string
@@ -808,6 +775,7 @@ func TestHandlerServeHTML_SourcePath(t *testing.T) {
 		{path: "/api", want: "[docs/api/README.md]"},
 		{path: "/", want: "[docs/README.md]"},
 		{path: "/misc", want: "[]"},
+		{path: "/notes.md", want: "[docs/notes.md/README.md]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -835,37 +803,31 @@ func (p *statCountingProvider) Stat(ctx context.Context, name string) (fs.FileIn
 	return p.memoryProvider.Stat(ctx, name)
 }
 
-// A page that names a file costs no Stat without a domain: SourcePath comes
-// from what the read already established, and the mtime stat stays gated.
-func TestHandlerServeHTML_NoStatForFilePage(t *testing.T) {
+// A page costs no Stat without a domain, a directory index page included:
+// SourcePath is the file the read reports, and the mtime stat stays gated.
+func TestHandlerServeHTML_NoStatWithoutDomain(t *testing.T) {
 	t.Parallel()
 
-	files := fstest.MapFS{"guide.md": &fstest.MapFile{Data: []byte("# Guide")}}
-	resolver := resolve.Build(files, resolve.BuildOptions{
-		StripExtensions: []string{".md"},
-		HasRenderer:     func(mimeType string) bool { return mimeType == "text/markdown" },
-	})
+	files := fstest.MapFS{
+		"guide.md":      &fstest.MapFile{Data: []byte("# Guide")},
+		"api/README.md": &fstest.MapFile{Data: []byte("# API")},
+	}
 	siteConfig := config.NewSiteConfig(".")
 	prov := &statCountingProvider{memoryProvider: newMemoryProvider(files, "README.md", false)}
-	handler := NewHandler(HandlerConfig{
-		Provider:         prov,
-		Registry:         setupTestRegistry(),
-		EnricherRegistry: setupTestEnricherRegistry(),
-		TemplateRenderer: tmpl.NewHTMLRenderer(&siteConfig, fstest.MapFS{
-			"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(`[{{ .Page.SourcePath }}]`)},
-		}),
-		SiteConfig: &siteConfig,
-		Resolver:   resolver,
-	})
+	handler := newSourcePathHandler(files, prov, &siteConfig, `[{{ .Page.SourcePath }}]`)
 
-	for _, url := range []string{"/guide.md", "/guide"} {
+	for url, want := range map[string]string{
+		"/guide.md": "[guide.md]",
+		"/guide":    "[guide.md]",
+		"/api":      "[api/README.md]",
+	} {
 		w := httptest.NewRecorder()
 		handler.ServeContent(w, httptest.NewRequest("GET", url, nil))
-		if got := w.Body.String(); got != "[guide.md]" {
-			t.Errorf("GET %s body = %q, want [guide.md]", url, got)
+		if got := w.Body.String(); got != want {
+			t.Errorf("GET %s body = %q, want %q", url, got, want)
 		}
 	}
 	if n := prov.stats.Load(); n != 0 {
-		t.Errorf("provider Stat called %d times rendering file pages, want 0", n)
+		t.Errorf("provider Stat called %d times rendering pages, want 0", n)
 	}
 }
