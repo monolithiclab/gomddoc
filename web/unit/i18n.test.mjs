@@ -41,6 +41,27 @@ describe("t", () => {
     expect(t("pct")).toBe("100%");
     expect(t("miss", "x")).toBe("[x][]");
   });
+
+  it("handles odd indexes and escaped verbs", () => {
+    const ten = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const { t } = i18n(
+      "a",
+      docWith({ a: { zero: "[%[0]d]", ten: "%[10]d", esc: "%%d" } }),
+    );
+    expect(t("zero", 1)).toBe("[]");
+    expect(t("ten", ...ten)).toBe("10");
+    expect(t("esc", 1)).toBe("%d");
+  });
+
+  it("falls back to the key for inherited or non-string entries", () => {
+    const { t, tn } = i18n("a", docWith({ a: { k: 1 } }));
+    expect(t("constructor")).toBe("constructor");
+    expect(t("toString")).toBe("toString");
+    expect(t("k")).toBe("k");
+    expect(tn("constructor", 1)).toBe("constructor");
+    expect(i18n("b", docWith({ b: '"5"' })).t("k")).toBe("k");
+    expect(i18n("c", docWith({ c: "[1]" })).t("0")).toBe("0");
+  });
 });
 
 describe("tn", () => {
@@ -76,10 +97,19 @@ describe("tn", () => {
     expect(tn("g", 3)).toBe("other 3");
   });
 
+  it("ar uses zero and two", () => {
+    const { tn } = i18n(
+      "a",
+      docWith({ a: { z_zero: "zero %d", z_two: "two %d", z: "o %d" } }, "ar"),
+    );
+    expect(tn("z", 0)).toBe("zero 0");
+    expect(tn("z", 2)).toBe("two 2");
+  });
+
   it("survives an invalid or empty lang", () => {
     for (const lang of ["not a tag", ""]) {
       const { tn } = i18n("a", docWith({ a: block }, lang));
-      expect(typeof tn("n", 1)).toBe("string");
+      expect(tn("n", 1)).toBe("1 note");
     }
   });
 });
@@ -101,6 +131,7 @@ describe("blocks", () => {
     second.dataset.gmdI18n = "a";
     second.textContent = '{"k":"second"}';
     doc.head.append(second);
+    i18n("a", doc);
     const { t } = i18n("a", doc);
     expect(t("k")).toBe("first");
     expect(warn).toHaveBeenCalledTimes(1);

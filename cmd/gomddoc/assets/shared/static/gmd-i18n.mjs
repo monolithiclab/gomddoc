@@ -16,16 +16,27 @@
 
 const PLACEHOLDER = /%(?:%|(?:\[(\d+)\])?[sd])/g;
 
-// One parsed dictionary per document and namespace, so a block is read once.
+// Per document: its parsed dictionaries (a block is read once) and its plural
+// rules (constructed once).
 const cache = new WeakMap();
 
-function load(namespace, doc) {
-  let byNamespace = cache.get(doc);
-  if (!byNamespace) {
-    byNamespace = new Map();
-    cache.set(doc, byNamespace);
+function entry(doc) {
+  let e = cache.get(doc);
+  if (!e) {
+    let rules;
+    try {
+      rules = new Intl.PluralRules(doc.documentElement.lang);
+    } catch {
+      rules = new Intl.PluralRules();
+    }
+    e = { dicts: new Map(), rules };
+    cache.set(doc, e);
   }
-  if (!byNamespace.has(namespace)) {
+  return e;
+}
+
+function load(namespace, doc, dicts) {
+  if (!dicts.has(namespace)) {
     const blocks = doc.querySelectorAll(
       `script[type="application/json"][data-gmd-i18n="${CSS.escape(namespace)}"]`,
     );
@@ -34,13 +45,16 @@ function load(namespace, doc) {
     }
     let dict = {};
     try {
-      if (blocks.length) dict = JSON.parse(blocks[0].textContent) ?? {};
+      const parsed = blocks.length ? JSON.parse(blocks[0].textContent) : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        dict = parsed;
+      }
     } catch {
       // Invalid JSON: every lookup falls back to its key.
     }
-    byNamespace.set(namespace, dict);
+    dicts.set(namespace, dict);
   }
-  return byNamespace.get(namespace);
+  return dicts.get(namespace);
 }
 
 function format(template, args) {
@@ -53,22 +67,15 @@ function format(template, args) {
   });
 }
 
-function pluralRules(doc) {
-  try {
-    return new Intl.PluralRules(doc.documentElement.lang);
-  } catch {
-    return new Intl.PluralRules();
-  }
-}
-
 export function i18n(namespace, doc = document) {
-  const dict = load(namespace, doc);
-  let rules;
-  const t = (key, ...args) => format(dict[key] ?? key, args);
+  const { dicts, rules } = entry(doc);
+  const dict = load(namespace, doc, dicts);
+  // Own string values only: "constructor" or a numeric value is not a string.
+  const has = (k) => Object.hasOwn(dict, k) && typeof dict[k] === "string";
+  const t = (key, ...args) => format(has(key) ? dict[key] : key, args);
   const tn = (key, n, ...args) => {
-    rules ??= pluralRules(doc);
     const variant = `${key}_${rules.select(n)}`;
-    return t(variant in dict ? variant : key, n, ...args);
+    return t(has(variant) ? variant : key, n, ...args);
   };
   return { t, tn };
 }
