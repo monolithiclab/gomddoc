@@ -99,7 +99,10 @@
     color 0.15s;
 }
 
+/* Above the note icons: a selection on a line that already has a note puts
+   the pen where that line's icon sits. */
 [data-gmd-annotation-pen] {
+  z-index: 31;
   background: var(--gmd-annotation-accent);
   border-color: var(--gmd-annotation-accent);
   color: var(--gmd-annotation-accent-text);

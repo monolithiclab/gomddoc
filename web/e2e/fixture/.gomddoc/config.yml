@@ -1,0 +1,10 @@
+# Fixture site for the Playwright end-to-end tests (web/e2e). KaTeX and Mermaid load from a CDN, and tests never
+# touch the network.
+default_index: README.md
+meta:
+  title: Fixture
+theme:
+  name: default
+  features:
+    katex: false
+    mermaid: false

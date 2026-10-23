@@ -32,4 +32,5 @@ test-ui: ## Front-end tests (Vitest, Playwright), skipped when their inputs are 
 		npm ci --prefix web --no-audit --no-fund || exit 1; \
 	fi; \
 	npm --prefix web run --silent unit || exit 1; \
+	npm --prefix web run --silent e2e || exit 1; \
 	mkdir -p .cache && echo "$$hash" > .cache/test-ui.sha

@@ -1235,8 +1235,9 @@ the packages listed in `.covignore` (`internal/testutil/`, `docs/skills/`), so t
 - **Concurrency**: cold-cache tests through `internal/testutil/fanout`; `make test` runs with `-race`
 - **Context cancellation**: Tested in renderers and template layer
 - **Front end**: `web/` is a Node project (D48): Vitest with happy-dom for the shared modules (`web/unit/`),
-  Playwright for end-to-end and accessibility checks. `make test-ui` runs it only when a front-end input changed, and
-  `make ci` reaches it through `CI_EXTRA`
+  Playwright for end-to-end and accessibility checks against a `gomddoc preview` of `web/e2e/fixture/`. `make test-ui`
+  runs it only when a front-end input changed, and `make ci` reaches it through `CI_EXTRA`; in CI the ubuntu leg runs
+  it (`.cache/` cached by the inputs' hash) and the macOS leg skips it with `make ci CI_EXTRA=`
 - **Benchmarks**: Hot-path benchmarks for rendering (`BenchmarkMarkdownRender`, `BenchmarkHTMLRendererRender`),
   enrichment (`BenchmarkMarkdownEnricher_*`), negotiation (`BenchmarkRegistryGet_*`, `BenchmarkParseAccept`),
   compression and ETags, navigation, search and index builds, and Git reads (`BenchmarkGitProvider_*`,
