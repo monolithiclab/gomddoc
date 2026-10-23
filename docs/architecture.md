@@ -805,11 +805,14 @@ name in the theme directory, which `inlineJSAsset` reads before `assets/shared/`
 **Page annotations** (`gmd-annotations.mjs`, `gmd-annotations.css`, feature `annotations`). A browser-only overlay:
 notes live in `localStorage`, one entry per page URL. `head-meta` calls `head-annotations`, which inlines the styles;
 `scripts-shared` emits a `<script type="application/json" id="gmd-annotations-config">` (the page's `SourcePath`, title
-and the localized labels, from `TemplateContext.AnnotationsConfig`, which `html/template` marshals) and then the module.
+and the localized labels, from the `annotationsConfig` template function, which `html/template` marshals) and then the
+module. The labels are the locale keys under the `annotation` prefix (`locale.Bundle.Keys`, handed to every renderer by
+`setupLanguagePipelines`) that translate in the page's language; the module falls back for any left out.
 Themes only carry the contract: `<gmd-annotations>` around `{{ .Page.Content }}` and `<gmd-annotations-toggle>` in the
 header, both behind `.Feature "annotations"`; neither needs a new template field, so an updated theme still renders on
 an older gomddoc, where the elements stay undefined. The module defines its custom elements (once, even if inlined
-twice) and does nothing until `<gmd-annotations>` connects; generated tag pages turn the feature off. Its pure part
+twice) and does nothing until `<gmd-annotations>` connects. A page without a `SourcePath` (a generated listing, a tag
+page, an error page) has the feature off: `pageFeatures` merges the site's toggles, the page's, then that rule. Its pure part
 (the text model minus `SKIP_SELECTOR`, anchoring by exact `prefix + quote + suffix`, line grouping, the Markdown export,
 storage) is exported for tests. `<gmd-annotations>` (light DOM, so selection, other scripts and theme CSS see the
 content unchanged) re-anchors stored notes after `load` and mounts in `<body>` a `<gmd-annotation-margin>` (shadow DOM:

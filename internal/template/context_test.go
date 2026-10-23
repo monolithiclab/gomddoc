@@ -2,6 +2,7 @@ package template
 
 import (
 	"html/template"
+	"maps"
 	"net/http"
 	"testing"
 	"testing/fstest"
@@ -164,6 +165,31 @@ func TestBuildPageContext_SourcePath(t *testing.T) {
 	})
 }
 
+func TestPageFeatures(t *testing.T) {
+	t.Parallel()
+
+	site := &config.SiteConfig{Theme: config.ThemeConfig{Features: map[string]bool{"search": false}}}
+	page := map[string]bool{"toc": false, "annotations": true}
+	tests := []struct {
+		name       string
+		sourcePath string
+		want       map[string]bool
+	}{
+		{name: "page with a source", sourcePath: "docs/a.md",
+			want: map[string]bool{"search": false, "toc": false, "annotations": true}},
+		{name: "page without a source turns annotations off", sourcePath: "",
+			want: map[string]bool{"search": false, "toc": false, "annotations": false}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := pageFeatures(site, page, tt.sourcePath); !maps.Equal(got, tt.want) {
+				t.Errorf("pageFeatures = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildErrorContext(t *testing.T) {
 	t.Parallel()
 
@@ -191,6 +217,9 @@ func TestBuildErrorContext(t *testing.T) {
 	}
 	if ctx.Page.Path != "/404" {
 		t.Errorf("Path = %q, want /404", ctx.Page.Path)
+	}
+	if ctx.Feature("annotations") {
+		t.Error("an error page has no source file, yet annotations are on")
 	}
 	if got := ctx.Languages(); len(got) != 1 {
 		t.Errorf("languages not wired through: %+v", got)

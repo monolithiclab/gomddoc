@@ -73,7 +73,7 @@
         <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
         {{- end }}
         {{- if .Feature "annotations" }}
-        <script type="application/json" id="gmd-annotations-config">{{ .AnnotationsConfig }}</script>
+        <script type="application/json" id="gmd-annotations-config">{{ annotationsConfig . }}</script>
         <script type="module">{{ inlineJSAsset "gmd-annotations.mjs" }}</script>
         {{- end }}
 {{- end }}

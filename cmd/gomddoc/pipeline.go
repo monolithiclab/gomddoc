@@ -56,6 +56,11 @@ type PipelineOptions struct {
 	// TrailingSlash is resolve.BuildOptions.TrailingSlash: build sets it, since
 	// a static host publishes each page directory at a slash-terminated URL.
 	TrailingSlash bool
+
+	// AnnotationLabelKeys are the locale keys the annotations module reads
+	// (template.WithAnnotationLabelKeys). setupLanguagePipelines sets them from
+	// the locale bundle.
+	AnnotationLabelKeys []string
 }
 
 // Pipeline holds the assembled rendering pipeline components.
@@ -144,14 +149,6 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 	// sitemap, feed, tag pages and sidebar — and build renders it twice.
 	langs := locale.DetectLanguages(contentRoot)
 
-	// Build default pipeline.
-	defaultOpts := opts
-	defaultOpts.ExtraExclude = langExcludePatterns(langs)
-	defaultPipeline, err := setupPipeline(cfg, prov, defaultOpts)
-	if err != nil {
-		return nil, fmt.Errorf("default pipeline: %w", err)
-	}
-
 	// Load locale bundle from embedded assets.
 	assetsFS := assets.BuildFS(contentRoot, embeddedAssets)
 
@@ -167,6 +164,17 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 	// Merge site-level locale overrides from .gomddoc/locales/.
 	if err := bundle.MergeFrom(contentRoot, config.ConfigDirName+"/locales"); err != nil {
 		slog.Warn("Failed to merge site locale overrides", slog.Any("error", err))
+	}
+
+	// Every renderer hands the annotations module the bundle's label keys.
+	opts.AnnotationLabelKeys = bundle.Keys("annotation")
+
+	// Build default pipeline.
+	defaultOpts := opts
+	defaultOpts.ExtraExclude = langExcludePatterns(langs)
+	defaultPipeline, err := setupPipeline(cfg, prov, defaultOpts)
+	if err != nil {
+		return nil, fmt.Errorf("default pipeline: %w", err)
 	}
 
 	lp := &LanguagePipeline{
@@ -279,6 +287,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	templateRenderer.Configure(
 		template.WithResolver(resolver),
 		template.WithSourcePrefix(path.Join(sourcePrefix(cfg.Server.Dir), opts.Lang)),
+		template.WithAnnotationLabelKeys(opts.AnnotationLabelKeys),
 	)
 	if opts.Lang != "" {
 		langPrefix = "/" + opts.Lang

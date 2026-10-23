@@ -629,8 +629,8 @@ function mount(doc, win, content, notice, signal) {
   doc.body.append(margin, editor, dialog);
 
   const { pen } = margin;
-  pen.setAttribute("aria-label", L("annotate"));
-  pen.title = `${L("annotate")} (Alt+Shift+A)`;
+  pen.setAttribute("aria-label", L("annotation_add"));
+  pen.title = `${L("annotation_add")} (Alt+Shift+A)`;
   const { textarea } = editor;
   const [prev, next, del, discard] = ["prev", "next", "delete", "discard"].map(
     (name) => editor.action(name),

@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"maps"
 	"path"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -58,6 +59,19 @@ func (b *Bundle) LanguageName(lang string) string {
 		}
 	}
 	return lang
+}
+
+// Keys returns, sorted, every key starting with prefix in any loaded language.
+func (b *Bundle) Keys(prefix string) []string {
+	seen := make(map[string]bool)
+	for _, langStrings := range b.strings {
+		for key := range langStrings {
+			if strings.HasPrefix(key, prefix) {
+				seen[key] = true
+			}
+		}
+	}
+	return slices.Sorted(maps.Keys(seen))
 }
 
 // LoadBundle loads locale YAML files from dir within fsys.

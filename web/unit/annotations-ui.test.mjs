@@ -10,7 +10,7 @@ import {
 } from "../../cmd/gomddoc/assets/shared/gmd-annotations.mjs";
 
 const LABELS = {
-  annotate: "Annotate selection",
+  annotation_add: "Annotate selection",
   annotation_note: "Note",
   annotation_save: "Save",
   annotation_discard: "Discard",

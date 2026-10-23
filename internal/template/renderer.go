@@ -153,40 +153,14 @@ func (tc *TemplateContext) T(key string) string {
 	return key
 }
 
-// annotationLabelKeys are the locale keys gmd-annotations.mjs reads from its
-// JSON configuration: every visible string and ARIA label of the annotation
-// UI and the fixed phrases of its Markdown export.
-var annotationLabelKeys = []string{
-	"annotate", "annotation_note", "annotation_save", "annotation_discard", "annotation_delete",
-	"annotation_prev", "annotation_next", "annotation_position",
-	"annotations_open", "annotations_open_count", "annotations_open_count_one",
-	"annotations_count", "annotations_count_one", "annotations_copy", "annotations_copied",
-	"annotations_clear", "annotations_clear_confirm", "annotations_clear_yes", "annotations_cancel",
-	"annotations_close", "annotations_empty", "annotations_removed", "annotations_removed_one",
-	"annotations_not_kept",
-	"annotations_export_title", "annotations_export_source", "annotations_export_page",
-	"annotations_export_intro", "annotations_export_top",
-}
-
 // AnnotationsConfig is the configuration scripts-shared hands the
 // annotations module as <script type="application/json">; html/template
 // marshals it to JSON in that script context. Only gomddoc's own partial reads
-// it: a theme using it would not render on an older gomddoc.
+// it (annotationsConfig): a theme using it would not render on an older gomddoc.
 type AnnotationsConfig struct {
 	SourcePath string            `json:"sourcePath"`
 	Title      string            `json:"title"`
 	Labels     map[string]string `json:"labels"`
-}
-
-// AnnotationsConfig returns the page's annotations module configuration,
-// labels translated into the page's language.
-func (tc *TemplateContext) AnnotationsConfig() AnnotationsConfig {
-	labels := make(map[string]string, len(annotationLabelKeys))
-	for _, key := range annotationLabelKeys {
-		labels[key] = tc.T(key)
-	}
-	title, _ := tc.Page.Meta["title"].(string)
-	return AnnotationsConfig{SourcePath: tc.Page.SourcePath, Title: title, Labels: labels}
 }
 
 // Lang returns the BCP 47 language code for the current page.
@@ -239,6 +213,7 @@ type HTMLRenderer struct {
 	resolver       *resolve.PathResolver // Optional path resolver for clean URLs
 	langPrefix     string                // "/{lang}" for a language pipeline, "" for the default one
 	sourcePrefix   string                // Content root's path inside the git work tree (see WithSourcePrefix)
+	labelKeys      []string              // Locale keys the annotations module reads (see WithAnnotationLabelKeys)
 	themeVars      themeVarsCache        // Cached CSS custom properties from theme config
 	hasSearchIndex bool                  // Whether a search index was successfully built
 	loggedMissing  sync.Map              // Tracks template names already warned about
@@ -283,6 +258,14 @@ func WithLangPrefix(lang string) RendererOption {
 func WithSourcePrefix(prefix string) RendererOption {
 	return func(r *HTMLRenderer) {
 		r.sourcePrefix = prefix
+	}
+}
+
+// WithAnnotationLabelKeys sets the locale keys annotationsConfig hands the
+// annotations module: the locale bundle's keys under the "annotation" prefix.
+func WithAnnotationLabelKeys(keys []string) RendererOption {
+	return func(r *HTMLRenderer) {
+		r.labelKeys = keys
 	}
 }
 
@@ -418,18 +401,12 @@ func (h *HTMLRenderer) RenderTagPage(ctx context.Context, lang string, tFunc fun
 		Path:        pagePath,
 		Content:     template.HTML(body), // #nosec G203 -- partial output is trusted
 		Meta:        map[string]any{"title": tag},
-		Features:    generatedPageFeatures(),
+		Features:    pageFeatures(h.siteConfig, nil, ""),
 		Breadcrumbs: h.Breadcrumbs(pagePath),
 	}
 	tc := &TemplateContext{Site: h.siteConfig, Page: page}
 	tc.WithI18n(lang, tFunc, nil)
 	return h.Render(ctx, "default.html.tmpl", tc)
-}
-
-// generatedPageFeatures turns off, on a page gomddoc generates (tag pages),
-// the features that need a source file: annotations export one.
-func generatedPageFeatures() map[string]bool {
-	return map[string]bool{"annotations": false}
 }
 
 // tagPageData is the data passed to the tags-list partial.
@@ -468,7 +445,7 @@ func (h *HTMLRenderer) RenderTagsIndex(ctx context.Context, lang string, tFunc f
 	page := PageContext{
 		Path:        pagePath,
 		Content:     template.HTML(body), // #nosec G203 -- partial output is trusted
-		Features:    generatedPageFeatures(),
+		Features:    pageFeatures(h.siteConfig, nil, ""),
 		Breadcrumbs: h.Breadcrumbs(pagePath),
 	}
 	tc := &TemplateContext{Site: h.siteConfig, Page: page}
@@ -642,13 +619,29 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"assetURL": func(name string) string {
 			return "/_assets/" + name
 		},
-		"contentURL":      h.contentURL,
-		"inlineJSAsset":   h.inlineJSAsset,
-		"inlineCSSAsset":  h.inlineCSSAsset,
-		"inlineHTMLAsset": h.inlineHTMLAsset,
-		"tagURL":          h.tagURL,
-		"pageTags":        pageTags,
+		"contentURL":        h.contentURL,
+		"inlineJSAsset":     h.inlineJSAsset,
+		"inlineCSSAsset":    h.inlineCSSAsset,
+		"inlineHTMLAsset":   h.inlineHTMLAsset,
+		"tagURL":            h.tagURL,
+		"pageTags":          pageTags,
+		"annotationsConfig": h.annotationsConfig,
 	}
+}
+
+// annotationsConfig returns the page's annotations module configuration:
+// every label key that translates in the page's language. A key left out (T
+// answers the key itself) falls back in the module, so a _one plural variant a
+// locale lacks never shadows the general form.
+func (h *HTMLRenderer) annotationsConfig(tc *TemplateContext) AnnotationsConfig {
+	labels := make(map[string]string, len(h.labelKeys))
+	for _, key := range h.labelKeys {
+		if label := tc.T(key); label != key {
+			labels[key] = label
+		}
+	}
+	title, _ := tc.Page.Meta["title"].(string)
+	return AnnotationsConfig{SourcePath: tc.Page.SourcePath, Title: title, Labels: labels}
 }
 
 // generateJSONLD produces JSON-LD structured data for a page.

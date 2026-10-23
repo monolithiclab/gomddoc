@@ -71,7 +71,7 @@ func BuildPageContext(in PageContextInput) *TemplateContext {
 			Content:     in.Content,
 			Path:        in.Path,
 			Meta:        meta,
-			Features:    config.MergeFeatures(in.Site.Theme.Features, in.Enrichment.Features),
+			Features:    pageFeatures(in.Site, in.Enrichment.Features, sourcePath),
 			TOC:         in.Enrichment.TOC,
 			Navigation:  in.Enrichment.Navigation,
 			PrevPage:    in.Enrichment.PrevPage,
@@ -84,6 +84,20 @@ func BuildPageContext(in PageContextInput) *TemplateContext {
 	}
 	ctx.WithI18n(in.Lang, in.TFunc, in.Languages)
 	return ctx
+}
+
+// sourcelessFeatures are the features a page without a source file turns off:
+// an annotation export names the file to edit.
+var sourcelessFeatures = map[string]bool{"annotations": false}
+
+// pageFeatures merges the site's feature toggles with a page's own overrides,
+// then turns off what needs a source file when sourcePath is "": a generated
+// listing, a tag page or an error page.
+func pageFeatures(site *config.SiteConfig, page map[string]bool, sourcePath string) map[string]bool {
+	if sourcePath == "" {
+		return config.MergeFeatures(site.Theme.Features, page, sourcelessFeatures)
+	}
+	return config.MergeFeatures(site.Theme.Features, page)
 }
 
 // ErrorContextInput holds the inputs for assembling an error-page
@@ -119,7 +133,7 @@ func BuildErrorContext(in ErrorContextInput) *TemplateContext {
 				"error_title":   statusTitle,
 				"error_message": in.Message,
 			},
-			Features: config.MergeFeatures(in.Site.Theme.Features),
+			Features: pageFeatures(in.Site, nil, ""),
 		},
 	}
 	ctx.WithI18n(in.Lang, in.TFunc, in.Languages)

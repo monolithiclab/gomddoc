@@ -617,6 +617,10 @@ func TestBuildCmd_Run_PageFeatureOverride(t *testing.T) {
 			t.Errorf("off/index.html carries %s despite features: {annotations: false}", marker)
 		}
 	}
+	// The pipeline hands the renderer the locale bundle's label keys.
+	if want := `"annotation_add":"Annotate selection"`; !strings.Contains(on, want) {
+		t.Errorf("on/index.html configuration lacks the localized label %s", want)
+	}
 }
 
 func TestBuildCmd_Run_WithDomain(t *testing.T) {

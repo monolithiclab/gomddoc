@@ -169,7 +169,8 @@ How many is "how many"? Give the exact wording of the notice.
 
 The feature is on by default. Turn it off for the site with `theme.features.annotations: false` (or
 `GOMDDOC_SITE_THEME_FEATURES_ANNOTATIONS=false`), or for one page with `features: {annotations: false}` in its
-frontmatter. Themes restyle it through the `--gmd-annotation-*` CSS custom properties (see
+frontmatter. Pages without a source file to edit (generated directory listings, tag pages, error pages) never show it.
+Themes restyle it through the `--gmd-annotation-*` CSS custom properties (see
 [Theming and Assets](05-theming-and-assets.md)).
 
 **Browser support.** The interface is built on the Popover API, Invoker Commands and the `<dialog>` element: current

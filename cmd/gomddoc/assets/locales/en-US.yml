@@ -24,7 +24,7 @@ tags_index_title: All tags
 tags_tagged_as: "Pages tagged %s"
 tags_empty: "No pages tagged %s"
 see_also: "See also"
-annotate: "Annotate selection"
+annotation_add: "Annotate selection"
 annotation_note: Note
 annotation_save: Save
 annotation_discard: Discard

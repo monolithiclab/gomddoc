@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"html/template"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -2562,7 +2563,8 @@ func TestRender_AnnotationsContract(t *testing.T) {
 			t.Parallel()
 
 			siteConfig := config.NewSiteConfig(".")
-			r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"))
+			r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
+				WithAnnotationLabelKeys([]string{"annotations_count", "annotations_count_one", "annotations_export_title"}))
 			tc := &TemplateContext{Site: &siteConfig, Page: PageContext{
 				Path:       "/specs/a</script>",
 				Content:    "<p>Body</p>",
@@ -2570,7 +2572,13 @@ func TestRender_AnnotationsContract(t *testing.T) {
 				Features:   tt.features,
 				SourcePath: "docs/specs/a</script>.md",
 			}}
-			tc.WithI18n("", func(k string) string { return "L:" + k }, nil)
+			// The locale lacks the _one variant: T answers the key itself.
+			tc.WithI18n("", func(k string) string {
+				if k == "annotations_count_one" {
+					return k
+				}
+				return "L:" + k
+			}, nil)
 
 			out, err := r.Render(context.Background(), "default.html.tmpl", tc)
 			if err != nil {
@@ -2599,25 +2607,49 @@ func TestRender_AnnotationsContract(t *testing.T) {
 			if got.SourcePath != "docs/specs/a</script>.md" || got.Title != "Spec <b>" {
 				t.Errorf("config = %+v, want the page's source path and title", got)
 			}
-			if got.Labels["annotations_export_title"] != "L:annotations_export_title" || len(got.Labels) != len(annotationLabelKeys) {
-				t.Errorf("labels = %v, want every key translated", got.Labels)
+			want := map[string]string{"annotations_count": "L:annotations_count", "annotations_export_title": "L:annotations_export_title"}
+			if !maps.Equal(got.Labels, want) {
+				t.Errorf("labels = %v, want %v: every key that translates, none that does not", got.Labels, want)
 			}
 		})
 	}
 }
 
-func TestRenderTagPage_NoAnnotations(t *testing.T) {
+// TestRender_NoAnnotationsWithoutSource renders, through the real default
+// theme, the pages that have no source file to export: a generated directory
+// listing, a tag page and the tag index. None carries annotation markup, and
+// the tag pages still honour the site's own feature toggles (search off).
+func TestRender_NoAnnotationsWithoutSource(t *testing.T) {
 	t.Parallel()
 
 	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Theme.Features = map[string]bool{"search": false}
 	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"))
-	out, err := r.RenderTagPage(context.Background(), "", nil, "go", nil)
-	if err != nil {
-		t.Fatalf("RenderTagPage: %v", err)
+	ctx := context.Background()
+
+	render := map[string]func() ([]byte, error){
+		"directory listing": func() ([]byte, error) {
+			tc := BuildPageContext(PageContextInput{
+				Site: &siteConfig, Path: "/misc/", Content: "<ul><li>a.txt</li></ul>",
+				Enrichment: &enricher.EnrichmentData{}, Renderer: r,
+			})
+			return r.Render(ctx, "default.html.tmpl", tc)
+		},
+		"tag page":  func() ([]byte, error) { return r.RenderTagPage(ctx, "", nil, "go", nil) },
+		"tag index": func() ([]byte, error) { return r.RenderTagsIndex(ctx, "", nil, nil) },
 	}
-	for _, marker := range []string{"<gmd-annotations>", "<gmd-annotations-toggle>", "gmd-annotations-config"} {
-		if strings.Contains(string(out), marker) {
-			t.Errorf("a generated tag page carries annotation markup %s", marker)
-		}
+	for name, fn := range render {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			out, err := fn()
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			for _, marker := range []string{"<gmd-annotations>", "<gmd-annotations-toggle>", "gmd-annotations-config", `id="search-toggle"`} {
+				if strings.Contains(string(out), marker) {
+					t.Errorf("%s carries %s", name, marker)
+				}
+			}
+		})
 	}
 }

@@ -1,6 +1,7 @@
 package locale
 
 import (
+	"slices"
 	"testing"
 	"testing/fstest"
 )
@@ -197,5 +198,22 @@ func TestLoadBundle_SeeAlsoKey(t *testing.T) {
 	got := b.T("en-US", "see_also")
 	if got == "" || got == "see_also" {
 		t.Errorf("bundle.T(\"see_also\") returned %q; expected a localized string", got)
+	}
+}
+
+func TestBundle_Keys(t *testing.T) {
+	t.Parallel()
+
+	b, err := LoadBundle("en-US", fstest.MapFS{
+		"locales/en-US.yml": &fstest.MapFile{Data: []byte("annotation_save: Save\nannotations_count: \"%d notes\"\ntoc_title: TOC\n")},
+		"locales/fr-FR.yml": &fstest.MapFile{Data: []byte("annotations_count_one: \"1 note\"\nannotation_save: Enregistrer\n")},
+	}, "locales")
+	if err != nil {
+		t.Fatalf("LoadBundle: %v", err)
+	}
+
+	want := []string{"annotation_save", "annotations_count", "annotations_count_one"}
+	if got := b.Keys("annotation"); !slices.Equal(got, want) {
+		t.Errorf("Keys(annotation) = %v, want %v (sorted, every language)", got, want)
 	}
 }

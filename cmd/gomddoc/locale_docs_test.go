@@ -3,6 +3,7 @@ package main
 import (
 	"maps"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -44,6 +45,41 @@ func TestBuiltinTranslationKeysAreDocumented(t *testing.T) {
 	if !slices.Equal(documented, shippedKeys) {
 		t.Errorf("%s documents\n  %v\nbut %s ships\n  %v",
 			i18nGuidePath, documented, builtinLocalePath, shippedKeys)
+	}
+}
+
+// TestAnnotationLabelsShipped pins the annotations module's label lookups
+// against the locale: the renderer hands it only the bundle's keys under the
+// "annotation" prefix, so a label outside the prefix, or missing from en-US.yml,
+// reaches the page as its raw key.
+func TestAnnotationLabelsShipped(t *testing.T) {
+	t.Parallel()
+
+	raw, err := embeddedAssets.ReadFile(builtinLocalePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", builtinLocalePath, err)
+	}
+	var shipped map[string]string
+	if err := yaml.Unmarshal(raw, &shipped); err != nil {
+		t.Fatalf("parse %s: %v", builtinLocalePath, err)
+	}
+	module, err := embeddedAssets.ReadFile("assets/shared/gmd-annotations.mjs")
+	if err != nil {
+		t.Fatalf("read module: %v", err)
+	}
+
+	uses := regexp.MustCompile(`\b[LPE]\("([a-z_]+)"`).FindAllStringSubmatch(string(module), -1)
+	if len(uses) == 0 {
+		t.Fatal("found no label lookups in gmd-annotations.mjs")
+	}
+	for _, m := range uses {
+		key := m[1]
+		if !strings.HasPrefix(key, "annotation") {
+			t.Errorf("label %q is outside the annotation prefix the renderer hands the module", key)
+		}
+		if _, ok := shipped[key]; !ok {
+			t.Errorf("label %q is missing from %s", key, builtinLocalePath)
+		}
 	}
 }
 
