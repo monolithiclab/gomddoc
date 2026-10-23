@@ -636,7 +636,8 @@ func (h *HTMLRenderer) annotationsConfig(tc *TemplateContext) AnnotationsConfig 
 	return AnnotationsConfig{SourcePath: tc.Page.SourcePath, Title: title}
 }
 
-// i18nStrings returns the locale keys starting with namespace that translate
+// i18nStrings returns the locale keys starting with namespace (a raw prefix, no
+// "_" delimiter, so "annotation" covers both annotation_* and annotations_*) that translate
 // in the page's language, for a <script type="application/json"> data block
 // that html/template marshals (and escapes against "</script>"). A key T
 // answers with itself is left out, so the client falls back exactly like the

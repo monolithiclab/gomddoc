@@ -37,9 +37,9 @@ function entry(doc) {
 
 function load(namespace, doc, dicts) {
   if (!dicts.has(namespace)) {
-    const blocks = doc.querySelectorAll(
-      `script[type="application/json"][data-gmd-i18n="${CSS.escape(namespace)}"]`,
-    );
+    const blocks = [
+      ...doc.querySelectorAll('script[type="application/json"][data-gmd-i18n]'),
+    ].filter((el) => el.dataset.gmdI18n === namespace);
     if (blocks.length > 1) {
       console.warn(`gmd-i18n: several "${namespace}" blocks, using the first`);
     }

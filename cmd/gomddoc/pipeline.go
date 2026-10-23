@@ -172,7 +172,7 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 
 	// Shared by every pipeline: every locale key (for i18nStrings), and the
 	// content directory's place in its git work tree (a walk up the disk).
-	opts.LocaleKeys = bundle.Keys("")
+	opts.LocaleKeys = bundle.Keys("") // an empty prefix lists every key
 	opts.SourcePrefix = sourcePrefix(cfg.Server.Dir)
 
 	// Build default pipeline.

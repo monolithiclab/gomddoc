@@ -2606,13 +2606,22 @@ func TestRender_AnnotationsContract(t *testing.T) {
 	}
 }
 
-// i18nBlockModules maps each namespace scripts-shared emits a strings block for
-// to the module it serves; the block sits immediately before that module.
-var i18nBlockModules = map[string]string{
-	"code_copy":  "code-copy.mjs",
-	"search":     "search.mjs",
-	"color_chip": "gmd-color-chip.mjs",
-	"annotation": "gmd-annotations.mjs",
+// i18nBlockModules lists each namespace scripts-shared emits a strings block
+// for: the page feature that guards it, and a marker (the module's own i18n
+// call) found in the module that follows the block immediately.
+var i18nBlockModules = []struct{ ns, feature, marker string }{
+	{"code_copy", "code_copy", `i18n('code_copy')`},
+	{"search", "search", `i18n('search')`},
+	{"color_chip", "color_chips", `i18n("color_chip")`},
+	{"annotation", "annotations", `i18n("annotation"`},
+}
+
+func namespacesOf(mods []struct{ ns, feature, marker string }) []string {
+	out := make([]string, len(mods))
+	for i, m := range mods {
+		out[i] = m.ns
+	}
+	return out
 }
 
 // i18nBlock returns the JSON text of the page's data-gmd-i18n block for ns and
@@ -2632,18 +2641,8 @@ func i18nBlock(page, ns string) (raw, after string, count int) {
 func TestRender_I18nBlocksContract(t *testing.T) {
 	t.Parallel()
 
-	modules := map[string]string{}
-	for ns, file := range i18nBlockModules {
-		data, err := os.ReadFile("../../cmd/gomddoc/assets/shared/" + file)
-		if err != nil {
-			t.Fatalf("read %s: %v", file, err)
-		}
-		modules[ns] = `<script type="module">` + string(data[:80])
-	}
-	features := map[string]string{"code_copy": "code_copy", "search": "search", "color_chip": "color_chips", "annotation": "annotations"}
-
 	for _, layout := range []string{"default.html.tmpl", "error.html.tmpl"} {
-		for _, off := range []string{"", "code_copy", "search", "color_chip", "annotation"} {
+		for _, off := range append([]string{""}, namespacesOf(i18nBlockModules)...) {
 			t.Run(layout+"/off="+off, func(t *testing.T) {
 				t.Parallel()
 
@@ -2651,8 +2650,10 @@ func TestRender_I18nBlocksContract(t *testing.T) {
 				r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
 					WithLocaleKeys([]string{"code_copy_label", "search_label", "color_chip_label", "annotation_add"}))
 				var pageFeatures map[string]bool
-				if off != "" {
-					pageFeatures = map[string]bool{features[off]: false}
+				for _, m := range i18nBlockModules {
+					if m.ns == off {
+						pageFeatures = map[string]bool{m.feature: false}
+					}
 				}
 				tc := &TemplateContext{Site: &siteConfig, Page: PageContext{
 					Path: "/a", Content: "<pre><code>x</code></pre>", Features: pageFeatures,
@@ -2668,20 +2669,23 @@ func TestRender_I18nBlocksContract(t *testing.T) {
 				if tag, _, _ := strings.Cut(rest, ">"); strings.Contains(tag, "data-") {
 					t.Errorf("<html%s> carries a data-* attribute", tag)
 				}
-				for ns, module := range modules {
-					_, after, count := i18nBlock(s, ns)
-					if ns == off {
-						if count != 0 || strings.Contains(s, module) {
-							t.Errorf("%s disabled: %d blocks, module present = %v", ns, count, strings.Contains(s, module))
+				for _, m := range i18nBlockModules {
+					_, after, count := i18nBlock(s, m.ns)
+					if m.ns == off {
+						if count != 0 || strings.Contains(s, m.marker) {
+							t.Errorf("%s disabled: %d blocks, module present = %v", m.ns, count, strings.Contains(s, m.marker))
 						}
 						continue
 					}
 					if count != 1 {
-						t.Errorf("%s: %d blocks, want 1", ns, count)
+						t.Errorf("%s: %d blocks, want 1", m.ns, count)
 						continue
 					}
-					if !strings.HasPrefix(strings.TrimSpace(after), module) {
-						t.Errorf("%s block is not immediately followed by %s", ns, i18nBlockModules[ns])
+					const open = `<script type="module">`
+					rest, ok := strings.CutPrefix(strings.TrimSpace(after), open)
+					body, _, _ := strings.Cut(rest, "</script>")
+					if !ok || !strings.Contains(body, m.marker) {
+						t.Errorf("%s block is not immediately followed by a module script containing %s", m.ns, m.marker)
 					}
 				}
 			})

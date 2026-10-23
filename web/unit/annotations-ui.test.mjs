@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { block } from "./i18n-helpers.mjs";
 // platform.mjs first: it adds the features the module checks for before
 // defining its elements.
 import { deepActive, popoverOpen } from "./platform.mjs";
@@ -57,8 +58,6 @@ const PAGE =
 const TOPS = { a: 100, b: 200 };
 
 let highlights;
-// The stubs below replace CSS; gmd-i18n.mjs still needs its escape.
-const { escape } = CSS;
 
 // page renders a page as the default theme does: the toggle in the header,
 // the content wrapped in gmd-annotations (unless wrapped is false), and the
@@ -74,7 +73,7 @@ function page({ wrapped = true, html = PAGE } = {}) {
   const template = document.createElement("template");
   template.innerHTML =
     `<script type="application/json" id="gmd-annotations-config">${JSON.stringify(config)}</script>` +
-    `<script type="application/json" data-gmd-i18n="annotation">${JSON.stringify(LABELS)}</script>` +
+    block("annotation", LABELS) +
     `<header><gmd-annotations-toggle></gmd-annotations-toggle></header>${content}`;
   document.body.replaceChildren(template.content);
   return $("gmd-annotations, article");
@@ -145,7 +144,7 @@ beforeEach(() => {
   highlights = new Map();
   // happy-dom has no Custom Highlight API and no CSS.supports; CSS itself is
   // read-only. Without supports, the editor takes its JavaScript placement.
-  vi.stubGlobal("CSS", { escape, highlights });
+  vi.stubGlobal("CSS", { highlights });
   vi.stubGlobal(
     "Highlight",
     class {
@@ -358,7 +357,7 @@ describe("creating a note", () => {
   });
 
   it("ignored showPopover source falls back to script placement", async () => {
-    vi.stubGlobal("CSS", { escape, highlights, supports: () => true });
+    vi.stubGlobal("CSS", { highlights, supports: () => true });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function () {
         // The pen at the margin; the editor left where the UA puts it.
@@ -388,7 +387,7 @@ describe("creating a note", () => {
   });
 
   it("with CSS anchor positioning the stylesheet places it", async () => {
-    vi.stubGlobal("CSS", { escape, highlights, supports: () => true });
+    vi.stubGlobal("CSS", { highlights, supports: () => true });
     await select("a", 6, 10);
     press(pen());
     expect(editor().style.position).toBe("");

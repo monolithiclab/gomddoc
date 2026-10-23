@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,13 +16,19 @@ import (
 // The helper is the one shared module fetched by URL: modules import
 // /_assets/gmd-i18n.mjs, so both `serve` and `build` must publish it.
 
-func TestI18nHelper_ServedAsJavaScript(t *testing.T) {
-	t.Parallel()
-
+func newStaticFS(t *testing.T) fs.FS {
+	t.Helper()
 	staticFS := assets.BuildStaticFS(embeddedAssets, "default")
 	if staticFS == nil {
 		t.Fatal("BuildStaticFS returned nil")
 	}
+	return staticFS
+}
+
+func TestI18nHelper_ServedAsJavaScript(t *testing.T) {
+	t.Parallel()
+
+	staticFS := newStaticFS(t)
 
 	rec := httptest.NewRecorder()
 	server.NewAssetsHandler(staticFS).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/gmd-i18n.mjs", nil))
@@ -40,10 +47,7 @@ func TestI18nHelper_ServedAsJavaScript(t *testing.T) {
 func TestI18nHelper_CopiedByBuild(t *testing.T) {
 	t.Parallel()
 
-	staticFS := assets.BuildStaticFS(embeddedAssets, "default")
-	if staticFS == nil {
-		t.Fatal("BuildStaticFS returned nil")
-	}
+	staticFS := newStaticFS(t)
 
 	outDir := t.TempDir()
 	b := &BuildCmd{Output: outDir}

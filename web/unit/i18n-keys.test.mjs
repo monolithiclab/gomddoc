@@ -40,7 +40,6 @@ const NAMESPACE_TABLE = {
   code_copy: ["code_copy_label", "code_copy_done", "code_copy_aria"],
   search: ["search_label", "search_query", "search_results"],
   color_chip: ["color_chip_label", "color_chip_done"],
-  annotation: [],
 };
 
 describe("client string keys", () => {
@@ -65,8 +64,9 @@ describe("client string keys", () => {
   }
 
   it("ships every key the namespace table lists", () => {
+    const namespaces = modules.flatMap((m) => m.namespaces);
     for (const [ns, keys] of Object.entries(NAMESPACE_TABLE)) {
-      expect(modules.flatMap((m) => m.namespaces)).toContain(ns);
+      expect(namespaces).toContain(ns);
       for (const key of keys) expect(shipped, key).toContain(key);
     }
   });

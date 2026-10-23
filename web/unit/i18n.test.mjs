@@ -1,17 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "/_assets/gmd-i18n.mjs";
+import { block } from "./i18n-helpers.mjs";
 
 // docWith builds a fresh document holding one data block per namespace.
 function docWith(blocks, lang = "en-US") {
   const doc = document.implementation.createHTMLDocument("t");
   doc.documentElement.lang = lang;
-  for (const [ns, data] of Object.entries(blocks)) {
-    const s = doc.createElement("script");
-    s.type = "application/json";
-    s.dataset.gmdI18n = ns;
-    s.textContent = typeof data === "string" ? data : JSON.stringify(data);
-    doc.head.append(s);
-  }
+  doc.head.innerHTML = Object.entries(blocks)
+    .map(([ns, data]) => block(ns, data))
+    .join("");
   return doc;
 }
 

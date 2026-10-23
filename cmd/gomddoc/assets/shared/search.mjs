@@ -171,7 +171,7 @@ import { i18n } from "/_assets/gmd-i18n.mjs";
   // Localized strings: every one lands in innerHTML, some in a quoted
   // attribute, so label() escapes for both.
   const { t } = i18n('search');
-  const label = (key) => escapeHTML(t(key)).replace(/"/g, '&quot;');
+  const label = (key) => escapeHTML(t(key));
 
   // Create modal DOM
   const modal = document.createElement('div');
@@ -260,7 +260,7 @@ import { i18n } from "/_assets/gmd-i18n.mjs";
     }
 
     resultsContainer.innerHTML = currentResults.map((r, i) =>
-      '<a class="search-result" href="' + escapeAttr(r.path) + '" ' +
+      '<a class="search-result" href="' + escapeHTML(r.path) + '" ' +
         'role="option" data-index="' + i + '">' +
         '<div class="search-result-title">' + escapeHTML(r.title) + '</div>' +
         '<div class="search-result-path">' + escapeHTML(r.path) + '</div>' +
@@ -295,14 +295,10 @@ import { i18n } from "/_assets/gmd-i18n.mjs";
     }
   }
 
+  // escapeHTML is safe in text and in double-quoted attribute values alike.
   function escapeHTML(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  function escapeAttr(str) {
-    return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const escapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+    return String(str).replace(/[&<>"]/g, (c) => escapes[c]);
   }
 
   // Event: search button

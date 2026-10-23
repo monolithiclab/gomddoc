@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { block } from "./i18n-helpers.mjs";
 
 // The code-copy, search and color-chip modules read their strings from the
 // page's data-gmd-i18n blocks. Each test writes the page, then imports the
@@ -8,10 +9,7 @@ function page(blocks, body = "") {
   document.head.innerHTML = "";
   document.body.innerHTML =
     Object.entries(blocks)
-      .map(
-        ([ns, dict]) =>
-          `<script type="application/json" data-gmd-i18n="${ns}">${JSON.stringify(dict)}</script>`,
-      )
+      .map(([ns, dict]) => block(ns, dict))
       .join("") + body;
 }
 
