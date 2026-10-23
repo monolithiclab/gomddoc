@@ -253,3 +253,19 @@ func TestParseGitURL_EndpointProtocol(t *testing.T) {
 		})
 	}
 }
+
+func TestGitURLSubdir(t *testing.T) {
+	t.Parallel()
+
+	for url, want := range map[string]string{
+		"git+https://github.com/user/monorepo#main:docs/api":    "docs/api",
+		"git+https://github.com/user/monorepo#main:/docs//api/": "docs/api",
+		"git+https://github.com/user/monorepo#main":             "",
+		"git+https://github.com/user/monorepo":                  "",
+		"git+https://":                                          "",
+	} {
+		if got := GitURLSubdir(url); got != want {
+			t.Errorf("GitURLSubdir(%q) = %q, want %q", url, got, want)
+		}
+	}
+}

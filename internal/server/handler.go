@@ -175,7 +175,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Vary", "Accept")
 	outputNormalized := negotiate.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
-		h.serveHTML(w, r, renderResult.Content, enrichment, filePath)
+		h.serveHTML(w, r, renderResult.Content, enrichment, filePath, mimeType)
 	} else {
 		// Use the full MIME type from RenderResult if available, otherwise the selected output
 		serveMimeType := renderResult.MimeType
@@ -188,21 +188,19 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 
 // serveHTML wraps HTML content in the site template and serves it.
 // filePath is the file that produced htmlContent, which is not r.URL.Path when
-// strip_extensions is on.
-func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData, filePath string) {
-	// One stat serves both the source path (a directory request was answered
-	// by its default index or a generated listing) and JSON-LD's dateModified.
-	// The mtime is used only with a domain: seo.GenerateJSONLD emits nothing
-	// without one. A failure is not an error: JSON-LD falls back to the
-	// frontmatter date.
-	info, statErr := h.provider.Stat(r.Context(), filePath)
+// strip_extensions is on, and mimeType the type the provider read it as.
+func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent []byte, enrichment *enricher.EnrichmentData, filePath, mimeType string) {
+	// The only consumer is JSON-LD's dateModified, and seo.GenerateJSONLD emits
+	// nothing at all without a domain — so gate the stat on the same condition
+	// rather than spending a syscall per render on every site that has not
+	// configured one. Under the git provider the stat is a tree walk holding the
+	// exclusive tree lock, which makes the gate worth more than it looks.
+	// A failure is not an error: JSON-LD falls back to the frontmatter date.
 	var modTime time.Time
-	if statErr == nil && h.siteConfig.Meta.Domain != "" {
-		modTime = info.ModTime()
-	}
-	sourceFile := strings.TrimPrefix(filePath, "/")
-	if statErr == nil && info.IsDir() {
-		sourceFile = h.dirIndexFile(r.Context(), sourceFile)
+	if h.siteConfig.Meta.Domain != "" {
+		if info, err := h.provider.Stat(r.Context(), filePath); err == nil {
+			modTime = info.ModTime()
+		}
 	}
 
 	pageCtx := tmpl.BuildPageContext(tmpl.PageContextInput{
@@ -211,7 +209,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 		Content:    template.HTML(htmlContent), // #nosec G203
 		Enrichment: enrichment,
 		ModTime:    modTime,
-		SourceFile: sourceFile,
+		SourceFile: h.sourceFile(r.Context(), filePath, mimeType),
 		Renderer:   h.templateRenderer,
 		Lang:       h.lang,
 		TFunc:      h.tFunc,
@@ -228,10 +226,20 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request, htmlContent 
 	serveWithETag(w, r, rendered, mimeHTML, cacheDynamic)
 }
 
-// dirIndexFile returns the default index file that answered a request for dir,
-// or "" when the provider generated a listing because there is none.
-func (h *Handler) dirIndexFile(ctx context.Context, dir string) string {
-	index := path.Join(dir, h.provider.DefaultIndex())
+// sourceFile returns the content file that answered a read of filePath, which
+// the provider returned as mimeType: filePath itself for a file, the default
+// index for a directory, or "" for a generated listing. A file's type is
+// always DetectMIME of its own path, so a mismatch, or a slash-terminated
+// path, means a directory, and only a directory costs a Stat (D34: under the
+// git provider it is a tree walk holding the exclusive lock). A directory with
+// an extension that matches its index's type ("notes.md/") is read as a file
+// unless requested with the trailing slash.
+func (h *Handler) sourceFile(ctx context.Context, filePath, mimeType string) string {
+	file := strings.TrimPrefix(filePath, "/")
+	if file != "" && !strings.HasSuffix(file, "/") && negotiate.DetectMIME(file) == mimeType {
+		return file
+	}
+	index := path.Join(file, h.provider.DefaultIndex())
 	if _, err := h.provider.Stat(ctx, index); err != nil {
 		return ""
 	}

@@ -410,9 +410,11 @@ working from the repository root which file to edit. Callers pass the content-ro
 (`PageContextInput.SourceFile`: build's walked path, or serve's resolved file, a directory's default index, or `""`
 for a generated listing) and `BuildPageContext` asks `Renderer.SourcePath` to prefix it. `setupPipeline` sets the
 prefix (`WithSourcePrefix`) from `sourcePrefix(cfg.Server.Dir)`, which walks up to the first ancestor holding a
-`.git` entry, plus the language directory for a language pipeline. Outside a work tree, and for git-URL content
-whose paths are already tree paths, the prefix is empty. It is never derived from the URL, which `strip_extensions`
-and language prefixes make ambiguous. Error pages leave it empty.
+`.git` entry, plus the language directory for a language pipeline. Outside a work tree the prefix is empty; for
+git-URL content it is the URL's `#ref:subdir` (`provider.GitURLSubdir`), the provider's root inside the tree. Serve
+tells a file from a directory by the MIME type the read returned (a file's is always its own path's), so only a
+directory request costs a provider `Stat` (D34). It is never derived from the URL, which `strip_extensions` and
+language prefixes make ambiguous. Error pages leave it empty.
 
 ### 7. Navigation Layer
 

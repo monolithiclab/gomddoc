@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -21,6 +22,18 @@ type ParsedGitURL struct {
 	// Subdir is the subdirectory within the repository to serve.
 	// Empty string means serve from repository root.
 	Subdir string
+}
+
+// GitURLSubdir returns the subdirectory a git URL's fragment roots the
+// provider at ("docs/api" for git+https://host/monorepo#main:docs/api), in
+// clean slash form: page paths from that provider are relative to it. It is ""
+// for the repository root or a URL that does not parse.
+func GitURLSubdir(rawURL string) string {
+	parsed, err := parseGitURL(rawURL)
+	if err != nil || parsed.Subdir == "" {
+		return ""
+	}
+	return path.Clean(parsed.Subdir)
 }
 
 // parseGitURL parses a git URL into its components.

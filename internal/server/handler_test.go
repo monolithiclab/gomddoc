@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -819,5 +821,51 @@ func TestHandlerServeHTML_SourcePath(t *testing.T) {
 				t.Errorf("body = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// statCountingProvider counts Stat calls, the per-render cost D34 guards.
+type statCountingProvider struct {
+	*memoryProvider
+	stats atomic.Int32
+}
+
+func (p *statCountingProvider) Stat(ctx context.Context, name string) (fs.FileInfo, error) {
+	p.stats.Add(1)
+	return p.memoryProvider.Stat(ctx, name)
+}
+
+// A page that names a file costs no Stat without a domain: SourcePath comes
+// from what the read already established, and the mtime stat stays gated.
+func TestHandlerServeHTML_NoStatForFilePage(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{"guide.md": &fstest.MapFile{Data: []byte("# Guide")}}
+	resolver := resolve.Build(files, resolve.BuildOptions{
+		StripExtensions: []string{".md"},
+		HasRenderer:     func(mimeType string) bool { return mimeType == "text/markdown" },
+	})
+	siteConfig := config.NewSiteConfig(".")
+	prov := &statCountingProvider{memoryProvider: newMemoryProvider(files, "README.md", false)}
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: tmpl.NewHTMLRenderer(&siteConfig, fstest.MapFS{
+			"assets/themes/default/layouts/default.html.tmpl": {Data: []byte(`[{{ .Page.SourcePath }}]`)},
+		}),
+		SiteConfig: &siteConfig,
+		Resolver:   resolver,
+	})
+
+	for _, url := range []string{"/guide.md", "/guide"} {
+		w := httptest.NewRecorder()
+		handler.ServeContent(w, httptest.NewRequest("GET", url, nil))
+		if got := w.Body.String(); got != "[guide.md]" {
+			t.Errorf("GET %s body = %q, want [guide.md]", url, got)
+		}
+	}
+	if n := prov.stats.Load(); n != 0 {
+		t.Errorf("provider Stat called %d times rendering file pages, want 0", n)
 	}
 }

@@ -43,6 +43,7 @@ func TestSourcePrefix(t *testing.T) {
 		{name: "subdirectory", rel: "repo/docs", gitAt: "repo", want: "docs"},
 		{name: "nested subdirectory", rel: "repo/a/b", gitAt: "repo", want: "a/b"},
 		{name: "worktree .git file", rel: "repo/docs", gitAt: "repo", gitFile: true, want: "docs"},
+		// Assumes no ancestor of t.TempDir() holds a .git (true of the OS temp dir).
 		{name: "no work tree", rel: "plain/docs", want: ""},
 	}
 	for _, tt := range tests {
@@ -55,10 +56,16 @@ func TestSourcePrefix(t *testing.T) {
 		})
 	}
 
-	t.Run("git URL", func(t *testing.T) {
-		t.Parallel()
-		if got := sourcePrefix("git+https://example.com/repo.git"); got != "" {
-			t.Errorf("sourcePrefix(git URL) = %q, want \"\"", got)
-		}
-	})
+	for url, want := range map[string]string{
+		"git+https://example.com/repo.git":               "",
+		"git+https://example.com/monorepo#main:docs/api": "docs/api",
+		"git+https://example.com/monorepo#main:/docs/":   "docs",
+	} {
+		t.Run(url, func(t *testing.T) {
+			t.Parallel()
+			if got := sourcePrefix(url); got != want {
+				t.Errorf("sourcePrefix(%q) = %q, want %q", url, got, want)
+			}
+		})
+	}
 }
