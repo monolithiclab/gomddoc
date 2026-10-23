@@ -179,6 +179,10 @@ How many is "how many"? Give the exact wording of the notice.
 The feature is on by default. Turn it off for the site with `theme.features.annotations: false` (or
 `GOMDDOC_SITE_THEME_FEATURES_ANNOTATIONS=false`), or for one page with `features: {annotations: false}` in its
 frontmatter. Pages without a source file to edit (generated directory listings, tag pages, error pages) never show it.
+
+`gomddoc build` output carries the feature too, so a published site shows the **Annotations** button to its readers
+and each page's HTML names its repo-relative source path. Notes still stay in each reader's browser; turn the feature
+off in the site config if a public site should not offer it.
 Themes restyle it through the `--gmd-annotation-*` CSS custom properties (see
 [Theming and Assets](05-theming-and-assets.md)).
 

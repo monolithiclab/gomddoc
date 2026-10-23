@@ -34,6 +34,8 @@ with `gomddoc doctor` before bumping a pinned version). Open bugs and the ranked
   navigation tools to AI agents
 - **Themes**: One bundled theme (`default`) plus seven more in
   [gomddoc-themes](https://github.com/monolithiclab/gomddoc-themes); feature toggles and CSS variables in config
+- **Review Annotations**: Select text on a rendered page, attach a note, and copy every note of the page as Markdown
+  naming the source file, ready to paste into an LLM harness; notes stay in the browser's `localStorage`
 - **Self-Documenting**: `gomddoc help`, `gomddoc info`, `gomddoc schema` and `gomddoc doctor` read the embedded
   guide, list every setting, print the config JSON Schema and check a site for problems
 - **Secure Defaults**: Path jail, hidden-file and `exclude` blocking (404), GET/HEAD-only content routes,

@@ -100,6 +100,9 @@ The same guide ships in the binary: `gomddoc help` lists its topics, `gomddoc he
   URLs.
 - **Markdown Extensions:** GitHub Flavored Markdown, YAML frontmatter, five admonition types, Chroma syntax
   highlighting, KaTeX math, Mermaid diagrams, color chips, heading anchors, and a scroll-tracked table of contents.
+- **Review Annotations:** Select text on a rendered page and attach a note; the header button copies every note as
+  Markdown naming the source file and quoting each passage, ready to paste into an LLM harness that revises the
+  file. Notes stay in the browser. See [Annotating a Page](06-writing-workflow.md#annotating-a-page).
 - **Secure by Default:** Path traversal protection, hidden file blocking, HTTP method filtering (GET/HEAD only), SSH
   host key verification (no TOFU), security headers, and optional HTTP Basic Authentication via htpasswd (bcrypt).
 - **Static Site Generation:** `gomddoc build` writes a static site for S3, Netlify, GitHub Pages, or Cloudflare

@@ -367,7 +367,7 @@ language, translator and language list behind `.T`, `.Lang` and `.Languages`).
 
 **Template Functions:**
 
-The FuncMap (`renderer.go:funcMap`) has exactly these twelve entries:
+The FuncMap (`renderer.go:funcMap`) has exactly these thirteen entries:
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|
@@ -383,6 +383,7 @@ The FuncMap (`renderer.go:funcMap`) has exactly these twelve entries:
 | `inlineHTMLAsset` | `inlineHTMLAsset(name) → HTML` | Loads asset as `template.HTML` for HTML context (e.g. SVGs) |
 | `tagURL` | `tagURL(lang, tag) → string` | URL of a tag page, language-prefixed unless `lang` is the site default |
 | `pageTags` | `pageTags(meta) → []string` | A page's frontmatter tags, normalized and deduplicated like the metadata index, in frontmatter order |
+| `annotationsConfig` | `annotationsConfig(tc) → AnnotationsConfig` | The annotations module's JSON configuration: source path, title and the page language's `annotation*` labels |
 
 Functions degrade rather than fail when their input is missing: `canonicalURL` and `jsonLD` return empty without
 `meta.domain`, and `contentURL` falls back to the real path without a resolver. The `inline*Asset` functions look in
@@ -737,6 +738,7 @@ and can be disabled per-site (`theme.features`) or per-page (frontmatter `featur
 - Tag chips on pages (`tag_chips`) and the see-also list of related pages (`see_also`)
 - KaTeX math rendering, client-side CDN (`katex`)
 - Mermaid diagram support, client-side CDN, theme-aware (`mermaid`)
+- Page annotations stored in the browser, exported as Markdown (`annotations`)
 - Touch device accessibility (`@media (hover: none)`)
 - Responsive design (mobile/tablet/desktop)
 

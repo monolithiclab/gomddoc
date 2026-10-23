@@ -412,6 +412,12 @@ All web components are prefixed with `gmd-` to avoid collisions with other custo
 | `<gmd-color-chip>` | `gmd-color-chip.mjs` | Shadow | `color_chips` | Inline color swatch from hex codes. Click to copy. |
 | `<gmd-admonition>` | `gmd-admonition.mjs` | Light | `admonitions` | Styled callout block (note, tip, warning, etc.) |
 | `<gmd-heading-anchor>` | `gmd-heading-anchor.mjs` | Shadow | `heading_anchors` | Anchor link (#) appended to headings, revealed on hover |
+| `<gmd-annotations>` | `gmd-annotations.mjs` | Light | `annotations` | Wraps the page content; anchors, highlights and stores notes |
+| `<gmd-annotations-toggle>` | `gmd-annotations.mjs` | Light | `annotations` | Header button opening the notes dialog, with a count badge |
+
+The annotation elements come from the theme template, not from goldmark; the module mounts its margin, editor,
+dialog and notice elements itself (see the [Theme Features Checklist](#theme-features-checklist) and
+[Annotating a Page](06-writing-workflow.md#annotating-a-page)).
 
 ### How They Work
 
