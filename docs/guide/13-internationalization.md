@@ -83,7 +83,7 @@ create locale files.
 
 ### Built-in Translation Keys
 
-The built-in `en-US.yml` provides these 55 keys. `TestBuiltinTranslationKeysAreDocumented`
+The built-in `en-US.yml` provides these 60 keys. `TestBuiltinTranslationKeysAreDocumented`
 (`cmd/gomddoc/locale_docs_test.go`) asserts this block and the shipped file name exactly the same
 set — a key added to one and not the other fails the build:
 
@@ -97,8 +97,9 @@ search_no_results: "No results found"
 search_navigate: Navigate
 search_open: Open
 search_close: Close
-copy: Copy
-copied: "Copied!"
+code_copy_label: Copy
+code_copy_done: "Copied!"
+code_copy_aria: "Copy code to clipboard"
 aria_toggle_nav: "Toggle navigation"
 aria_site_nav: "Site navigation"
 aria_search: "Search documentation"
@@ -106,9 +107,12 @@ aria_toc: "Table of contents"
 aria_toggle_toc: "Toggle table of contents"
 aria_toggle_theme: "Toggle dark mode"
 aria_breadcrumb: Breadcrumb
-aria_copy_code: "Copy code to clipboard"
 search_shortcut: "Search (Ctrl+K)"
 search_tag_tip: "Tip: tag:name filters by tag"
+search_label: "Search documentation"
+search_query: "Search query"
+search_results: "Search results"
+color_chip_label: "Color %s"
 tags_title: Tags
 tags_index_title: All tags
 tags_tagged_as: "Pages tagged %s"
@@ -145,7 +149,8 @@ annotations_export_intro: "Each note quotes the passage it refers to, with the w
 annotations_export_top: "(top of page)"
 ```
 
-`tags_tagged_as` and `tags_empty` carry a single `%s`, which is substituted with the tag name.
+`tags_tagged_as` and `tags_empty` carry a single `%s`, which is substituted with the tag name;
+`color_chip_label` carries one too, the color value.
 The `annotation_*` and `annotations_*` keys label the [page annotations](06-writing-workflow.md#annotating-a-page)
 interface and its Markdown export; each `%d` is replaced, in order, by a number (`annotation_position` carries two:
 the note's position, then the count). A key ending in `_one` is the singular form of the key without it, used
@@ -165,8 +170,8 @@ language_name: Français
 toc_title: "Sur cette page"
 edit_page: "Modifier cette page"
 search_placeholder: "Rechercher..."
-copy: Copier
-copied: "Copié !"
+code_copy_label: Copier
+code_copy_done: "Copié !"
 ```
 
 Merging is per key, so this file is deliberately a fragment rather than a copy of all 26 — anything

@@ -53,7 +53,8 @@
         <script>{{ inlineJSAsset "toc-highlight.mjs" }}</script>
         {{- end }}
         {{- if .Feature "code_copy" }}
-        <script>{{ inlineJSAsset "code-copy.mjs" }}</script>
+        <script type="application/json" data-gmd-i18n="code_copy">{{ i18nStrings . "code_copy" }}</script>
+        <script type="module">{{ inlineJSAsset "code-copy.mjs" }}</script>
         {{- end }}
         {{- if .Feature "katex" }}
         <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
@@ -67,9 +68,11 @@
         <script>{{ inlineJSAsset "gmd-heading-anchor.mjs" }}</script>
         {{- end }}
         {{- if .Feature "color_chips" }}
+        <script type="application/json" data-gmd-i18n="color_chip">{{ i18nStrings . "color_chip" }}</script>
         <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
         {{- end }}
         {{- if .Feature "search" }}
+        <script type="application/json" data-gmd-i18n="search">{{ i18nStrings . "search" }}</script>
         <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
         {{- end }}
         {{- if .Feature "annotations" }}

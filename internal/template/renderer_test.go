@@ -2616,6 +2616,134 @@ func TestRender_AnnotationsContract(t *testing.T) {
 	}
 }
 
+// i18nBlockModules maps each namespace scripts-shared emits a strings block for
+// to the module it serves; the block sits immediately before that module.
+var i18nBlockModules = map[string]string{
+	"code_copy":  "code-copy.mjs",
+	"search":     "search.mjs",
+	"color_chip": "gmd-color-chip.mjs",
+}
+
+// i18nBlock returns the JSON text of the page's data-gmd-i18n block for ns and
+// what follows it, and how many such blocks the page carries.
+func i18nBlock(page, ns string) (raw, after string, count int) {
+	open := `<script type="application/json" data-gmd-i18n="` + ns + `">`
+	count = strings.Count(page, open)
+	_, rest, _ := strings.Cut(page, open)
+	raw, after, _ = strings.Cut(rest, "</script>")
+	return raw, after, count
+}
+
+// TestRender_I18nBlocksContract renders the real default theme's two layouts
+// and checks the strings contract of the code-copy, search and color-chip
+// modules: no data-* attribute on <html>, one block per enabled module placed
+// immediately before it, and neither block nor module for a disabled feature.
+func TestRender_I18nBlocksContract(t *testing.T) {
+	t.Parallel()
+
+	modules := map[string]string{}
+	for ns, file := range i18nBlockModules {
+		data, err := os.ReadFile("../../cmd/gomddoc/assets/shared/" + file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		modules[ns] = `<script type="module">` + string(data[:80])
+	}
+	features := map[string]string{"code_copy": "code_copy", "search": "search", "color_chip": "color_chips"}
+
+	for _, layout := range []string{"default.html.tmpl", "error.html.tmpl"} {
+		for _, off := range []string{"", "code_copy", "search", "color_chip"} {
+			t.Run(layout+"/off="+off, func(t *testing.T) {
+				t.Parallel()
+
+				siteConfig := config.NewSiteConfig(".")
+				r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"),
+					WithLocaleKeys([]string{"code_copy_label", "search_label", "color_chip_label"}))
+				var pageFeatures map[string]bool
+				if off != "" {
+					pageFeatures = map[string]bool{features[off]: false}
+				}
+				tc := &TemplateContext{Site: &siteConfig, Page: PageContext{
+					Path: "/a", Content: "<pre><code>x</code></pre>", Features: pageFeatures,
+				}}
+				tc.WithI18n("", func(k string) string { return "L:" + k }, nil)
+
+				out, err := r.Render(context.Background(), layout, tc)
+				if err != nil {
+					t.Fatalf("Render: %v", err)
+				}
+				s := string(out)
+				_, rest, _ := strings.Cut(s, "<html")
+				if tag, _, _ := strings.Cut(rest, ">"); strings.Contains(tag, "data-") {
+					t.Errorf("<html%s> carries a data-* attribute", tag)
+				}
+				for ns, module := range modules {
+					_, after, count := i18nBlock(s, ns)
+					if ns == off {
+						if count != 0 || strings.Contains(s, module) {
+							t.Errorf("%s disabled: %d blocks, module present = %v", ns, count, strings.Contains(s, module))
+						}
+						continue
+					}
+					if count != 1 {
+						t.Errorf("%s: %d blocks, want 1", ns, count)
+						continue
+					}
+					if !strings.HasPrefix(strings.TrimSpace(after), module) {
+						t.Errorf("%s block is not immediately followed by %s", ns, i18nBlockModules[ns])
+					}
+				}
+			})
+		}
+	}
+}
+
+// TestRender_I18nBlocksFromSiteLocale renders a fr-FR page against the
+// shipped en-US locale plus a site locale translating one code-copy key: the
+// block carries the French string, English for the rest, and every new key.
+func TestRender_I18nBlocksFromSiteLocale(t *testing.T) {
+	t.Parallel()
+
+	enUS, err := os.ReadFile("../../cmd/gomddoc/assets/locales/en-US.yml")
+	if err != nil {
+		t.Fatalf("read en-US.yml: %v", err)
+	}
+	bundle, err := locale.LoadBundle("en-US", fstest.MapFS{
+		"locales/en-US.yml": &fstest.MapFile{Data: enUS},
+		"locales/fr-FR.yml": &fstest.MapFile{Data: []byte("code_copy_label: Copier\n")},
+	}, "locales")
+	if err != nil {
+		t.Fatalf("LoadBundle: %v", err)
+	}
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"), WithLocaleKeys(bundle.Keys("")))
+	tc := (&TemplateContext{Site: &siteConfig, Page: PageContext{Path: "/a"}}).
+		WithI18n("fr-FR", bundle.TFunc("fr-FR"), nil)
+
+	out, err := r.Render(context.Background(), "default.html.tmpl", tc)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	want := map[string]map[string]string{
+		"code_copy": {"code_copy_label": "Copier", "code_copy_done": "Copied!", "code_copy_aria": "Copy code to clipboard"},
+		"search": {"search_label": "Search documentation", "search_query": "Search query",
+			"search_results": "Search results", "search_placeholder": "Search documentation..."},
+		"color_chip": {"color_chip_label": "Color %s"},
+	}
+	for ns, keys := range want {
+		raw, _, _ := i18nBlock(string(out), ns)
+		var got map[string]string
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatalf("%s block is not JSON: %v\n%s", ns, err, raw)
+		}
+		for k, v := range keys {
+			if got[k] != v {
+				t.Errorf("%s[%s] = %q, want %q", ns, k, got[k], v)
+			}
+		}
+	}
+}
+
 // TestAnnotationsConfig_SingularFromPageLanguage hands annotationsConfig a
 // real bundle whose fr-FR translates a general form but not its _one variant:
 // the French page gets no _one key, so the module uses the French general

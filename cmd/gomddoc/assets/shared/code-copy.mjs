@@ -7,20 +7,21 @@
  * Customization via CSS custom properties:
  *   --copy-btn-font-size, --copy-btn-padding, etc. — set in theme CSS.
  *
- * Customization via data attributes on <html>:
- *   data-copy-label     — button text (default: "Copy")
- *   data-copied-label   — success text (default: "Copied!")
+ * Strings come from the page's "code_copy" block (gmd-i18n.mjs):
+ *   code_copy_label — button text
+ *   code_copy_done  — success text
+ *   code_copy_aria  — the button's accessible name
  *
  * Themes that want full override can place their own code-copy.mjs
  * in the theme directory — asset resolution checks theme first.
  */
-(function() {
-  'use strict';
+import { i18n } from "/_assets/gmd-i18n.mjs";
 
-  var root = document.documentElement;
-  var copyLabel = root.getAttribute('data-copy-label') || 'Copy';
-  var copiedLabel = root.getAttribute('data-copied-label') || 'Copied!';
-  var copyAria = root.getAttribute('data-copy-aria') || 'Copy code to clipboard';
+(function() {
+  var t = i18n('code_copy').t;
+  var copyLabel = t('code_copy_label');
+  var copiedLabel = t('code_copy_done');
+  var copyAria = t('code_copy_aria');
 
   document.querySelectorAll('pre > code').forEach(function(codeBlock) {
     var pre = codeBlock.parentNode;

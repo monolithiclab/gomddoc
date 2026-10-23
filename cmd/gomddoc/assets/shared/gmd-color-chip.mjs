@@ -8,9 +8,14 @@
  *   - Shadow DOM encapsulation
  *   - Inherits theme colors via CSS custom properties
  *   - Click to copy hex value
- *   - Accessible (role="img", aria-label)
+ *   - Accessible (role="img", aria-label from color_chip_label in the page's
+ *     "color_chip" block, read through gmd-i18n.mjs)
  *   - Exposed parts: ::part(swatch), ::part(label)
  */
+
+import { i18n } from "/_assets/gmd-i18n.mjs";
+
+const { t } = i18n("color_chip");
 
 const template = document.createElement("template");
 template.innerHTML = `
@@ -94,7 +99,7 @@ class GmdColorChip extends HTMLElement {
 
   _updateLabel() {
     if (!this.getAttribute("aria-label")) {
-      this.setAttribute("aria-label", `Color ${this.value}`);
+      this.setAttribute("aria-label", t("color_chip_label", this.value));
     }
   }
 

@@ -222,9 +222,11 @@ If you are building a custom theme, add search support with two additions:
    ```
 
 2. Include the search module in your template's scripts section. The shared `scripts-shared` block
-   (`{{ template "scripts-shared" . }}`) already does this when the `search` feature is on:
+   (`{{ template "scripts-shared" . }}`) already does this when the `search` feature is on. The module reads its
+   strings from the `search` data block emitted just before it, so a theme inlining it itself emits the block too:
    ```html
    {{- if .Feature "search" }}
+   <script type="application/json" data-gmd-i18n="search">{{ i18nStrings . "search" }}</script>
    <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
    {{- end }}
    ```

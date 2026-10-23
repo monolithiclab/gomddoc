@@ -215,6 +215,7 @@ Custom functions available in templates:
   <button id="theme-toggle">Toggle Theme</button>
   {{- end }}
   {{- if .Feature "color_chips" }}
+  <script type="application/json" data-gmd-i18n="color_chip">{{ i18nStrings . "color_chip" }}</script>
   <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
   {{- end }}
   ```
@@ -245,7 +246,9 @@ Custom functions available in templates:
   `assets/shared/`, and returns it as `template.JS` for embedding inside `<script>` tags. The name is a relative path;
   a missing asset fails the render. Assets are cached after the first read, except in dev mode.
   ```html
+  <script type="application/json" data-gmd-i18n="color_chip">{{ i18nStrings . "color_chip" }}</script>
   <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
+  <script type="application/json" data-gmd-i18n="search">{{ i18nStrings . "search" }}</script>
   <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
   ```
 
@@ -391,6 +394,7 @@ comparison is needed to expand the right branches.
     {{ template "toc" . }}
 
     {{- if .Feature "color_chips" }}
+    <script type="application/json" data-gmd-i18n="color_chip">{{ i18nStrings . "color_chip" }}</script>
     <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
     {{- end }}
 </body>
@@ -409,7 +413,7 @@ All web components are prefixed with `gmd-` to avoid collisions with other custo
 
 | Element | Source File | DOM | Feature Flag | Description |
 |---|---|---|---|---|
-| `<gmd-color-chip>` | `gmd-color-chip.mjs` | Shadow | `color_chips` | Inline color swatch from hex codes. Click to copy. |
+| `<gmd-color-chip>` | `gmd-color-chip.mjs` | Shadow | `color_chips` | Inline color swatch from hex codes. Click to copy. Its `aria-label` is `color_chip_label` from the `color_chip` data block. |
 | `<gmd-admonition>` | `gmd-admonition.mjs` | Light | `admonitions` | Styled callout block (note, tip, warning, etc.) |
 | `<gmd-heading-anchor>` | `gmd-heading-anchor.mjs` | Shadow | `heading_anchors` | Anchor link (#) appended to headings, revealed on hover |
 | `<gmd-annotations>` | `gmd-annotations.mjs` | Light | `annotations` | Wraps the page content; anchors, highlights and stores notes |
@@ -439,6 +443,7 @@ The default theme's `scripts-shared` partial does this:
 <script>{{ inlineJSAsset "gmd-heading-anchor.mjs" }}</script>
 {{- end }}
 {{- if .Feature "color_chips" }}
+<script type="application/json" data-gmd-i18n="color_chip">{{ i18nStrings . "color_chip" }}</script>
 <script type="module">{{ inlineJSAsset "gmd-color-chip.mjs" }}</script>
 {{- end }}
 ```
@@ -527,17 +532,20 @@ features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggle
 - **Breadcrumbs** via `{{ range .Page.Breadcrumbs }}`
 - **Search button** — guarded by `{{ .Feature "search" }}`. Button with `id="search-toggle"` in the header.
 - **Search modal** — guarded by `{{ .Feature "search" }}`. Uses `{{ inlineJSAsset "search.mjs" }}` with CSS custom
-  properties for styling. Opens with Ctrl+K / Cmd+K; UI strings come from `data-search-*` attributes on `<html>`.
+  properties for styling. Opens with Ctrl+K / Cmd+K; UI strings come from the `search` data block
+  (`<script type="application/json" data-gmd-i18n="search">{{ i18nStrings . "search" }}</script>`) emitted just
+  before the module, as `scripts-shared` does.
 - **Admonition styling** for `.admonition-note`, `.admonition-tip`, `.admonition-important`, `.admonition-warning`,
   `.admonition-caution`
 - **Color chip web component** — guarded by `{{ .Feature "color_chips" }}`. Uses
-  `{{ inlineJSAsset "gmd-color-chip.mjs" }}`.
+  `{{ inlineJSAsset "gmd-color-chip.mjs" }}` after the `color_chip` data block, which carries its `color_chip_label`.
 - **Tag chips** — guarded by `{{ .Feature "tag_chips" }}`. Uses `{{ template "tag-chips" . }}`, rendering the page's
   `pageTags` as links to their `tagURL` landing pages.
 - **See-also (related pages)** — guarded by `{{ .Feature "see_also" }}`. Uses `{{ template "see-also" . }}`, listing
   `.Page.RelatedDocs` (pages sharing frontmatter tags).
-- **Copy-to-clipboard** — guarded by `{{ .Feature "code_copy" }}`. Uses `{{ inlineJSAsset "code-copy.mjs" }}`, creates
-  `.copy-btn` on code blocks. Customize text with `data-copy-label`/`data-copied-label`/`data-copy-aria` on `<html>`.
+- **Copy-to-clipboard** — guarded by `{{ .Feature "code_copy" }}`. Uses `{{ inlineJSAsset "code-copy.mjs" }}` in a
+  `<script type="module">`, after the `code_copy` data block, and creates `.copy-btn` on code blocks. Customize text
+  with the `code_copy_label`, `code_copy_done` and `code_copy_aria` keys in `.gomddoc/locales/`.
 - **Heading anchors** — guarded by `{{ .Feature "heading_anchors" }}`. Uses
   `{{ inlineJSAsset "gmd-heading-anchor.mjs" }}`; the anchor is revealed on heading hover.
 - **Admonitions** — guarded by `{{ .Feature "admonitions" }}`. Uses `{{ inlineJSAsset "gmd-admonition.mjs" }}`.
