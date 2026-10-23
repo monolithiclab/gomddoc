@@ -156,11 +156,19 @@ The `annotation_*` and `annotations_*` keys label the [page annotations](06-writ
 interface and its Markdown export; each `%d` is replaced, in order, by a number (`annotation_position` carries two:
 the note's position, then the count). A key can carry plural variants: the key with a `_zero`, `_one`, `_two`, `_few`
 or `_many` suffix is the form for that CLDR plural category, and the key without a suffix is the general (`other`)
-form. Which numbers fall in which category depends on the language: English `one` is 1 only, French `one` covers 0 and 1, Russian has `one`, `few` and `many`.
+form. A `key_other` entry is ignored: the bare key is the `other` form. Which numbers fall in which category depends
+on the language: English `one` is 1 only, French `one` covers 0 and 1, Russian has `one`, `few` and `many`.
 Write each variant for the numbers its language puts in that category, and put `%d` in every variant rather than a
 literal number (`"%d note no longer matches…"`, never `"One note no longer matches…"`), so the count is shown whatever
 the category covers. A language that omits a variant uses its general form for those numbers, never the English one.
 Those five suffixes are reserved for plural variants.
+
+> [!NOTE]
+> **Upgrading from v0.1.4 or earlier.** Three keys were renamed: `copy` is now `code_copy_label`, `copied` is
+> `code_copy_done` and `aria_copy_code` is `code_copy_aria`. The old names in `.gomddoc/locales/` are ignored, and
+> the page falls back to the default language's string. Five keys are new: `search_label` (the search dialog's
+> label; `aria_search` now only labels the header button), `search_query`, `search_results`, `color_chip_label` and
+> `color_chip_done`. A site that translated every key must add them. `_one` strings use `%d`.
 
 The `language_name` key is special — it provides the display name shown in the language switcher (e.g., "Français",
 "Español", "日本語").
@@ -400,7 +408,10 @@ notes.tn("annotations_removed", 3);   // annotations_removed_<category>, else an
 - The result is plain text: set `textContent`, or escape it before building markup.
 
 **Adding a namespace to a theme's own script.** Prefix the keys with the theme's namespace and translate them in
-`.gomddoc/locales/{lang}.yml` like any other key; a key a language lacks falls back to the default language, then to the key:
+`.gomddoc/locales/{lang}.yml` like any other key; a key a language lacks falls back to the default language, then to
+the key.
+End the namespace with `_` (`mytheme_`): a namespace matches keys by raw prefix, so `code` would also pick up
+gomddoc's `code_copy_*` keys. (`annotation` deliberately covers both `annotation_*` and `annotations_*`.)
 
 ```yaml
 # .gomddoc/locales/en-US.yml
@@ -423,8 +434,10 @@ status.textContent = tn("mytheme_count", n);
 ```
 
 The import path is absolute (`/_assets/`), like `assetURL`: gomddoc has no sub-path hosting. A theme that inlines
-`search.mjs` or `code-copy.mjs` itself, instead of calling `scripts-shared`, must emit their blocks (`search`,
-`code_copy`) too, or they show their key names. Attributes on `<html>` such as `data-copy-label` are no longer read.
+`code-copy.mjs`, `search.mjs`, `gmd-color-chip.mjs` or `gmd-annotations.mjs` itself, instead of calling
+`scripts-shared`, must load them with `<script type="module">` (they `import` the helper) and emit their blocks
+(`code_copy`, `search`, `color_chip`, `annotation`) too, or they show their key names. A theme-root `code-copy.mjs`
+override now runs as a module. Attributes on `<html>` such as `data-copy-label` are no longer read.
 
 ## Per-Language Features
 

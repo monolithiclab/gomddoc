@@ -87,6 +87,9 @@ The output includes:
   [Theming](05-theming-and-assets.md#static-asset-overlay))
 - `.gomddoc-build` — a marker file
 
+The host must serve `.mjs` files as JavaScript (`_assets/gmd-i18n.mjs` is imported by the search, copy and
+annotation scripts); mainstream hosts do.
+
 `build` deletes and recreates the output directory on each run, but only when it is empty or contains the
 `.gomddoc-build` marker from a previous build. It refuses to write into any other non-empty directory. Rendering runs
 in parallel, one worker per CPU. The run ends with a `Build complete` log line counting markdown, copied and skipped

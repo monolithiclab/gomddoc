@@ -992,7 +992,8 @@ placeholders and picks CLDR plural variants (`key_one`, `key_few`…) with `Intl
 missing string falls back to its key. The three keys `copy`, `copied` and `aria_copy_code` became `code_copy_label`,
 `code_copy_done` and `code_copy_aria` so every key sits under its namespace prefix. A site overriding the old names
 must rename them, attributes on `<html>` are ignored, and a theme that inlines `search.mjs` or `code-copy.mjs` itself
-must emit their blocks.
+must emit their blocks. Modules import the helper from `/_assets/`, which has the same no-sub-path limitation as
+`assetURL`.
 
 - *Evidence*: the `data-*` attributes on `<html>` that carried search and code-copy text were missing from all seven
   downloadable themes, so those strings never localized there; annotations had a mechanism of their own. Each feature
@@ -1001,5 +1002,6 @@ must emit their blocks.
   testable without a window); `data-*` attributes (the failure above, one attribute per string, no plurals);
   one merged dictionary for all features (sends every string to every page and has no ownership of a key);
   `Intl.MessageFormat` (TC39 Stage 1, not shipped).
-- *Cost if wrong*: a theme that omits a block shows key names instead of text. Modules import the helper from
-  `/_assets/`, which has the same no-sub-path limitation as `assetURL`.
+- *Cost if wrong*: a theme that omits a block shows key names instead of text. The modules now depend on fetching
+  `/_assets/gmd-i18n.mjs`: a host that serves `.mjs` with a wrong MIME type, or blocks `/_assets/`, disables search,
+  copy buttons and annotations rather than showing English. Inlining these modules as classic scripts breaks.
