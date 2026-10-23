@@ -3,6 +3,7 @@ package enricher
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -100,7 +101,7 @@ func (m *MarkdownEnricher) Enrich(ctx context.Context, content []byte, path stri
 	}
 
 	// Extract frontmatter metadata
-	mdMeta := meta.Get(pCtx)
+	mdMeta := normalizeMeta(meta.Get(pCtx))
 
 	enrichment := &EnrichmentData{
 		Metadata: mdMeta,
@@ -211,4 +212,34 @@ func compareRelatedDocs(a, b RelatedDoc) int {
 		return c
 	}
 	return cmp.Compare(a.Path, b.Path)
+}
+
+// normalizeMeta rekeys, recursively, the map[any]any values goldmark-meta's
+// yaml.v2 decoding gives nested frontmatter maps as map[string]any, so every
+// consumer of the metadata (feature overrides, templates) sees one map type.
+func normalizeMeta(m map[string]any) map[string]any {
+	for k, v := range m {
+		m[k] = normalizeMetaValue(v)
+	}
+	return m
+}
+
+func normalizeMetaValue(v any) any {
+	switch v := v.(type) {
+	case map[any]any:
+		out := make(map[string]any, len(v))
+		for k, item := range v {
+			out[fmt.Sprint(k)] = normalizeMetaValue(item)
+		}
+		return out
+	case map[string]any:
+		return normalizeMeta(v)
+	case []any:
+		for i, item := range v {
+			v[i] = normalizeMetaValue(item)
+		}
+		return v
+	default:
+		return v
+	}
 }

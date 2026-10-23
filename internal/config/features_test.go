@@ -108,12 +108,6 @@ func TestExtractPageFeatures(t *testing.T) {
 			want:     map[string]bool{"katex": true, "toc": false},
 		},
 		{
-			// goldmark-meta decodes frontmatter with yaml.v2: nested maps arrive keyed by any.
-			name:     "frontmatter map keyed by any",
-			pageMeta: map[string]any{"features": map[any]any{"annotations": false, 1: true}},
-			want:     map[string]bool{"annotations": false},
-		},
-		{
 			name:     "mixed types - non-bool ignored",
 			pageMeta: map[string]any{"features": map[string]any{"toc": "yes", "admonitions": 1, "heading_anchors": false}},
 			want:     map[string]bool{"heading_anchors": false},

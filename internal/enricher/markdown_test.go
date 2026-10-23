@@ -3,6 +3,7 @@ package enricher
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"testing/fstest"
@@ -40,6 +41,37 @@ func TestMarkdownEnricher_Enrich_Metadata(t *testing.T) {
 
 	if desc, ok := result.Metadata["description"].(string); !ok || desc != "A test" {
 		t.Errorf("Metadata[description] = %v, want 'A test'", result.Metadata["description"])
+	}
+}
+
+// TestMarkdownEnricher_Enrich_NestedMeta pins the normalisation of
+// goldmark-meta's yaml.v2 maps: nested maps, inside lists too, arrive as
+// map[string]any, a non-string key in its printed form, so feature overrides
+// and templates read one type.
+func TestMarkdownEnricher_Enrich_NestedMeta(t *testing.T) {
+	t.Parallel()
+	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
+
+	content := []byte("---\nfeatures:\n  annotations: false\n  1: true\nlinks:\n  - {name: a, at: {line: 2}}\n---\n# Hello")
+	result, err := e.Enrich(context.Background(), content, "/test.md")
+	if err != nil {
+		t.Fatalf("Enrich() error = %v", err)
+	}
+
+	features, ok := result.Metadata["features"].(map[string]any)
+	if !ok || features["annotations"] != false || features["1"] != true {
+		t.Errorf("Metadata[features] = %#v, want map[string]any keyed by strings", result.Metadata["features"])
+	}
+	if want := map[string]bool{"annotations": false, "1": true}; !maps.Equal(result.Features, want) {
+		t.Errorf("Features = %v, want %v", result.Features, want)
+	}
+	links, _ := result.Metadata["links"].([]any)
+	if len(links) != 1 {
+		t.Fatalf("Metadata[links] = %#v, want one item", result.Metadata["links"])
+	}
+	link, ok := links[0].(map[string]any)
+	if _, nested := link["at"].(map[string]any); !ok || !nested {
+		t.Errorf("Metadata[links][0] = %#v, want map[string]any all the way down", links[0])
 	}
 }
 

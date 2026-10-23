@@ -61,6 +61,11 @@ type PipelineOptions struct {
 	// (template.WithAnnotationLabelKeys). setupLanguagePipelines sets them from
 	// the locale bundle.
 	AnnotationLabelKeys []string
+
+	// SourcePrefix is the content directory's path inside its git work tree
+	// (sourcePrefix), which setupLanguagePipelines computes once for every
+	// pipeline; setupPipeline appends Lang for template.WithSourcePrefix.
+	SourcePrefix string
 }
 
 // Pipeline holds the assembled rendering pipeline components.
@@ -166,8 +171,10 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 		slog.Warn("Failed to merge site locale overrides", slog.Any("error", err))
 	}
 
-	// Every renderer hands the annotations module the bundle's label keys.
+	// Shared by every pipeline: the bundle's annotation label keys, and the
+	// content directory's place in its git work tree (a walk up the disk).
 	opts.AnnotationLabelKeys = bundle.Keys("annotation")
+	opts.SourcePrefix = sourcePrefix(cfg.Server.Dir)
 
 	// Build default pipeline.
 	defaultOpts := opts
@@ -286,7 +293,7 @@ func setupPipeline(cfg *config.Config, prov provider.Provider, opts PipelineOpti
 	langPrefix := ""
 	templateRenderer.Configure(
 		template.WithResolver(resolver),
-		template.WithSourcePrefix(path.Join(sourcePrefix(cfg.Server.Dir), opts.Lang)),
+		template.WithSourcePrefix(path.Join(opts.SourcePrefix, opts.Lang)),
 		template.WithAnnotationLabelKeys(opts.AnnotationLabelKeys),
 	)
 	if opts.Lang != "" {

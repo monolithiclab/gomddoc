@@ -99,6 +99,18 @@ func TestParseGitURL(t *testing.T) {
 			wantRef:    "main",
 			wantSubdir: "docs",
 		},
+		{
+			name:       "with subdir cleaned",
+			input:      "git+https://github.com/user/mono#main:./docs//api/",
+			wantRef:    "main",
+			wantSubdir: "docs/api",
+		},
+		{
+			name:       "with subdir naming the root",
+			input:      "git+https://github.com/user/mono#main:./",
+			wantRef:    "main",
+			wantSubdir: "",
+		},
 
 		// Empty fragment parts
 		{

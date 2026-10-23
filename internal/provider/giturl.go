@@ -19,8 +19,8 @@ type ParsedGitURL struct {
 	// Defaults to "HEAD" if not specified.
 	Ref string
 
-	// Subdir is the subdirectory within the repository to serve.
-	// Empty string means serve from repository root.
+	// Subdir is the subdirectory within the repository to serve, in clean
+	// slash form. Empty string means serve from repository root.
 	Subdir string
 }
 
@@ -30,10 +30,10 @@ type ParsedGitURL struct {
 // for the repository root or a URL that does not parse.
 func GitURLSubdir(rawURL string) string {
 	parsed, err := parseGitURL(rawURL)
-	if err != nil || parsed.Subdir == "" {
+	if err != nil {
 		return ""
 	}
-	return path.Clean(parsed.Subdir)
+	return parsed.Subdir
 }
 
 // parseGitURL parses a git URL into its components.
@@ -93,8 +93,10 @@ func parseGitURL(rawURL string) (*ParsedGitURL, error) {
 			ref = parts[0]
 		}
 		if len(parts) == 2 {
-			// Clean the subdir path: remove leading/trailing slashes
-			subdir = strings.Trim(parts[1], "/")
+			// Clean the subdir path: no leading/trailing or doubled slashes
+			if subdir = path.Clean(strings.Trim(parts[1], "/")); subdir == "." {
+				subdir = ""
+			}
 		}
 	}
 
