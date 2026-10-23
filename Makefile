@@ -14,11 +14,11 @@ run: ## Serve the lorem-ipsum testsite locally (preview server, writes nothing)
 	@go run $(MAIN) serve testsite
 
 # Front-end tests (D48) run only when their inputs change: the shared scripts and styles, the default theme's
-# templates, the locales and web/ itself. web/node_modules and the Playwright output never enter the hash, so a
-# fresh clone and a warm checkout hash alike.
+# templates, the locales, this Makefile (its recipe) and web/ itself. web/node_modules and the Playwright output
+# never enter the hash, so a fresh clone and a warm checkout hash alike.
 UI_INPUTS := $(sort $(wildcard cmd/gomddoc/assets/shared/*.mjs cmd/gomddoc/assets/shared/*.css \
 	cmd/gomddoc/assets/themes/default/layouts/*.tmpl cmd/gomddoc/assets/themes/default/partials/*.tmpl \
-	cmd/gomddoc/assets/locales/*.yml) \
+	cmd/gomddoc/assets/locales/*.yml) Makefile \
 	$(shell find web \( -name node_modules -o -name test-results -o -name playwright-report \) -prune -o -type f -print))
 
 .PHONY: test-ui

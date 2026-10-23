@@ -29,7 +29,10 @@ export function buildTextModel(root) {
       if (child.nodeType === Node.TEXT_NODE) {
         nodes.push({ node: child, start: text.length });
         text += child.data;
-      } else if (child.nodeType === Node.ELEMENT_NODE && !child.matches(SKIP_SELECTOR)) {
+      } else if (
+        child.nodeType === Node.ELEMENT_NODE &&
+        !child.matches(SKIP_SELECTOR)
+      ) {
         walk(child);
       }
     }
@@ -76,15 +79,22 @@ export function anchor(model, sel) {
   return { start, end: start + sel.quote.length };
 }
 
+// rangeFromOffsets needs a model with at least one text node; offsets from
+// anchor() or selectorFromRange() always come from such a model.
 export function rangeFromOffsets(model, start, end) {
   // A start lands in the node holding its character; an end in the node
   // holding the character before it, so neither strays into a neighbour.
   const locate = (pos, isEnd) => {
     const entry =
       model.nodes.find((n) =>
-        isEnd ? pos > n.start && pos <= n.start + n.node.data.length : pos < n.start + n.node.data.length,
+        isEnd
+          ? pos > n.start && pos <= n.start + n.node.data.length
+          : pos < n.start + n.node.data.length,
       ) || model.nodes[model.nodes.length - 1];
-    return [entry.node, Math.min(Math.max(pos - entry.start, 0), entry.node.data.length)];
+    return [
+      entry.node,
+      Math.min(Math.max(pos - entry.start, 0), entry.node.data.length),
+    ];
   };
   const range = model.root.ownerDocument.createRange();
   range.setStart(...locate(start, false));
@@ -125,12 +135,15 @@ export function escapeMarkdown(s) {
   return s
     .replace(/\s+/g, " ")
     .replace(/[\\*_`[\]<>]/g, "\\$&")
-    .replace(/^(\s*)([#>+-]|\d+\.)/, (_, ws, mark) => ws + mark.replace(/^(\d*)(.)$/, "$1\\$2"));
+    .replace(
+      /^(\s*)([#>+-]|\d+\.)/,
+      (_, ws, mark) => ws + mark.replace(/^(\d*)(.)$/, "$1\\$2"),
+    );
 }
 
 export function formatExport(page, notes, labels) {
   const out = [
-    `# ${labels.exportTitle}: ${page.title}`,
+    `# ${labels.exportTitle}: ${escapeMarkdown(page.title)}`,
     "",
     `${labels.exportSource}: \`${page.sourcePath}\``,
     `${labels.exportPage}: ${page.url}`,
@@ -138,8 +151,14 @@ export function formatExport(page, notes, labels) {
     labels.exportIntro,
   ];
   notes.forEach((n, i) => {
-    const heading = n.headingPath.length ? n.headingPath.join(" › ") : labels.exportTop;
-    const quoted = `…${escapeMarkdown(n.prefix)}**${escapeMarkdown(n.quote)}**${escapeMarkdown(n.suffix)}…`;
+    const heading = n.headingPath.length
+      ? n.headingPath.map(escapeMarkdown).join(" › ")
+      : labels.exportTop;
+    // CommonMark only bolds **x** when x neither starts nor ends with
+    // whitespace, so the quote's edge whitespace (a triple-click selects the
+    // trailing newline) moves into the context outside the markers.
+    const [, lead, body, trail] = n.quote.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    const quoted = `…${escapeMarkdown(n.prefix + lead)}**${escapeMarkdown(body)}**${escapeMarkdown(trail + n.suffix)}…`;
     out.push("", `## ${i + 1}. ${heading}`, "", `> ${quoted}`, "", n.note);
   });
   return out.join("\n") + "\n";
@@ -166,7 +185,8 @@ export function createStore(storage, key) {
   const save = (notes) => {
     memory = notes.slice();
     attempt(() => {
-      if (notes.length) storage.setItem(key, JSON.stringify({ v: STORE_VERSION, notes }));
+      const entry = JSON.stringify({ v: STORE_VERSION, notes });
+      if (notes.length) storage.setItem(key, entry);
       else storage.removeItem(key);
     });
   };
@@ -189,7 +209,9 @@ function parseEntry(raw) {
   if (!raw) return [];
   try {
     const entry = JSON.parse(raw);
-    return entry && entry.v === STORE_VERSION && Array.isArray(entry.notes) ? entry.notes : [];
+    return entry && entry.v === STORE_VERSION && Array.isArray(entry.notes)
+      ? entry.notes
+      : [];
   } catch {
     return [];
   }

@@ -49,7 +49,12 @@ describe("selectorFromRange", () => {
     const model = buildTextModel(root);
     const range = rangeOver(p.firstChild, 4, 4, p.lastChild);
     const sel = selectorFromRange(model, range);
-    expect(sel).toEqual({ quote: "bar baz qux", prefix: "foo ", suffix: " end", offset: 4 });
+    expect(sel).toEqual({
+      quote: "bar baz qux",
+      prefix: "foo ",
+      suffix: " end",
+      offset: 4,
+    });
   });
 
   it("caps the context at 32 characters", () => {
@@ -90,12 +95,16 @@ describe("anchor", () => {
 
   it("finds the unique match", () => {
     const m = model("one two three four");
-    expect(anchor(m, { prefix: "one ", quote: "two", suffix: " three" })).toEqual({ start: 4, end: 7 });
+    expect(
+      anchor(m, { prefix: "one ", quote: "two", suffix: " three" }),
+    ).toEqual({ start: 4, end: 7 });
   });
 
   it("returns null when the passage is gone", () => {
     const m = model("one 2 three four");
-    expect(anchor(m, { prefix: "one ", quote: "two", suffix: " three" })).toBeNull();
+    expect(
+      anchor(m, { prefix: "one ", quote: "two", suffix: " three" }),
+    ).toBeNull();
   });
 
   it("returns null on two matches", () => {
@@ -105,13 +114,20 @@ describe("anchor", () => {
 
   it("distinguishes by context", () => {
     const m = model("first two here, second two here");
-    expect(anchor(m, { prefix: "second ", quote: "two", suffix: " here" })).toEqual({ start: 23, end: 26 });
+    expect(
+      anchor(m, { prefix: "second ", quote: "two", suffix: " here" }),
+    ).toEqual({ start: 23, end: 26 });
   });
 
   it("anchors at content start and end", () => {
     const m = model("start middle end");
-    expect(anchor(m, { prefix: "", quote: "start", suffix: " middle" })).toEqual({ start: 0, end: 5 });
-    expect(anchor(m, { prefix: "middle ", quote: "end", suffix: "" })).toEqual({ start: 13, end: 16 });
+    expect(
+      anchor(m, { prefix: "", quote: "start", suffix: " middle" }),
+    ).toEqual({ start: 0, end: 5 });
+    expect(anchor(m, { prefix: "middle ", quote: "end", suffix: "" })).toEqual({
+      start: 13,
+      end: 16,
+    });
   });
 });
 
@@ -133,8 +149,15 @@ describe("headingPath", () => {
         "<h2>Goals<gmd-heading-anchor></gmd-heading-anchor></h2><p>target text</p>",
     );
     const model = buildTextModel(root);
-    expect(headingPath(root, model, model.text.indexOf("target"))).toEqual(["Intent", "Goals"]);
-    expect(headingPath(root, model, model.text.indexOf("y"))).toEqual(["Intent", "Goals", "Deep"]);
+    expect(headingPath(root, model, model.text.indexOf("target"))).toEqual([
+      "Intent",
+      "Goals",
+    ]);
+    expect(headingPath(root, model, model.text.indexOf("y"))).toEqual([
+      "Intent",
+      "Goals",
+      "Deep",
+    ]);
   });
 
   it("is empty before any heading", () => {
@@ -162,7 +185,8 @@ const labels = {
   exportTitle: "Review notes",
   exportSource: "Source file",
   exportPage: "Page",
-  exportIntro: "Each note quotes the passage it refers to, with the words just before and after it to disambiguate.",
+  exportIntro:
+    "Each note quotes the passage it refers to, with the words just before and after it to disambiguate.",
   exportTop: "(top of page)",
 };
 
@@ -214,10 +238,59 @@ Call it "Review notes" instead.
   it("escapes the quote", () => {
     const out = formatExport(
       { title: "T", sourcePath: "t.md", url: "u" },
-      [{ headingPath: [], prefix: "", quote: "*a* _b_ `c`", suffix: "", note: "n" },],
+      [
+        {
+          headingPath: [],
+          prefix: "",
+          quote: "*a* _b_ `c`",
+          suffix: "",
+          note: "n",
+        },
+      ],
       labels,
     );
-    expect(out).toContain("## 1. (top of page)\n\n> …**\\*a\\* \\_b\\_ \\`c\\`**…\n");
+    expect(out).toContain(
+      "## 1. (top of page)\n\n> …**\\*a\\* \\_b\\_ \\`c\\`**…\n",
+    );
+  });
+});
+
+describe("formatExport edges", () => {
+  const page = { title: "Guide *draft*", sourcePath: "g.md", url: "u" };
+
+  it("keeps the quote's edge whitespace outside the bold markers", () => {
+    const out = formatExport(
+      page,
+      [
+        {
+          headingPath: [],
+          prefix: "one ",
+          quote: "two\n",
+          suffix: "three",
+          note: "n",
+        },
+      ],
+      labels,
+    );
+    expect(out).toContain("> …one **two** three…\n");
+  });
+
+  it("escapes the page title and heading path", () => {
+    const out = formatExport(
+      page,
+      [
+        {
+          headingPath: ["Setup", "Using *_globals_*"],
+          prefix: "",
+          quote: "q",
+          suffix: "",
+          note: "n",
+        },
+      ],
+      labels,
+    );
+    expect(out).toContain("# Review notes: Guide \\*draft\\*\n");
+    expect(out).toContain("## 1. Setup › Using \\*\\_globals\\_\\*\n");
   });
 });
 
@@ -236,7 +309,9 @@ describe("escapeMarkdown", () => {
 describe("storageKey", () => {
   it("drops the fragment", () => {
     const loc = new URL("http://localhost:8080/guide/intro?lang=fr#goals");
-    expect(storageKey(loc)).toBe("gomddoc:annotations:http://localhost:8080/guide/intro?lang=fr");
+    expect(storageKey(loc)).toBe(
+      "gomddoc:annotations:http://localhost:8080/guide/intro?lang=fr",
+    );
   });
 });
 
@@ -250,7 +325,14 @@ function memoryStorage() {
   };
 }
 
-const note = { id: "n1", quote: "q", prefix: "p", suffix: "s", offset: 3, note: "text" };
+const note = {
+  id: "n1",
+  quote: "q",
+  prefix: "p",
+  suffix: "s",
+  offset: 3,
+  note: "text",
+};
 
 describe("createStore", () => {
   it("round-trips", () => {
