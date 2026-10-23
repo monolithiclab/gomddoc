@@ -72,6 +72,10 @@ function page({ wrapped = true, html = PAGE } = {}) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+// frame waits past the next animation frame, where the module handles
+// selectionchange.
+const frame = () =>
+  new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const key = () => storageKey(window.location);
@@ -101,15 +105,15 @@ async function select(id, a, b) {
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
-  await tick();
+  await frame();
 }
 
 async function collapse() {
   window.getSelection().removeAllRanges();
-  await tick();
+  await frame();
 }
 
-function key_(target, k, mods = {}) {
+function keydown(target, k, mods = {}) {
   const event = new KeyboardEvent("keydown", {
     key: k,
     bubbles: true,
@@ -289,7 +293,7 @@ describe("creating a note", () => {
     await select("a", 6, 10);
     press(pen());
     textarea().value = "draft";
-    key_(textarea(), "Escape");
+    keydown(textarea(), "Escape");
     expect(popoverOpen(editor())).toBe(false);
     expect(localStorage.getItem(key())).toBeNull();
     expect(deepActive()).toBe(pen());
@@ -300,7 +304,7 @@ describe("creating a note", () => {
     press(pen());
     // A browser collapses the selection when the textarea takes focus.
     await collapse();
-    key_(textarea(), "Escape");
+    keydown(textarea(), "Escape");
     expect(pen().hidden).toBe(true);
     expect(deepActive()).toBe($("gmd-annotations"));
   });
@@ -309,13 +313,13 @@ describe("creating a note", () => {
     await select("a", 6, 10);
     press(pen());
     textarea().value = "quick";
-    key_(textarea(), "Enter", { ctrlKey: true });
+    keydown(textarea(), "Enter", { ctrlKey: true });
     expect(stored()).toMatchObject([{ note: "quick" }]);
   });
 
   it("Alt+Shift+A opens the editor for the selection", async () => {
     await select("b", 4, 7);
-    key_(document.body, "Å", { code: "KeyA", altKey: true, shiftKey: true });
+    keydown(document.body, "Å", { code: "KeyA", altKey: true, shiftKey: true });
     expect(popoverOpen(editor())).toBe(true);
     expect(deepActive()).toBe(textarea());
   });
@@ -325,7 +329,9 @@ describe("creating a note", () => {
     press(pen());
     expect(editor().getAttribute("role")).toBe("dialog");
     expect(editor().hasAttribute("aria-modal")).toBe(false);
-    expect(key_(action(editor(), "save"), "Tab").defaultPrevented).toBe(false);
+    expect(keydown(action(editor(), "save"), "Tab").defaultPrevented).toBe(
+      false,
+    );
   });
 
   it("without CSS anchor positioning the editor is placed by script", async () => {
@@ -429,7 +435,7 @@ describe("existing notes", () => {
     press(icon);
     expect(icon.getAttribute("aria-expanded")).toBe("true");
     textarea().value = "unsaved";
-    key_(textarea(), "Escape");
+    keydown(textarea(), "Escape");
     expect(popoverOpen(editor())).toBe(false);
     expect(stored()).toMatchObject([{ note: "note" }]);
     expect(deepActive()).toBe(icon);
@@ -455,7 +461,7 @@ describe("focus", () => {
     await new Promise((r) => requestAnimationFrame(r));
     expect(icons()[0]).toBe(before);
     expect(before.getAttribute("aria-expanded")).toBe("true");
-    key_(textarea(), "Escape");
+    keydown(textarea(), "Escape");
     expect(deepActive()).toBe(before);
   });
 
@@ -489,7 +495,7 @@ describe("focus", () => {
     press(toggle());
     expect(dialog().open).toBe(true);
     expect(document.activeElement).toBe(dialog().querySelector("textarea"));
-    key_(dialog().querySelector("textarea"), "Escape");
+    keydown(dialog().querySelector("textarea"), "Escape");
     expect(dialog().open).toBe(false);
     expect(document.activeElement).toBe(toggle());
   });

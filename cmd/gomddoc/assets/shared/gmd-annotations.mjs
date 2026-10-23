@@ -258,12 +258,25 @@ const escapeHTML = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const button = (action, text, label, extra = "") =>
   `<button type="button" data-action="${action}"${label ? ` aria-label="${label}"` : ""}${extra}>${text}</button>`;
 
+// act returns root's [data-action=name] button.
+const act = (root, name) => root.querySelector(`[data-action="${name}"]`);
+
+// readConfig parses the page's configuration once per document: every
+// element reads it on connect.
+const configs = new WeakMap();
 function readConfig(doc) {
-  try {
-    return JSON.parse(doc.getElementById("gmd-annotations-config").textContent);
-  } catch {
-    return {};
+  if (!configs.has(doc)) {
+    let config = {};
+    try {
+      config = JSON.parse(
+        doc.getElementById("gmd-annotations-config").textContent,
+      );
+    } catch {
+      // No (valid) configuration: every label falls back to its key.
+    }
+    configs.set(doc, config);
   }
+  return configs.get(doc);
 }
 
 // labeler returns the label lookups over a configuration: L fills each %d in
@@ -374,15 +387,16 @@ class GmdAnnotationMargin extends Base {
     return this.shadowRoot.querySelector("div");
   }
 
-  #place(node, x, top) {
-    const origin = this.getBoundingClientRect();
+  // place positions node at viewport (x, top), relative to the layer's own
+  // viewport origin, read once per layout by the caller.
+  #place(node, origin, x, top) {
     node.style.left = `${x - origin.left}px`;
     node.style.top = `${top - origin.top}px`;
   }
 
   showPen(x, top) {
     this.pen.hidden = false;
-    this.#place(this.pen, x, top - 2);
+    this.#place(this.pen, this.getBoundingClientRect(), x, top - 2);
   }
 
   hidePen() {
@@ -404,6 +418,7 @@ class GmdAnnotationMargin extends Base {
       [...box.children].map((icon) => [this.#ids.get(icon).join(), icon]),
     );
     const focusedID = this.#ids.get(this.shadowRoot.activeElement)?.[0];
+    const origin = this.getBoundingClientRect();
     const icons = groups.map((group) => {
       let icon = old.get(group.ids.join());
       if (!icon) {
@@ -415,7 +430,7 @@ class GmdAnnotationMargin extends Base {
         this.#ids.set(icon, group.ids);
       }
       icon.setAttribute("aria-label", group.label);
-      this.#place(icon, x, group.top - 2);
+      this.#place(icon, origin, x, group.top - 2);
       return icon;
     });
     const keep = new Set(icons);
@@ -449,10 +464,6 @@ class GmdAnnotationEditor extends Base {
 
   get textarea() {
     return this.querySelector("textarea");
-  }
-
-  action(name) {
-    return this.querySelector(`[data-action="${name}"]`);
   }
 
   #fallback = false; // placed by place() rather than by CSS
@@ -605,9 +616,9 @@ function mount(doc, win, content, notice, signal) {
   let pending = null; // the current annotatable selection
   let state = null; // the open editor
   let warnedNotKept = false;
-  let exportEdited = false;
-  let exportStale = true;
+  let keepExport = false; // the reader edited the export and no note changed since
   let layoutQueued = false;
+  let penQueued = false;
 
   // ---- Elements
 
@@ -633,13 +644,14 @@ function mount(doc, win, content, notice, signal) {
   pen.title = `${L("annotation_add")} (Alt+Shift+A)`;
   const { textarea } = editor;
   const [prev, next, del, discard] = ["prev", "next", "delete", "discard"].map(
-    (name) => editor.action(name),
+    (name) => act(editor, name),
   );
   const nav = prev.parentElement;
   const position = nav.querySelector(".gmd-annotation-position");
-  const act = (name) => dialog.querySelector(`[data-action="${name}"]`);
   const [, empty, exportArea, , confirmRow] = dialog.children;
-  const [copy, clear, close] = ["copy", "clear", "close"].map(act);
+  const [copy, clear, close] = ["copy", "clear", "close"].map((name) =>
+    act(dialog, name),
+  );
 
   // ---- Notes
 
@@ -671,8 +683,9 @@ function mount(doc, win, content, notice, signal) {
       notes.map((n) => ({ id: n.id, top: rangeTop(n.range) })),
       LINE_TOLERANCE,
     );
+    const start = new Map(notes.map((n) => [n.id, n.start]));
     for (const group of groups) {
-      group.ids.sort((a, b) => byID(a).start - byID(b).start);
+      group.ids.sort((a, b) => start.get(a) - start.get(b));
       const n = group.ids.length;
       group.label = n > 1 ? L("annotations_count", n) : L("annotation_note");
     }
@@ -683,6 +696,17 @@ function mount(doc, win, content, notice, signal) {
     renderIcons();
     if (pending) margin.showPen(column(), pending.top);
     if (state) editor.place(state.source);
+  }
+
+  // schedulePen coalesces a drag's selectionchange events into one update
+  // per frame.
+  function schedulePen() {
+    if (penQueued) return;
+    penQueued = true;
+    win.requestAnimationFrame(() => {
+      penQueued = false;
+      updatePen();
+    });
   }
 
   function scheduleLayout() {
@@ -708,7 +732,7 @@ function mount(doc, win, content, notice, signal) {
       else registry.delete(HIGHLIGHT_NAME);
     }
     renderIcons();
-    exportStale = true;
+    keepExport = false;
     content.dispatchEvent(
       new CustomEvent(CHANGE_EVENT, {
         bubbles: true,
@@ -719,12 +743,15 @@ function mount(doc, win, content, notice, signal) {
 
   // ---- Selection and pen
 
+  // updatePen shows the pen for a selection inside the content that can be
+  // annotated; a selection anywhere else costs no text model.
   function updatePen() {
     if (state) return;
     pending = null;
     const sel = win.getSelection();
-    if (sel && sel.rangeCount && !sel.isCollapsed) {
-      const range = sel.getRangeAt(0);
+    const range =
+      sel?.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
+    if (range && content.contains(range.commonAncestorContainer)) {
       const model = buildTextModel(content);
       const selector = selectorFromRange(model, range);
       // A passage whose context repeats elsewhere would not re-anchor on
@@ -820,7 +847,7 @@ function mount(doc, win, content, notice, signal) {
       if (!text.trim()) return remove(id);
       byID(id).note = text;
       persist();
-      exportStale = true;
+      keepExport = false;
       return closeEditor(id);
     }
     if (!text.trim()) return closeEditor();
@@ -883,10 +910,7 @@ function mount(doc, win, content, notice, signal) {
     confirmRow.hidden = true;
     exportArea.toggleAttribute("autofocus", has);
     close.toggleAttribute("autofocus", !has);
-    if (exportStale || !exportEdited) {
-      exportArea.value = has ? exportText() : "";
-      exportEdited = exportStale = false;
-    }
+    if (!keepExport) exportArea.value = has ? exportText() : "";
   }
 
   async function copyExport() {
@@ -916,7 +940,7 @@ function mount(doc, win, content, notice, signal) {
     copy: copyExport,
     clear: () => {
       confirmRow.hidden = false;
-      act("cancel-clear").focus();
+      act(dialog, "cancel-clear").focus();
     },
     "cancel-clear": () => {
       confirmRow.hidden = true;
@@ -957,9 +981,9 @@ function mount(doc, win, content, notice, signal) {
   on(dialog, "command", (e) => {
     if (e.command === "show-modal") refreshDialog();
   });
-  on(exportArea, "input", () => (exportEdited = true));
+  on(exportArea, "input", () => (keepExport = true));
 
-  on(doc, "selectionchange", updatePen);
+  on(doc, "selectionchange", schedulePen);
   on(doc, "keydown", (e) => {
     // e.code, not e.key: on macOS Alt+Shift+A types "Å".
     if (!(
