@@ -1441,8 +1441,10 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 
 	alpha := readTestFile(t, filepath.Join(outDir, "guides", "alpha"), "index.html")
 
-	// The whole point: no rendered URL may carry the source extension.
-	if strings.Contains(alpha, "guides/alpha.md") {
+	// The whole point: no rendered URL may carry the source extension. A URL
+	// path starts with "/"; the bare "guides/alpha.md" is the annotations
+	// export's source path, which is a file path on purpose.
+	if strings.Contains(alpha, "/guides/alpha.md") {
 		t.Errorf("guides/alpha/index.html leaks the .md path:\n%s", alpha)
 	}
 

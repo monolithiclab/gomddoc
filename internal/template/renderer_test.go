@@ -2,6 +2,7 @@ package template
 
 import (
 	"context"
+	"encoding/json"
 	"html/template"
 	"os"
 	"slices"
@@ -2537,5 +2538,84 @@ func TestRenderer_ErrorsCarryContext(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRender_AnnotationsContract renders the real default theme and checks the
+// markup gmd-annotations.mjs depends on: the content marker, the header
+// toggle and the JSON configuration, all present with the feature on and all
+// absent with it off.
+func TestRender_AnnotationsContract(t *testing.T) {
+	t.Parallel()
+
+	markers := []string{`data-gmd-annotatable`, `data-gmd-annotations-toggle`, `id="gmd-annotations-config"`,
+		"::highlight(gmd-annotation)"}
+	tests := []struct {
+		name     string
+		features map[string]bool
+	}{
+		{name: "feature on"},
+		{name: "feature off", features: map[string]bool{"annotations": false}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			siteConfig := config.NewSiteConfig(".")
+			r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"))
+			tc := &TemplateContext{Site: &siteConfig, Page: PageContext{
+				Path:       "/specs/a</script>",
+				Content:    "<p>Body</p>",
+				Meta:       map[string]any{"title": "Spec <b>"},
+				Features:   tt.features,
+				SourcePath: "docs/specs/a</script>.md",
+			}}
+			tc.WithI18n("", func(k string) string { return "L:" + k }, nil)
+
+			out, err := r.Render(context.Background(), "default.html.tmpl", tc)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			s := string(out)
+			on := tt.features == nil
+			for _, m := range markers {
+				if strings.Contains(s, m) != on {
+					t.Errorf("%s: output contains %q = %v", tt.name, m, !on)
+				}
+			}
+			if !on {
+				return
+			}
+
+			_, rest, ok := strings.Cut(s, `<script type="application/json" id="gmd-annotations-config">`)
+			raw, _, closed := strings.Cut(rest, "</script>")
+			if !ok || !closed {
+				t.Fatal("configuration script not found")
+			}
+			var got AnnotationsConfig
+			if err := json.Unmarshal([]byte(raw), &got); err != nil {
+				t.Fatalf("configuration is not JSON: %v\n%s", err, raw)
+			}
+			if got.SourcePath != "docs/specs/a</script>.md" || got.Title != "Spec <b>" {
+				t.Errorf("config = %+v, want the page's source path and title", got)
+			}
+			if got.Labels["annotations_export_title"] != "L:annotations_export_title" || len(got.Labels) != len(annotationLabelKeys) {
+				t.Errorf("labels = %v, want every key translated", got.Labels)
+			}
+		})
+	}
+}
+
+func TestRenderTagPage_NoAnnotations(t *testing.T) {
+	t.Parallel()
+
+	siteConfig := config.NewSiteConfig(".")
+	r := NewHTMLRenderer(&siteConfig, os.DirFS("../../cmd/gomddoc"))
+	out, err := r.RenderTagPage(context.Background(), "", nil, "go", nil)
+	if err != nil {
+		t.Fatalf("RenderTagPage: %v", err)
+	}
+	if strings.Contains(string(out), "data-gmd-annotatable") || strings.Contains(string(out), "gmd-annotations-config") {
+		t.Error("a generated tag page carries annotation markup")
 	}
 }

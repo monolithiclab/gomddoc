@@ -469,6 +469,7 @@ GOMDDOC_SITE_THEME_FEATURES_COLOR_CHIPS=false gomddoc serve # Disable color chip
 | `admonitions` | `true` | Admonition block rendering (goldmark extension) |
 | `see_also` | `true` | "See also" list of related pages at the end of a page |
 | `tag_chips` | `true` | Frontmatter tags rendered as chips linking to tag pages |
+| `annotations` | `true` | Text annotations stored in the browser, exported as Markdown ([Annotating a Page](06-writing-workflow.md#annotating-a-page)) |
 
 Other themes can read other keys. `gomddoc info` lists the keys the active theme reads.
 

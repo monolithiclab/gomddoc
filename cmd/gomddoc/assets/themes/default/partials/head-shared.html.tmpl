@@ -33,6 +33,13 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         {{ if $desc }}<meta name="description" content="{{ $desc }}">{{ end }}
         {{ template "hreflang" . }}
+        {{ template "head-annotations" . }}
+{{- end }}
+
+{{ define "head-annotations" }}
+        {{- if .Feature "annotations" }}
+        <style>{{ inlineCSSAsset "gmd-annotations.css" }}</style>
+        {{- end }}
 {{- end }}
 
 {{ define "head-katex" }}
@@ -64,5 +71,9 @@
         {{- end }}
         {{- if .Feature "search" }}
         <script type="module">{{ inlineJSAsset "search.mjs" }}</script>
+        {{- end }}
+        {{- if .Feature "annotations" }}
+        <script type="application/json" id="gmd-annotations-config">{{ .AnnotationsConfig }}</script>
+        <script type="module">{{ inlineJSAsset "gmd-annotations.mjs" }}</script>
         {{- end }}
 {{- end }}

@@ -40,6 +40,11 @@ describe("buildTextModel", () => {
     expect(model.text).not.toContain("Copy");
     expect(model.nodes.map((n) => n.start)).toEqual([0, 5, 6]);
   });
+
+  it("skips text that never renders", () => {
+    const root = content("<style>p{}</style><p>Body</p><script>x()</script>");
+    expect(buildTextModel(root).text).toBe("Body");
+  });
 });
 
 describe("selectorFromRange", () => {

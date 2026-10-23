@@ -21,12 +21,12 @@ func TestThemeFeatures(t *testing.T) {
 	wantDefault := ThemeInfo{
 		Name:   "default",
 		Source: ThemeSourceTemplateScan,
-		Features: []string{"admonitions", "code_copy", "color_chips", "dark_mode", "heading_anchors", "katex",
+		Features: []string{"admonitions", "annotations", "code_copy", "color_chips", "dark_mode", "heading_anchors", "katex",
 			"mermaid", "search", "see_also", "tag_chips", "toc"},
 		Vars: []string{"bg", "dark-bg", "dark-primary", "dark-text", "primary", "text"},
 	}
 	withBanner := wantDefault
-	withBanner.Features = slices.Insert(slices.Clone(wantDefault.Features), 1, "banner")
+	withBanner.Features = slices.Insert(slices.Clone(wantDefault.Features), 2, "banner")
 	withBanner.Vars = slices.Insert(slices.Clone(wantDefault.Vars), 0, "banner-fg")
 	unavailable := func(name string) ThemeInfo {
 		return ThemeInfo{Name: name, Source: ThemeSourceUnavailable, Features: []string{}, Vars: []string{}}
@@ -40,7 +40,7 @@ func TestThemeFeatures(t *testing.T) {
 	}, embedded)
 	withChild := wantDefault
 	withChild.Name = "child"
-	withChild.Features = slices.Insert(slices.Clone(wantDefault.Features), 1, "child_only")
+	withChild.Features = slices.Insert(slices.Clone(wantDefault.Features), 2, "child_only")
 	withChild.Vars = slices.Insert(slices.Clone(wantDefault.Vars), 1, "child-accent")
 
 	// .gomddoc/partials/ lands at partials/ in the overlay and overrides every theme.
@@ -48,7 +48,7 @@ func TestThemeFeatures(t *testing.T) {
 		"partials/banner.html.tmpl": {Data: []byte(`{{ define "banner" }}{{ if .Feature "site_banner" }}{{ end }}{{ end }}`)},
 	}, embedded)
 	withSitePartial := wantDefault
-	withSitePartial.Features = slices.Concat(wantDefault.Features[:9], []string{"site_banner"}, wantDefault.Features[9:])
+	withSitePartial.Features = slices.Concat(wantDefault.Features[:10], []string{"site_banner"}, wantDefault.Features[10:])
 
 	// Not installed: the renderer falls back to default, so do its features.
 	fallback := wantDefault

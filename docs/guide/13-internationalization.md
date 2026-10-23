@@ -83,7 +83,7 @@ create locale files.
 
 ### Built-in Translation Keys
 
-The built-in `en-US.yml` provides these 26 keys. `TestBuiltinTranslationKeysAreDocumented`
+The built-in `en-US.yml` provides these 51 keys. `TestBuiltinTranslationKeysAreDocumented`
 (`cmd/gomddoc/locale_docs_test.go`) asserts this block and the shipped file name exactly the same
 set — a key added to one and not the other fails the build:
 
@@ -114,9 +114,37 @@ tags_index_title: All tags
 tags_tagged_as: "Pages tagged %s"
 tags_empty: "No pages tagged %s"
 see_also: "See also"
+annotate: "Annotate selection"
+annotation_note: Note
+annotation_save: Save
+annotation_discard: Discard
+annotation_delete: Delete
+annotation_prev: "Previous note"
+annotation_next: "Next note"
+annotation_position: "%d of %d"
+annotations_open: Annotations
+annotations_count: "%d notes"
+annotations_copy: Copy
+annotations_copied: Copied
+annotations_clear: "Clear all"
+annotations_clear_confirm: "Delete every note on this page?"
+annotations_clear_yes: "Delete all"
+annotations_cancel: Cancel
+annotations_close: Close
+annotations_empty: "No notes on this page yet."
+annotations_removed: "%d notes no longer match this page and were removed."
+annotations_not_kept: "Notes can't be saved in this browser and will be lost on reload."
+annotations_export_title: "Review notes"
+annotations_export_source: "Source file"
+annotations_export_page: Page
+annotations_export_intro: "Each note quotes the passage it refers to, with the words just before and after it to disambiguate."
+annotations_export_top: "(top of page)"
 ```
 
 `tags_tagged_as` and `tags_empty` carry a single `%s`, which is substituted with the tag name.
+The `annotation_*` and `annotations_*` keys label the [page annotations](06-writing-workflow.md#annotating-a-page)
+interface and its Markdown export; each `%d` is replaced, in order, by a number (`annotation_position` carries two:
+the note's position, then the count).
 
 The `language_name` key is special — it provides the display name shown in the language switcher (e.g., "Français",
 "Español", "日本語").

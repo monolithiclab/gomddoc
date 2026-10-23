@@ -537,6 +537,13 @@ features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggle
 - **Admonitions** — guarded by `{{ .Feature "admonitions" }}`. Uses `{{ inlineJSAsset "gmd-admonition.mjs" }}`.
 - **Touch accessibility** with `@media (hover: none)` for copy buttons (heading anchors handle it inside their shadow
   DOM)
+- **Page annotations** — guarded by `{{ .Feature "annotations" }}`: the element wrapping `{{ .Page.Content }}`
+  carries `data-gmd-annotatable`, and the header holds `<button data-gmd-annotations-toggle>` with a
+  `<span data-gmd-annotations-count hidden></span>` badge. The default theme's `head-meta` and `scripts-shared`
+  bring the styles (`gmd-annotations.css`), the module and its configuration, so a theme calling them needs nothing
+  else. Restyle through `--gmd-annotation-highlight`, `--gmd-annotation-highlight-text`, `--gmd-annotation-accent`,
+  `--gmd-annotation-accent-text`, `--gmd-annotation-surface`, `--gmd-annotation-text` and
+  `--gmd-annotation-border`. See [Annotating a Page](06-writing-workflow.md#annotating-a-page).
 - **KaTeX** — guarded by `{{ .Feature "katex" }}`. CSS link in `<head>` and auto-render scripts.
 - **Mermaid** — guarded by `{{ .Feature "mermaid" }}`. Script for diagram rendering (theme-aware: dark/light).
 - **Canonical URLs and Open Graph tags** via `{{ canonicalURL .Page.Path }}` when domain is configured, or by calling

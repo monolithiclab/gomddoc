@@ -933,3 +933,22 @@ it writes only after a green run. The gate reaches it through `CI_EXTRA = test-u
   and no DOM unit layer); running the suite on every `make ci` (a Node install becomes mandatory for a Go-only change).
 - *Cost if wrong*: a front-end input missing from the hash lets a change skip the suite, and a missing Node fails the
   gate with an install hint only when front-end files changed.
+
+## D49. Annotation Highlights Through the CSS Custom Highlight API
+
+*2026-10-23*
+
+**Decision** (2026-10-23): `gmd-annotations.mjs` paints annotated passages with `CSS.highlights.set("gmd-annotation",
+new Highlight(...ranges))` and `::highlight(gmd-annotation)` in `gmd-annotations.css`, never by wrapping text in
+`<mark>` or `<span>` elements. The ranges are live `Range`s built from the text model, so they follow later DOM
+changes. Where the API is missing, notes, icons and the export still work without highlights. The highlight sets its
+own text colour (`--gmd-annotation-highlight-text`) as well as its background, so its contrast does not depend on a
+theme's link colours.
+
+- *Evidence*: the text model and the code-copy, heading-anchor, TOC and search scripts all read the content DOM;
+  wrapping splits text nodes and inserts elements, which shifts every other note's DOM positions and cuts a passage
+  spanning inline elements into several wrappers. The API is in current Chrome, Safari and Firefox.
+- *Alternatives*: `<mark>` wrapping (the classic approach, but it mutates the DOM other scripts depend on); absolutely
+  positioned boxes from `getClientRects()` (no DOM change, but recomputed on every reflow and stacked above the text,
+  where they intercept clicks and selection).
+- *Cost if wrong*: a browser without the API shows no highlight; the margin icons still mark each annotated line.

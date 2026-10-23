@@ -800,6 +800,19 @@ directory holds the other shared scripts: `search.mjs`, `code-copy.mjs`, `theme-
 **Convention:** All custom elements use the `gmd-` prefix. Themes override behavior by providing a file of the same
 name in the theme directory, which `inlineJSAsset` reads before `assets/shared/`.
 
+**Page annotations** (`gmd-annotations.mjs`, `gmd-annotations.css`, feature `annotations`). A browser-only overlay:
+notes live in `localStorage`, one entry per page URL. `head-meta` calls `head-annotations`, which inlines the styles;
+`scripts-shared` emits a `<script type="application/json" id="gmd-annotations-config">` (the page's `SourcePath`, title
+and the localized labels, from `TemplateContext.AnnotationsConfig`, which `html/template` marshals) and then the module.
+Themes only carry the contract: `data-gmd-annotatable` on the element wrapping `{{ .Page.Content }}` and a
+`<button data-gmd-annotations-toggle>` with its `[data-gmd-annotations-count]` badge in the header, both behind
+`.Feature "annotations"`; neither needs a new template field, so an updated theme still renders on an older gomddoc.
+The module does nothing on a page without the marker, and generated tag pages turn the feature off. Its pure part (the
+text model minus `SKIP_SELECTOR`, anchoring by exact `prefix + quote + suffix`, line grouping, the Markdown export,
+storage) is exported for tests; `init` re-anchors stored notes after `load` and builds the pen, margin icons, popover,
+header dialog and `role="status"` notice, every injected element marked `data-gmd-annotation-ui`. Highlights go
+through the CSS Custom Highlight API, never DOM wrapping (D49).
+
 ### 15. Internationalization and Localization
 
 **Responsibility:** UI string translation (l10n) and multi-language content serving (i18n)
@@ -1221,6 +1234,9 @@ the packages listed in `.covignore` (`internal/testutil/`, `docs/skills/`), so t
   (`internal/server/integration_test.go`)
 - **Concurrency**: cold-cache tests through `internal/testutil/fanout`; `make test` runs with `-race`
 - **Context cancellation**: Tested in renderers and template layer
+- **Front end**: `web/` is a Node project (D48): Vitest with happy-dom for the shared modules (`web/unit/`),
+  Playwright for end-to-end and accessibility checks. `make test-ui` runs it only when a front-end input changed, and
+  `make ci` reaches it through `CI_EXTRA`
 - **Benchmarks**: Hot-path benchmarks for rendering (`BenchmarkMarkdownRender`, `BenchmarkHTMLRendererRender`),
   enrichment (`BenchmarkMarkdownEnricher_*`), negotiation (`BenchmarkRegistryGet_*`, `BenchmarkParseAccept`),
   compression and ETags, navigation, search and index builds, and Git reads (`BenchmarkGitProvider_*`,
@@ -1273,6 +1289,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Navigation via enricher | Navigation tree built by enricher (via NavBuilder injection), passed to template in PageContext |
 | Lightweight frontmatter parser | 10-100x faster than full goldmark render for metadata-only extraction |
 | Build reuses serve pipeline | Single source of truth for rendering; no divergence between serve and build output |
+| Annotation highlights via the CSS Custom Highlight API | No wrapper elements, so the DOM other shared scripts and the anchoring text model read stays untouched (D49) |
 | Color chip as web component | Shadow DOM encapsulation prevents theme CSS conflicts; `::part()` allows per-theme styling |
 | `inlineJSAsset` / `inlineCSSAsset` / `inlineHTMLAsset` | Themes share components without copy-paste; search order (theme → shared) allows overrides; typed returns match `html/template` context escaping |
 | MCP as thin adapter | Reuses Provider, MetaIndex, SearchIndex, Navigation — no new parsing/indexing; MCP package is purely protocol translation |

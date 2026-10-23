@@ -1,0 +1,249 @@
+/* Page annotations (gmd-annotations.mjs). Themes restyle through the custom
+   properties below; the defaults read in light and dark mode, and the
+   highlight pairs its own text colour so the passage meets WCAG AA whatever
+   the theme's link and text colours. */
+:root {
+  --gmd-annotation-highlight: #fef08a;
+  --gmd-annotation-highlight-text: #1e293b;
+  --gmd-annotation-accent: var(--color-primary, #2563eb);
+  --gmd-annotation-accent-text: #ffffff;
+  --gmd-annotation-surface: var(--color-bg, #ffffff);
+  --gmd-annotation-text: var(--color-text, #1e293b);
+  --gmd-annotation-border: var(--color-border, #cbd5e1);
+  --gmd-annotation-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+}
+
+[data-theme="dark"] {
+  --gmd-annotation-highlight: #713f12;
+  --gmd-annotation-highlight-text: #fef9c3;
+  --gmd-annotation-accent-text: #0f172a;
+  --gmd-annotation-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --gmd-annotation-highlight: #713f12;
+    --gmd-annotation-highlight-text: #fef9c3;
+    --gmd-annotation-accent-text: #0f172a;
+    --gmd-annotation-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+
+::highlight(gmd-annotation) {
+  background-color: var(--gmd-annotation-highlight);
+  color: var(--gmd-annotation-highlight-text);
+}
+
+/* The toggle shows only once the module runs on an annotatable page. */
+:root:not([data-gmd-annotations]) [data-gmd-annotations-toggle] {
+  display: none;
+}
+
+[data-gmd-annotations-toggle] {
+  position: relative;
+}
+
+[data-gmd-annotations-count] {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.4rem;
+  min-width: 1.1rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--gmd-annotation-accent);
+  color: var(--gmd-annotation-accent-text);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.1rem;
+  text-align: center;
+}
+
+[data-gmd-annotations-count][hidden] {
+  display: none;
+}
+
+.gmd-annotation-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+.gmd-annotation-layer [hidden],
+[data-gmd-annotations-dialog] [hidden] {
+  display: none !important;
+}
+
+[data-gmd-annotation-pen],
+[data-gmd-annotation-icon] {
+  position: absolute;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--gmd-annotation-border);
+  border-radius: 6px;
+  background: var(--gmd-annotation-surface);
+  color: var(--gmd-annotation-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+
+[data-gmd-annotation-pen] {
+  background: var(--gmd-annotation-accent);
+  border-color: var(--gmd-annotation-accent);
+  color: var(--gmd-annotation-accent-text);
+}
+
+[data-gmd-annotation-icon]:hover,
+[data-gmd-annotation-icon][aria-expanded="true"] {
+  background: var(--gmd-annotation-highlight);
+  color: var(--gmd-annotation-highlight-text);
+}
+
+[data-gmd-annotation-pen] svg,
+[data-gmd-annotation-icon] svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+[data-gmd-annotation-popover] {
+  position: absolute;
+  z-index: 40;
+  width: 20rem;
+  max-width: calc(100vw - 1rem);
+  padding: 0.75rem;
+  border: 1px solid var(--gmd-annotation-border);
+  border-radius: 8px;
+  background: var(--gmd-annotation-surface);
+  color: var(--gmd-annotation-text);
+  box-shadow: var(--gmd-annotation-shadow);
+}
+
+[data-gmd-annotation-popover] textarea,
+[data-gmd-annotations-dialog] textarea {
+  display: block;
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--gmd-annotation-border);
+  border-radius: 6px;
+  background: var(--gmd-annotation-surface);
+  color: var(--gmd-annotation-text);
+  font: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+[data-gmd-annotation-popover] textarea {
+  min-height: 6rem;
+}
+
+.gmd-annotation-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.gmd-annotation-row .gmd-annotation-spacer {
+  flex: 1;
+}
+
+.gmd-annotation-layer
+  button:not([data-gmd-annotation-pen], [data-gmd-annotation-icon]),
+[data-gmd-annotations-dialog] button,
+[data-gmd-annotation-notice] button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--gmd-annotation-border);
+  border-radius: 6px;
+  background: var(--gmd-annotation-surface);
+  color: var(--gmd-annotation-text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.gmd-annotation-layer button[data-action="save"],
+[data-gmd-annotations-dialog] button[data-action="copy"] {
+  background: var(--gmd-annotation-accent);
+  border-color: var(--gmd-annotation-accent);
+  color: var(--gmd-annotation-accent-text);
+}
+
+[data-gmd-annotations-dialog] button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* margin: auto restores the UA centring that theme resets (* { margin: 0 })
+   remove. */
+[data-gmd-annotations-dialog] {
+  margin: auto;
+  width: min(48rem, calc(100vw - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--gmd-annotation-border);
+  border-radius: 10px;
+  background: var(--gmd-annotation-surface);
+  color: var(--gmd-annotation-text);
+  box-shadow: var(--gmd-annotation-shadow);
+}
+
+[data-gmd-annotations-dialog]::backdrop {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+[data-gmd-annotations-dialog] h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+[data-gmd-annotations-dialog] textarea {
+  min-height: 50vh;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+}
+
+/* The live region stays rendered (empty) so screen readers announce the
+   message added to it; only its box appears and disappears. */
+[data-gmd-annotation-notice] {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+}
+
+.gmd-annotation-notice-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gmd-annotation-border);
+  border-radius: 8px;
+  background: var(--gmd-annotation-surface);
+  color: var(--gmd-annotation-text);
+  box-shadow: var(--gmd-annotation-shadow);
+  font-size: 0.9rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-gmd-annotation-ui],
+  [data-gmd-annotation-ui] *,
+  [data-gmd-annotations-toggle] {
+    transition: none !important;
+    animation: none !important;
+  }
+}

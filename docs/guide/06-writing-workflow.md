@@ -118,3 +118,56 @@ Tags are normalized (lowercased, trimmed, deduplicated; tags containing `/` or `
 they are also queryable via the `tag:` syntax in [full-text search](10-search.md#tag-filters) and the JSON
 `/api/tags` endpoints. Both `tag_chips` and `see_also` are enabled by default and can be toggled per site or per
 page via [feature flags](02-configuration.md).
+
+## Annotating a Page
+
+The `annotations` theme feature lets you review a rendered page the way you would mark up a printout, then hand
+every note to an LLM harness (Claude Code, Codex, …) that revises the source file. Notes never leave your browser:
+there is no server side.
+
+1. Select text in the page content. A pen button appears in the right margin, level with the selection.
+2. Click it, or press `Alt+Shift+A` (`Option+Shift+A` on macOS), which also works for a keyboard selection made with
+   `Shift`+arrows. Type the note, then **Save** (`Ctrl+Enter`, `Cmd+Enter` on macOS). **Discard**, `Esc` or a click
+   outside drops it; saving an empty note is a discard.
+3. The passage is highlighted and a note icon sits in the margin. Click it to edit or **Delete** the note; `Esc`
+   closes it unchanged. Notes starting on the same line share one icon showing their count, with previous and next
+   controls.
+4. The **Annotations** button in the header (its badge counts the page's notes) opens every note as Markdown.
+   Edit it if you like, **Copy** it, paste it into the harness. **Clear all** deletes every note of the page after
+   a confirmation.
+
+Selections inside code-copy buttons, heading anchors, rendered math or Mermaid diagrams cannot be annotated, and
+neither can a passage whose surrounding words repeat elsewhere on the page.
+
+**Where notes live.** In the browser's `localStorage`, one entry per page URL (the `#fragment` is ignored), so
+they stay on that browser and that address: `localhost:8080` and `localhost:8081` keep separate notes. Where the
+browser refuses storage (some private modes), notes work until you reload and a notice says so.
+
+**After the source changes.** On load each note looks for its passage again: the quoted text with up to 32
+characters of context on each side, which must match exactly once. A note whose passage was edited, deleted or
+now appears twice is removed, and a notice says how many. A note is never moved to a passage that merely looks
+similar.
+
+**The export** names the source file (relative to the git work tree root, else to the content root) and the page
+URL, then gives each note in document order under its section's heading path, quoting the passage in bold with
+its context:
+
+```markdown
+# Review notes: Client-Side Page Annotations
+
+Source file: `docs/specs/20261023.annotations-design.md`
+Page: http://localhost:8080/specs/20261023.annotations-design
+
+Each note quotes the passage it refers to, with the words just before and after it to disambiguate.
+
+## 1. Intent › Goals
+
+> …dropped, and the reader is told **how many**. On by default…
+
+How many is "how many"? Give the exact wording of the notice.
+```
+
+The feature is on by default. Turn it off for the site with `theme.features.annotations: false` (or
+`GOMDDOC_SITE_THEME_FEATURES_ANNOTATIONS=false`), or for one page with `features: {annotations: false}` in its
+frontmatter. Themes restyle it through the `--gmd-annotation-*` CSS custom properties (see
+[Theming and Assets](05-theming-and-assets.md)).
