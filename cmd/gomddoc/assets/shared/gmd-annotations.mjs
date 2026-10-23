@@ -684,7 +684,7 @@ function mount(doc, win, content, notice, signal) {
     for (const group of groups) {
       group.ids.sort((a, b) => start.get(a) - start.get(b));
       const n = group.ids.length;
-      group.label = n > 1 ? t("annotations_count", n) : t("annotation_note");
+      group.label = n > 1 ? tn("annotations_count", n) : t("annotation_note");
     }
     margin.renderIcons(groups, column());
   }

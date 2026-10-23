@@ -20,6 +20,7 @@ const LABELS = {
   annotation_position: "%d of %d",
   annotations_open: "Annotations",
   annotations_count: "%d notes",
+  annotations_count_few: "%d notes (few)",
   annotations_open_count: "Annotations (%d notes)",
   annotations_open_count_one: "Annotations (%d note)",
   annotations_copy: "Copy",
@@ -42,6 +43,11 @@ const LABELS = {
   annotations_export_intro: "Each note quotes the passage.",
   annotations_export_top: "(top of page)",
 };
+
+// Arabic plural rules (gmd-i18n.mjs reads them once per document, on first
+// use): 1 is "one", 2 is "two" (no variant here, so the general form), 3 is
+// "few", so a count label that skips tn shows up.
+document.documentElement.lang = "ar";
 
 const PAGE =
   "<h1>Spec</h1><p id=a>alpha beta gamma delta</p><h2>Part</h2><p id=b>one two three four</p>";
@@ -411,6 +417,15 @@ describe("existing notes", () => {
     expect(action(editor(), "next").disabled).toBe(true);
     action(editor(), "prev").click();
     expect(textarea().value).toBe("first");
+  });
+
+  it("a group's count label picks its plural variant", async () => {
+    await addNote("a", 0, 5, "first");
+    await addNote("a", 6, 10, "second");
+    await addNote("a", 11, 16, "third");
+
+    expect(icons().map((i) => i.dataset.count)).toEqual(["3"]);
+    expect(icons()[0].getAttribute("aria-label")).toBe("3 notes (few)");
   });
 
   it("editing an existing note to empty deletes it", async () => {
