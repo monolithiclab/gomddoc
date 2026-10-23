@@ -367,7 +367,7 @@ configured MCP client, for a reader who has a gomddoc page open and nothing conf
       (see `ROADMAP.md`'s Theme Configuration section), off by default until the API is
       unflagged in at least one shipping browser.
       **Not implementable end-to-end yet** — `build` output is static HTML with no backend for the
-      tool's `execute` callback to call, so like Content Annotations this is `serve`/`preview` only
+      tool's `execute` callback to call, so like server-side Content Annotations this is `serve`/`preview` only
       unless a client-side search index (Phase 5's deferred Pagefind path) ships first. Revisit once
       Chrome/Edge ship the API unflagged; low-medium complexity once the platform stabilizes.
 
@@ -484,6 +484,25 @@ _Select text in a rendered page, leave a note, and have an agent turn the accumu
 branch of Markdown edits. Review, amendment and "we should also document X" all start from the page
 where the reader noticed the problem, instead of from a blank issue form._
 
+**Client-side slice shipped (2026-10-23, D48–D50,
+[spec](docs/specs/20261023.annotations-design.md)).** The `annotations` theme feature, on by default, works in
+`serve`, `preview` and `build` output alike: a reader selects a passage, leaves a note held in the browser's
+`localStorage`, and copies every note of the page as Markdown (source path, heading path, the passage quoted with
+32 characters of context) into a coding harness that edits the file. Anchors are exact quote selectors re-found in
+the rendered text; a note that no longer matches exactly once is dropped and the reader told. No server state, no
+untrusted input reaching a page (item 3 below holds), no identity needed. What remains of the idea below is the
+server side: source-line anchoring (`data-src-line`), resolution against the Markdown source with fuzzy and
+orphaned outcomes, shared capture (`/api/annotations`), the MCP tools and the `gomddoc annotations` subcommand,
+all still gated on the sequencing paragraph at the end.
+
+Follow-ups parked from the client-side slice:
+
+- [ ] A formatter and linter for `web/` and `cmd/gomddoc/assets/shared/*.mjs` in `make lint` (today Prettier is
+      run by hand and nothing lints the shared scripts).
+- [ ] Idea: previous/next in the note editor saves the edit on navigation instead of discarding it like `Esc`.
+- [ ] Visual check of the editor, notice and dialog in the seven `gomddoc-themes` themes, light and dark, before
+      the themes are tagged.
+
 The pull is real: today a reader who spots a wrong sentence has to translate "third paragraph under
 *Caching*" into a file path, find the line, and write a diff — and the reader who spots it is usually
 not the person who can fix it. An annotation captures the observation at full fidelity at the moment
@@ -520,7 +539,8 @@ design below exists to survive them.
    feature, not a public "suggest an edit" widget.
 
 Two further limits worth stating before anyone plans around them: `gomddoc build` output is static
-files, so annotation capture is a `serve`/`preview` feature only — and static hosting is the largest
+files, so server-side annotation capture is a `serve`/`preview` feature only (the shipped client-side slice
+works everywhere) — and static hosting is the largest
 deployment mode. And for a one-word typo the existing edit link already wins. Annotations earn their
 keep on the case the edit link is bad at: noticing something *without* knowing the fix, and
 accumulating a dozen small observations across a reading session into one coherent handoff.
