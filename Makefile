@@ -16,14 +16,21 @@ run: ## Serve the lorem-ipsum testsite locally (preview server, writes nothing)
 # Front-end tests (D48) run only when their inputs change: the shared scripts and styles, the default theme's
 # templates, the locales, this Makefile (its recipe) and web/ itself. web/node_modules and the Playwright output
 # never enter the hash, so a fresh clone and a warm checkout hash alike.
-UI_INPUTS := $(sort $(wildcard cmd/gomddoc/assets/shared/*.mjs cmd/gomddoc/assets/shared/*.css \
+UI_INPUTS = $(sort $(wildcard cmd/gomddoc/assets/shared/*.mjs cmd/gomddoc/assets/shared/*.css \
 	cmd/gomddoc/assets/themes/default/layouts/*.tmpl cmd/gomddoc/assets/themes/default/partials/*.tmpl \
 	cmd/gomddoc/assets/locales/*.yml) Makefile \
 	$(shell find web \( -name node_modules -o -name test-results -o -name playwright-report \) -prune -o -type f -print))
 
+UI_INPUTS_HASH = shasum -a 256 $(UI_INPUTS) | shasum -a 256 | cut -d' ' -f1
+
+# Hidden from `make help`: CI keys its .cache/ cache on it, so both hash the same files.
+.PHONY: ui-inputs-hash
+ui-inputs-hash:
+	@$(UI_INPUTS_HASH)
+
 .PHONY: test-ui
 test-ui: ## Front-end tests (Vitest, Playwright), skipped when their inputs are unchanged
-	@hash=$$(shasum -a 256 $(UI_INPUTS) | shasum -a 256 | cut -d' ' -f1); \
+	@hash=$$($(UI_INPUTS_HASH)); \
 	if [ "$$hash" = "$$(cat .cache/test-ui.sha 2>/dev/null)" ]; then \
 		echo "test-ui: front-end unchanged, skipped"; exit 0; \
 	fi; \

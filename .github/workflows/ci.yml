@@ -35,7 +35,7 @@ jobs:
       - run: go version
       # The front-end suite (`make test-ui`, inside `make ci`) needs Node and runs Playwright on the
       # runner's preinstalled Chrome. .cache/test-ui.sha records the inputs of the last green run, so
-      # an unchanged front end skips the suite; the key hashes the same files as UI_INPUTS.
+      # an unchanged front end skips the suite; the cache key is the hash test-ui itself computes.
       - if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -43,10 +43,13 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - if: matrix.os == 'ubuntu-latest'
+        id: ui-inputs
+        run: echo "hash=$(make --no-print-directory ui-inputs-hash)" >> "$GITHUB_OUTPUT"
+      - if: matrix.os == 'ubuntu-latest'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/
-          key: test-ui-${{ hashFiles('cmd/gomddoc/assets/shared/*.mjs', 'cmd/gomddoc/assets/shared/*.css', 'cmd/gomddoc/assets/themes/default/layouts/*.tmpl', 'cmd/gomddoc/assets/themes/default/partials/*.tmpl', 'cmd/gomddoc/assets/locales/*.yml', 'Makefile', 'web/**', '!web/node_modules/**', '!web/test-results/**', '!web/playwright-report/**') }}
+          key: test-ui-${{ steps.ui-inputs.outputs.hash }}
       - if: matrix.os == 'ubuntu-latest'
         run: make ci
       # The front end is browser code, identical on every OS: ubuntu runs its suite once, and the
