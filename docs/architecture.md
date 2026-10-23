@@ -804,14 +804,20 @@ name in the theme directory, which `inlineJSAsset` reads before `assets/shared/`
 notes live in `localStorage`, one entry per page URL. `head-meta` calls `head-annotations`, which inlines the styles;
 `scripts-shared` emits a `<script type="application/json" id="gmd-annotations-config">` (the page's `SourcePath`, title
 and the localized labels, from `TemplateContext.AnnotationsConfig`, which `html/template` marshals) and then the module.
-Themes only carry the contract: `data-gmd-annotatable` on the element wrapping `{{ .Page.Content }}` and a
-`<button data-gmd-annotations-toggle>` with its `[data-gmd-annotations-count]` badge in the header, both behind
-`.Feature "annotations"`; neither needs a new template field, so an updated theme still renders on an older gomddoc.
-The module does nothing on a page without the marker, and generated tag pages turn the feature off. Its pure part (the
-text model minus `SKIP_SELECTOR`, anchoring by exact `prefix + quote + suffix`, line grouping, the Markdown export,
-storage) is exported for tests; `init` re-anchors stored notes after `load` and builds the pen, margin icons, popover,
-header dialog and `role="status"` notice, every injected element marked `data-gmd-annotation-ui`. Highlights go
-through the CSS Custom Highlight API, never DOM wrapping (D49).
+Themes only carry the contract: `<gmd-annotations>` around `{{ .Page.Content }}` and `<gmd-annotations-toggle>` in the
+header, both behind `.Feature "annotations"`; neither needs a new template field, so an updated theme still renders on
+an older gomddoc, where the elements stay undefined. The module defines its custom elements (once, even if inlined
+twice) and does nothing until `<gmd-annotations>` connects; generated tag pages turn the feature off. Its pure part
+(the text model minus `SKIP_SELECTOR`, anchoring by exact `prefix + quote + suffix`, line grouping, the Markdown export,
+storage) is exported for tests. `<gmd-annotations>` (light DOM, so selection, other scripts and theme CSS see the
+content unchanged) re-anchors stored notes after `load` and mounts in `<body>` a `<gmd-annotation-margin>` (shadow DOM:
+pen and note icons, `::part(pen)`/`::part(icon)`), a `<gmd-annotation-editor popover="auto">` opened with
+`showPopover({source})` and placed by CSS anchor positioning (a JavaScript fallback where unsupported), the notes
+`<dialog id="gmd-annotations-dialog">` and a `<gmd-annotation-notice popover="manual" role="status">`. The toggle
+opens the dialog through Invoker Commands (`commandfor`, `command="show-modal"`) and follows the bubbling
+`gmd-annotations-change` event's count; elements never talk through globals. Esc, light dismiss, focus return, the
+dialog's focus trap and stacking are the platform's (D50). Highlights go through the CSS Custom Highlight API, never
+DOM wrapping (D49).
 
 ### 15. Internationalization and Localization
 
@@ -1291,6 +1297,7 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 | Lightweight frontmatter parser | 10-100x faster than full goldmark render for metadata-only extraction |
 | Build reuses serve pipeline | Single source of truth for rendering; no divergence between serve and build output |
 | Annotation highlights via the CSS Custom Highlight API | No wrapper elements, so the DOM other shared scripts and the anchoring text model read stays untouched (D49) |
+| Annotation UI on custom elements, Popover API, `<dialog>` and Invoker Commands | Top layer, Esc, light dismiss, focus return and the dialog's focus trap come from the browser, not hand-written code (D50) |
 | Color chip as web component | Shadow DOM encapsulation prevents theme CSS conflicts; `::part()` allows per-theme styling |
 | `inlineJSAsset` / `inlineCSSAsset` / `inlineHTMLAsset` | Themes share components without copy-paste; search order (theme → shared) allows overrides; typed returns match `html/template` context escaping |
 | MCP as thin adapter | Reuses Provider, MetaIndex, SearchIndex, Navigation — no new parsing/indexing; MCP package is purely protocol translation |

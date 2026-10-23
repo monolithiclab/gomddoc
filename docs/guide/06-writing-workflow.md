@@ -171,3 +171,7 @@ The feature is on by default. Turn it off for the site with `theme.features.anno
 `GOMDDOC_SITE_THEME_FEATURES_ANNOTATIONS=false`), or for one page with `features: {annotations: false}` in its
 frontmatter. Themes restyle it through the `--gmd-annotation-*` CSS custom properties (see
 [Theming and Assets](05-theming-and-assets.md)).
+
+**Browser support.** The interface is built on the Popover API, Invoker Commands and the `<dialog>` element: current
+Chrome, Edge, Safari and Firefox. An older browser shows the page without the annotation controls; nothing else on
+the page changes.

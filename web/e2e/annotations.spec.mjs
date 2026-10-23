@@ -9,10 +9,13 @@ import { expect, test } from "@playwright/test";
 
 const base = process.env.GMD_E2E_URL;
 
-const pen = (page) => page.locator("[data-gmd-annotation-pen]");
-const icons = (page) => page.locator("[data-gmd-annotation-icon]");
-const popover = (page) => page.locator("[data-gmd-annotation-popover]");
-const dialog = (page) => page.locator("dialog[data-gmd-annotations-dialog]");
+// Playwright's CSS locators pierce the margin's open shadow root.
+const pen = (page) => page.locator("gmd-annotation-margin [part=pen]");
+const icons = (page) => page.locator("gmd-annotation-margin [part=icon]");
+const popover = (page) => page.locator("gmd-annotation-editor");
+const dialog = (page) => page.locator("dialog#gmd-annotations-dialog");
+const toggle = (page) => page.locator("gmd-annotations-toggle button");
+const count = (page) => page.locator(".gmd-annotations-count");
 const action = (root, name) => root.locator(`[data-action="${name}"]`);
 const highlights = (page) =>
   page.evaluate(() => CSS.highlights.get("gmd-annotation")?.size ?? 0);
@@ -26,16 +29,17 @@ test.beforeEach(async ({ context }) => {
   );
 });
 
+// open loads a page and waits for the interface to mount (after load).
 async function open(page, path) {
   await page.goto(base + path);
-  await expect(page.locator("html")).toHaveAttribute("data-gmd-annotations");
+  await expect(page.locator("gmd-annotation-margin")).toHaveCount(1);
 }
 
 // select drags the mouse across the first occurrence of text in the content,
 // as a reader would.
 async function select(page, text) {
   const box = await page.evaluate((text) => {
-    const root = document.querySelector("[data-gmd-annotatable]");
+    const root = document.querySelector("gmd-annotations");
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let node; (node = walker.nextNode());) {
       const at = node.data.indexOf(text);
@@ -85,7 +89,7 @@ test("create, edit and delete a note", async ({ page }) => {
   await annotate(page, "bold claim", "Source?");
   await expect(icons(page)).toHaveCount(1);
   await expect.poll(() => highlights(page)).toBe(1);
-  await expect(page.locator("[data-gmd-annotations-count]")).toHaveText("1");
+  await expect(count(page)).toHaveText("1");
 
   await icons(page).click();
   const textarea = popover(page).locator("textarea");
@@ -98,7 +102,7 @@ test("create, edit and delete a note", async ({ page }) => {
   await action(popover(page), "delete").click();
   await expect(icons(page)).toHaveCount(0);
   await expect.poll(() => highlights(page)).toBe(0);
-  await expect(page.locator("[data-gmd-annotations-count]")).toBeHidden();
+  await expect(count(page)).toBeHidden();
 });
 
 test("two notes on one line: one icon, prev/next", async ({ page }) => {
@@ -110,7 +114,7 @@ test("two notes on one line: one icon, prev/next", async ({ page }) => {
   await expect.poll(() => highlights(page)).toBe(2);
 
   await icons(page).click();
-  const position = popover(page).locator("[data-gmd-annotation-position]");
+  const position = popover(page).locator(".gmd-annotation-position");
   const textarea = popover(page).locator("textarea");
   await expect(position).toHaveText("1 of 2");
   await expect(textarea).toHaveValue("first");
@@ -123,6 +127,39 @@ test("two notes on one line: one icon, prev/next", async ({ page }) => {
   await expect(textarea).toHaveValue("first");
 });
 
+test("the editor and the dialog use the top layer", async ({ page }) => {
+  await open(page, "/");
+  await annotate(page, "bold claim", "Top layer.");
+
+  await icons(page).click();
+  await expect(popover(page)).toBeVisible();
+  expect(
+    await popover(page).evaluate((el) => el.matches(":popover-open")),
+  ).toBe(true);
+  // Anchored under its icon, right edges aligned.
+  const [icon, editor] = await Promise.all([
+    icons(page).boundingBox(),
+    popover(page).boundingBox(),
+  ]);
+  expect(editor.y).toBeGreaterThanOrEqual(icon.y + icon.height);
+  expect(
+    Math.abs(editor.x + editor.width - (icon.x + icon.width)),
+  ).toBeLessThan(2);
+  // Non-modal: Tab leaves the textarea for the editor's buttons, and a click
+  // outside dismisses it.
+  await page.keyboard.press("Tab");
+  await expect(action(popover(page), "delete")).toBeFocused();
+  await page.mouse.click(5, 5);
+  await expect(popover(page)).toBeHidden();
+
+  await toggle(page).click();
+  await expect(dialog(page)).toBeVisible();
+  expect(await dialog(page).evaluate((el) => el.matches(":modal"))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog(page)).toBeHidden();
+  await expect(toggle(page)).toBeFocused();
+});
+
 test("header dialog copies the export and clear all asks first", async ({
   page,
   context,
@@ -133,7 +170,7 @@ test("header dialog copies the export and clear all asks first", async ({
   await open(page, "/");
   await annotate(page, "bold claim", "Cite the study.");
 
-  await page.locator("[data-gmd-annotations-toggle]").click();
+  await toggle(page).click();
   await expect(dialog(page)).toBeVisible();
   await action(dialog(page), "copy").click();
   await expect(action(dialog(page), "copy")).toHaveText("Copied");
@@ -178,8 +215,9 @@ test("editing the source drops a stale note and shows the notice", async ({
   writeFileSync(file, source.replace("rewrites this sentence", "edits it"));
   try {
     await page.reload();
-    await expect(page.locator("html")).toHaveAttribute("data-gmd-annotations");
-    await expect(page.locator("[data-gmd-annotation-notice] span")).toHaveText(
+    await expect(page.locator("gmd-annotation-margin")).toHaveCount(1);
+    await expect(page.locator("gmd-annotation-notice")).toHaveRole("status");
+    await expect(page.locator("gmd-annotation-notice span")).toHaveText(
       "1 note no longer matches this page and was removed.",
     );
     await expect(icons(page)).toHaveCount(0);
@@ -193,11 +231,11 @@ test("note in a heading section survives reload", async ({ page }) => {
   await open(page, "/");
   await annotate(page, "package manager", "Which ones?");
   await page.reload();
-  await expect(page.locator("html")).toHaveAttribute("data-gmd-annotations");
+  await expect(page.locator("gmd-annotation-margin")).toHaveCount(1);
   await expect(icons(page)).toHaveCount(1);
   await expect.poll(() => highlights(page)).toBe(1);
 
-  await page.locator("[data-gmd-annotations-toggle]").click();
+  await toggle(page).click();
   await expect(dialog(page).locator("textarea")).toHaveValue(
     /## 1\. Annotation fixture › Setup section\n\n> .*\*\*package manager\*\*.*\n\nWhich ones\?\n$/,
   );
@@ -207,16 +245,16 @@ test("feature off renders no annotation markup", async ({ page }) => {
   await page.goto(base + "/off");
   await expect(page.locator("h1")).toContainText("Annotations off");
   for (const selector of [
-    "[data-gmd-annotatable]",
-    "[data-gmd-annotations-toggle]",
+    "gmd-annotations",
+    "gmd-annotations-toggle",
     "#gmd-annotations-config",
-    "[data-gmd-annotation-ui]",
+    "gmd-annotation-margin",
+    "gmd-annotation-editor",
+    "gmd-annotation-notice",
+    "dialog",
   ]) {
     await expect(page.locator(selector)).toHaveCount(0);
   }
-  await expect(page.locator("html")).not.toHaveAttribute(
-    "data-gmd-annotations",
-  );
 });
 
 test("axe finds no violations with the popover open and with the dialog open", async ({
@@ -232,7 +270,7 @@ test("axe finds no violations with the popover open and with the dialog open", a
   await page.keyboard.press("Escape");
   await expect(popover(page)).toBeHidden();
 
-  await page.locator("[data-gmd-annotations-toggle]").click();
+  await toggle(page).click();
   await expect(dialog(page)).toBeVisible();
   expect((await axe().analyze()).violations).toEqual([]);
 });

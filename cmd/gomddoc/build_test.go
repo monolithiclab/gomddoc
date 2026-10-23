@@ -590,8 +590,8 @@ func TestBuildCmd_Run_WithFrontmatter(t *testing.T) {
 
 // TestBuildCmd_Run_PageFeatureOverride drives a per-page features: override
 // through the real enricher (goldmark-meta's YAML decoding) and the default
-// theme. The markers are the elements, not bare attribute names, which the
-// inlined script and styles also spell.
+// theme. The markers are the elements' opening tags, not bare element names,
+// which the inlined script and styles also spell.
 func TestBuildCmd_Run_PageFeatureOverride(t *testing.T) {
 	t.Parallel()
 
@@ -606,7 +606,7 @@ func TestBuildCmd_Run_PageFeatureOverride(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	markers := []string{`<div data-gmd-annotatable>`, `<button data-gmd-annotations-toggle`, `id="gmd-annotations-config"`}
+	markers := []string{`<gmd-annotations>`, `<gmd-annotations-toggle></gmd-annotations-toggle>`, `id="gmd-annotations-config"`}
 	on := readTestFile(t, filepath.Join(outDir, "on"), "index.html")
 	off := readTestFile(t, filepath.Join(outDir, "off"), "index.html")
 	for _, marker := range markers {

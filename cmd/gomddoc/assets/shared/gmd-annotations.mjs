@@ -1,9 +1,11 @@
 /**
  * Page annotations — reader notes anchored to passages of the page content.
  *
- * Inlined as <script type="module"> on pages whose content element carries
- * data-gmd-annotatable. Notes live in localStorage only; the export is
- * Markdown for a coding harness. See docs/specs/20261023.annotations-design.md.
+ * Inlined as <script type="module"> when the annotations feature is on; it
+ * defines the custom elements below and does nothing until a gmd-annotations
+ * element (the theme's wrapper around the content) connects. Notes live in
+ * localStorage only; the export is Markdown for a coding harness. See
+ * docs/specs/20261023.annotations-design.md.
  *
  * The text model is the concatenated text of the content element minus
  * SKIP_SELECTOR subtrees. Anchors are {prefix, quote, suffix} found exactly
@@ -16,7 +18,7 @@
 // module's own UI), rendered output that is not prose (KaTeX, Mermaid) and
 // elements whose text never renders (raw HTML <style> or <script>).
 export const SKIP_SELECTOR =
-  ".copy-btn, gmd-heading-anchor, gmd-color-chip, .katex, .language-mermaid, .mermaid, [data-gmd-annotation-ui], style, script, template";
+  ".copy-btn, gmd-heading-anchor, gmd-color-chip, .katex, .language-mermaid, .mermaid, gmd-annotation-margin, gmd-annotation-editor, gmd-annotation-notice, style, script, template";
 
 const CONTEXT_CHARS = 32;
 const STORAGE_PREFIX = "gomddoc:annotations:";
@@ -219,11 +221,22 @@ function parseEntry(raw) {
 }
 
 // ---- Interface -------------------------------------------------------------
+//
+// gmd-annotations (light DOM, wraps the content) owns the controller and
+// mounts the rest in the body: gmd-annotation-margin (shadow DOM: the pen and
+// the note icons), gmd-annotation-editor (an auto popover), the notes dialog
+// and gmd-annotation-notice (a manual popover). gmd-annotations-toggle sits
+// in the theme's header and follows the gmd-annotations-change events. The
+// platform does the rest: top layer, light dismiss, Esc, focus return, the
+// dialog's focus trap, Invoker Commands for the toggle and the Close buttons.
 
 const HIGHLIGHT_NAME = "gmd-annotation";
+const CHANGE_EVENT = "gmd-annotations-change";
+const DIALOG_ID = "gmd-annotations-dialog";
+const NOTICE_ID = "gmd-annotation-notice";
 const LINE_TOLERANCE = 8; // px: first lines closer than this share an icon
 const MARGIN_GAP = 8; // px between the content's right edge and the icons
-const ICON_SIZE = 28; // px, matches gmd-annotations.css
+const ICON_SIZE = 28; // px, matches MARGIN_STYLE
 const COPIED_MS = 2000;
 
 const SVG_ATTRS =
@@ -231,22 +244,17 @@ const SVG_ATTRS =
 const PEN_SVG = `<svg ${SVG_ATTRS}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 const NOTE_SVG = `<svg ${SVG_ATTRS}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
 
-// build parses one element of the annotation UI from markup. Every element in
-// it carries data-gmd-annotation-ui, which keeps it out of the text model.
-function build(doc, html) {
+// parse builds one element from markup.
+function parse(doc, html) {
   const template = doc.createElement("template");
   template.innerHTML = html.trim();
-  const root = template.content.firstElementChild;
-  for (const node of [root, ...root.querySelectorAll("*")]) {
-    node.setAttribute("data-gmd-annotation-ui", "");
-  }
-  return root;
+  return template.content.firstElementChild;
 }
 
 const escapeHTML = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const button = (action, text, label) =>
-  `<button type="button" data-action="${action}"${label ? ` aria-label="${label}"` : ""}>${text}</button>`;
+const button = (action, text, label, extra = "") =>
+  `<button type="button" data-action="${action}"${label ? ` aria-label="${label}"` : ""}${extra}>${text}</button>`;
 
 function readConfig(doc) {
   try {
@@ -254,6 +262,21 @@ function readConfig(doc) {
   } catch {
     return {};
   }
+}
+
+// labeler returns the label lookups over a configuration: L fills each %d in
+// order, P picks the name_one variant for a count of 1 when the locale has
+// one, E escapes for markup.
+function labeler(config) {
+  const L = (name, ...nums) => {
+    let i = 0;
+    const label = config.labels?.[name] ?? name;
+    return label.replace(/%d/g, () => String(nums[i++] ?? ""));
+  };
+  const P = (name, n) =>
+    L(n === 1 && config.labels?.[`${name}_one`] ? `${name}_one` : name, n);
+  const E = (name, ...nums) => escapeHTML(L(name, ...nums));
+  return { L, P, E };
 }
 
 // localStorageOf returns the window's storage, or null where merely reading
@@ -278,23 +301,226 @@ function newID(win) {
     : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
-// trapTab keeps Tab and Shift+Tab cycling inside container.
-function trapTab(event, container) {
-  const focusable = [...container.querySelectorAll("button, textarea")].filter(
-    (node) => !node.disabled && !node.closest("[hidden]"),
-  );
-  if (!focusable.length) return;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  const active = container.ownerDocument.activeElement;
-  if (event.shiftKey ? active === first : active === last) {
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus();
-  } else if (!container.contains(active)) {
-    event.preventDefault();
-    first.focus();
+// Elements are defined only where a DOM exists; the base keeps the module
+// importable without one.
+const Base = globalThis.HTMLElement ?? class {};
+
+// ---- gmd-annotation-margin
+
+const MARGIN_STYLE = `
+  :host { position: absolute; top: 0; left: 0; width: 0; height: 0; }
+  button {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.3rem;
+    border: 1px solid var(--gmd-annotation-border);
+    border-radius: 6px;
+    background: var(--gmd-annotation-surface);
+    color: var(--gmd-annotation-text);
+    font: 600 0.75rem/1 system-ui, sans-serif;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  button[hidden] { display: none; }
+  [part="pen"] {
+    background: var(--gmd-annotation-accent);
+    border-color: var(--gmd-annotation-accent);
+    color: var(--gmd-annotation-accent-text);
+  }
+  [part="icon"]:hover, [part="icon"][aria-expanded="true"] {
+    background: var(--gmd-annotation-highlight);
+    color: var(--gmd-annotation-highlight-text);
+  }
+  svg { width: 1rem; height: 1rem; flex: none; }
+  @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+`;
+
+// GmdAnnotationMargin renders the pen and the note icons at viewport
+// positions the controller computes. A click on either dispatches
+// gmd-annotation-open with the button as source and the note ids it opens
+// (null for the pen). The pen comes last so it paints over an icon on the
+// same line.
+class GmdAnnotationMargin extends Base {
+  #ids = new WeakMap(); // icon -> the note ids it opens
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" }).innerHTML =
+      `<style>${MARGIN_STYLE}</style><div></div><button type="button" part="pen" hidden>${PEN_SVG}</button>`;
+    // Keep the selection: the pen annotates it.
+    this.pen.addEventListener("mousedown", (e) => e.preventDefault());
+    this.shadowRoot.addEventListener("click", (e) => {
+      const source = e.target.closest("button");
+      if (!source) return;
+      const ids = this.#ids.get(source) ?? null;
+      this.dispatchEvent(
+        new CustomEvent("gmd-annotation-open", { detail: { source, ids } }),
+      );
+    });
+  }
+
+  get pen() {
+    return this.shadowRoot.lastElementChild;
+  }
+
+  get #box() {
+    return this.shadowRoot.querySelector("div");
+  }
+
+  #place(node, x, top) {
+    const origin = this.getBoundingClientRect();
+    node.style.left = `${x - origin.left}px`;
+    node.style.top = `${top - origin.top}px`;
+  }
+
+  showPen(x, top) {
+    this.pen.hidden = false;
+    this.#place(this.pen, x, top - 2);
+  }
+
+  hidePen() {
+    this.pen.hidden = true;
+  }
+
+  iconFor(id) {
+    return [...this.#box.children].find((icon) =>
+      this.#ids.get(icon).includes(id),
+    );
+  }
+
+  // renderIcons shows one icon per group ({ids, top, label}) at column x. An
+  // icon whose group is unchanged is kept, so focus and an open editor's
+  // anchor survive a layout.
+  renderIcons(groups, x) {
+    const box = this.#box;
+    const old = new Map(
+      [...box.children].map((icon) => [this.#ids.get(icon).join(), icon]),
+    );
+    const focusedID = this.#ids.get(this.shadowRoot.activeElement)?.[0];
+    const icons = groups.map((group) => {
+      let icon = old.get(group.ids.join());
+      if (!icon) {
+        const n = group.ids.length;
+        icon = parse(
+          this.ownerDocument,
+          `<button type="button" part="icon" data-count="${n}" aria-haspopup="dialog" aria-expanded="false">${NOTE_SVG}${n > 1 ? `<span>${n}</span>` : ""}</button>`,
+        );
+        this.#ids.set(icon, group.ids);
+      }
+      icon.setAttribute("aria-label", group.label);
+      this.#place(icon, x, group.top - 2);
+      return icon;
+    });
+    const keep = new Set(icons);
+    for (const icon of [...box.children]) if (!keep.has(icon)) icon.remove();
+    icons.forEach((icon, i) => {
+      if (box.children[i] !== icon) box.insertBefore(icon, box.children[i]);
+    });
+    if (focusedID && !this.shadowRoot.activeElement) {
+      this.iconFor(focusedID)?.focus();
+    }
   }
 }
+
+// ---- gmd-annotation-editor
+
+// GmdAnnotationEditor is the note popover: one textarea, the
+// [data-action=save|discard|delete|prev|next] buttons and the "n of m"
+// position. Being non-modal it traps nothing; the controller opens it with
+// showPopover({source}) so it anchors to, and returns focus to, its opener.
+class GmdAnnotationEditor extends Base {
+  connectedCallback() {
+    if (this.firstChild) return;
+    const { L, E } = labeler(readConfig(this.ownerDocument));
+    this.setAttribute("role", "dialog");
+    this.setAttribute("aria-label", L("annotation_note"));
+    this.innerHTML = `
+      <div class="gmd-annotation-row">${button("prev", "‹", E("annotation_prev"))}<span class="gmd-annotation-position" aria-live="polite"></span>${button("next", "›", E("annotation_next"))}</div>
+      <textarea rows="5" aria-label="${E("annotation_note")}"></textarea>
+      <div class="gmd-annotation-row">${button("delete", E("annotation_delete"))}<span class="gmd-annotation-spacer"></span>${button("discard", E("annotation_discard"))}${button("save", E("annotation_save"))}</div>`;
+  }
+
+  get textarea() {
+    return this.querySelector("textarea");
+  }
+
+  action(name) {
+    return this.querySelector(`[data-action="${name}"]`);
+  }
+
+  open(source) {
+    this.showPopover({ source });
+    this.place(source);
+    this.textarea.focus();
+  }
+
+  // place puts the editor under source, right-aligned with it, where the
+  // browser lacks CSS anchor positioning (gmd-annotations.css does it
+  // otherwise). Absolute in the top layer means document coordinates, so the
+  // editor scrolls with the page.
+  place(source) {
+    const win = this.ownerDocument.defaultView;
+    if (win.CSS?.supports?.("anchor-name: --a")) return;
+    const r = source.getBoundingClientRect();
+    this.style.position = "absolute";
+    this.style.left = `${Math.max(8, r.right + win.scrollX - this.offsetWidth)}px`;
+    this.style.top = `${r.bottom + win.scrollY}px`;
+  }
+}
+
+// ---- gmd-annotation-notice
+
+// GmdAnnotationNotice shows one dismissible message in the top layer; its
+// role="status" makes screen readers announce it.
+class GmdAnnotationNotice extends Base {
+  announce(message, closeLabel) {
+    this.showPopover();
+    this.innerHTML = `<span>${escapeHTML(message)}</span><button type="button" commandfor="${this.id}" command="hide-popover" aria-label="${escapeHTML(closeLabel)}">×</button>`;
+  }
+}
+
+// ---- gmd-annotations-toggle
+
+// GmdAnnotationsToggle renders the header button that opens the notes
+// dialog through Invoker Commands, and keeps its count and label in step
+// with the gmd-annotations-change events.
+class GmdAnnotationsToggle extends Base {
+  #abort = null;
+
+  connectedCallback() {
+    const doc = this.ownerDocument;
+    const { L, P, E } = labeler(readConfig(doc));
+    if (!this.firstElementChild) {
+      this.innerHTML = `<button type="button" commandfor="${DIALOG_ID}" command="show-modal" aria-haspopup="dialog" title="${E("annotations_open")}">${NOTE_SVG.replace("<svg ", '<svg width="18" height="18" ')}<span class="gmd-annotations-count" aria-hidden="true" hidden></span></button>`;
+    }
+    const toggle = this.firstElementChild;
+    const badge = toggle.querySelector(".gmd-annotations-count");
+    const update = (count) => {
+      badge.textContent = String(count);
+      badge.hidden = count === 0;
+      toggle.setAttribute(
+        "aria-label",
+        count ? P("annotations_open_count", count) : L("annotations_open"),
+      );
+    };
+    this.#abort = new AbortController();
+    doc.addEventListener(CHANGE_EVENT, (e) => update(e.detail.count), {
+      signal: this.#abort.signal,
+    });
+    update(doc.querySelector("gmd-annotations")?.count ?? 0);
+  }
+
+  disconnectedCallback() {
+    this.#abort?.abort();
+  }
+}
+
+// ---- gmd-annotations
 
 // mount builds the interface over content once the page has loaded, so
 // KaTeX, Mermaid and the other shared scripts are done changing the DOM
@@ -303,16 +529,12 @@ function mount(doc, win, content, notice, signal) {
   const on = (target, type, fn, opts = {}) =>
     target.addEventListener(type, fn, { ...opts, signal });
   const config = readConfig(doc);
-  const L = (name, ...nums) => {
-    let i = 0;
-    const label = config.labels?.[name] ?? name;
-    return label.replace(/%d/g, () => String(nums[i++] ?? ""));
-  };
+  const { L, P, E } = labeler(config);
   const store = createStore(localStorageOf(win), storageKey(win.location));
 
   let notes = []; // stored fields plus the live range and its model start
   let pending = null; // the current annotatable selection
-  let state = null; // the open popover
+  let state = null; // the open editor
   let warnedNotKept = false;
   let exportEdited = false;
   let exportStale = true;
@@ -320,58 +542,35 @@ function mount(doc, win, content, notice, signal) {
 
   // ---- Elements
 
-  // P picks the name_one label for a count of 1 when the locale has one.
-  const P = (name, n) =>
-    L(n === 1 && config.labels?.[`${name}_one`] ? `${name}_one` : name, n);
-  const E = (name, ...nums) => escapeHTML(L(name, ...nums));
-  const layer = build(
+  const margin = doc.createElement("gmd-annotation-margin");
+  const editor = doc.createElement("gmd-annotation-editor");
+  editor.setAttribute("popover", "auto");
+  const dialog = parse(
     doc,
-    `<div class="gmd-annotation-layer">
-      <button type="button" data-gmd-annotation-pen aria-label="${E("annotate")}" title="${E("annotate")} (Alt+Shift+A)" hidden>${PEN_SVG}</button>
-      <div></div>
-      <div data-gmd-annotation-popover role="dialog" aria-modal="true" aria-label="${E("annotation_note")}" hidden>
-        <div class="gmd-annotation-row">${button("prev", "‹", E("annotation_prev"))}<span data-gmd-annotation-position aria-live="polite"></span>${button("next", "›", E("annotation_next"))}</div>
-        <textarea rows="5" aria-label="${E("annotation_note")}"></textarea>
-        <div class="gmd-annotation-row">${button("delete", E("annotation_delete"))}<span class="gmd-annotation-spacer"></span>${button("discard", E("annotation_discard"))}${button("save", E("annotation_save"))}</div>
-      </div>
-    </div>`,
-  );
-  const dialog = build(
-    doc,
-    `<dialog data-gmd-annotations-dialog aria-labelledby="gmd-annotations-title">
+    `<dialog id="${DIALOG_ID}" aria-labelledby="gmd-annotations-title">
       <h2 id="gmd-annotations-title">${E("annotations_open")}</h2>
       <p>${E("annotations_empty")}</p>
       <textarea aria-label="${E("annotations_open")}" spellcheck="false"></textarea>
-      <div class="gmd-annotation-row">${button("clear", E("annotations_clear"))}<span class="gmd-annotation-spacer"></span>${button("copy", E("annotations_copy"))}${button("close", E("annotations_close"))}</div>
+      <div class="gmd-annotation-row">${button("clear", E("annotations_clear"))}<span class="gmd-annotation-spacer"></span>${button("copy", E("annotations_copy"))}${button("close", E("annotations_close"), "", ` commandfor="${DIALOG_ID}" command="close"`)}</div>
       <div class="gmd-annotation-row" hidden><span class="gmd-annotation-spacer">${E("annotations_clear_confirm")}</span>${button("cancel-clear", E("annotations_cancel"))}${button("confirm-clear", E("annotations_clear_yes"))}</div>
     </dialog>`,
   );
-  const [pen, icons, popover] = layer.children;
-  const [nav, textarea] = popover.children;
-  const [prev, position, next] = nav.children;
-  const act = (root, name) => root.querySelector(`[data-action="${name}"]`);
-  const [del, discard] = [act(popover, "delete"), act(popover, "discard")];
-  const [, empty, exportArea, , confirmRow] = dialog.children;
-  const [copy, clear, close] = ["copy", "clear", "close"].map((name) =>
-    act(dialog, name),
-  );
   // In body, not next to content: a theme may clip its content column
   // (overflow: hidden), which would hide the margin icons.
-  doc.body.append(layer);
-  doc.body.append(dialog);
-  let dialogOpener = null;
+  doc.body.append(margin, editor, dialog);
 
-  const toggles = [...doc.querySelectorAll("[data-gmd-annotations-toggle]")];
-  const badges = toggles.map((toggle) => {
-    let badge = toggle.querySelector("[data-gmd-annotations-count]");
-    if (!badge) {
-      badge = build(doc, "<span data-gmd-annotations-count hidden></span>");
-      toggle.append(badge);
-    }
-    badge.setAttribute("aria-hidden", "true");
-    return badge;
-  });
-  doc.documentElement.setAttribute("data-gmd-annotations", "");
+  const { pen } = margin;
+  pen.setAttribute("aria-label", L("annotate"));
+  pen.title = `${L("annotate")} (Alt+Shift+A)`;
+  const { textarea } = editor;
+  const [prev, next, del, discard] = ["prev", "next", "delete", "discard"].map(
+    (name) => editor.action(name),
+  );
+  const nav = prev.parentElement;
+  const position = nav.querySelector(".gmd-annotation-position");
+  const act = (name) => dialog.querySelector(`[data-action="${name}"]`);
+  const [, empty, exportArea, , confirmRow] = dialog.children;
+  const [copy, clear, close] = ["copy", "clear", "close"].map(act);
 
   // ---- Notes
 
@@ -382,19 +581,9 @@ function mount(doc, win, content, notice, signal) {
     store.save(notes.map(({ range, start, ...stored }) => stored));
     if (!store.persistent && !warnedNotKept) {
       warnedNotKept = true;
-      announce(L("annotations_not_kept"));
+      notice.announce(L("annotations_not_kept"), L("annotations_close"));
     }
   };
-
-  function announce(message) {
-    notice.replaceChildren(
-      build(
-        doc,
-        `<div class="gmd-annotation-notice-box"><span>${escapeHTML(message)}</span><button type="button" aria-label="${E("annotations_close")}">×</button></div>`,
-      ),
-    );
-    on(notice.querySelector("button"), "click", () => notice.replaceChildren());
-  }
 
   // ---- Layout
 
@@ -408,48 +597,23 @@ function mount(doc, win, content, notice, signal) {
       : x;
   }
 
-  function place(node, x, top) {
-    const origin = layer.getBoundingClientRect();
-    node.style.left = `${x - origin.left}px`;
-    node.style.top = `${top - origin.top}px`;
-  }
-
-  const iconIDs = new WeakMap(); // icon -> the note ids it opens
-  const iconFor = (id) =>
-    [...icons.children].find((icon) => iconIDs.get(icon).includes(id));
-
   function renderIcons() {
-    const focused = doc.activeElement?.closest?.("[data-gmd-annotation-icon]");
-    const focusedID = focused && iconIDs.get(focused)?.[0];
     const groups = groupByLine(
       notes.map((n) => ({ id: n.id, top: rangeTop(n.range) })),
       LINE_TOLERANCE,
     );
-    const x = column();
-    icons.replaceChildren(
-      ...groups.map((group) => {
-        group.ids.sort((a, b) => byID(a).start - byID(b).start);
-        const n = group.ids.length;
-        const label = n > 1 ? E("annotations_count", n) : E("annotation_note");
-        const icon = build(
-          doc,
-          `<button type="button" data-gmd-annotation-icon data-count="${n}" aria-label="${label}" aria-haspopup="dialog" aria-expanded="false">${NOTE_SVG}${n > 1 ? `<span>${n}</span>` : ""}</button>`,
-        );
-        iconIDs.set(icon, group.ids);
-        place(icon, x, group.top - 2);
-        return icon;
-      }),
-    );
-    if (state?.mode === "edit") {
-      iconFor(state.ids[0])?.setAttribute("aria-expanded", "true");
+    for (const group of groups) {
+      group.ids.sort((a, b) => byID(a).start - byID(b).start);
+      const n = group.ids.length;
+      group.label = n > 1 ? L("annotations_count", n) : L("annotation_note");
     }
-    if (focusedID) iconFor(focusedID)?.focus();
+    margin.renderIcons(groups, column());
   }
 
   function layout() {
     renderIcons();
-    if (pending) place(pen, column(), pending.top - 2);
-    if (state) placePopover();
+    if (pending) margin.showPen(column(), pending.top);
+    if (state) editor.place(state.source);
   }
 
   function scheduleLayout() {
@@ -461,7 +625,8 @@ function mount(doc, win, content, notice, signal) {
     });
   }
 
-  // render reflects notes everywhere: highlights, icons, badge, export.
+  // render reflects notes everywhere: highlights, icons, export, and the
+  // count for the toggles.
   function render() {
     notes.sort((a, b) => a.start - b.start);
     const registry = win.CSS?.highlights;
@@ -474,17 +639,13 @@ function mount(doc, win, content, notice, signal) {
       else registry.delete(HIGHLIGHT_NAME);
     }
     renderIcons();
-    for (const [i, toggle] of toggles.entries()) {
-      badges[i].textContent = String(notes.length);
-      badges[i].hidden = notes.length === 0;
-      toggle.setAttribute(
-        "aria-label",
-        notes.length
-          ? P("annotations_open_count", notes.length)
-          : L("annotations_open"),
-      );
-    }
     exportStale = true;
+    content.dispatchEvent(
+      new CustomEvent(CHANGE_EVENT, {
+        bubbles: true,
+        detail: { count: notes.length },
+      }),
+    );
   }
 
   // ---- Selection and pen
@@ -503,46 +664,32 @@ function mount(doc, win, content, notice, signal) {
         pending = { selector, model, top: rangeTop(range) };
       }
     }
-    pen.hidden = !pending;
-    if (pending) place(pen, column(), pending.top - 2);
+    if (pending) margin.showPen(column(), pending.top);
+    else margin.hidePen();
   }
 
-  // ---- Popover
+  // ---- Editor
 
-  function placePopover() {
-    const top =
-      state.mode === "new" ? state.top : rangeTop(byID(state.ids[0]).range);
-    const width = popover.offsetWidth;
-    place(
-      popover,
-      Math.max(8, column() + ICON_SIZE - width),
-      top + ICON_SIZE + 4,
-    );
-  }
-
-  function showPopover() {
-    const single = state.mode === "new" || state.ids.length < 2;
-    nav.hidden = single;
-    del.hidden = state.mode === "new";
-    discard.hidden = state.mode !== "new";
-    popover.hidden = false;
-    placePopover();
-    textarea.focus();
-  }
-
-  function openNew(opener) {
+  // openNew edits a new note for the pending selection; the pen stays shown
+  // as the editor's anchor.
+  function openNew() {
     if (!pending) return;
-    state = { mode: "new", ...pending, opener };
-    pen.hidden = true;
+    state = { mode: "new", ...pending, source: pen };
     textarea.value = "";
-    showPopover();
+    nav.hidden = true;
+    del.hidden = true;
+    discard.hidden = false;
+    editor.open(pen);
   }
 
-  function openExisting(icon) {
-    state = { mode: "edit", ids: iconIDs.get(icon), index: 0, opener: icon };
+  function openExisting(icon, ids) {
+    state = { mode: "edit", ids, index: 0, source: icon };
     icon.setAttribute("aria-expanded", "true");
+    nav.hidden = ids.length < 2;
+    del.hidden = false;
+    discard.hidden = true;
     showNote();
-    showPopover();
+    editor.open(icon);
   }
 
   function showNote() {
@@ -553,32 +700,35 @@ function mount(doc, win, content, notice, signal) {
     next.disabled = index === ids.length - 1;
   }
 
-  // closePopover hides the popover; focus goes to the icon of focusID when
-  // given, else back to the opener when restore is set.
-  function closePopover({ restore = true, focusID } = {}) {
-    if (!state) return;
-    const { mode, ids } = state;
-    // Icons are rebuilt on layout: a detached opener means its group's new icon.
-    let { opener } = state;
-    if (mode === "edit" && !opener.isConnected) opener = iconFor(ids[0]);
-    state = null;
-    popover.hidden = true;
-    opener?.setAttribute?.("aria-expanded", "false");
-    if (mode === "new") updatePen();
-    if (focusID) iconFor(focusID)?.focus();
-    else if (restore && opener?.isConnected && !opener.hidden) opener.focus();
+  // closeEditor hides the editor, whose beforetoggle handler below resets
+  // the state; the platform returns focus to the opener, and focusID, when
+  // given, moves it to that note's icon instead.
+  function closeEditor(focusID) {
+    if (state) editor.hidePopover();
+    if (focusID) margin.iconFor(focusID)?.focus();
   }
+
+  // Every way the editor closes passes here: the buttons, Esc, light
+  // dismiss, a modal dialog opening.
+  on(editor, "beforetoggle", (e) => {
+    if (e.newState !== "closed" || !state) return;
+    const { mode, ids } = state;
+    state = null;
+    if (mode === "new") updatePen();
+    else margin.iconFor(ids[0])?.setAttribute("aria-expanded", "false");
+  });
 
   function remove(id) {
     const rest = state.ids.filter((other) => other !== id);
     notes = notes.filter((n) => n.id !== id);
     persist();
     render();
-    if (rest.length) return closePopover({ restore: false, focusID: rest[0] });
-    closePopover({ restore: false });
+    if (rest.length) return closeEditor(rest[0]);
+    closeEditor();
     // The group's icon is gone: focus moves to the next control a reader
     // would look for, the header toggle, else the content itself.
-    if (toggles[0]) toggles[0].focus();
+    const toggle = doc.querySelector("gmd-annotations-toggle button");
+    if (toggle) toggle.focus();
     else {
       content.setAttribute("tabindex", "-1");
       content.focus();
@@ -593,9 +743,9 @@ function mount(doc, win, content, notice, signal) {
       byID(id).note = text;
       persist();
       exportStale = true;
-      return closePopover({ focusID: id });
+      return closeEditor(id);
     }
-    if (!text.trim()) return closePopover();
+    if (!text.trim()) return closeEditor();
     const { selector, model } = state;
     const note = {
       id: newID(win),
@@ -611,9 +761,8 @@ function mount(doc, win, content, notice, signal) {
     notes.push(note);
     persist();
     render();
-    state.opener = null;
     win.getSelection()?.removeAllRanges();
-    closePopover({ focusID: note.id });
+    closeEditor(note.id);
   }
 
   // ---- Export dialog
@@ -646,25 +795,20 @@ function mount(doc, win, content, notice, signal) {
   }
 
   // refreshDialog regenerates the export unless the reader edited it and no
-  // note changed since.
+  // note changed since. The autofocus attribute picks what the dialog
+  // focuses when it opens.
   function refreshDialog() {
     const has = notes.length > 0;
     empty.hidden = has;
     exportArea.hidden = !has;
     copy.disabled = clear.disabled = !has;
     confirmRow.hidden = true;
+    exportArea.toggleAttribute("autofocus", has);
+    close.toggleAttribute("autofocus", !has);
     if (exportStale || !exportEdited) {
       exportArea.value = has ? exportText() : "";
       exportEdited = exportStale = false;
     }
-  }
-
-  function openDialog(opener) {
-    closePopover({ restore: false });
-    dialogOpener = opener;
-    refreshDialog();
-    dialog.showModal();
-    (notes.length ? exportArea : close).focus();
   }
 
   async function copyExport() {
@@ -681,7 +825,7 @@ function mount(doc, win, content, notice, signal) {
 
   const actions = {
     save: saveNote,
-    discard: () => closePopover(),
+    discard: () => closeEditor(),
     delete: () => remove(state.ids[state.index]),
     prev: () => {
       state.index--;
@@ -694,7 +838,7 @@ function mount(doc, win, content, notice, signal) {
     copy: copyExport,
     clear: () => {
       confirmRow.hidden = false;
-      act(dialog, "cancel-clear").focus();
+      act("cancel-clear").focus();
     },
     "cancel-clear": () => {
       confirmRow.hidden = true;
@@ -707,51 +851,37 @@ function mount(doc, win, content, notice, signal) {
       refreshDialog();
       close.focus();
     },
-    close: () => dialog.close(),
   };
   const onAction = (event) => {
     const name = event.target.closest("[data-action]")?.dataset.action;
     if (name && actions[name]) actions[name]();
   };
-  on(popover, "click", onAction);
+  on(editor, "click", onAction);
   on(dialog, "click", onAction);
 
-  on(pen, "mousedown", (e) => e.preventDefault()); // keep the selection
-  on(pen, "click", () => openNew(pen));
-  on(icons, "click", (e) => {
-    const icon = e.target.closest("[data-gmd-annotation-icon]");
-    if (icon) openExisting(icon);
+  // A click on the editor's own opener toggles it: being the source, the
+  // opener does not light-dismiss it.
+  on(margin, "gmd-annotation-open", (e) => {
+    const { source, ids } = e.detail;
+    const reopen = state?.source !== source;
+    closeEditor();
+    if (!reopen) return;
+    if (ids) openExisting(source, ids);
+    else openNew();
   });
-  for (const toggle of toggles) on(toggle, "click", () => openDialog(toggle));
 
-  on(popover, "keydown", (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      closePopover();
-    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+  on(editor, "keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       saveNote();
-    } else if (e.key === "Tab") trapTab(e, popover);
+    }
   });
-  on(dialog, "keydown", (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      dialog.close();
-    } else if (e.key === "Tab") trapTab(e, dialog);
+  on(dialog, "command", (e) => {
+    if (e.command === "show-modal") refreshDialog();
   });
-  on(dialog, "close", () => dialogOpener?.focus());
   on(exportArea, "input", () => (exportEdited = true));
 
   on(doc, "selectionchange", updatePen);
-  on(
-    doc,
-    "pointerdown",
-    (e) => {
-      if (state && !popover.contains(e.target))
-        closePopover({ restore: false });
-    },
-    { capture: true },
-  );
   on(doc, "keydown", (e) => {
     // e.code, not e.key: on macOS Alt+Shift+A types "Å".
     if (!(
@@ -766,7 +896,7 @@ function mount(doc, win, content, notice, signal) {
     updatePen();
     if (!pending) return;
     e.preventDefault();
-    openNew(doc.activeElement);
+    openNew();
   });
 
   on(win, "resize", scheduleLayout);
@@ -797,50 +927,70 @@ function mount(doc, win, content, notice, signal) {
   }
   if (dropped) {
     persist();
-    announce(P("annotations_removed", dropped));
+    notice.announce(P("annotations_removed", dropped), L("annotations_close"));
   }
   render();
 
-  return () => {
-    observer?.disconnect();
-    win.CSS?.highlights?.delete(HIGHLIGHT_NAME);
-    layer.remove();
-    dialog.remove();
-  };
-}
-
-// init wires the interface on a page whose content carries
-// data-gmd-annotatable and returns a handle whose destroy() removes it; on
-// any other page it does nothing and returns null (tests import this module
-// with no marker).
-export function init(doc, win) {
-  const content = doc.querySelector("[data-gmd-annotatable]");
-  if (!content) return null;
-  const controller = new AbortController();
-  // The live region exists before any message so screen readers announce it.
-  const notice = build(
-    doc,
-    '<div data-gmd-annotation-notice role="status"></div>',
-  );
-  doc.body.append(notice);
-  let unmount = null;
-  const start = () => {
-    unmount = mount(doc, win, content, notice, controller.signal);
-  };
-  if (doc.readyState === "complete") start();
-  else
-    win.addEventListener("load", start, {
-      once: true,
-      signal: controller.signal,
-    });
   return {
-    destroy() {
-      controller.abort();
-      unmount?.();
-      notice.remove();
-      doc.documentElement.removeAttribute("data-gmd-annotations");
+    count: () => notes.length,
+    unmount() {
+      observer?.disconnect();
+      win.CSS?.highlights?.delete(HIGHLIGHT_NAME);
+      margin.remove();
+      editor.remove();
+      dialog.remove();
     },
   };
 }
 
-if (typeof document !== "undefined") init(document, window);
+// GmdAnnotations wraps the page content and owns the controller. The notice
+// exists from connection on, before any message; the rest mounts after load.
+class GmdAnnotations extends Base {
+  #abort = null;
+  #mounted = null;
+  #notice = null;
+
+  get count() {
+    return this.#mounted?.count() ?? 0;
+  }
+
+  connectedCallback() {
+    const doc = this.ownerDocument;
+    const win = doc.defaultView;
+    this.#abort = new AbortController();
+    this.#notice = doc.createElement("gmd-annotation-notice");
+    this.#notice.id = NOTICE_ID;
+    this.#notice.setAttribute("popover", "manual");
+    this.#notice.setAttribute("role", "status");
+    doc.body.append(this.#notice);
+    const start = () => {
+      this.#mounted = mount(doc, win, this, this.#notice, this.#abort.signal);
+    };
+    if (doc.readyState === "complete") start();
+    else
+      win.addEventListener("load", start, {
+        once: true,
+        signal: this.#abort.signal,
+      });
+  }
+
+  disconnectedCallback() {
+    this.#abort.abort();
+    this.#mounted?.unmount();
+    this.#mounted = null;
+    this.#notice.remove();
+  }
+}
+
+// The module may be inlined more than once on a page; the first run defines
+// all five elements, the others skip.
+if (
+  typeof customElements !== "undefined" &&
+  !customElements.get("gmd-annotations")
+) {
+  customElements.define("gmd-annotations", GmdAnnotations);
+  customElements.define("gmd-annotations-toggle", GmdAnnotationsToggle);
+  customElements.define("gmd-annotation-margin", GmdAnnotationMargin);
+  customElements.define("gmd-annotation-editor", GmdAnnotationEditor);
+  customElements.define("gmd-annotation-notice", GmdAnnotationNotice);
+}

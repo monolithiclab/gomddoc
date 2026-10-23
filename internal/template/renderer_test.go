@@ -2542,14 +2542,14 @@ func TestRenderer_ErrorsCarryContext(t *testing.T) {
 }
 
 // TestRender_AnnotationsContract renders the real default theme and checks the
-// markup gmd-annotations.mjs depends on: the content marker, the header
-// toggle and the JSON configuration, all present with the feature on and all
-// absent with it off.
+// markup gmd-annotations.mjs depends on: the content wrapped in
+// <gmd-annotations>, the header's <gmd-annotations-toggle> and the JSON
+// configuration, all present with the feature on and all absent with it off.
 func TestRender_AnnotationsContract(t *testing.T) {
 	t.Parallel()
 
-	markers := []string{`data-gmd-annotatable`, `data-gmd-annotations-toggle`, `id="gmd-annotations-config"`,
-		"::highlight(gmd-annotation)"}
+	markers := []string{`<gmd-annotations><p>Body</p></gmd-annotations>`, `<gmd-annotations-toggle></gmd-annotations-toggle>`,
+		`id="gmd-annotations-config"`, "::highlight(gmd-annotation)"}
 	tests := []struct {
 		name     string
 		features map[string]bool
@@ -2615,7 +2615,7 @@ func TestRenderTagPage_NoAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderTagPage: %v", err)
 	}
-	if strings.Contains(string(out), "data-gmd-annotatable") || strings.Contains(string(out), "gmd-annotations-config") {
+	if strings.Contains(string(out), "<gmd-annotations>") || strings.Contains(string(out), "gmd-annotations-config") {
 		t.Error("a generated tag page carries annotation markup")
 	}
 }

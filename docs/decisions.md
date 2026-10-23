@@ -952,3 +952,27 @@ theme's link colours.
   positioned boxes from `getClientRects()` (no DOM change, but recomputed on every reflow and stacked above the text,
   where they intercept clicks and selection).
 - *Cost if wrong*: a browser without the API shows no highlight; the margin icons still mark each annotated line.
+
+## D50. Annotation UI on Custom Elements, the Popover API and Invoker Commands
+
+*2026-10-23*
+
+**Decision** (2026-10-23, at Nicolas's request): the annotation interface is built from custom elements and the
+platform's own overlay primitives rather than `div`s carrying `data-*` attributes. `<gmd-annotations>` (light DOM)
+wraps the content and owns the controller; `<gmd-annotation-margin>` renders the pen and note icons in a shadow root;
+the note editor is `<gmd-annotation-editor popover="auto">`, opened with `showPopover({source})` and placed by CSS
+anchor positioning on that implicit anchor (a small JavaScript fallback where `anchor-name` is unsupported); the notes
+list is a modal `<dialog>`; the stale-notes notice is `<gmd-annotation-notice popover="manual" role="status">`; the
+header's `<gmd-annotations-toggle>` opens the dialog with Invoker Commands (`commandfor`, `command="show-modal"`).
+The code those features replace is deleted: Esc handling, click-outside detection, the Tab trap, z-index stacking and
+the per-element `hidden` bookkeeping for overlays. The editor is a non-modal popover, so it traps no focus. Browsers
+without the Popover API or Invoker Commands are not supported by the annotation UI, and no fallback is written.
+
+- *Evidence*: the top layer cannot be clipped by an `overflow` ancestor or covered by a theme's `z-index`; native
+  light dismiss, `Esc` and focus return behave the same as every other popover the reader meets, and the dialog's
+  focus trap is the browser's. Chrome, Edge, Safari and Firefox ship all of them in their current releases.
+- *Alternatives*: keep the hand-written overlay code (works in older browsers, but duplicates and subtly diverges from
+  platform behaviour, and every theme quirk needs a workaround); a polyfill (a third-party dependency for a shrinking
+  audience).
+- *Cost if wrong*: a reader on an older browser sees the page without annotation controls (the toggle stays hidden
+  while undefined, or does nothing); the content itself is unaffected.

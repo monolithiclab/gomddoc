@@ -34,16 +34,25 @@
   color: var(--gmd-annotation-highlight-text);
 }
 
-/* The toggle shows only once the module runs on an annotatable page. */
-:root:not([data-gmd-annotations]) [data-gmd-annotations-toggle] {
+/* The toggle shows once the module defines it; until then (an older
+   gomddoc, the module not loaded) the theme's markup stays invisible. */
+gmd-annotations-toggle:not(:defined) {
   display: none;
 }
 
-[data-gmd-annotations-toggle] {
+gmd-annotations-toggle {
+  display: contents;
+}
+
+gmd-annotations {
+  display: block;
+}
+
+gmd-annotations-toggle button {
   position: relative;
 }
 
-[data-gmd-annotations-count] {
+.gmd-annotations-count {
   position: absolute;
   top: -0.4rem;
   right: -0.4rem;
@@ -58,72 +67,22 @@
   text-align: center;
 }
 
-[data-gmd-annotations-count][hidden] {
-  display: none;
-}
-
-.gmd-annotation-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-}
-
-.gmd-annotation-layer [hidden],
-[data-gmd-annotations-dialog] [hidden] {
+gmd-annotation-editor [hidden],
+#gmd-annotations-dialog [hidden] {
   display: none !important;
 }
 
-[data-gmd-annotation-pen],
-[data-gmd-annotation-icon] {
-  position: absolute;
-  z-index: 30;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.15rem;
-  min-width: 1.75rem;
-  height: 1.75rem;
-  padding: 0 0.3rem;
-  border: 1px solid var(--gmd-annotation-border);
-  border-radius: 6px;
-  background: var(--gmd-annotation-surface);
-  color: var(--gmd-annotation-text);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
-}
+/* The pen and the note icons live in <gmd-annotation-margin>'s shadow root;
+   restyle them through ::part(pen) and ::part(icon). */
 
-/* Above the note icons: a selection on a line that already has a note puts
-   the pen where that line's icon sits. */
-[data-gmd-annotation-pen] {
-  z-index: 31;
-  background: var(--gmd-annotation-accent);
-  border-color: var(--gmd-annotation-accent);
-  color: var(--gmd-annotation-accent-text);
-}
-
-[data-gmd-annotation-icon]:hover,
-[data-gmd-annotation-icon][aria-expanded="true"] {
-  background: var(--gmd-annotation-highlight);
-  color: var(--gmd-annotation-highlight-text);
-}
-
-[data-gmd-annotation-pen] svg,
-[data-gmd-annotation-icon] svg {
-  width: 1rem;
-  height: 1rem;
-  flex: none;
-}
-
-[data-gmd-annotation-popover] {
-  position: absolute;
-  z-index: 40;
+/* The editor sits under its opener, right-aligned with it: CSS anchor
+   positioning on the popover's implicit anchor (the showPopover source), or
+   the module's fallback where unsupported. */
+gmd-annotation-editor {
+  inset: auto;
+  margin: 4px 0 0;
+  position-area: bottom span-left;
+  position-try-fallbacks: flip-block;
   width: 20rem;
   max-width: calc(100vw - 1rem);
   padding: 0.75rem;
@@ -134,9 +93,10 @@
   box-shadow: var(--gmd-annotation-shadow);
 }
 
-[data-gmd-annotation-popover] textarea,
-[data-gmd-annotations-dialog] textarea {
+gmd-annotation-editor textarea,
+#gmd-annotations-dialog textarea {
   display: block;
+  box-sizing: border-box;
   width: 100%;
   padding: 0.5rem;
   border: 1px solid var(--gmd-annotation-border);
@@ -148,7 +108,7 @@
   resize: vertical;
 }
 
-[data-gmd-annotation-popover] textarea {
+gmd-annotation-editor textarea {
   min-height: 6rem;
 }
 
@@ -165,10 +125,9 @@
   flex: 1;
 }
 
-.gmd-annotation-layer
-  button:not([data-gmd-annotation-pen], [data-gmd-annotation-icon]),
-[data-gmd-annotations-dialog] button,
-[data-gmd-annotation-notice] button {
+gmd-annotation-editor button,
+#gmd-annotations-dialog button,
+gmd-annotation-notice button {
   padding: 0.3rem 0.7rem;
   border: 1px solid var(--gmd-annotation-border);
   border-radius: 6px;
@@ -179,21 +138,22 @@
   cursor: pointer;
 }
 
-.gmd-annotation-layer button[data-action="save"],
-[data-gmd-annotations-dialog] button[data-action="copy"] {
+gmd-annotation-editor button[data-action="save"],
+#gmd-annotations-dialog button[data-action="copy"] {
   background: var(--gmd-annotation-accent);
   border-color: var(--gmd-annotation-accent);
   color: var(--gmd-annotation-accent-text);
 }
 
-[data-gmd-annotations-dialog] button:disabled {
+gmd-annotation-editor button:disabled,
+#gmd-annotations-dialog button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 /* margin: auto restores the UA centring that theme resets (* { margin: 0 })
    remove. */
-[data-gmd-annotations-dialog] {
+#gmd-annotations-dialog {
   margin: auto;
   width: min(48rem, calc(100vw - 2rem));
   padding: 1.25rem;
@@ -204,34 +164,27 @@
   box-shadow: var(--gmd-annotation-shadow);
 }
 
-[data-gmd-annotations-dialog]::backdrop {
+#gmd-annotations-dialog::backdrop {
   background: rgba(15, 23, 42, 0.5);
 }
 
-[data-gmd-annotations-dialog] h2 {
+#gmd-annotations-dialog h2 {
   margin: 0 0 0.75rem;
   font-size: 1.15rem;
 }
 
-[data-gmd-annotations-dialog] textarea {
+#gmd-annotations-dialog textarea {
   min-height: 50vh;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.8rem;
 }
 
-/* The live region stays rendered (empty) so screen readers announce the
-   message added to it; only its box appears and disappears. */
-[data-gmd-annotation-notice] {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 50;
-}
-
-.gmd-annotation-notice-box {
+gmd-annotation-notice:popover-open {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  inset: auto 1rem 1rem auto;
+  margin: 0;
   max-width: min(28rem, calc(100vw - 2rem));
   padding: 0.75rem 1rem;
   border: 1px solid var(--gmd-annotation-border);
@@ -240,13 +193,4 @@
   color: var(--gmd-annotation-text);
   box-shadow: var(--gmd-annotation-shadow);
   font-size: 0.9rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-gmd-annotation-ui],
-  [data-gmd-annotation-ui] *,
-  [data-gmd-annotations-toggle] {
-    transition: none !important;
-    animation: none !important;
-  }
 }

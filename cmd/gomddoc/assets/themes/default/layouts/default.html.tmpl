@@ -30,7 +30,7 @@
         <div class="content-with-toc">
           <article>
             {{ template "tag-chips" . }}
-            {{ if .Feature "annotations" }}<div data-gmd-annotatable>{{ .Page.Content }}</div>{{ else }}{{ .Page.Content }}{{ end }}
+            {{ if .Feature "annotations" }}<gmd-annotations>{{ .Page.Content }}</gmd-annotations>{{ else }}{{ .Page.Content }}{{ end }}
 
             {{ template "see-also" . }}
 
