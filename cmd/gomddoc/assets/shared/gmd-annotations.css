@@ -179,6 +179,17 @@ gmd-annotation-editor button:disabled,
   font-size: 0.8rem;
 }
 
+/* The notice's live region: rendered (so screen readers track it) but
+   visually hidden; the popover shows the same text. */
+.gmd-annotation-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 gmd-annotation-notice:popover-open {
   display: flex;
   align-items: center;

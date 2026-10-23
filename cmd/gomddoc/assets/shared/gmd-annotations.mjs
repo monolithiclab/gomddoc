@@ -225,7 +225,8 @@ function parseEntry(raw) {
 // gmd-annotations (light DOM, wraps the content) owns the controller and
 // mounts the rest in the body: gmd-annotation-margin (shadow DOM: the pen and
 // the note icons), gmd-annotation-editor (an auto popover), the notes dialog
-// and gmd-annotation-notice (a manual popover). gmd-annotations-toggle sits
+// and gmd-annotation-notice (a manual popover beside a visually hidden
+// role="status" region). gmd-annotations-toggle sits
 // in the theme's header and follows the gmd-annotations-change events. The
 // platform does the rest: top layer, light dismiss, Esc, focus return, the
 // dialog's focus trap, Invoker Commands for the toggle and the Close buttons.
@@ -237,6 +238,7 @@ const NOTICE_ID = "gmd-annotation-notice";
 const LINE_TOLERANCE = 8; // px: first lines closer than this share an icon
 const MARGIN_GAP = 8; // px between the content's right edge and the icons
 const ICON_SIZE = 28; // px, matches MARGIN_STYLE
+const EDITOR_GAP = 4; // px between the editor and its opener, as in the CSS
 const COPIED_MS = 2000;
 
 const SVG_ATTRS =
@@ -453,34 +455,92 @@ class GmdAnnotationEditor extends Base {
     return this.querySelector(`[data-action="${name}"]`);
   }
 
+  #fallback = false; // placed by place() rather than by CSS
+
   open(source) {
+    this.removeAttribute("style");
     this.showPopover({ source });
+    this.#fallback = !this.#anchoredTo(source);
     this.place(source);
     this.textarea.focus();
   }
 
-  // place puts the editor under source, right-aligned with it, where the
-  // browser lacks CSS anchor positioning (gmd-annotations.css does it
-  // otherwise). Absolute in the top layer means document coordinates, so the
+  // anchoredTo reports whether CSS placed the editor against source: the
+  // browser must support anchor positioning and honour showPopover's source
+  // option, which makes source the implicit anchor. A browser that knows
+  // anchor-name but ignores the option (it predates it) leaves the popover
+  // where the UA puts it, so the check measures the result instead of
+  // trusting either feature test: right edges aligned, editor below or
+  // (flipped) above.
+  #anchoredTo(source) {
+    const win = this.ownerDocument.defaultView;
+    if (!win.CSS?.supports?.("anchor-name: --a")) return false;
+    const a = source.getBoundingClientRect();
+    const e = this.getBoundingClientRect();
+    return (
+      Math.abs(e.right - a.right) < 2 &&
+      (e.top >= a.bottom - 1 || e.bottom <= a.top + 1)
+    );
+  }
+
+  // place puts the editor under source, right-aligned with it, or above it
+  // when it would run past the viewport's bottom, wherever CSS did not
+  // anchor it. Absolute in the top layer means document coordinates, so the
   // editor scrolls with the page.
   place(source) {
+    if (!this.#fallback) return;
     const win = this.ownerDocument.defaultView;
-    if (win.CSS?.supports?.("anchor-name: --a")) return;
     const r = source.getBoundingClientRect();
-    this.style.position = "absolute";
-    this.style.left = `${Math.max(8, r.right + win.scrollX - this.offsetWidth)}px`;
-    this.style.top = `${r.bottom + win.scrollY}px`;
+    const height = this.offsetHeight;
+    const below = r.bottom + EDITOR_GAP;
+    const above = r.top - EDITOR_GAP - height;
+    const top = below + height > win.innerHeight && above >= 0 ? above : below;
+    Object.assign(this.style, {
+      position: "absolute",
+      positionArea: "none",
+      margin: "0",
+      left: `${Math.max(8, r.right + win.scrollX - this.offsetWidth)}px`,
+      top: `${top + win.scrollY}px`,
+    });
   }
 }
 
 // ---- gmd-annotation-notice
 
-// GmdAnnotationNotice shows one dismissible message in the top layer; its
-// role="status" makes screen readers announce it.
+// GmdAnnotationNotice shows dismissible messages in the top layer. Screen
+// readers hear them through a visually hidden role="status" region placed
+// beside it on connect: a live region must be rendered, and empty, before
+// its message lands, which a popover hidden until shown is not. Messages
+// announced while the notice is open are combined, never overwritten.
 class GmdAnnotationNotice extends Base {
+  #status = null;
+  #messages = [];
+
+  constructor() {
+    super();
+    this.addEventListener("beforetoggle", (e) => {
+      if (e.newState === "closed") this.#messages = [];
+    });
+  }
+
+  connectedCallback() {
+    this.#status ??= parse(
+      this.ownerDocument,
+      '<div class="gmd-annotation-status" role="status"></div>',
+    );
+    this.after(this.#status);
+  }
+
+  disconnectedCallback() {
+    this.#status.remove();
+  }
+
   announce(message, closeLabel) {
+    this.#messages.push(message);
+    const text = this.#messages.join(" ");
+    this.#status.textContent = text;
+    this.innerHTML = `<span>${escapeHTML(text)}</span><button type="button" commandfor="${this.id}" command="hide-popover" aria-label="${escapeHTML(closeLabel)}">×</button>`;
     this.showPopover();
-    this.innerHTML = `<span>${escapeHTML(message)}</span><button type="button" commandfor="${this.id}" command="hide-popover" aria-label="${escapeHTML(closeLabel)}">×</button>`;
   }
 }
 
@@ -495,11 +555,20 @@ class GmdAnnotationsToggle extends Base {
   connectedCallback() {
     const doc = this.ownerDocument;
     const { L, P, E } = labeler(readConfig(doc));
-    if (!this.firstElementChild) {
-      this.innerHTML = `<button type="button" commandfor="${DIALOG_ID}" command="show-modal" aria-haspopup="dialog" title="${E("annotations_open")}">${NOTE_SVG.replace("<svg ", '<svg width="18" height="18" ')}<span class="gmd-annotations-count" aria-hidden="true" hidden></span></button>`;
+    // A theme may pre-fill the button; anything missing is added.
+    let toggle = this.querySelector("button");
+    if (!toggle) {
+      this.innerHTML = `<button type="button" commandfor="${DIALOG_ID}" command="show-modal" aria-haspopup="dialog" title="${E("annotations_open")}">${NOTE_SVG.replace("<svg ", '<svg width="18" height="18" ')}</button>`;
+      toggle = this.firstElementChild;
     }
-    const toggle = this.firstElementChild;
-    const badge = toggle.querySelector(".gmd-annotations-count");
+    let badge = toggle.querySelector(".gmd-annotations-count");
+    if (!badge) {
+      badge = parse(
+        doc,
+        '<span class="gmd-annotations-count" aria-hidden="true" hidden></span>',
+      );
+      toggle.append(badge);
+    }
     const update = (count) => {
       badge.textContent = String(count);
       badge.hidden = count === 0;
@@ -714,9 +783,21 @@ function mount(doc, win, content, notice, signal) {
     if (e.newState !== "closed" || !state) return;
     const { mode, ids } = state;
     state = null;
-    if (mode === "new") updatePen();
-    else margin.iconFor(ids[0])?.setAttribute("aria-expanded", "false");
+    if (mode === "edit") {
+      margin.iconFor(ids[0])?.setAttribute("aria-expanded", "false");
+      return;
+    }
+    updatePen();
+    // The selection is gone (focusing the textarea collapses it in a
+    // browser), so the pen, the opener focus would return to, is hidden.
+    // Focus leaves the editor first, so the platform keeps it there.
+    if (margin.pen.hidden && editor.contains(doc.activeElement)) focusContent();
   });
+
+  function focusContent() {
+    content.setAttribute("tabindex", "-1");
+    content.focus();
+  }
 
   function remove(id) {
     const rest = state.ids.filter((other) => other !== id);
@@ -729,10 +810,7 @@ function mount(doc, win, content, notice, signal) {
     // would look for, the header toggle, else the content itself.
     const toggle = doc.querySelector("gmd-annotations-toggle button");
     if (toggle) toggle.focus();
-    else {
-      content.setAttribute("tabindex", "-1");
-      content.focus();
-    }
+    else focusContent();
   }
 
   function saveNote() {
@@ -961,7 +1039,6 @@ class GmdAnnotations extends Base {
     this.#notice = doc.createElement("gmd-annotation-notice");
     this.#notice.id = NOTICE_ID;
     this.#notice.setAttribute("popover", "manual");
-    this.#notice.setAttribute("role", "status");
     doc.body.append(this.#notice);
     const start = () => {
       this.#mounted = mount(doc, win, this, this.#notice, this.#abort.signal);
@@ -979,13 +1056,29 @@ class GmdAnnotations extends Base {
     this.#mounted?.unmount();
     this.#mounted = null;
     this.#notice.remove();
+    // Detached, the element no longer bubbles to the document: tell the
+    // toggles directly that no note is shown any more.
+    this.ownerDocument.dispatchEvent(
+      new CustomEvent(CHANGE_EVENT, { detail: { count: 0 } }),
+    );
   }
+}
+
+// platformSupported reports whether win has what the interface is built on:
+// the Popover API and Invoker Commands. Without them nothing is defined, so
+// the wrapper stays inert and the toggle hidden (D50).
+export function platformSupported(win) {
+  return (
+    "showPopover" in win.HTMLElement.prototype &&
+    "commandForElement" in win.HTMLButtonElement.prototype
+  );
 }
 
 // The module may be inlined more than once on a page; the first run defines
 // all five elements, the others skip.
 if (
   typeof customElements !== "undefined" &&
+  platformSupported(globalThis) &&
   !customElements.get("gmd-annotations")
 ) {
   customElements.define("gmd-annotations", GmdAnnotations);

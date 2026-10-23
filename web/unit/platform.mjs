@@ -1,8 +1,12 @@
 // happy-dom lacks parts of the web platform the annotation UI relies on. This
-// one helper adds just enough of them, only where missing: the Popover API
-// (showPopover/hidePopover, beforetoggle, light dismiss, Esc, focus return),
-// a modal <dialog>'s initial focus, Esc and focus return, and Invoker
-// Commands. The Playwright suite proves the real behaviour in Chrome.
+// one helper adds just enough of them: the Popover API (showPopover/
+// hidePopover, beforetoggle, light dismiss, Esc, focus return) and Invoker
+// Commands, each only where missing, and a modal <dialog>'s initial focus,
+// Esc and focus return, by wrapping showModal/close unconditionally (happy-dom
+// has both methods, without that behaviour). It installs itself on import, so
+// import it before gmd-annotations.mjs: the module defines its elements only
+// where these features exist. The Playwright suite proves the real behaviour
+// in Chrome.
 
 const showing = new Set();
 const sources = new WeakMap(); // popover -> the source it was shown with
@@ -36,7 +40,7 @@ function restoreFocus(el) {
   }
 }
 
-export function installPlatform(win = window) {
+function installPlatform(win = window) {
   const doc = win.document;
   const proto = win.HTMLElement.prototype;
 
@@ -96,12 +100,24 @@ export function installPlatform(win = window) {
   };
 
   if (!("commandForElement" in win.HTMLButtonElement.prototype)) {
+    Object.defineProperty(
+      win.HTMLButtonElement.prototype,
+      "commandForElement",
+      {
+        configurable: true,
+        get() {
+          return (
+            this.getRootNode().getElementById?.(
+              this.getAttribute("commandfor"),
+            ) ?? null
+          );
+        },
+      },
+    );
     doc.addEventListener("click", (e) => {
       const invoker = e.target.closest?.("button[commandfor]");
       if (!invoker) return;
-      const target = invoker
-        .getRootNode()
-        .getElementById(invoker.getAttribute("commandfor"));
+      const target = invoker.commandForElement;
       const command = invoker.getAttribute("command");
       const event = Object.assign(new Event("command", { cancelable: true }), {
         command,
@@ -115,3 +131,5 @@ export function installPlatform(win = window) {
     });
   }
 }
+
+installPlatform();

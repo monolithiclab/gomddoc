@@ -962,11 +962,15 @@ platform's own overlay primitives rather than `div`s carrying `data-*` attribute
 wraps the content and owns the controller; `<gmd-annotation-margin>` renders the pen and note icons in a shadow root;
 the note editor is `<gmd-annotation-editor popover="auto">`, opened with `showPopover({source})` and placed by CSS
 anchor positioning on that implicit anchor (a small JavaScript fallback where `anchor-name` is unsupported); the notes
-list is a modal `<dialog>`; the stale-notes notice is `<gmd-annotation-notice popover="manual" role="status">`; the
+list is a modal `<dialog>`; the stale-notes notice is `<gmd-annotation-notice popover="manual">`, announced through a
+visually hidden `role="status"` region rendered from the start (a live region hidden until its message lands is not
+reliably announced); the
 header's `<gmd-annotations-toggle>` opens the dialog with Invoker Commands (`commandfor`, `command="show-modal"`).
 The code those features replace is deleted: Esc handling, click-outside detection, the Tab trap, z-index stacking and
-the per-element `hidden` bookkeeping for overlays. The editor is a non-modal popover, so it traps no focus. Browsers
-without the Popover API or Invoker Commands are not supported by the annotation UI, and no fallback is written.
+the per-element `hidden` bookkeeping for overlays. The editor is a non-modal popover, so it traps no focus. The module
+feature-detects the Popover API and Invoker Commands and defines no element without both; no fallback is written for
+them. Placement is the one exception: where CSS anchor positioning is missing or `showPopover`'s `source` option is
+ignored (detected by measuring where the editor landed), a few lines of script place the editor.
 
 - *Evidence*: the top layer cannot be clipped by an `overflow` ancestor or covered by a theme's `z-index`; native
   light dismiss, `Esc` and focus return behave the same as every other popover the reader meets, and the dialog's
@@ -974,5 +978,5 @@ without the Popover API or Invoker Commands are not supported by the annotation 
 - *Alternatives*: keep the hand-written overlay code (works in older browsers, but duplicates and subtly diverges from
   platform behaviour, and every theme quirk needs a workaround); a polyfill (a third-party dependency for a shrinking
   audience).
-- *Cost if wrong*: a reader on an older browser sees the page without annotation controls (the toggle stays hidden
-  while undefined, or does nothing); the content itself is unaffected.
+- *Cost if wrong*: a reader on an older browser sees the page without annotation controls (the elements stay
+  undefined, so the toggle is hidden and the wrapper inert); the content itself is unaffected.

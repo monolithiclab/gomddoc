@@ -2615,7 +2615,9 @@ func TestRenderTagPage_NoAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderTagPage: %v", err)
 	}
-	if strings.Contains(string(out), "<gmd-annotations>") || strings.Contains(string(out), "gmd-annotations-config") {
-		t.Error("a generated tag page carries annotation markup")
+	for _, marker := range []string{"<gmd-annotations>", "<gmd-annotations-toggle>", "gmd-annotations-config"} {
+		if strings.Contains(string(out), marker) {
+			t.Errorf("a generated tag page carries annotation markup %s", marker)
+		}
 	}
 }

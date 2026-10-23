@@ -80,6 +80,16 @@ async function annotate(page, text, note) {
 test("create, edit and delete a note", async ({ page }) => {
   await open(page, "/");
 
+  // Esc on a new note: the selection collapsed when the textarea took focus,
+  // so the pen is gone and focus lands on the content.
+  await select(page, "bold claim");
+  await pen(page).click();
+  await popover(page).locator("textarea").fill("draft");
+  await page.keyboard.press("Escape");
+  await expect(popover(page)).toBeHidden();
+  await expect(page.locator("gmd-annotations")).toBeFocused();
+  await expect(icons(page)).toHaveCount(0);
+
   // A passage whose context repeats elsewhere on the page gets no pen.
   await select(page, "quick brown");
   await expect(pen(page)).toBeVisible();
@@ -136,7 +146,9 @@ test("the editor and the dialog use the top layer", async ({ page }) => {
   expect(
     await popover(page).evaluate((el) => el.matches(":popover-open")),
   ).toBe(true);
-  // Anchored under its icon, right edges aligned.
+  // Anchored under its icon by CSS (no script fallback styles), right edges
+  // aligned.
+  await expect(popover(page)).not.toHaveAttribute("style");
   const [icon, editor] = await Promise.all([
     icons(page).boundingBox(),
     popover(page).boundingBox(),
@@ -216,10 +228,11 @@ test("editing the source drops a stale note and shows the notice", async ({
   try {
     await page.reload();
     await expect(page.locator("gmd-annotation-margin")).toHaveCount(1);
-    await expect(page.locator("gmd-annotation-notice")).toHaveRole("status");
+    const message = "1 note no longer matches this page and was removed.";
     await expect(page.locator("gmd-annotation-notice span")).toHaveText(
-      "1 note no longer matches this page and was removed.",
+      message,
     );
+    await expect(page.getByRole("status")).toHaveText(message);
     await expect(icons(page)).toHaveCount(0);
     await expect.poll(() => highlights(page)).toBe(0);
   } finally {

@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// platform.mjs first: it adds the features the module checks for before
+// defining its elements.
+import { deepActive, popoverOpen } from "./platform.mjs";
 import {
   buildTextModel,
+  platformSupported,
   selectorFromRange,
   storageKey,
 } from "../../cmd/gomddoc/assets/shared/gmd-annotations.mjs";
-import { deepActive, installPlatform, popoverOpen } from "./platform.mjs";
-
-installPlatform();
 
 const LABELS = {
   annotate: "Annotate selection",
@@ -181,9 +182,40 @@ describe("elements", () => {
     expect(editor().getAttribute("popover")).toBe("auto");
     expect($("gmd-annotation-notice").getAttribute("popover")).toBe("manual");
     expect(dialog()).not.toBeNull();
+    const counts = [];
+    document.addEventListener("gmd-annotations-change", (e) =>
+      counts.push(e.detail.count),
+    );
     content.remove();
     expect($$("gmd-annotation-margin, gmd-annotation-editor")).toHaveLength(0);
     expect(dialog()).toBeNull();
+    expect($(".gmd-annotation-status")).toBeNull();
+    expect(counts).toEqual([0]);
+  });
+
+  it("needs the Popover API and Invoker Commands to define anything", () => {
+    const fake = (element, button) => ({
+      HTMLElement: { prototype: element },
+      HTMLButtonElement: { prototype: button },
+    });
+    const popover = { showPopover() {} };
+    const invoker = { commandForElement: null };
+    expect(platformSupported(fake({}, invoker))).toBe(false);
+    expect(platformSupported(fake(popover, {}))).toBe(false);
+    expect(platformSupported(fake(popover, invoker))).toBe(true);
+    expect(platformSupported(window)).toBe(true);
+  });
+
+  it("the toggle completes pre-filled markup", () => {
+    page();
+    const host = document.createElement("gmd-annotations-toggle");
+    host.innerHTML = '<button type="button">Notes</button>';
+    document.body.append(host);
+    const badge = host.querySelector("button .gmd-annotations-count");
+    expect(badge.hidden).toBe(true);
+    expect(host.querySelector("button").getAttribute("aria-label")).toBe(
+      "Annotations",
+    );
   });
 
   it("defines each element once when the module runs twice", async () => {
@@ -253,7 +285,7 @@ describe("creating a note", () => {
     expect(popoverOpen(editor())).toBe(false);
   });
 
-  it("Escape discards a new note", async () => {
+  it("Escape discards a new note and returns focus to the pen", async () => {
     await select("a", 6, 10);
     press(pen());
     textarea().value = "draft";
@@ -261,6 +293,16 @@ describe("creating a note", () => {
     expect(popoverOpen(editor())).toBe(false);
     expect(localStorage.getItem(key())).toBeNull();
     expect(deepActive()).toBe(pen());
+  });
+
+  it("Escape after the selection collapsed focuses the content", async () => {
+    await select("a", 6, 10);
+    press(pen());
+    // A browser collapses the selection when the textarea takes focus.
+    await collapse();
+    key_(textarea(), "Escape");
+    expect(pen().hidden).toBe(true);
+    expect(deepActive()).toBe($("gmd-annotations"));
   });
 
   it("Ctrl+Enter saves", async () => {
@@ -290,6 +332,36 @@ describe("creating a note", () => {
     await select("a", 6, 10);
     press(pen());
     expect(editor().style.position).toBe("absolute");
+  });
+
+  it("ignored showPopover source falls back to script placement", async () => {
+    vi.stubGlobal("CSS", { highlights, supports: () => true });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function () {
+        // The pen at the margin; the editor left where the UA puts it.
+        return this.localName === "gmd-annotation-editor"
+          ? { top: 300, bottom: 400, left: 300, right: 620 }
+          : { top: 100, bottom: 128, left: 600, right: 628 };
+      },
+    );
+    await select("a", 6, 10);
+    press(pen());
+    expect(editor().style.position).toBe("absolute");
+    expect(editor().style.top).toBe(`${128 + 4}px`);
+  });
+
+  it("script placement flips above the opener near the viewport bottom", async () => {
+    vi.spyOn(pen(), "getBoundingClientRect").mockReturnValue({
+      top: 700,
+      bottom: 728,
+      left: 600,
+      right: 628,
+    });
+    vi.stubGlobal("innerHeight", 768);
+    Object.defineProperty(editor(), "offsetHeight", { value: 200 });
+    await select("a", 6, 10);
+    press(pen());
+    expect(editor().style.top).toBe(`${700 - 4 - 200}px`);
   });
 
   it("with CSS anchor positioning the stylesheet places it", async () => {
@@ -402,7 +474,7 @@ describe("focus", () => {
     expect(deepActive()).toBe($("gmd-annotations"));
   });
 
-  it("a click outside closes the editor and stores nothing", async () => {
+  it("light dismiss (platform shim) reaches beforetoggle: nothing stored", async () => {
     await select("a", 6, 10);
     press(pen());
     document.body.dispatchEvent(
@@ -465,9 +537,9 @@ describe("reload", () => {
     expect(icons()).toHaveLength(1);
     expect(toggle().getAttribute("aria-label")).toBe("Annotations (1 note)");
     const notice = $("gmd-annotation-notice");
-    expect(notice.getAttribute("role")).toBe("status");
     expect(popoverOpen(notice)).toBe(true);
     expect(notice.textContent).toContain(message);
+    expect($(".gmd-annotation-status").textContent).toBe(message);
 
     notice.querySelector("button").click();
     expect(popoverOpen(notice)).toBe(false);
@@ -478,6 +550,47 @@ describe("reload", () => {
     const notice = $("gmd-annotation-notice");
     expect(popoverOpen(notice)).toBe(false);
     expect(notice.textContent).toBe("");
+  });
+
+  it("the live region is rendered and empty before any message", () => {
+    page();
+    const status = $(".gmd-annotation-status");
+    expect(status.getAttribute("role")).toBe("status");
+    expect(status.textContent).toBe("");
+    expect(status.hidden).toBe(false);
+    expect(status.closest("[popover]")).toBeNull();
+    expect($("gmd-annotation-notice").hasAttribute("role")).toBe(false);
+  });
+
+  it("combines the not-kept and removed messages of one load", () => {
+    const entry = JSON.stringify({
+      v: 1,
+      notes: [
+        {
+          id: "s",
+          quote: "zeta",
+          prefix: "",
+          suffix: "",
+          offset: 0,
+          note: "x",
+        },
+      ],
+    });
+    vi.stubGlobal("localStorage", {
+      getItem: () => entry,
+      setItem() {
+        throw new Error("quota");
+      },
+      removeItem() {
+        throw new Error("quota");
+      },
+    });
+    page();
+    const both =
+      "Notes can't be saved in this browser and will be lost on reload. " +
+      "1 note no longer matches this page and was removed.";
+    expect($(".gmd-annotation-status").textContent).toBe(both);
+    expect($("gmd-annotation-notice span").textContent).toBe(both);
   });
 });
 

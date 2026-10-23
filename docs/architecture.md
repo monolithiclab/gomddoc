@@ -813,7 +813,9 @@ storage) is exported for tests. `<gmd-annotations>` (light DOM, so selection, ot
 content unchanged) re-anchors stored notes after `load` and mounts in `<body>` a `<gmd-annotation-margin>` (shadow DOM:
 pen and note icons, `::part(pen)`/`::part(icon)`), a `<gmd-annotation-editor popover="auto">` opened with
 `showPopover({source})` and placed by CSS anchor positioning (a JavaScript fallback where unsupported), the notes
-`<dialog id="gmd-annotations-dialog">` and a `<gmd-annotation-notice popover="manual" role="status">`. The toggle
+`<dialog id="gmd-annotations-dialog">` and a `<gmd-annotation-notice popover="manual">` beside a visually hidden
+`role="status"` region that carries its (combined) message for screen readers. Nothing is defined without the Popover
+API and Invoker Commands; the editor falls back to script placement where anchoring fails. The toggle
 opens the dialog through Invoker Commands (`commandfor`, `command="show-modal"`) and follows the bubbling
 `gmd-annotations-change` event's count; elements never talk through globals. Esc, light dismiss, focus return, the
 dialog's focus trap and stacking are the platform's (D50). Highlights go through the CSS Custom Highlight API, never
