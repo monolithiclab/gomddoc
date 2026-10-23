@@ -1,32 +1,68 @@
 /* Page annotations (gmd-annotations.mjs). Themes restyle through the custom
-   properties below; the defaults read in light and dark mode, and the
-   highlight pairs its own text colour so the passage meets WCAG AA whatever
-   the theme's link and text colours. */
+   properties below. The defaults take the theme's colours where it has them
+   (the default theme's --color-*), else light-dark() pairs that the
+   annotation UI resolves in the page's colour scheme: the reader's
+   preference, unless the default theme's data-theme toggle says otherwise.
+   The highlight is painted on the content, whose colour scheme is the
+   theme's business, so it switches on the same signals explicitly. Every
+   text pair meets WCAG AA in both schemes, and the highlight pairs its own
+   text colour whatever the theme's link and text colours. */
 :root {
   --gmd-annotation-highlight: #fef08a;
   --gmd-annotation-highlight-text: #1e293b;
-  --gmd-annotation-accent: var(--color-primary, #2563eb);
-  --gmd-annotation-accent-text: #ffffff;
-  --gmd-annotation-surface: var(--color-bg, #ffffff);
-  --gmd-annotation-text: var(--color-text, #1e293b);
-  --gmd-annotation-border: var(--color-border, #cbd5e1);
-  --gmd-annotation-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  --gmd-annotation-accent: var(--color-primary, light-dark(#2563eb, #818cf8));
+  --gmd-annotation-accent-text: light-dark(#ffffff, #0f172a);
+  --gmd-annotation-surface: var(--color-bg, light-dark(#ffffff, #13111c));
+  --gmd-annotation-text: var(--color-text, light-dark(#1e293b, #e2e8f0));
+  --gmd-annotation-border: var(--color-border, light-dark(#cbd5e1, #3e3c4d));
+  --gmd-annotation-shadow: 0 8px 24px
+    light-dark(rgba(15, 23, 42, 0.18), rgba(0, 0, 0, 0.5));
 }
 
 [data-theme="dark"] {
   --gmd-annotation-highlight: #713f12;
   --gmd-annotation-highlight-text: #fef9c3;
-  --gmd-annotation-accent-text: #0f172a;
-  --gmd-annotation-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --gmd-annotation-highlight: #713f12;
     --gmd-annotation-highlight-text: #fef9c3;
-    --gmd-annotation-accent-text: #0f172a;
-    --gmd-annotation-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   }
+}
+
+/* The annotation UI's own colour scheme: what its light-dark() defaults and
+   its form controls (textareas, scrollbars, focus rings) follow. */
+:is(
+  gmd-annotations-toggle,
+  gmd-annotation-margin,
+  gmd-annotation-editor,
+  #gmd-annotations-dialog,
+  gmd-annotation-notice
+) {
+  color-scheme: light dark;
+}
+
+[data-theme="light"]
+  :is(
+    gmd-annotations-toggle,
+    gmd-annotation-margin,
+    gmd-annotation-editor,
+    #gmd-annotations-dialog,
+    gmd-annotation-notice
+  ) {
+  color-scheme: light;
+}
+
+[data-theme="dark"]
+  :is(
+    gmd-annotations-toggle,
+    gmd-annotation-margin,
+    gmd-annotation-editor,
+    #gmd-annotations-dialog,
+    gmd-annotation-notice
+  ) {
+  color-scheme: dark;
 }
 
 ::highlight(gmd-annotation) {

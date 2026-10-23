@@ -270,20 +270,38 @@ test("feature off renders no annotation markup", async ({ page }) => {
   }
 });
 
-test("axe finds no violations with the popover open and with the dialog open", async ({
-  page,
-}) => {
-  const axe = () => new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]);
-  await open(page, "/");
-  await annotate(page, "bold claim", "A note.");
+// Both colour schemes: the editor and the dialog follow the page's (the
+// default theme sets data-theme from the reader's preference), and axe checks
+// contrast in each.
+for (const colorScheme of ["light", "dark"]) {
+  test(`axe finds no violations with the popover and the dialog open (${colorScheme})`, async ({
+    page,
+  }) => {
+    const axe = () => new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]);
+    await page.emulateMedia({ colorScheme });
+    await open(page, "/");
+    await annotate(page, "bold claim", "A note.");
 
-  await icons(page).click();
-  await expect(popover(page)).toBeVisible();
-  expect((await axe().analyze()).violations).toEqual([]);
-  await page.keyboard.press("Escape");
-  await expect(popover(page)).toBeHidden();
+    await icons(page).click();
+    await expect(popover(page)).toBeVisible();
+    const [scheme, editorBg, bodyBg] = await page.evaluate(() => {
+      const editor = getComputedStyle(
+        document.querySelector("gmd-annotation-editor"),
+      );
+      return [
+        editor.colorScheme,
+        editor.backgroundColor,
+        getComputedStyle(document.body).backgroundColor,
+      ];
+    });
+    expect(scheme).toBe(colorScheme);
+    expect(editorBg).toBe(bodyBg);
+    expect((await axe().analyze()).violations).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(popover(page)).toBeHidden();
 
-  await toggle(page).click();
-  await expect(dialog(page)).toBeVisible();
-  expect((await axe().analyze()).violations).toEqual([]);
-});
+    await toggle(page).click();
+    await expect(dialog(page)).toBeVisible();
+    expect((await axe().analyze()).violations).toEqual([]);
+  });
+}

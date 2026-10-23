@@ -546,7 +546,9 @@ features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggle
   them needs nothing else; on an older gomddoc the elements stay undefined, the wrapper inert and the toggle hidden.
   Restyle through `--gmd-annotation-highlight`, `--gmd-annotation-highlight-text`, `--gmd-annotation-accent`,
   `--gmd-annotation-accent-text`, `--gmd-annotation-surface`, `--gmd-annotation-text` and
-  `--gmd-annotation-border`; the margin's pen and note icons live in a shadow root, reachable as
+  `--gmd-annotation-border`. Their defaults use the theme's `--color-bg`, `--color-text`, `--color-primary` and
+  `--color-border` where it defines them, and follow the page's colour scheme (the reader's preference, or the
+  `data-theme="light|dark"` attribute on the root element); the margin's pen and note icons live in a shadow root, reachable as
   `gmd-annotation-margin::part(pen)` and `::part(icon)`. See [Annotating a Page](06-writing-workflow.md#annotating-a-page).
 - **KaTeX** — guarded by `{{ .Feature "katex" }}`. CSS link in `<head>` and auto-render scripts.
 - **Mermaid** — guarded by `{{ .Feature "mermaid" }}`. Script for diagram rendering (theme-aware: dark/light).
