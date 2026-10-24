@@ -692,9 +692,7 @@ _Multi-language documentation sites with translated UI chrome._
 
 - [ ] Render the search modal server-side as a native `<dialog>` with its text from `.T`: that removes most search
       client strings from `search.mjs` and follows the native-dialog rule.
-- [ ] gomddoc-website's marketing theme must switch to the namespaced blocks in the session that releases the
-      client-i18n change. It builds with the installed release, inlines `search.mjs` and `gmd-color-chip.mjs`, and
-      reads `data-copy-*` in its own script; `i18nStrings` does not exist before the release.
+- [x] gomddoc-website's marketing theme switched to the namespaced blocks with the v0.2.0 release.
 
 ### Multi-Language Content
 
