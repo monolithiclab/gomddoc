@@ -666,12 +666,10 @@ _Small, self-contained presentation fixes that don't warrant their own phase._
       and generate the full set per `docs/skills/favicons/SKILL.md` (favicon.ico, favicon.svg,
       apple-touch-icon, Android/maskable PNGs, site.webmanifest) rather than shipping only the legacy
       `.ico`. Low-medium complexity.
-- [ ] **Replace the colorful sun/moon emoji dark-mode toggle with simple line icons**: the toggle
-      button in `header.html.tmpl` hardcodes 🌙 as its default content, and `theme-toggle.mjs`
-      documents that a theme *can* supply its own `<svg data-show-theme="light/dark">` icons but
-      falls back to the emoji when it doesn't — every theme including `default` currently relies on
-      that fallback. Ship simple monochrome sun/moon (or similar) line-icon SVGs in the default theme
-      and carry them into the other 7 themes, so no theme ships the emoji fallback. Low complexity.
+- [x] **Replace the colorful sun/moon emoji dark-mode toggle with simple line icons**: the default theme,
+      ocean, midnight and nord now ship moon/sun line-icon SVGs (gitbook and material already did), and
+      `theme-toggle.mjs` falls back to the same icons instead of emoji. minimal and academic keep their text
+      labels.
 
 ## Internationalization and Localization
 
