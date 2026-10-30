@@ -17,7 +17,7 @@ type PreviewCmd struct {
 	Domain        string `name:"domain" short:"d" default:"" env:"GOMDDOC_DOMAIN" setting:"site.meta.domain" help:"Override site domain for canonical URLs, sitemap, and SEO tags."`
 	GitSSHKey     string `name:"git-key-file" default:"" env:"GOMDDOC_SERVER_GIT_SSH_KEY" help:"Path to SSH private key file for Git authentication."`
 	GitStorageDir string `name:"git-storage-dir" default:"" env:"GOMDDOC_SERVER_GIT_STORAGE_DIR" help:"Directory for disk-based Git clone storage (default: in-memory)."`
-	Open          bool   `name:"open" default:"false" env:"GOMDDOC_PREVIEW_OPEN" help:"Open the browser automatically on startup."`
+	Open          bool   `name:"open" negatable:"" default:"true" env:"GOMDDOC_PREVIEW_OPEN" help:"Open the browser on startup."`
 	DirIndex      bool   `name:"dir-index" default:"false" env:"GOMDDOC_DIR_INDEX" setting:"site.dir_index" help:"Enable auto-generated directory listings when no index file exists."`
 }
 

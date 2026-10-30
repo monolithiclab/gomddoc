@@ -66,7 +66,7 @@ Release archives carry an SPDX SBOM each and a Sigstore-signed `SHA256SUMS`; the
 
 ```bash
 gomddoc serve ./docs                       # production server on :8080 (also git+https:// and git+ssh:// URLs)
-gomddoc preview ./docs --open              # dev mode, first free port from 8080
+gomddoc preview ./docs                     # dev mode, first free port from 8080, opens the browser
 gomddoc build ./docs -d docs.example.com   # static site into build/site
 gomddoc doctor ./docs                      # every configuration and content problem, with fixes
 gomddoc help                               # the user guide, embedded in the binary

@@ -77,7 +77,7 @@ Each subcommand lives in its own file under `cmd/gomddoc/`.
 | Command | File | What it assembles |
 | --- | --- | --- |
 | `serve` | `serve.go` | `setupServer` → `setupLanguagePipelines` (cache unless dev mode, navigation, metadata, search), `server.NewHTTPServer`, optional `AdminServer`, MCP over HTTP at `/_mcp/` |
-| `preview` | `preview.go` | Same `setupServer` path with `DevMode: true` and `--port :auto`; `--open` opens a browser |
+| `preview` | `preview.go` | Same `setupServer` path with `DevMode: true` and `--port :auto`; opens a browser unless `--no-open` |
 | `build` | `build.go` | `setupLanguagePipelines` (cache, navigation, metadata; no search index), static walk into `--output` |
 | `mcp` | `mcp.go` | `setupPipeline` (cache, navigation, metadata, search) for the root content only, stdio MCP server with `SelfDocs` |
 | `doctor` | `doctor.go` | `config.Inspect` + `setupLanguagePipelines` (metadata, `ReportOnly`) → `doctor.Run` |

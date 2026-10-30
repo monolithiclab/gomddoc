@@ -2,42 +2,58 @@ package main
 
 import (
 	"testing"
+
+	"github.com/alecthomas/kong"
 )
 
-func TestPreviewCmd_Defaults(t *testing.T) {
+// TestPreviewCmd_Open parses real command lines: preview opens the browser
+// unless told not to.
+func TestPreviewCmd_Open(t *testing.T) {
 	t.Parallel()
 
-	cmd := PreviewCmd{}
-
-	if cmd.Dir != "" {
-		t.Errorf("Dir default = %q, want empty (Kong sets '.')", cmd.Dir)
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "default opens", args: []string{"preview", "."}, want: true},
+		{name: "--open", args: []string{"preview", "--open", "."}, want: true},
+		{name: "--no-open", args: []string{"preview", "--no-open", "."}, want: false},
 	}
-	if cmd.Port != "" {
-		t.Errorf("Port default = %q, want empty (Kong sets ':auto')", cmd.Port)
-	}
-	if cmd.Open {
-		t.Error("Open should default to false")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := parsePreview(t, tt.args).Open; got != tt.want {
+				t.Errorf("Open = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestPreviewCmd_FieldTags(t *testing.T) {
-	t.Parallel()
+// TestPreviewCmd_OpenEnv: GOMDDOC_PREVIEW_OPEN=false turns the default off, and
+// a flag still wins. Not parallel: Kong reads the process environment.
+func TestPreviewCmd_OpenEnv(t *testing.T) {
+	t.Setenv("GOMDDOC_PREVIEW_OPEN", "false")
+	if parsePreview(t, []string{"preview", "."}).Open {
+		t.Error("Open = true with GOMDDOC_PREVIEW_OPEN=false, want false")
+	}
+	if !parsePreview(t, []string{"preview", "--open", "."}).Open {
+		t.Error("Open = false with --open over GOMDDOC_PREVIEW_OPEN=false, want true")
+	}
+}
 
-	cmd := PreviewCmd{
-		Dir:  "/tmp/docs",
-		Port: ":9090",
-		Open: true,
+// parsePreview parses args with the options users run and returns the preview command.
+func parsePreview(t *testing.T, args []string) PreviewCmd {
+	t.Helper()
+	var cli CLI
+	parser, err := kong.New(&cli, parserOptions()...)
+	if err != nil {
+		t.Fatalf("kong.New() error = %v", err)
 	}
-
-	if cmd.Dir != "/tmp/docs" {
-		t.Errorf("Dir = %q, want /tmp/docs", cmd.Dir)
+	if _, err := parser.Parse(args); err != nil {
+		t.Fatalf("Parse(%v) error = %v", args, err)
 	}
-	if cmd.Port != ":9090" {
-		t.Errorf("Port = %q, want :9090", cmd.Port)
-	}
-	if !cmd.Open {
-		t.Error("Open should be true")
-	}
+	return cli.Preview
 }
 
 func TestPreviewCmd_Setup(t *testing.T) {
@@ -177,18 +193,5 @@ func TestPreviewCmd_Run_SetupError(t *testing.T) {
 	err := cmd.Run()
 	if err == nil {
 		t.Error("Run() with nonexistent dir should return error")
-	}
-}
-
-func TestPreviewCmd_Open_Default(t *testing.T) {
-	t.Parallel()
-
-	cmd := &PreviewCmd{
-		Dir:  "/tmp",
-		Port: ":0",
-		Open: true,
-	}
-	if !cmd.Open {
-		t.Error("Open should be true")
 	}
 }

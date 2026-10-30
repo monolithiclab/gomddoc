@@ -94,11 +94,11 @@ gomddoc preview
 ```
 
 This starts the server in development mode (the template cache is off, so template edits show on
-reload) with automatic port assignment starting from 8080, and prints the URL. Add `--open` to
-launch your default browser automatically:
+reload) with automatic port assignment starting from 8080, prints the URL and opens it in your default browser. Add
+`--no-open` to only print the URL:
 
 ```bash
-gomddoc preview --open
+gomddoc preview --no-open
 ```
 
 ### URL Structure

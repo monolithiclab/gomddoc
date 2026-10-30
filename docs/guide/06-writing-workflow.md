@@ -12,15 +12,15 @@ result immediately. This page covers the tools and modes that make content creat
 ## Quick Preview
 
 The fastest way to start writing is the `preview` command. It enables development mode
-automatically, auto-assigns a port, and can open your browser:
+automatically, auto-assigns a port, and opens your browser:
 
 ```bash
-gomddoc preview --open
+gomddoc preview
 ```
 
 `preview` takes the same directory argument as `serve` (a local directory or a Git URL) and these flags:
-`-p/--port` (default `:auto`), `-d/--domain`, `--open` (`GOMDDOC_PREVIEW_OPEN`), `--dir-index`, `--git-key-file`
-and `--git-storage-dir`. It has no `--admin-port`, `--pprof` or `--basic-auth-file`; health and metrics stay on the
+`-p/--port` (default `:auto`), `-d/--domain`, `--open`/`--no-open` (default `--open`, `GOMDDOC_PREVIEW_OPEN`),
+`--dir-index`, `--git-key-file` and `--git-storage-dir`. It has no `--admin-port`, `--pprof` or `--basic-auth-file`; health and metrics stay on the
 main port.
 
 Preview is the recommended command during active writing. `serve` runs in production mode unless
@@ -80,7 +80,7 @@ INFO Server started url=http://localhost:8081 dir=. dev=true
 
 ## Recommended Workflow
 
-1. Run `gomddoc preview --open` in your docs directory
+1. Run `gomddoc preview` in your docs directory
 2. Edit markdown files and templates in your editor
 3. Refresh the browser to see changes; restart after config changes or new files
 4. Use `Ctrl+K` (`Cmd+K` on macOS) to test the search modal with your content

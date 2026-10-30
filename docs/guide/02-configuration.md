@@ -58,7 +58,7 @@ gomddoc preview [DIR] [flags]
 | `-d, --domain` | `GOMDDOC_DOMAIN` | | Override `meta.domain` (canonical URLs, sitemap, feed, SEO tags) |
 | `--git-key-file` | `GOMDDOC_SERVER_GIT_SSH_KEY` | | SSH key for private Git repos |
 | `--git-storage-dir` | `GOMDDOC_SERVER_GIT_STORAGE_DIR` | | Disk-based Git clone directory (default: in-memory) |
-| `--open` | `GOMDDOC_PREVIEW_OPEN` | `false` | Auto-open browser on startup |
+| `--open`, `--no-open` | `GOMDDOC_PREVIEW_OPEN` | `true` | Open the browser on startup |
 | `--dir-index` | `GOMDDOC_DIR_INDEX` | `false` | Enable directory listings when no index file exists (sets `dir_index`) |
 
 Preview always runs in dev mode (the template cache is off, so templates are re-parsed on every request) and defaults
