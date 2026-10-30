@@ -213,8 +213,8 @@ page. When multiple languages are detected, each language gets prefixed routes (
 
 ### `GET /site.webmanifest`
 
-Returns the site's web app manifest (`application/manifest+json`), generated from `meta.title` (`name` and
-`short_name`) and `meta.description`, listing the Android icons of the [icon set](../05-theming-and-assets.md#favicons-and-web-app-manifest).
+Returns the site's web app manifest (`application/manifest+json`): the static layers' own `site.webmanifest` when a
+site or theme ships one, otherwise one generated from `meta.title` (`name` and `short_name`) and `meta.description`, listing the Android icons of the [icon set](../05-theming-and-assets.md#favicons-and-web-app-manifest).
 It sits behind Basic Auth like the pages, and the themes link it with `crossorigin="use-credentials"` so browsers
 send credentials for it. `gomddoc build` writes the same file at the output root.
 

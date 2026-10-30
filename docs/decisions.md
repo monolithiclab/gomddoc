@@ -1032,8 +1032,10 @@ delimiter, with no opt-in. KaTeX's auto-render, which scanned the whole page in 
 *2026-10-30*
 
 **Decision** (2026-10-30): the favicon set (ICO, SVG, apple-touch icon, Android and maskable PNGs) lives in the shared
-static layer, so every theme serves it, and the shared `head-icons` partial, called from `head-meta`, links it
-through `assetURL`. `/site.webmanifest` is generated from `meta` by serve and build. Each theme's head sets
+static layer, so every theme serves it, and the shared `head-icons` partial links it through `assetURL`. Each shipped
+theme calls it after `head-meta`, not from inside it, so a custom theme with its own icon links (gomddoc.com,
+millstream.dev) never gets a second set. `/site.webmanifest` is generated from `meta` by serve and build, unless the
+static layers ship a `site.webmanifest`, which is published instead. Each theme's head sets
 `theme-color` from its own backgrounds (`theme.vars` `bg`/`dark-bg` first). A site that replaces only part of the set
 gets `theme.icons-mixed` from the pipeline, so serve logs it and doctor reports it. The default theme's own
 `favicon.ico` and its `/favicon.ico` link are gone; sites that put a `favicon.ico` in the content root must move the

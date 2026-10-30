@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 
 	"github.com/monolithiclab/gomddoc/internal/assets"
@@ -62,14 +63,26 @@ func GenerateWebManifest(site config.SiteConfig) []byte {
 	return append(data, '\n')
 }
 
-// WebManifestHandler serves the generated web app manifest.
+// SiteWebManifest is the manifest serve answers and build writes at
+// WebManifestPath: the static layers' own site.webmanifest when a site or
+// theme ships one (it keeps its name and colours), the generated one otherwise.
+func SiteWebManifest(site config.SiteConfig, staticFS fs.FS) []byte {
+	if staticFS != nil {
+		if data, err := fs.ReadFile(staticFS, "site.webmanifest"); err == nil {
+			return data
+		}
+	}
+	return GenerateWebManifest(site)
+}
+
+// WebManifestHandler serves the site's web app manifest.
 type WebManifestHandler struct {
 	cached []byte
 }
 
-// NewWebManifestHandler creates a WebManifestHandler for the site.
-func NewWebManifestHandler(site config.SiteConfig) *WebManifestHandler {
-	return &WebManifestHandler{cached: GenerateWebManifest(site)}
+// NewWebManifestHandler creates a WebManifestHandler; see SiteWebManifest.
+func NewWebManifestHandler(site config.SiteConfig, staticFS fs.FS) *WebManifestHandler {
+	return &WebManifestHandler{cached: SiteWebManifest(site, staticFS)}
 }
 
 // ServeHTTP writes the manifest.

@@ -97,7 +97,8 @@ plain 404. `gomddoc build` copies the same layers into `_assets/` in the output 
 
 ### Favicons and Web App Manifest
 
-Every theme links one icon set through the shared `head-icons` partial (called from `head-meta`):
+The shipped themes link one icon set through the shared `head-icons` partial, which each calls right after
+`head-meta`; a custom theme calls it too, or keeps its own icon links:
 
 | File | Used by |
 |------|---------|
@@ -112,7 +113,8 @@ browser that picks a file you did not replace shows gomddoc's (Chromium prefers 
 `gomddoc doctor` reports a partial set as `theme.icons-mixed`. Keep maskable icons full-bleed with the artwork inside
 the central 80%, and the apple-touch icon without transparency.
 
-`/site.webmanifest` is generated, not a file: its `name` and `short_name` are `meta.title`, its `description` is
+`/site.webmanifest` is generated unless the static layers hold a `site.webmanifest`, which is then published as-is
+(so a theme that ships its own keeps it). The generated one's `name` and `short_name` are `meta.title`, its `description` is
 `meta.description`, its `background_color` is `theme.vars` `bg` (white by default), and it lists the four Android
 icons from `/_assets/`. Each theme's head also sets the browser
 chrome colour (`<meta name="theme-color">`) to its light and dark page backgrounds, or to `theme.vars` `bg` and
@@ -553,8 +555,8 @@ features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggle
 - **TOC scroll highlighting** — guarded by `{{ .Feature "toc" }}`. Uses `{{ inlineJSAsset "toc-highlight.mjs" }}` to
   track scroll position and set `.active` class on matching TOC link.
 - **Breadcrumbs** via `{{ range .Page.Breadcrumbs }}`
-- **Icons and browser chrome colour** — `{{ template "head-meta" . }}` links the icon set and manifest; the theme's
-  head adds two `<meta name="theme-color">` tags for its light and dark backgrounds (see [Favicons and Web App
+- **Icons and browser chrome colour** — `{{ template "head-icons" . }}` after `head-meta` links the icon set and
+  manifest; the theme's head adds two `<meta name="theme-color">` tags for its light and dark backgrounds (see [Favicons and Web App
   Manifest](#favicons-and-web-app-manifest)).
 - **Search button** — guarded by `{{ .Feature "search" }}`. Button with `id="search-toggle"` in the header.
 - **Search modal** — guarded by `{{ .Feature "search" }}`. Uses `{{ inlineJSAsset "search.mjs" }}` with CSS custom

@@ -33,14 +33,14 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         {{ if $desc }}<meta name="description" content="{{ $desc }}">{{ end }}
         {{ template "hreflang" . }}
-        {{ template "head-icons" . }}
         {{ template "head-annotations" . }}
 {{- end }}
 
 {{- /* The icon set lives in the shared static layer, so every theme serves it;
-       a site replaces it file by file in .gomddoc/static/. The ICO's sizes
-       keeps Chromium on the SVG; the manifest is generated per site and sends
-       credentials so it loads behind --basic-auth-file. */ -}}
+       a site replaces it file by file in .gomddoc/static/. Themes call this
+       themselves, outside head-meta, so a custom theme with its own icon links
+       never gets a second set. The ICO's sizes keeps Chromium on the SVG; the
+       manifest sends credentials so it loads behind --basic-auth-file. */ -}}
 {{ define "head-icons" }}
         <link rel="icon" href="{{ assetURL "favicon.ico" }}" sizes="48x48">
         <link rel="icon" href="{{ assetURL "favicon.svg" }}" sizes="any" type="image/svg+xml">

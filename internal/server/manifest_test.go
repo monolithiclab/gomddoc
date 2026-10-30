@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"io/fs"
 	"slices"
 	"testing"
+	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 )
@@ -71,9 +73,31 @@ func TestWebManifestHandler(t *testing.T) {
 	t.Parallel()
 
 	assertRevalidates(t, revalidationCase{
-		Handler:   NewWebManifestHandler(config.NewSiteConfig(".")),
+		Handler:   NewWebManifestHandler(config.NewSiteConfig("."), nil),
 		Path:      WebManifestPath,
 		WantType:  mimeManifest,
 		WantCache: cacheDynamic,
 	})
+}
+
+// TestSiteWebManifest: a site or theme that ships its own site.webmanifest keeps
+// it (its name and colours); otherwise the generated one is published.
+func TestSiteWebManifest(t *testing.T) {
+	t.Parallel()
+
+	site := config.NewSiteConfig(".")
+	site.Meta.Title = "Docs"
+	own := []byte(`{"name":"Mine"}`)
+	if got := SiteWebManifest(site, fstest.MapFS{"site.webmanifest": {Data: own}}); string(got) != string(own) {
+		t.Errorf("with a shipped manifest got %s, want it unchanged", got)
+	}
+	generated := GenerateWebManifest(site)
+	for name, staticFS := range map[string]fs.FS{
+		"no static layer":           nil,
+		"static without a manifest": fstest.MapFS{"favicon.ico": {}},
+	} {
+		if got := SiteWebManifest(site, staticFS); string(got) != string(generated) {
+			t.Errorf("%s: got %s, want the generated manifest", name, got)
+		}
+	}
 }

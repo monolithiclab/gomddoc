@@ -789,10 +789,12 @@ variables with fallbacks: `var(--theme-bg, #ffffff)`. Generated once per rendere
 site `.gomddoc/static/` > theme `static/` > `assets/shared/static/` (layers that do not exist are skipped). FNV-64a
 ETags, immutable cache headers, dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output
 directory. The shared layer embeds the icon set (`assets.IconFiles`: ICO, SVG, apple-touch and Android PNGs), so
-every theme serves it; the shared `head-icons` partial, called from `head-meta`, links it through `assetURL`, and
+every theme serves it; the shared `head-icons` partial, which each shipped theme calls after `head-meta` (custom
+themes with their own links leave it out), links it through `assetURL`, and
 `assets.IconFindings` (`theme.icons-mixed`) warns when a site replaces only part of it. `/site.webmanifest` is
-generated from `meta` and `theme.vars` `bg` (`server.GenerateWebManifest`, icons from `assets.ManifestIcons`), not
-shipped, so each site installs under its own name.
+the static layers' own `site.webmanifest` if any (`server.SiteWebManifest`), otherwise generated from `meta` and
+`theme.vars` `bg` (`server.GenerateWebManifest`, icons from `assets.ManifestIcons`), so each site installs under its
+own name.
 
 ### 14. Web Components
 

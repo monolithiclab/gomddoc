@@ -185,7 +185,7 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// The web app manifest head-icons links, at the path serve answers it on.
-	if err := b.writeOutputFile(strings.TrimPrefix(server.WebManifestPath, "/"), server.GenerateWebManifest(cfg.Site)); err != nil {
+	if err := b.writeOutputFile(strings.TrimPrefix(server.WebManifestPath, "/"), server.SiteWebManifest(cfg.Site, pipeline.StaticFS)); err != nil {
 		return fmt.Errorf("write web manifest: %w", err)
 	}
 

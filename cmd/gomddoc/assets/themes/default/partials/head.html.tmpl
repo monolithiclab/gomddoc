@@ -5,6 +5,7 @@
   {{ else if .Site.Meta.Robots }}<meta name="robots" content="{{ .Site.Meta.Robots }}">{{ end }}
   <title>{{ if .Page.Meta.title }}{{ .Page.Meta.title }} | {{ end }}{{ .Site.Meta.Title }}</title>
   {{ template "head-meta" . }}
+  {{ template "head-icons" . }}
   <meta name="theme-color" content="{{ or (index .Site.Theme.Vars "bg") "#ffffff" }}" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="{{ or (index .Site.Theme.Vars "dark-bg") "#13111C" }}" media="(prefers-color-scheme: dark)">
 

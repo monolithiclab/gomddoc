@@ -5,9 +5,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
+	"github.com/monolithiclab/gomddoc/internal/provider"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
 
@@ -86,10 +88,10 @@ func renderDefaultPage(t *testing.T, siteConfig *config.SiteConfig, meta map[str
 	return out
 }
 
-// TestHead_IconsAndThemeColor renders the embedded default theme. head-meta,
-// which every theme calls, links the shared icon set through /_assets/ (the
-// only path build writes it to) and the generated manifest; the theme's head
-// sets theme-color to its backgrounds, or to the site's theme.vars.
+// TestHead_IconsAndThemeColor renders the embedded default theme. Its head
+// calls head-icons, which links the shared icon set through /_assets/ (the only
+// path build writes it to) and the manifest, and sets theme-color to its
+// backgrounds, or to the site's theme.vars.
 func TestHead_IconsAndThemeColor(t *testing.T) {
 	t.Parallel()
 
@@ -123,5 +125,32 @@ func TestHead_IconsAndThemeColor(t *testing.T) {
 				t.Errorf("want exactly the two icon links, got %d", n)
 			}
 		})
+	}
+}
+
+// TestHeadMeta_NoIconLinks: head-meta, which custom themes call, links no icon
+// or manifest, so a theme with its own icon links (gomddoc.com, millstream.dev)
+// never gets a second set; the shipped themes call head-icons themselves.
+func TestHeadMeta_NoIconLinks(t *testing.T) {
+	t.Parallel()
+
+	custom := fstest.MapFS{
+		"assets/themes/custom/layouts/default.html.tmpl": {Data: []byte(`<head>{{ template "head-meta" . }}</head>`)},
+	}
+	siteConfig := config.NewSiteConfig(".")
+	siteConfig.Theme.Name = "custom"
+	pageCtx := tmpl.BuildPageContext(tmpl.PageContextInput{
+		Site: &siteConfig, Path: "/page", Content: "<p>body</p>",
+		Enrichment: &enricher.EnrichmentData{Metadata: map[string]any{"title": "A Page"}},
+	})
+	out, err := tmpl.NewHTMLRenderer(&siteConfig, provider.NewOverlayFS(custom, embeddedAssets)).
+		Render(context.Background(), "default.html.tmpl", pageCtx)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	for _, unwanted := range []string{`rel="icon"`, `rel="manifest"`, `rel="apple-touch-icon"`} {
+		if strings.Contains(string(out), unwanted) {
+			t.Errorf("head-meta emitted %s:\n%s", unwanted, out)
+		}
 	}
 }
