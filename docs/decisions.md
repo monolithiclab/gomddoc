@@ -1136,8 +1136,9 @@ checkout of `server.json` at the tagged commit. `mcp-publisher` (modelcontextpro
 dependency, not a module one: v1.8.7, its `linux_amd64` archive pinned by SHA-256 in the workflow, checked against the
 release's checksums file and GitHub's asset digest. Every `dockers:` entry in `.goreleaser.yaml` carries
 `io.modelcontextprotocol.server.name=io.github.monolithiclab/gomddoc`, the label through which the registry verifies
-an OCI package, and `make lint` (`lint-mcp-registry`, `jq` and `awk`) fails when `server.json` does not parse or any
-entry lacks the label with its exact name.
+an OCI package, and a drift test under `make ci` (`cmd/gomddoc`'s `TestMCPRegistry_ImageLabelMatchesServerJSON`,
+decoding both files with `encoding/json` and `yaml.v3`) fails when `server.json` does not parse or has no name, when
+there is no `dockers:` entry, or when any entry lacks the label with its exact name.
 
 - *Evidence*: agent users look for servers in the MCP Registry, and gomddoc's built-in server was not listed there.
   OIDC login needs no secret: the workflow's identity proves the `io.github.monolithiclab` namespace.

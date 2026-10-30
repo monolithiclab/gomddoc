@@ -49,19 +49,3 @@ test-ui: ## Front-end tests (Vitest, Playwright), skipped when their inputs are 
 			echo "test-ui: Playwright drives the system Google Chrome, which is not installed (https://www.google.com/chrome/)"; \
 		exit 1; }; \
 	mkdir -p .cache && echo "$$hash" > .cache/test-ui.sha
-
-# The MCP Registry lists server.json only when every image it names carries the label
-# io.modelcontextprotocol.server.name equal to server.json's name (D56). Fails on invalid JSON, a missing name, no
-# `dockers:` entry, or an entry without the exact label. jq ships with macOS and the Ubuntu runners.
-lint: lint-mcp-registry
-
-.PHONY: lint-mcp-registry
-lint-mcp-registry:
-	@name=$$(jq -er .name server.json) || { echo "lint-mcp-registry: server.json is not valid JSON or has no name" >&2; exit 1; }; \
-	bad=$$(awk -v want="\"--label=io.modelcontextprotocol.server.name=$$name\"" ' \
-		function close_entry() { if (id != "" && !ok) print id; id = ""; ok = 0 } \
-		/^[^[:space:]#]/ { close_entry(); sec = ($$0 ~ /^dockers:/); next } \
-		sec && /^  - / { close_entry(); id = $$0; n++ } \
-		sec && index($$0, want) { ok = 1 } \
-		END { close_entry(); if (!n) print "no dockers: entry" }' .goreleaser.yaml); \
-	[ -z "$$bad" ] || { echo "lint-mcp-registry: .goreleaser.yaml dockers: entries lacking --label=io.modelcontextprotocol.server.name=$$name:" >&2; echo "$$bad" >&2; exit 1; }
