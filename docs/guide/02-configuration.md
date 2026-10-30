@@ -89,12 +89,11 @@ gomddoc build [DIR] [flags]
   becomes `guide/index.html` so the URL is `/guide`; with it empty, `guide.md` becomes `guide.html`.
   In both modes the default index (`README.md`) becomes `index.html` in its own directory — never
   `README.html` — unless that directory also has an `index.md`, which wins.
-- In pretty mode, each source path is also written as a redirect stub, so `/guides/setup.md` still
-  resolves on a static host: the stub lives at `guides/setup.md/index.html` and points at `/guides/setup`.
-  A static host picks the Content-Type from the file name, so a stub named `setup.md` would go out as
-  `text/markdown`; as a directory, the host answers `/guides/setup.md` with its trailing-slash 301 and then
-  serves the stub as HTML.
-  Default-index files get no stub, because their URL is the directory itself.
+- In pretty mode, each Markdown page is also written at its source path with the enriched Markdown that `serve`
+  answers there (`guides/setup.md` beside `guides/setup/index.html`), so `/guides/setup.md` serves the same Markdown
+  on a static host. Before D54 this was a redirect stub at `guides/setup.md/index.html`; it is no longer written.
+  Other stripped extensions (`.html`) still get a redirect stub. Default-index files get no stub, because their URL
+  is the directory itself.
 - Pages with `redirect_from` frontmatter get a stub per source, at `<source>/index.html` (or at `<source>` itself
   when it ends in `.html` or `.htm`)
 - Non-markdown files (images, CSS, JS) are copied as-is
@@ -343,7 +342,10 @@ strip_extensions:
 **Behavior:**
 
 *   `docs/guide.md` becomes accessible at `/docs/guide`
-*   Requests to `/docs/guide.md` are 301-redirected to `/docs/guide`
+*   `/docs/guide.md` serves the page's enriched Markdown, whatever the `Accept` header says (see
+    [Markdown URLs](12-advanced/01-http-behavior.md#markdown-urls)). It no longer redirects: before D54 it answered
+    `301` to `/docs/guide`
+*   Any other stripped extension (`/about.html`) is 301-redirected to the clean URL (`/about`)
 *   Non-rendered files (images, CSS, etc.) keep their extensions
 *   Set to `[]` to disable extension stripping
 
@@ -356,8 +358,8 @@ strip_extensions:
 
 **Build mode:**
 
-When enabled, the build command generates pretty URLs: `guide.md` is output to `guide/index.html`. This works with any
-static host without server-side rewrite rules.
+When enabled, the build command generates pretty URLs: `guide.md` is output to `guide/index.html`, and its enriched
+Markdown to `guide.md`. This works with any static host without server-side rewrite rules.
 
 ### Metadata (`SITE.META`)
 

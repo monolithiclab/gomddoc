@@ -14,6 +14,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
+	"github.com/monolithiclab/gomddoc/internal/seo"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
@@ -33,6 +34,11 @@ type HandlerConfig struct {
 	URLRedirects     URLRedirectMap
 	Resolver         *resolve.PathResolver
 
+	// BasePath is the prefix the handler is mounted under and that is stripped
+	// before it runs: "/{lang}" for a language scope, "" for the default one.
+	// It turns the handler's content-root-relative paths back into site URLs.
+	BasePath string
+
 	// i18n support
 	Lang      string              // BCP 47 language for this handler
 	TFunc     func(string) string // translation function
@@ -49,6 +55,7 @@ type Handler struct {
 	redirectFinder   RedirectFinder
 	urlRedirects     URLRedirectMap
 	resolver         *resolve.PathResolver
+	basePath         string
 
 	// i18n support
 	lang      string              // BCP 47 language for this handler
@@ -79,6 +86,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		redirectFinder:   cfg.RedirectFinder,
 		urlRedirects:     cfg.URLRedirects,
 		resolver:         cfg.Resolver,
+		basePath:         cfg.BasePath,
 		lang:             cfg.Lang,
 		tFunc:            cfg.TFunc,
 		languages:        cfg.Languages,
@@ -99,6 +107,11 @@ func (h *Handler) ErrorPage() *ErrorPage { return h.errorPage }
 //  3. Enrich content (extract metadata, TOC, navigation, related docs)
 //  4. Render content with enrichment data
 //  5. Serve as HTML (wrapped in template) or raw (passthrough)
+//
+// A page's Markdown URL (/guide.md, D54) takes the same path with two
+// differences: it negotiates as if Accept were text/markdown, and it enriches
+// under the page's clean URL, so its body is the one /guide negotiates for
+// Accept: text/markdown. It names that clean URL in a canonical Link header.
 func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// 0. Check URL redirects before reading files
 	if h.urlRedirects != nil {
@@ -133,6 +146,12 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// 2. Content negotiation BEFORE rendering (2D lookup)
 	normalized := negotiate.NormalizeMimeType(mimeType)
 	acceptedTypes := negotiate.ParseAccept(r.Header.Get("Accept"))
+	pagePath := r.URL.Path
+	_, isMarkdownURL := h.resolver.MarkdownURLPath(r.URL.Path)
+	if isMarkdownURL {
+		acceptedTypes = negotiate.AcceptMarkdown()
+		pagePath = h.resolver.PageURLPath(r.URL.Path, h.siteConfig.DefaultIndex)
+	}
 
 	contentRenderer, selectedOutput, err := h.registry.Get(normalized, acceptedTypes)
 	if err != nil {
@@ -153,7 +172,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Enrich content (extract metadata, TOC, navigation, related docs)
-	enrichment, err := h.enricherRegistry.Get(normalized).Enrich(r.Context(), content, r.URL.Path)
+	enrichment, err := h.enricherRegistry.Get(normalized).Enrich(r.Context(), content, pagePath)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return
@@ -167,8 +186,13 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Serve based on selected output MIME type.
-	// Set Vary: Accept so caches distinguish responses by content negotiation.
-	w.Header().Add("Vary", "Accept")
+	// Set Vary: Accept so caches distinguish responses by content negotiation;
+	// a Markdown URL's response does not vary, and names its page instead.
+	if isMarkdownURL {
+		w.Header().Set("Link", "<"+h.canonicalURL(pagePath)+`>; rel="canonical"`)
+	} else {
+		w.Header().Add("Vary", "Accept")
+	}
 	outputNormalized := negotiate.NormalizeMimeType(selectedOutput)
 	if outputNormalized == "text/html" {
 		h.serveHTML(w, r, renderResult.Content, enrichment, sourceFile)
@@ -180,6 +204,17 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		}
 		h.serveRaw(w, r, renderResult.Content, serveMimeType)
 	}
+}
+
+// canonicalURL is the site URL of pagePath, a content-root-relative page URL
+// path: absolute with the configured domain, root-relative without one. It is
+// the sitemap's derivation (GenerateSitemap), so the two name one URL.
+func (h *Handler) canonicalURL(pagePath string) string {
+	sitePath := h.basePath + pagePath
+	if u := seo.PageURL(h.siteConfig.Meta.Domain, sitePath, ""); u != "" {
+		return u
+	}
+	return sitePath
 }
 
 // serveHTML wraps HTML content in the site template and serves it.

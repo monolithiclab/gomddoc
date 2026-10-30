@@ -467,3 +467,40 @@ func TestResolver_DirURL(t *testing.T) {
 		}
 	}
 }
+
+func TestResolver_MarkdownURLPath(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":       {Data: []byte("# Guide")},
+		"docs/README.md": {Data: []byte("# Docs")},
+		"notes.markdown": {Data: []byte("# Notes")},
+		"about.html":     {Data: []byte("<p>About</p>")},
+		"plain.txt":      {Data: []byte("text")},
+	}
+	r := Build(files, BuildOptions{
+		StripExtensions: []string{".md", ".html"},
+		HasRenderer:     mockRenderer("text/markdown", "text/html"),
+	})
+
+	for realPath, want := range map[string]string{
+		"guide.md":       "/guide.md",
+		"/guide.md":      "/guide.md",
+		"docs/README.md": "/docs/README.md",
+		"notes.markdown": "", // .markdown not stripped: its real path is its page URL
+		"about.html":     "", // mapped, but not Markdown: its extension URL redirects
+		"plain.txt":      "",
+		"missing.md":     "",
+		"guide":          "",
+	} {
+		got, ok := r.MarkdownURLPath(realPath)
+		if got != want || ok != (want != "") {
+			t.Errorf("MarkdownURLPath(%q) = %q, %v; want %q", realPath, got, ok, want)
+		}
+	}
+
+	var nilResolver *PathResolver
+	if got, ok := nilResolver.MarkdownURLPath("guide.md"); ok || got != "" {
+		t.Errorf("nil resolver MarkdownURLPath = %q, %v; want \"\", false", got, ok)
+	}
+}

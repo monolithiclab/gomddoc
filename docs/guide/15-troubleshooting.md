@@ -15,16 +15,16 @@ gomddoc doctor ./docs
 
 ## What gets served
 
-| Content type                   | Handling                                      | Template wrapping |
-| ------------------------------ | --------------------------------------------- | ----------------- |
-| `.md`, `.markdown`             | Markdown → HTML (or raw with `text/markdown`) | Yes               |
-| `.html`, `.htm`                | HTML passthrough                              | Yes               |
-| `.css`                         | CSS passthrough                               | No                |
-| `.js`, `.mjs`                  | JavaScript passthrough                        | No                |
-| `.json`                        | JSON passthrough                              | No                |
-| `.png`, `.jpg`, `.gif`, `.svg` | Image passthrough                             | No                |
-| `.pdf`                         | PDF passthrough                               | No                |
-| All others                     | Binary passthrough                            | No                |
+| Content type                   | Handling                                                                  | Template wrapping |
+| ------------------------------ | ------------------------------------------------------------------------- | ----------------- |
+| `.md`, `.markdown`             | Markdown → HTML (or raw with `text/markdown`, or at the page's `.md` URL) | Yes               |
+| `.html`, `.htm`                | HTML passthrough                                                          | Yes               |
+| `.css`                         | CSS passthrough                                                           | No                |
+| `.js`, `.mjs`                  | JavaScript passthrough                                                    | No                |
+| `.json`                        | JSON passthrough                                                          | No                |
+| `.png`, `.jpg`, `.gif`, `.svg` | Image passthrough                                                         | No                |
+| `.pdf`                         | PDF passthrough                                                           | No                |
+| All others                     | Binary passthrough                                                        | No                |
 
 A directory serves its `default_index` file (`README.md` by default). Without one, and with `dir_index: false` (the
 default), it redirects (302) to the first page of the navigation tree, or answers 403 Forbidden when there is none.
@@ -33,7 +33,7 @@ With `dir_index: true` it renders a generated directory listing.
 ```bash
 curl http://localhost:8080/                          # README.md rendered as HTML
 curl http://localhost:8080/docs/guide                # docs/guide.md rendered as HTML
-curl -i http://localhost:8080/docs/guide.md          # 301 to /docs/guide
+curl http://localhost:8080/docs/guide.md             # docs/guide.md as enriched Markdown
 curl -H "Accept: text/markdown" http://localhost:8080/docs/guide   # raw Markdown source
 curl http://localhost:8080/assets/style.css          # CSS passthrough
 curl "http://localhost:8080/api/search?q=install"    # Full-text search (JSON)

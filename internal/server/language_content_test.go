@@ -216,9 +216,11 @@ func TestServer_PerLanguageSitemaps_ButNoIndex(t *testing.T) {
 // TestServer_ContentRoutes_PerLanguage_Redirects proves both redirect kinds work
 // inside a language subtree and target the language's own pages:
 //
-//   - extension stripping — "/fr/guide.md" 301s to the language-prefixed clean URL
-//     "/fr/guide" (not the unprefixed "/guide"), which then resolves against the
-//     per-language resolver. Regression test for docs/reviews/20260729.codebase-review.md §9.1.
+//   - extension stripping — "/fr/guide.md" serves the French page's Markdown with
+//     the language-prefixed canonical "/fr/guide" (not the unprefixed "/guide"),
+//     which resolves against the per-language resolver. Regression test for
+//     docs/reviews/20260729.codebase-review.md §9.1 (the 301 it pinned became the
+//     Markdown answer with D54).
 //   - redirect_from — only the default handler received URLRedirects before, so a
 //     French page's redirect_from was honoured only because the default pipeline
 //     indexed the fr/ directory, and it then pointed at the wrong language's page.
@@ -276,15 +278,19 @@ func TestServer_ContentRoutes_PerLanguage_Redirects(t *testing.T) {
 		},
 	})
 
-	// /fr/guide.md must 301 to the language-prefixed clean URL.
+	// /fr/guide.md serves the French page's Markdown (D54), naming the
+	// language-prefixed clean URL as canonical.
 	req := httptest.NewRequest(http.MethodGet, "/fr/guide.md", nil)
 	w := httptest.NewRecorder()
 	srv.server.Handler.ServeHTTP(w, req)
-	if w.Code != http.StatusMovedPermanently {
-		t.Fatalf("/fr/guide.md: status = %d, want 301", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("/fr/guide.md: status = %d, want 200", w.Code)
 	}
-	if loc := w.Header().Get("Location"); loc != "/fr/guide" {
-		t.Fatalf("/fr/guide.md: Location = %q, want %q", loc, "/fr/guide")
+	if body := w.Body.String(); !strings.Contains(body, "french-only-marker-3b2") {
+		t.Errorf("/fr/guide.md: body missing French marker\nbody: %s", body)
+	}
+	if link := w.Header().Get("Link"); link != `</fr/guide>; rel="canonical"` {
+		t.Fatalf("/fr/guide.md: Link = %q, want the /fr/guide canonical", link)
 	}
 
 	// The clean URL resolves against the per-language resolver and serves French.

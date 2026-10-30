@@ -1049,3 +1049,31 @@ set to `.gomddoc/static/`.
 - *Cost if wrong*: a site that replaced only `favicon.ico` shows the gomddoc "g" in Chromium until it adds the other
   files; the warning names them. The manifest's `theme_color` is the icon's blue whatever the theme, and its
   `background_color` is `theme.vars` `bg` or white, not a theme's own default background.
+
+## D54. Enriched Markdown at a Page's `.md` URL
+
+*2026-10-30*
+
+**Decision** (2026-10-30): a page's Markdown URL, its source path (`/guide.md`, `/docs/README.md`, `/fr-FR/guide.md`),
+answers 200 with the body the clean URL negotiates for `Accept: text/markdown` (the `MarkdownPassthroughRenderer`'s
+output: frontmatter merged with related docs and prev/next), `Content-Type: text/markdown; charset=utf-8` and
+`Link: <{clean URL}>; rel="canonical"`, absolute with `meta.domain` and root-relative without. The extension wins over
+`Accept`. The handler serves it on its own render path, negotiating with `[text/markdown]` and enriching under
+`PageURLPath`; `resolve.PathResolver.MarkdownURLPath` decides which URLs qualify (a Markdown file stripping mapped),
+so `ExtensionRedirect` still 301s every other stripped extension (`.html`), and a `.md` URL for a missing page is 404.
+Every HTML page links its Markdown from the shared `head-meta` partial with
+`<link rel="alternate" type="text/markdown">`, read from `PageContext.MarkdownURL`. `gomddoc build` writes the same body
+at the same path (`guide.md` beside `guide/index.html`) and no longer writes a `guide.md/index.html` redirect stub.
+There is no config key and no compatibility switch: `/guide.md` stops redirecting, which the guide and the
+`strip_extensions` doc tag say.
+
+- *Evidence*: Markdown was reachable only with `Accept: text/markdown`, which a pasted URL, a browser, a crawler or a
+  static host cannot send, and `/guide.md`, the URL people and agents guess, answered 301 to the HTML page. A static
+  build lost Markdown altogether.
+- *Alternatives*: keep the redirect and document the `Accept` header (agents rarely set it); a separate prefix such as
+  `/_md/guide` (a URL nobody guesses, and a second route table); a config switch for the old redirect (pre-1.0, one
+  behaviour is cheaper to keep right); serve the raw source file (it would lose the related docs and prev/next the
+  negotiated body carries).
+- *Cost if wrong*: a link or bookmark to `/guide.md` now shows Markdown in a browser instead of landing on the HTML
+  page. A crawler that ignores the canonical `Link` header could index both URLs. Build output grows by one Markdown
+  file per page.

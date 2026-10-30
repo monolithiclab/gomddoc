@@ -360,18 +360,19 @@ func TestIntegration_ExtensionStripping(t *testing.T) {
 			shouldContain:  "Getting started",
 		},
 		{
-			name:           "md extension redirects to extensionless",
+			// D54: the extension wins over Accept.
+			name:           "md URL serves the page's Markdown",
 			path:           "/guide.md",
 			acceptHeader:   "text/html",
-			expectedStatus: 301,
-			expectedLoc:    "/guide",
+			expectedStatus: 200,
+			shouldContain:  "# Guide\n\nUser guide content.",
 		},
 		{
-			name:           "nested md extension redirects",
+			name:           "nested md URL serves the page's Markdown",
 			path:           "/docs/intro.md",
 			acceptHeader:   "text/html",
-			expectedStatus: 301,
-			expectedLoc:    "/docs/intro",
+			expectedStatus: 200,
+			shouldContain:  "# Introduction",
 		},
 		{
 			name:           "non-stripped extension serves normally",

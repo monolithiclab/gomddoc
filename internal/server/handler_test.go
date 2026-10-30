@@ -771,7 +771,7 @@ func TestHandlerServeHTML_SourcePath(t *testing.T) {
 		want string
 	}{
 		{path: "/guide", want: "[docs/guide.md]"},
-		{path: "/api/reference.md", want: "[docs/api/reference.md]"},
+		{path: "/api/reference", want: "[docs/api/reference.md]"},
 		{path: "/api", want: "[docs/api/README.md]"},
 		{path: "/", want: "[docs/README.md]"},
 		{path: "/misc", want: "[]"},
@@ -817,9 +817,8 @@ func TestHandlerServeHTML_NoStatWithoutDomain(t *testing.T) {
 	handler := newSourcePathHandler(files, prov, &siteConfig, `[{{ .Page.SourcePath }}]`)
 
 	for url, want := range map[string]string{
-		"/guide.md": "[guide.md]",
-		"/guide":    "[guide.md]",
-		"/api":      "[api/README.md]",
+		"/guide": "[guide.md]",
+		"/api":   "[api/README.md]",
 	} {
 		w := httptest.NewRecorder()
 		handler.ServeContent(w, httptest.NewRequest("GET", url, nil))

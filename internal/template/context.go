@@ -28,9 +28,10 @@ type PageContextInput struct {
 	SourceFile string
 
 	// Renderer supplies the page data derived from Path and SourceFile — the
-	// breadcrumb trail and the source path. Passing the renderer rather than
-	// the results keeps them in agreement by construction. May be nil, in which
-	// case Breadcrumbs is nil and SourcePath is SourceFile.
+	// breadcrumb trail, the source path and the Markdown URL. Passing the
+	// renderer rather than the results keeps them in agreement by construction.
+	// May be nil, in which case Breadcrumbs is nil, SourcePath is SourceFile
+	// and MarkdownURL is "".
 	Renderer Renderer
 
 	// i18n
@@ -59,10 +60,12 @@ func BuildPageContext(in PageContextInput) *TemplateContext {
 	// Generated here, once, because both the layout's breadcrumb bar and the
 	// JSON-LD partial read PageContext.Breadcrumbs.
 	var breadcrumbs []breadcrumb.Breadcrumb
+	var markdownURL string
 	sourcePath := in.SourceFile
 	if in.Renderer != nil {
 		breadcrumbs = in.Renderer.Breadcrumbs(in.Path)
 		sourcePath = in.Renderer.SourcePath(in.SourceFile)
+		markdownURL = in.Renderer.MarkdownURL(in.SourceFile)
 	}
 
 	ctx := &TemplateContext{
@@ -80,6 +83,7 @@ func BuildPageContext(in PageContextInput) *TemplateContext {
 			Breadcrumbs: breadcrumbs,
 			ModTime:     in.ModTime,
 			SourcePath:  sourcePath,
+			MarkdownURL: markdownURL,
 		},
 	}
 	ctx.WithI18n(in.Lang, in.TFunc, in.Languages)

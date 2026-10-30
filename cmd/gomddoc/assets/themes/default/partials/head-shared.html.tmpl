@@ -1,6 +1,6 @@
 {{- /*
-    Shared head meta tags: canonical URL, prev/next, OpenGraph, Twitter Card,
-    viewport, color-scheme, and description. Used by all themes to avoid
+    Shared head meta tags: canonical URL, the page's Markdown alternate (D54),
+    prev/next, OpenGraph, Twitter Card, viewport, color-scheme, and description. Used by all themes to avoid
     duplicating the same ~20-line block in every head.html.tmpl.
 
     Themes call {{ template "head-meta" . }} after <meta charset> and <title>.
@@ -16,6 +16,8 @@
         {{ $desc := .Site.Meta.Description }}{{ with .Page.Meta.description }}{{ $desc = . }}{{ end }}
         {{ $url := canonicalURL .Page.Path }}{{ if $url }}
         <link rel="canonical" href="{{ $url }}">{{ end }}
+        {{ with .Page.MarkdownURL }}
+        <link rel="alternate" type="text/markdown" href="{{ . }}">{{ end }}
         {{ $feedURL := canonicalURL "/feed.xml" }}{{ if $feedURL }}
         <link rel="alternate" type="application/atom+xml" title="{{ .Site.Meta.Title }}" href="{{ $feedURL }}">{{ end }}
         {{ if .Page.PrevPage }}{{ $prevURL := canonicalURL .Page.PrevPage.Path }}{{ if $prevURL }}

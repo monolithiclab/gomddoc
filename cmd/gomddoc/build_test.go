@@ -463,60 +463,103 @@ func TestWalkAndBuildLang_CountsIntoSharedStats(t *testing.T) {
 	}
 }
 
-// The extension redirect stub must redirect on a static host (http.FileServer
-// stands in for one); see redirectStubPath.
-func TestBuildCmd_Run_ExtensionRedirectStubs(t *testing.T) {
+// serveHandler is what `gomddoc serve` answers for dir, for comparing build
+// output with serve without listening on a port.
+func serveHandler(t *testing.T, dir string) http.Handler {
+	t.Helper()
+	result, err := (&ServeCmd{Dir: dir, Port: ":8080"}).setup() // setup never listens
+	if err != nil {
+		t.Fatalf("serve setup: %v", err)
+	}
+	t.Cleanup(result.cleanup)
+	return result.httpServer.Handler()
+}
+
+// TestBuildCmd_Run_MarkdownFiles pins D54 in static output: a page's .md URL is
+// a file beside its HTML holding the body serve answers at that URL, so a
+// static host (http.FileServer stands in for one) serves the same URLs. Build
+// wrote a redirect stub there (guides/setup.md/index.html) before.
+func TestBuildCmd_Run_MarkdownFiles(t *testing.T) {
 	t.Parallel()
 
 	srcDir := t.TempDir()
 	outDir := filepath.Join(t.TempDir(), "out")
 
-	writeTestFile(t, srcDir, "README.md", "# Home\n")
-	writeTestFile(t, srcDir, "guides/setup.md", "# Setup\n")
+	// One navigation leaf, so neither page has prev/next: those carry build's
+	// trailing-slash URLs, as the built HTML does, and would differ from serve.
+	writeTestFile(t, srcDir, "README.md", "---\ntitle: Home\ntags: [docs]\n---\n# Home\n")
+	writeTestFile(t, srcDir, "guides/setup.md", "---\ntitle: Setup\ntags: [docs]\n---\n# Setup\n\nsetup body\n")
+	// The French tree has its own index, so its related docs differ from the
+	// default tree's: a language page must be enriched by its own pipeline.
+	writeTestFile(t, srcDir, "fr-FR/README.md", "---\ntitle: Accueil\ntags: [docs]\n---\n# Accueil\n")
+	writeTestFile(t, srcDir, "fr-FR/guides/setup.md", "---\ntitle: Installation\ntags: [docs]\n---\n# Installation\n")
 
 	cmd := &BuildCmd{Dir: srcDir, Output: outDir}
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// The page itself lands at the pretty path.
+	// The page itself still lands at the pretty path.
 	if page := readTestFile(t, filepath.Join(outDir, "guides", "setup"), "index.html"); !strings.Contains(page, "Setup") {
 		t.Errorf("guides/setup/index.html does not contain the page: %q", page)
 	}
 
 	host := http.FileServer(http.Dir(outDir))
-	get := func(target string) *httptest.ResponseRecorder {
-		w := httptest.NewRecorder()
-		host.ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
-		return w
+	served := serveHandler(t, srcDir)
+	for _, target := range []string{"/guides/setup.md", "/README.md", "/fr-FR/guides/setup.md"} {
+		static := httptest.NewRecorder()
+		host.ServeHTTP(static, httptest.NewRequest(http.MethodGet, target, nil))
+		if static.Code != http.StatusOK {
+			t.Fatalf("static GET %s = %d, want 200 (Location %q)", target, static.Code, static.Header().Get("Location"))
+		}
+		if ct := static.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") {
+			t.Errorf("static GET %s Content-Type = %q, want text/markdown", target, ct)
+		}
+
+		live := httptest.NewRecorder()
+		served.ServeHTTP(live, httptest.NewRequest(http.MethodGet, target, nil))
+		if live.Code != http.StatusOK {
+			t.Fatalf("serve GET %s = %d, want 200", target, live.Code)
+		}
+		if static.Body.String() != live.Body.String() {
+			t.Errorf("%s: build output differs from serve\nbuild:\n%s\nserve:\n%s", target, static.Body.String(), live.Body.String())
+		}
+		if !strings.Contains(static.Body.String(), "related_docs:") {
+			t.Errorf("%s: not the enriched Markdown:\n%s", target, static.Body.String())
+		}
 	}
 
-	// The extension URL redirects...
-	w := get("/guides/setup.md")
-	loc := w.Header().Get("Location")
-	if w.Code != http.StatusMovedPermanently || loc == "" {
-		t.Fatalf("GET /guides/setup.md = %d, Location %q; want 301 with a Location", w.Code, loc)
-	}
-
-	// ...to an HTML stub pointing at the pretty URL.
-	w = get("/guides/setup.md/")
-	stub := w.Body.String()
-	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
-		t.Errorf("stub Content-Type = %q, want text/html", ct)
-	}
-	if !strings.Contains(stub, `url=/guides/setup/"`) {
-		t.Errorf("the stub should redirect to /guides/setup/, got %q", stub)
-	}
-	if strings.Contains(stub, "Setup</h1>") {
-		t.Error("the stub holds the rendered page, not a redirect")
-	}
-
-	// A default index has no extensionless form, so it gets no stub.
-	if _, err := os.Stat(filepath.Join(outDir, "README.md")); !os.IsNotExist(err) {
-		t.Error("README.md stub should not exist — the default index's URL is the directory")
+	// The enriched body replaced the source file, not joined it in a stub
+	// directory.
+	if info, err := os.Stat(filepath.Join(outDir, "guides", "setup.md")); err != nil || !info.Mode().IsRegular() {
+		t.Errorf("guides/setup.md should be a file: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "guides", "setup.html")); !os.IsNotExist(err) {
-		t.Error("guides/setup.html should not exist — the stub carries the source extension, not .html")
+		t.Error("guides/setup.html should not exist")
+	}
+}
+
+// TestServe_DefaultThemeLinksMarkdown pins the alternate link through the
+// embedded default theme's shared head partial.
+func TestServe_DefaultThemeLinksMarkdown(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home\n")
+	writeTestFile(t, srcDir, "guides/setup.md", "# Setup\n")
+
+	h := serveHandler(t, srcDir)
+	for target, want := range map[string]string{
+		"/guides/setup": `<link rel="alternate" type="text/markdown" href="/guides/setup.md">`,
+		"/":             `<link rel="alternate" type="text/markdown" href="/README.md">`,
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.Header.Set("Accept", "text/html")
+		h.ServeHTTP(w, req)
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("GET %s missing %s", target, want)
+		}
 	}
 }
 
@@ -1350,14 +1393,19 @@ func TestBuildCmd_Run_MultiLanguage(t *testing.T) {
 		t.Errorf("fr-FR/feed.xml entry IDs = %v, want %v", got, wantFrIDs)
 	}
 
-	// redirect_from and extension redirects are generated per language. Neither
-	// existed before the default pipeline stopped indexing fr-FR: the default
+	// redirect_from redirects are generated per language. They did not exist
+	// before the default pipeline stopped indexing fr-FR: the default
 	// pipeline owned both, and it emitted default-language targets.
 	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "ancien-guide"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide/"`) {
 		t.Errorf("fr-FR/ancien-guide/index.html should redirect to /fr-FR/guide/, got:\n%s", got)
 	}
-	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "guide.md"), "index.html"); !strings.Contains(got, `url=/fr-FR/guide/"`) {
-		t.Errorf("fr-FR/guide.md/index.html should redirect to /fr-FR/guide/, got:\n%s", got)
+	// The French page's .md URL is its enriched Markdown (D54), linked from
+	// its HTML with the language prefix.
+	if got := readTestFile(t, filepath.Join(outDir, "fr-FR"), "guide.md"); !strings.Contains(got, "title: Guide") || !strings.Contains(got, "# Guide") {
+		t.Errorf("fr-FR/guide.md should hold the French page's Markdown, got:\n%s", got)
+	}
+	if got := readTestFile(t, filepath.Join(outDir, "fr-FR", "guide"), "index.html"); !strings.Contains(got, `<link rel="alternate" type="text/markdown" href="/fr-FR/guide.md">`) {
+		t.Errorf("fr-FR/guide/index.html should link /fr-FR/guide.md as its Markdown alternate")
 	}
 
 	// The default-language sitemap must not index the fr-FR pages: they already
@@ -1494,8 +1542,13 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 
 	// The whole point: no rendered URL may carry the source extension. URLs
 	// sit in attributes and JSON-LD URL fields, relative or absolute; the
-	// annotations configuration's "sourcePath" names the file on purpose.
-	if leak := mdURLLeak.FindString(alpha); leak != "" {
+	// annotations configuration's "sourcePath" names the file on purpose, and
+	// the Markdown alternate link names the .md URL on purpose (D54).
+	const mdAlternate = `<link rel="alternate" type="text/markdown" href="/guides/alpha.md">`
+	if !strings.Contains(alpha, mdAlternate) {
+		t.Errorf("guides/alpha/index.html missing %s", mdAlternate)
+	}
+	if leak := mdURLLeak.FindString(strings.Replace(alpha, mdAlternate, "", 1)); leak != "" {
 		t.Errorf("guides/alpha/index.html leaks the .md path in %s:\n%s", leak, alpha)
 	}
 
@@ -1531,11 +1584,6 @@ func TestBuildCmd_Run_PagePathIsTheURLPath(t *testing.T) {
 	tag := readTestFile(t, filepath.Join(outDir, "tags", "howto"), "index.html")
 	if !strings.Contains(tag, `<link rel="canonical" href="https://build.example.com/tags/howto/">`) {
 		t.Error("tags/howto/index.html canonical lacks the trailing slash")
-	}
-
-	// The extension redirect stub points straight at the published URL.
-	if stub := readTestFile(t, filepath.Join(outDir, "guides", "alpha.md"), "index.html"); !strings.Contains(stub, `url=/guides/alpha/"`) {
-		t.Errorf("guides/alpha.md stub should redirect to /guides/alpha/, got:\n%s", stub)
 	}
 
 	// Navigation and prev/next index on clean paths, so a `.md` Page.Path made
@@ -1593,6 +1641,7 @@ func TestBuildCmd_Run_DefaultThemeLinksAndHreflang(t *testing.T) {
 		`<link rel="alternate" hreflang="en-US" href="/guides/alpha/">`,
 		`<link rel="alternate" hreflang="x-default" href="/guides/alpha/">`,
 		`<link rel="alternate" hreflang="fr-FR" href="/fr-FR/guides/alpha/">`,
+		`<link rel="alternate" type="text/markdown" href="/guides/alpha.md">`,
 	} {
 		if !strings.Contains(alpha, want) {
 			t.Errorf("guides/alpha/index.html missing %s", want)

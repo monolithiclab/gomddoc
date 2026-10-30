@@ -416,15 +416,18 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_StripsExtensionForSelfExclusion(t *
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
 	content := []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")
 
-	// Caller passes the URL-stripped form, no .md suffix.
-	result, err := e.Enrich(context.Background(), content, "/guide")
-	if err != nil {
-		t.Fatalf("Enrich() error = %v", err)
-	}
+	// Serve passes the URL-stripped form, no .md suffix; build passes the
+	// published URL, which ends in "/" (resolve.BuildOptions.TrailingSlash).
+	for _, pagePath := range []string{"/guide", "/guide/"} {
+		result, err := e.Enrich(context.Background(), content, pagePath)
+		if err != nil {
+			t.Fatalf("Enrich(%q) error = %v", pagePath, err)
+		}
 
-	for _, doc := range result.RelatedDocs {
-		if doc.Path == "/guide.md" {
-			t.Errorf("RelatedDocs should exclude the current page even when caller passes the stripped path; got %v", result.RelatedDocs)
+		for _, doc := range result.RelatedDocs {
+			if doc.Path == "/guide.md" {
+				t.Errorf("Enrich(%q): RelatedDocs should exclude the current page; got %v", pagePath, result.RelatedDocs)
+			}
 		}
 	}
 }

@@ -144,8 +144,9 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 
 	// Normalize the .md suffix so a request whose URL has been
 	// extension-stripped (/foo) still matches the metadata index's raw path
-	// (/foo.md) for self-exclusion.
-	currentKey := strings.TrimSuffix(currentPath, ".md")
+	// (/foo.md) for self-exclusion, and the trailing slash build's published
+	// URLs carry (/foo/), or every built page listed itself.
+	currentKey := strings.TrimSuffix(strings.TrimSuffix(currentPath, "/"), ".md")
 
 	// related is kept sorted and never grows past maxRelatedDocs, so its last
 	// element is the worst candidate admitted so far. Anything ordered after it

@@ -131,8 +131,9 @@ afterwards. It maps clean URLs to real files and back:
 - **Exclusions**: Hidden and `exclude`-matched files get no mapping at all, so they are unreachable at their clean URL
   as well as their real path
 
-The 301 from `/docs/guide.md` to `/docs/guide` is issued by the `ExtensionRedirect` middleware, which consults the
-resolver.
+A page's Markdown URL is its file path, `/docs/guide.md` for `docs/guide.md` (`MarkdownURLPath`, D54): the
+`ExtensionRedirect` middleware passes it through, and the handler serves the page's Markdown there. Any other stripped
+extension (`/about.html`) gets a 301 to the clean URL from `ExtensionRedirect`, which consults the resolver.
 
 ```go
 type PathResolver struct {
@@ -629,8 +630,9 @@ directory also has an `index.md`. File processing is parallelized with an `errgr
 `runtime.NumCPU()`, and counts accumulate into one shared `*buildStats`.
 
 Besides the pages, build writes the static-asset overlay to `_assets/`, `site.webmanifest`, `robots.txt`, `sitemap.xml` and `feed.xml`
-(when `meta.domain` is set), `sitemap-index.xml` (see below), `redirect_from` stub pages, extension redirect stubs
-(`guide.md/index.html` → `/guide`), tag pages (`tags/index.html`, `tags/{tag}/index.html`), and `404.html` rendered through
+(when `meta.domain` is set), `sitemap-index.xml` (see below), `redirect_from` stub pages, each Markdown page's enriched
+Markdown at its source path (`guide.md`, rendered by the same passthrough renderer serve negotiates, D54), extension
+redirect stubs for other stripped extensions (`about.html` → `/about/`), tag pages (`tags/index.html`, `tags/{tag}/index.html`), and `404.html` rendered through
 `ErrorPage.Render`.
 
 ### 12. Middleware Chain
@@ -668,8 +670,8 @@ highest group that wants it — attaching it to a leaf means every sibling added
    middleware matches the *request* path: with `strip_extensions` on, `/TODO` does not match the `TODO.md` pattern,
    which is why exclusion also has to be enforced in each content index rather than here alone. Its 404 is written
    through the same `ErrorPage` as the handler it wraps — see [Error Responses](#error-responses).
-8. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/docs/guide.md` → `/docs/guide`) via
-   301.
+8. **ExtensionRedirect** — Redirects requests with stripped extensions (e.g., `/about.html` → `/about`) via 301. A
+   page's Markdown URL (`/docs/guide.md`) passes through to the handler, which serves the page's Markdown (D54).
 
 Metrics wrapping these three means their 405/404/301 responses are counted too, not just handler hits.
 
@@ -962,6 +964,12 @@ sequenceDiagram
     T-->>H: Templated HTML
     H-->>C: 200 OK (HTML + ETag + Cache-Control + Vary: Accept)
 ```
+
+A page's Markdown URL (`GET /docs/guide.md`, D54) takes the same path with two differences. The provider reads
+`docs/guide.md` directly, and `resolver.MarkdownURLPath` recognises it, so the handler negotiates with
+`[text/markdown]` whatever the `Accept` header says and enriches under `PageURLPath` (`/docs/guide`), not the request
+path. The `MarkdownPassthroughRenderer` result goes out raw with `Link: </docs/guide>; rel="canonical"` (absolute when
+`meta.domain` is set) and no `Vary: Accept`: the body is the one `/docs/guide` negotiates for `Accept: text/markdown`.
 
 ### Non-HTML File Request
 

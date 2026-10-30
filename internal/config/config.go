@@ -107,7 +107,7 @@ type SiteConfig struct {
 	Highlighting    HighlightConfig `env:"HIGHLIGHTING" yaml:"highlighting"`
 	Search          SearchConfig    `env:"SEARCH" yaml:"search"`
 	Exclude         []string        `yaml:"exclude" doc:"Glob patterns (content-root relative) hidden from every route, index, navigation and build output. A trailing / matches a directory."`
-	StripExtensions []string        `yaml:"strip_extensions" doc:"Extensions removed from served URLs (/guide instead of /guide.md); the extension-ful URL redirects. Each must start with a dot."`
+	StripExtensions []string        `yaml:"strip_extensions" doc:"Extensions removed from served URLs (/guide instead of /guide.md). The extension-ful URL redirects, except a Markdown page's own (/guide.md), which serves its Markdown instead of redirecting. Each must start with a dot."`
 }
 
 // SearchConfig holds search settings

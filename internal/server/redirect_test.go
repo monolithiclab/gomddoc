@@ -152,13 +152,16 @@ func TestExtensionRedirect(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{
-		"guide.md":      &fstest.MapFile{Data: []byte("# Guide")},
-		"docs/intro.md": &fstest.MapFile{Data: []byte("# Intro")},
-		"image.jpg":     &fstest.MapFile{Data: []byte{0xFF, 0xD8}},
+		"guide.md":       &fstest.MapFile{Data: []byte("# Guide")},
+		"docs/intro.md":  &fstest.MapFile{Data: []byte("# Intro")},
+		"about.html":     &fstest.MapFile{Data: []byte("<p>About</p>")},
+		"docs/team.html": &fstest.MapFile{Data: []byte("<p>Team</p>")},
+		"image.jpg":      &fstest.MapFile{Data: []byte{0xFF, 0xD8}},
 	}
 
-	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(mimeType string) bool {
-		return mimeType == "text/markdown"
+	strip := []string{".md", ".html"}
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: strip, HasRenderer: func(mimeType string) bool {
+		return mimeType == "text/markdown" || mimeType == "text/html"
 	}})
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -172,16 +175,27 @@ func TestExtensionRedirect(t *testing.T) {
 		wantLoc    string
 	}{
 		{
-			name:       "md extension redirects to clean URL",
-			path:       "/guide.md",
+			name:       "stripped extension redirects to clean URL",
+			path:       "/about.html",
 			wantStatus: http.StatusMovedPermanently,
-			wantLoc:    "/guide",
+			wantLoc:    "/about",
 		},
 		{
-			name:       "nested md extension redirects",
-			path:       "/docs/intro.md",
+			name:       "nested stripped extension redirects",
+			path:       "/docs/team.html",
 			wantStatus: http.StatusMovedPermanently,
-			wantLoc:    "/docs/intro",
+			wantLoc:    "/docs/team",
+		},
+		{
+			// D54: a page's .md URL serves its Markdown, so the handler gets it.
+			name:       "md URL of a page passes through",
+			path:       "/guide.md",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "nested md URL of a page passes through",
+			path:       "/docs/intro.md",
+			wantStatus: http.StatusOK,
 		},
 		{
 			name:       "no extension passes through",
@@ -210,7 +224,7 @@ func TestExtensionRedirect(t *testing.T) {
 		},
 	}
 
-	middleware := ExtensionRedirect(resolver, []string{".md"}, "")
+	middleware := ExtensionRedirect(resolver, strip, "")
 	handler := middleware(okHandler)
 
 	for _, tt := range tests {

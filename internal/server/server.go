@@ -264,6 +264,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 			RedirectFinder:   lp.RedirectFinder,
 			URLRedirects:     lp.URLRedirects,
 			Resolver:         lp.Resolver,
+			BasePath:         prefix,
 			Lang:             lang,
 			TFunc:            langTFunc,
 			Languages:        template.WithActiveLang(allLanguageInfos, lang),
@@ -292,7 +293,8 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		// StripPrefix removes the /{lang} segment so the language provider,
 		// resolver, exclusion, and handler all operate on content-root-relative
 		// paths — matching build mode, which walks the language sub-FS directly.
-		// ExtensionRedirect re-adds the prefix to its 301 Location via basePath.
+		// ExtensionRedirect re-adds the prefix to its 301 Location via basePath,
+		// and the handler re-adds it to a .md URL's canonical Link via Lang.
 		langContent := auth.Subgroup(prefix,
 			stripPathPrefix(prefix),
 			NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),
@@ -307,7 +309,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	content := auth.Subgroup("",
 		NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),     // Only allow GET and HEAD
 		ContentExclusion(cfg.Site.Exclude, handler.ErrorPage()),        // Block hidden files and user-configured exclusions
-		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions, ""), // Redirect .md URLs to clean URLs
+		ExtensionRedirect(opts.Resolver, cfg.Site.StripExtensions, ""), // Redirect stripped extensions, a page's .md URL excepted
 	)
 	content.HandleFunc("/", handler.ServeContent)
 
@@ -339,6 +341,10 @@ func ListenURL(addr string) string {
 	}
 	return "http://" + net.JoinHostPort(host, port)
 }
+
+// Handler returns the root handler Start serves, so a caller (build's tests
+// comparing static output with serve) can answer a request without a listener.
+func (s *HTTPServer) Handler() http.Handler { return s.server.Handler }
 
 // Start starts the HTTP server. When ctx is cancelled, the server is
 // gracefully shut down. Callers may also use Shutdown() directly.

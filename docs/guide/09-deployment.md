@@ -66,9 +66,9 @@ Output file names depend on `strip_extensions`:
 
 | Source | Without `strip_extensions` | With `strip_extensions` |
 |---|---|---|
-| `guide.md` | `guide.html` | `guide/index.html`, plus a redirect stub at `guide.md` pointing to `/guide` |
-| `README.md` (default index) | `index.html` | `index.html` |
-| `index.md` | `index.html` | `index.html` |
+| `guide.md` | `guide.html` | `guide/index.html`, plus the page's enriched Markdown at `guide.md` |
+| `README.md` (default index) | `index.html` | `index.html`, plus its Markdown at `README.md` |
+| `index.md` | `index.html` | `index.html`, plus its Markdown at `index.md` |
 
 When a directory has both `index.md` and `README.md`, `index.md` becomes `index.html` and the README keeps its own
 name (`README.html`, or `README/index.html` with `strip_extensions`).
@@ -76,6 +76,8 @@ name (`README.html`, or `README/index.html` with `strip_extensions`).
 The output includes:
 
 - Rendered HTML for all markdown files (with navigation, breadcrumbs, TOC, styling)
+- Each page's enriched Markdown at its source path (`guide.md`), with `strip_extensions` on: the body `serve` answers
+  at that URL, which every HTML page links as its `text/markdown` alternate
 - Non-markdown files copied as-is (images, PDFs, etc.)
 - `robots.txt` — always generated; its `Sitemap:` line is present only when `meta.domain` is set
 - `site.webmanifest` — always generated, named after `meta.title`; the icons it lists are in `_assets/`
@@ -108,7 +110,9 @@ theme:
 ```
 
 Content negotiation is also gone: a static host serves the files as they are, so a request with
-`Accept: text/markdown` gets the HTML page.
+`Accept: text/markdown` gets the HTML page. Ask for the page's `.md` URL instead (`/guide.md`), which the build writes
+as a file: hosts that know the `.md` extension serve it as `text/markdown`. A static host sends no canonical `Link`
+header with it.
 
 The output is a self-contained directory ready for:
 

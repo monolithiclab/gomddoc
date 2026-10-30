@@ -221,6 +221,26 @@ func (r *PathResolver) PageURLPath(realPath, defaultIndex string) string {
 	return "/" + realPath
 }
 
+// MarkdownURLPath returns the URL path that serves a page's enriched Markdown
+// (D54): the Markdown file's own path, "/guide.md" for guide.md and
+// "/docs/README.md" for the page at /docs. ok is false for a file stripping did
+// not map, whose real path is its page URL and serves HTML, and for a mapped
+// file that is not Markdown (about.html), whose extension URL still redirects.
+// Leading "/" on realPath is optional. A nil receiver answers false.
+func (r *PathResolver) MarkdownURLPath(realPath string) (urlPath string, ok bool) {
+	if r == nil {
+		return "", false
+	}
+	realPath = strings.TrimPrefix(realPath, "/")
+	if _, mapped := r.toClean[realPath]; !mapped {
+		return "", false
+	}
+	if negotiate.NormalizeMimeType(negotiate.DetectMIME(realPath)) != "text/markdown" {
+		return "", false
+	}
+	return "/" + realPath, true
+}
+
 // DirURL returns urlPath, the URL of a page published as a directory's
 // index.html, with the trailing slash BuildOptions.TrailingSlash asks for.
 // Pages not derived from a file (tag listings) go through it too. A nil

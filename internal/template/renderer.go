@@ -62,6 +62,11 @@ type Renderer interface {
 	// as a path relative to the git work tree root; "" for "".
 	// BuildPageContext calls it; templates read PageContext.SourcePath.
 	SourcePath(file string) string
+
+	// MarkdownURL returns the site URL serving file's enriched Markdown (D54),
+	// language prefix included, or "" when the page has none.
+	// BuildPageContext calls it; templates read PageContext.MarkdownURL.
+	MarkdownURL(file string) string
 }
 
 // LanguageInfo holds display information for a language.
@@ -137,6 +142,7 @@ type PageContext struct {
 	Breadcrumbs []breadcrumb.Breadcrumb // Trail from the site root to this page
 	ModTime     time.Time               // Source file mtime; zero when unknown (see seo.LastModified)
 	SourcePath  string                  // Source file relative to the git work tree root; "" for a generated listing
+	MarkdownURL string                  // URL of the page's enriched Markdown (/guide.md, D54); "" when it has none
 }
 
 // Feature returns whether a named feature is enabled for this page.
@@ -737,6 +743,16 @@ func (h *HTMLRenderer) SourcePath(file string) string {
 		return ""
 	}
 	return path.Join(h.sourcePrefix, file)
+}
+
+// MarkdownURL returns the site URL of file's enriched Markdown, the language
+// prefix applied as contentURL applies it, or "" when file has no Markdown URL
+// (resolve.PathResolver.MarkdownURLPath).
+func (h *HTMLRenderer) MarkdownURL(file string) string {
+	if u, ok := h.resolver.MarkdownURLPath(file); ok {
+		return h.langPrefix + u
+	}
+	return ""
 }
 
 // filterTOC returns a filtered list of TOCNode children for template rendering.

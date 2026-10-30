@@ -597,6 +597,9 @@ features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggle
 - **Mermaid** — guarded by `{{ .Feature "mermaid" }}`. Script for diagram rendering (theme-aware: dark/light).
 - **Canonical URLs and Open Graph tags** via `{{ canonicalURL .Page.Path }}` when domain is configured, or by calling
   the default theme's `{{ template "head-meta" . }}`
+- **Markdown alternate link** — `head-meta` emits `<link rel="alternate" type="text/markdown">` to the page's `.md` URL
+  (see [Markdown URLs](12-advanced/01-http-behavior.md#markdown-urls)); a theme with its own head reads
+  `{{ .Page.MarkdownURL }}`, empty when the page has none
 - **JSON-LD** via `{{ template "jsonld" . }}`
 - **Edit link** via `{{ editURL .Page.Path }}` (the default theme's `footer` partial)
 - **Error layout** — `layouts/error.html.tmpl`, reading `.Page.Meta.error_code`, `error_title` and `error_message`

@@ -25,6 +25,13 @@ type MediaType struct {
 	Q       float64 // Quality factor (0.0-1.0), defaults to 1.0
 }
 
+// AcceptMarkdown is the Accept list a page's Markdown URL (/guide.md) is
+// negotiated with, in serve and build alike: the extension wins over the
+// request's own Accept header (D54). A fresh slice per call.
+func AcceptMarkdown() []MediaType {
+	return []MediaType{{Type: "text", Subtype: "markdown", Q: 1.0}}
+}
+
 // Specificity ranks a media range per RFC 9110 §12.5.1, "media ranges can be
 // overridden by more specific media ranges": exact=3, type/*=2, */*=1.
 //

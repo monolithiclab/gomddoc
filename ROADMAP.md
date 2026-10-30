@@ -815,7 +815,8 @@ of a decision risks a second divergence to unwind later:
    does a global DFS from the root, so `/guide/` with no index redirects to the site's first page,
    not the first page under `/guide/`. Independent, low-effort fixes.
 5. **Misc correctness, MEDIUM, independent fixes**: index pages appear in their own
-   related-docs list in serve; git submodules misclassified as directories abort the whole build;
+   related-docs list, in serve and (since build enriches under the page URL) in build, and now in their `.md` body
+   too (D54; the trailing-slash case that made every built page list itself is fixed); git submodules misclassified as directories abort the whole build;
    `.well-known` silently dropped from git-backed sites; feed order nondeterministic on mtime ties;
    snippet body truncates on a byte boundary (invalid UTF-8); non-root index canonical URLs
    miss a trailing slash; two frontmatter parsers disagree on what counts as frontmatter (raw YAML

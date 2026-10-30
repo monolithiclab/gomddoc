@@ -242,11 +242,15 @@ func (b *BuildCmd) Run() error {
 		}
 
 		// The language walk runs over the language sub-FS, so its file paths are
-		// language-relative: only that language's own resolver and exclude list
-		// apply.
+		// language-relative: only that language's own pipeline applies — its
+		// resolver, exclude list, enrichers (navigation, related docs over its
+		// own index) and template renderer (language-prefixed URLs), as serve's
+		// language handler uses them.
 		langBC := *bc
 		langBC.exclude = langPipe.Exclude
 		langBC.resolver = langPipe.Resolver
+		langBC.enricherRegistry = langPipe.EnricherRegistry
+		langBC.templateRenderer = langPipe.TemplateRenderer
 		langBC.languageInfos = tmpl.WithActiveLang(languageInfos, lang)
 		langBC.lang = lang
 		langBC.tFunc = bundle.TFunc(lang)
@@ -523,6 +527,24 @@ func (b *BuildCmd) buildFile(
 	}
 	stats.totalBytes.Add(int64(len(rendered)))
 
+	// The page's Markdown URL (D54) is a file a static host serves as is,
+	// rendered as serve renders that URL: negotiated as text/markdown, from the
+	// page's own enrichment.
+	if mdURL, ok := bc.resolver.MarkdownURLPath(filePath); ok {
+		mdRenderer, _, mdErr := bc.registry.Get(mimeType, negotiate.AcceptMarkdown())
+		if mdErr != nil {
+			return fmt.Errorf("markdown renderer for %s: %w", filePath, mdErr)
+		}
+		mdResult, mdErr := mdRenderer.Render(ctx, content, enrichment)
+		if mdErr != nil {
+			return fmt.Errorf("render markdown %s: %w", filePath, mdErr)
+		}
+		if err := b.writeOutputFile(path.Join(outputPrefix, strings.TrimPrefix(mdURL, "/")), mdResult.Content); err != nil {
+			return err
+		}
+		stats.totalBytes.Add(int64(len(mdResult.Content)))
+	}
+
 	stats.markdownFiles.Add(1)
 	slog.Debug("Built", slog.String("file", filePath), slog.String("output", outPath))
 
@@ -708,8 +730,9 @@ func redirectStubPath(urlPath string) string {
 }
 
 // generateExtensionRedirects generates HTML redirect files so extension-bearing
-// URLs still work on static hosts: guide.md becomes guide.md/index.html, a
-// meta-refresh page pointing at /guide/ (see redirectStubPath).
+// URLs still work on static hosts: guide.html becomes a meta-refresh page
+// pointing at /guide/ (see redirectStubPath). A Markdown file gets none: its
+// URL serves the page's Markdown, which buildFile writes there (D54).
 // Default index files (e.g., README.md) are skipped — their URL is the
 // directory path, not the extensionless form.
 //
@@ -727,6 +750,9 @@ func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, de
 	}
 	for realPath := range resolver.AllMappings() {
 		if resolve.IsDefaultIndex(realPath, defaultIndex) {
+			continue
+		}
+		if _, isMarkdown := resolver.MarkdownURLPath(realPath); isMarkdown {
 			continue
 		}
 		target := langPrefix + resolver.PageURLPath(realPath, defaultIndex)

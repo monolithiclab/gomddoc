@@ -154,8 +154,33 @@ curl -H "Accept: text/markdown" http://localhost:8080/docs/guide
 curl -H "Accept: text/html" http://localhost:8080/docs/guide
 ```
 
-Request the extensionless URL: `/docs/guide.md` answers `301` to `/docs/guide` before negotiation runs (see
-[Extension Redirect Middleware](#extension-redirect-middleware)), and `curl` does not follow redirects without `-L`.
+### Markdown URLs
+
+A page's `.md` URL, its source path, returns the same Markdown without any header: a pasted link, a browser or a
+crawler can ask for it.
+
+```bash
+curl -i http://localhost:8080/docs/guide.md
+# HTTP/1.1 200 OK
+# Content-Type: text/markdown; charset=utf-8
+# Link: </docs/guide>; rel="canonical"
+```
+
+- **Same body:** byte for byte what `/docs/guide` returns for `Accept: text/markdown`, generated frontmatter included.
+- **The extension wins over `Accept`:** `/docs/guide.md` with `Accept: text/html` still gets Markdown, and the
+  response carries no `Vary: Accept`.
+- **Canonical header:** `Link` names the clean URL, absolute (`https://docs.example.com/docs/guide`) when `meta.domain`
+  is set and root-relative without it.
+- **Every page links it:** the HTML `<head>` carries
+  `<link rel="alternate" type="text/markdown" href="/docs/guide.md">`, with the language prefix on a translated page
+  (`/fr-FR/docs/guide.md`). Themes get it from the shared `head-meta` partial.
+- **Directory pages:** `/docs/README.md` (and `/docs/index.md`) serve the directory page's Markdown.
+- **Missing pages:** a `.md` URL for a page that does not exist is `404`, not a redirect.
+- **Static builds:** `gomddoc build` writes the same body at the same path (`docs/guide.md`), so a static host serves
+  these URLs too.
+
+It needs `.md` (or `.markdown`) in `strip_extensions`, the default: without stripping, `/docs/guide.md` is the page's
+only URL and serves HTML. Before D54, `/docs/guide.md` answered `301` to `/docs/guide`.
 
 ### Error Handling
 
@@ -211,17 +236,14 @@ The `ExtensionRedirect` middleware intercepts requests that include a strippable
 issues a `301 Moved Permanently` redirect to the canonical extensionless URL:
 
 ```
-GET /guide/setup.md  →  301 → /guide/setup
-GET /guide/setup     →  (passes through to handler)
+GET /guide/about.html  →  301 → /guide/about
+GET /guide/setup.md    →  (passes through: the page's Markdown URL)
+GET /guide/setup       →  (passes through to handler)
 ```
 
-The redirect only fires when the resolver has a mapping for the requested file. Requests with
-extensions not in `strip_extensions` (e.g., `.css`, `.png`) pass through unmodified.
-
-> [!WARNING]
-> Known bug, tracked in `docs/reviews/20260729.codebase-review.md`: the redirect target is the resolver's clean path, which keeps a default index
-> file's name. `/guide/README.md` redirects to `/guide/README`, not `/guide/`; `serve` answers that URL, but
-> `build` never writes it.
+The redirect only fires when the resolver has a mapping for the requested file, and never for a Markdown page's own
+URL, which serves its Markdown (see [Markdown URLs](#markdown-urls)). Requests with extensions not in
+`strip_extensions` (e.g., `.css`, `.png`) pass through unmodified.
 
 ### Handler Resolution
 
@@ -261,13 +283,13 @@ Content requests pass through the middleware chain in this order (outermost firs
 5. **stripPathPrefix** — per-language routes only; removes the `/{lang}` segment
 6. **MethodFilter** — 405 for anything but GET and HEAD
 7. **ContentExclusion** — blocks hidden files (dotfiles) and user-configured exclude patterns
-8. **ExtensionRedirect** — redirects `.md` (or other stripped extensions) to extensionless URLs
+8. **ExtensionRedirect** — redirects stripped extensions (`.html`) to extensionless URLs; a page's `.md` URL passes
+   through
 9. **Handler** — resolves path, reads content, renders, and responds
 
 Steps 2 and 3 sit above the filters on purpose: that is what makes the 405s, the 404s from
 `ContentExclusion` and the 301s from `ExtensionRedirect` show up in `http_requests_total` at all.
-The redirect middleware runs before the handler so that extension-bearing requests never reach
-the rendering pipeline — they are redirected immediately.
+The redirect middleware runs before the handler so that redirected requests never reach the rendering pipeline.
 
 ### Build Mode
 
