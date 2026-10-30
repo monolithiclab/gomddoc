@@ -167,7 +167,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Enrich content (extract metadata, TOC, navigation, related docs)
-	enrichment, err := h.enricherRegistry.Get(normalized).Enrich(r.Context(), content, pagePath)
+	enrichment, err := h.enricherRegistry.Get(normalized).Enrich(r.Context(), content, pagePath, sourceFile)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return

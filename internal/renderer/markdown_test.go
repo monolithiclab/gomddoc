@@ -317,7 +317,7 @@ func TestHeadingSlugs(t *testing.T) {
 			t.Parallel()
 
 			enrich := enricher.NewMarkdownEnricher(enricher.MarkdownEnricherOptions{})
-			data, err := enrich.Enrich(context.Background(), []byte(tt.input), "/test.md")
+			data, err := enrich.Enrich(context.Background(), []byte(tt.input), "/test.md", "/test.md")
 			if err != nil {
 				t.Fatalf("Enrich() error = %v", err)
 			}

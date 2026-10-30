@@ -18,7 +18,7 @@ func TestNoOpEnricher_Enrich(t *testing.T) {
 	t.Parallel()
 	e := &NoOpEnricher{}
 
-	result, err := e.Enrich(context.Background(), []byte("some content"), "/test.txt")
+	result, err := e.Enrich(context.Background(), []byte("some content"), "/test.txt", "/test.txt")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}

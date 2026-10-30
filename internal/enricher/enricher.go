@@ -70,8 +70,11 @@ type Enricher interface {
 	// SupportedMimeTypes returns the MIME types this enricher handles.
 	SupportedMimeTypes() []string
 
-	// Enrich extracts structured data from content at the given path.
-	Enrich(ctx context.Context, content []byte, path string) (*EnrichmentData, error)
+	// Enrich extracts structured data from content: the page published at
+	// pagePath (its URL path, which navigation and prev/next key on), read
+	// from sourceFile (content-root-relative, leading "/" optional; "" for
+	// none), which the page's own related docs leave out.
+	Enrich(ctx context.Context, content []byte, pagePath, sourceFile string) (*EnrichmentData, error)
 }
 
 // EnricherRegistry manages enricher mappings by input MIME type.

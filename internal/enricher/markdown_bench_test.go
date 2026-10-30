@@ -187,7 +187,7 @@ func BenchmarkMarkdownEnricher_Enrich(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				_, _ = e.Enrich(context.Background(), tt.content, "test.md")
+				_, _ = e.Enrich(context.Background(), tt.content, "test.md", "test.md")
 			}
 		})
 	}
@@ -233,7 +233,7 @@ func BenchmarkMarkdownEnricher_RelatedDocs(b *testing.B) {
 			e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
 			b.ReportAllocs()
 			for b.Loop() {
-				_, _ = e.Enrich(context.Background(), doc, "/current.md")
+				_, _ = e.Enrich(context.Background(), doc, "/current.md", "/current.md")
 			}
 		})
 	}

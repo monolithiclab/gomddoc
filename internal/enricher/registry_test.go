@@ -16,7 +16,7 @@ func (m *mockEnricher) SupportedMimeTypes() []string {
 	return m.mimeTypes
 }
 
-func (m *mockEnricher) Enrich(_ context.Context, _ []byte, _ string) (*EnrichmentData, error) {
+func (m *mockEnricher) Enrich(_ context.Context, _ []byte, _, _ string) (*EnrichmentData, error) {
 	return &EnrichmentData{
 		Metadata: map[string]any{"enricher": m.name},
 	}, nil
@@ -28,7 +28,7 @@ func TestDefaultEnricherRegistry_Get_Registered(t *testing.T) {
 	reg.Register(&mockEnricher{name: "markdown", mimeTypes: []string{"text/markdown"}})
 
 	e := reg.Get("text/markdown")
-	result, err := e.Enrich(context.Background(), nil, "")
+	result, err := e.Enrich(context.Background(), nil, "", "")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -45,7 +45,7 @@ func TestDefaultEnricherRegistry_Get_Fallback(t *testing.T) {
 
 	// Request an unregistered type — should get NoOp
 	e := reg.Get("application/json")
-	result, err := e.Enrich(context.Background(), nil, "")
+	result, err := e.Enrich(context.Background(), nil, "", "")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -63,7 +63,7 @@ func TestDefaultEnricherRegistry_Get_NormalizesCharset(t *testing.T) {
 
 	// Lookup with charset parameter — should still match
 	e := reg.Get("text/markdown; charset=utf-8")
-	result, err := e.Enrich(context.Background(), nil, "")
+	result, err := e.Enrich(context.Background(), nil, "", "")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -80,7 +80,7 @@ func TestDefaultEnricherRegistry_Get_OverwritesOnDuplicate(t *testing.T) {
 	reg.Register(&mockEnricher{name: "new", mimeTypes: []string{"text/markdown"}})
 
 	e := reg.Get("text/markdown")
-	result, err := e.Enrich(context.Background(), nil, "")
+	result, err := e.Enrich(context.Background(), nil, "", "")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -97,7 +97,7 @@ func TestDefaultEnricherRegistry_Get_MultipleMimeTypes(t *testing.T) {
 
 	for _, mime := range []string{"text/markdown", "text/plain"} {
 		e := reg.Get(mime)
-		result, err := e.Enrich(context.Background(), nil, "")
+		result, err := e.Enrich(context.Background(), nil, "", "")
 		if err != nil {
 			t.Fatalf("Enrich() error for %s = %v", mime, err)
 		}
@@ -117,7 +117,7 @@ func TestDefaultEnricherRegistry_Get_EmptyRegistry(t *testing.T) {
 		t.Fatal("Get() returned nil, should return NoOp fallback")
 	}
 
-	result, err := e.Enrich(context.Background(), nil, "")
+	result, err := e.Enrich(context.Background(), nil, "", "")
 	if err != nil {
 		t.Fatalf("NoOp Enrich() error = %v", err)
 	}
@@ -149,7 +149,7 @@ func TestDefaultEnricherRegistry_ThreadSafety(t *testing.T) {
 	for range concurrency {
 		wg.Go(func() {
 			e := reg.Get("application/test")
-			_, _ = e.Enrich(context.Background(), nil, "")
+			_, _ = e.Enrich(context.Background(), nil, "", "")
 		})
 	}
 

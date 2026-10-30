@@ -80,7 +80,7 @@ func (m *MarkdownEnricher) SupportedMimeTypes() []string {
 }
 
 // Enrich extracts metadata, TOC, navigation, and related documents from markdown content.
-func (m *MarkdownEnricher) Enrich(ctx context.Context, content []byte, path string) (*EnrichmentData, error) {
+func (m *MarkdownEnricher) Enrich(ctx context.Context, content []byte, path, sourceFile string) (*EnrichmentData, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -124,14 +124,15 @@ func (m *MarkdownEnricher) Enrich(ctx context.Context, content []byte, path stri
 
 	// Find related documents via shared tags
 	if m.metaIndex != nil && mdMeta != nil {
-		enrichment.RelatedDocs = m.findRelatedDocs(path, mdMeta)
+		enrichment.RelatedDocs = m.findRelatedDocs(sourceFile, mdMeta)
 	}
 
 	return enrichment, nil
 }
 
-// findRelatedDocs finds documents that share tags with the current page.
-func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string]any) []RelatedDoc {
+// findRelatedDocs finds documents that share tags with the page read from
+// sourceFile, which it leaves out.
+func (m *MarkdownEnricher) findRelatedDocs(sourceFile string, mdMeta map[string]any) []RelatedDoc {
 	tagsRaw, ok := mdMeta["tags"]
 	if !ok {
 		return nil
@@ -142,11 +143,9 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 		return nil
 	}
 
-	// Normalize the .md suffix so a request whose URL has been
-	// extension-stripped (/foo) still matches the metadata index's raw path
-	// (/foo.md) for self-exclusion, and the trailing slash build's published
-	// URLs carry (/foo/), or every built page listed itself.
-	currentKey := strings.TrimSuffix(strings.TrimSuffix(currentPath, "/"), ".md")
+	// The metadata index keys pages by source file ("/foo.md"), so the page
+	// is compared by its file, never its URL: /docs/ is docs/README.md.
+	currentKey := "/" + strings.TrimPrefix(sourceFile, "/")
 
 	// related is kept sorted and never grows past maxRelatedDocs, so its last
 	// element is the worst candidate admitted so far. Anything ordered after it
@@ -163,7 +162,7 @@ func (m *MarkdownEnricher) findRelatedDocs(currentPath string, mdMeta map[string
 		}
 
 		for page := range m.metaIndex.PagesByTag(tag) {
-			if strings.TrimSuffix(page.Path, ".md") == currentKey {
+			if page.Path == currentKey {
 				continue
 			}
 

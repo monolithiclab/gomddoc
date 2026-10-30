@@ -3,8 +3,10 @@ package enricher
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -26,7 +28,7 @@ func TestMarkdownEnricher_Enrich_Metadata(t *testing.T) {
 
 	content := []byte("---\ntitle: Test Page\ndescription: A test\ntags:\n  - go\n  - docs\n---\n# Hello\nWorld")
 
-	result, err := e.Enrich(context.Background(), content, "/test.md")
+	result, err := e.Enrich(context.Background(), content, "/test.md", "/test.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -53,7 +55,7 @@ func TestMarkdownEnricher_Enrich_NestedMeta(t *testing.T) {
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	content := []byte("---\nfeatures:\n  annotations: false\n  1: true\nlinks:\n  - {name: a, at: {line: 2}}\n---\n# Hello")
-	result, err := e.Enrich(context.Background(), content, "/test.md")
+	result, err := e.Enrich(context.Background(), content, "/test.md", "/test.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -81,7 +83,7 @@ func TestMarkdownEnricher_Enrich_TOC(t *testing.T) {
 
 	content := []byte("# First\n## Second\n### Third\n## Another Second\n")
 
-	result, err := e.Enrich(context.Background(), content, "/test.md")
+	result, err := e.Enrich(context.Background(), content, "/test.md", "/test.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -124,7 +126,7 @@ func TestMarkdownEnricher_Enrich_NoFrontmatter(t *testing.T) {
 
 	content := []byte("# Hello\nPlain markdown without frontmatter.")
 
-	result, err := e.Enrich(context.Background(), content, "/test.md")
+	result, err := e.Enrich(context.Background(), content, "/test.md", "/test.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -142,7 +144,7 @@ func TestMarkdownEnricher_Enrich_EmptyContent(t *testing.T) {
 	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
-	result, err := e.Enrich(context.Background(), nil, "/empty.md")
+	result, err := e.Enrich(context.Background(), nil, "/empty.md", "/empty.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -167,7 +169,7 @@ func TestMarkdownEnricher_Enrich_Navigation(t *testing.T) {
 		},
 	})
 
-	result, err := e.Enrich(context.Background(), []byte("# Test"), "/api.md")
+	result, err := e.Enrich(context.Background(), []byte("# Test"), "/api.md", "/api.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -189,7 +191,7 @@ func TestMarkdownEnricher_Enrich_NavigationNil(t *testing.T) {
 	t.Parallel()
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
-	result, err := e.Enrich(context.Background(), []byte("# Test"), "/test.md")
+	result, err := e.Enrich(context.Background(), []byte("# Test"), "/test.md", "/test.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -205,7 +207,7 @@ func TestMarkdownEnricher_Enrich_NavigationEmpty(t *testing.T) {
 		NavBuilder: func(_ string) []NavItem { return nil },
 	})
 
-	result, err := e.Enrich(context.Background(), []byte("# Test"), "/test.md")
+	result, err := e.Enrich(context.Background(), []byte("# Test"), "/test.md", "/test.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -233,7 +235,7 @@ func TestMarkdownEnricher_Enrich_RelatedDocs(t *testing.T) {
 	// Content that shares the "tutorial" tag
 	content := []byte("---\ntitle: Current Page\ntags:\n  - tutorial\n---\n# Current")
 
-	result, err := e.Enrich(context.Background(), content, "/current.md")
+	result, err := e.Enrich(context.Background(), content, "/current.md", "/current.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -266,7 +268,7 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_SortedStable(t *testing.T) {
 	}
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
 
-	result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [x]\n---\n# c"), "/current.md")
+	result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [x]\n---\n# c"), "/current.md", "/current.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -323,7 +325,7 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_Capped(t *testing.T) {
 			}
 			e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
 
-			result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [common]\n---\n# c"), "/current.md")
+			result, err := e.Enrich(context.Background(), []byte("---\ntitle: Cur\ntags: [common]\n---\n# c"), "/current.md", "/current.md")
 			if err != nil {
 				t.Fatalf("Enrich() error = %v", err)
 			}
@@ -380,7 +382,7 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_DedupsAcrossTags(t *testing.T) {
 			e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
 
 			result, err := e.Enrich(context.Background(),
-				[]byte("---\ntitle: Cur\ntags: [alpha, beta]\n---\n# c"), "/current.md")
+				[]byte("---\ntitle: Cur\ntags: [alpha, beta]\n---\n# c"), "/current.md", "/current.md")
 			if err != nil {
 				t.Fatalf("Enrich() error = %v", err)
 			}
@@ -398,14 +400,16 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_DedupsAcrossTags(t *testing.T) {
 	}
 }
 
-// Regression: when URL extension stripping is in effect the handler passes
-// a stripped path (/guide) but the metadata index stores raw .md paths
-// (/guide.md). Self-exclusion must work across that mismatch.
-func TestMarkdownEnricher_Enrich_RelatedDocs_StripsExtensionForSelfExclusion(t *testing.T) {
+// A page is left out of its own related docs by its source file, whatever its
+// URL: extension-stripped (/guide), with build's trailing slash (/guide/), or
+// a directory's README published at the directory (/docs), which no URL
+// rewriting maps back to its file.
+func TestMarkdownEnricher_Enrich_RelatedDocs_ExcludesItsOwnFile(t *testing.T) {
 	t.Parallel()
 	fsys := fstest.MapFS{
-		"guide.md": {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
-		"api.md":   {Data: []byte("---\ntitle: API\ntags:\n  - tutorial\n---\n# API")},
+		"guide.md":       {Data: []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")},
+		"docs/README.md": {Data: []byte("---\ntitle: Docs\ntags:\n  - tutorial\n---\n# Docs")},
+		"api.md":         {Data: []byte("---\ntitle: API\ntags:\n  - tutorial\n---\n# API")},
 	}
 
 	idx, err := metadata.BuildIndex(context.Background(), fsys, nil)
@@ -414,20 +418,22 @@ func TestMarkdownEnricher_Enrich_RelatedDocs_StripsExtensionForSelfExclusion(t *
 	}
 
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{MetaIndex: idx})
-	content := []byte("---\ntitle: Guide\ntags:\n  - tutorial\n---\n# Guide")
-
-	// Serve passes the URL-stripped form, no .md suffix; build passes the
-	// published URL, which ends in "/" (resolve.BuildOptions.TrailingSlash).
-	for _, pagePath := range []string{"/guide", "/guide/"} {
-		result, err := e.Enrich(context.Background(), content, pagePath)
+	for _, tt := range []struct{ pagePath, sourceFile string }{
+		{"/guide", "guide.md"},
+		{"/guide/", "guide.md"},
+		{"/guide.md", "/guide.md"},
+		{"/docs", "docs/README.md"},
+		{"/docs/", "/docs/README.md"},
+	} {
+		content, _ := fs.ReadFile(fsys, strings.TrimPrefix(tt.sourceFile, "/"))
+		result, err := e.Enrich(context.Background(), content, tt.pagePath, tt.sourceFile)
 		if err != nil {
-			t.Fatalf("Enrich(%q) error = %v", pagePath, err)
+			t.Fatalf("Enrich(%q) error = %v", tt.pagePath, err)
 		}
 
-		for _, doc := range result.RelatedDocs {
-			if doc.Path == "/guide.md" {
-				t.Errorf("Enrich(%q): RelatedDocs should exclude the current page; got %v", pagePath, result.RelatedDocs)
-			}
+		self := "/" + strings.TrimPrefix(tt.sourceFile, "/")
+		if len(result.RelatedDocs) != 2 || slices.ContainsFunc(result.RelatedDocs, func(d RelatedDoc) bool { return d.Path == self }) {
+			t.Errorf("Enrich(%q, %q): RelatedDocs = %v, want the two other pages", tt.pagePath, tt.sourceFile, result.RelatedDocs)
 		}
 	}
 }
@@ -437,7 +443,7 @@ func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutIndex(t *testing.T) {
 	e := NewMarkdownEnricher(MarkdownEnricherOptions{})
 
 	content := []byte("---\ntags:\n  - go\n---\n# Test")
-	result, err := e.Enrich(context.Background(), content, "/test.md")
+	result, err := e.Enrich(context.Background(), content, "/test.md", "/test.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -462,7 +468,7 @@ func TestMarkdownEnricher_Enrich_NoRelatedDocsWithoutTags(t *testing.T) {
 
 	// Content without tags
 	content := []byte("---\ntitle: No Tags\n---\n# No Tags")
-	result, err := e.Enrich(context.Background(), content, "/notagged.md")
+	result, err := e.Enrich(context.Background(), content, "/notagged.md", "/notagged.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -487,7 +493,7 @@ func TestMarkdownEnricher_Enrich_MalformedTags(t *testing.T) {
 
 	// Content with tags as a string instead of a list — should not panic
 	content := []byte("---\ntitle: Bad Tags\ntags: single-string\n---\n# Bad Tags")
-	result, err := e.Enrich(context.Background(), content, "/bad.md")
+	result, err := e.Enrich(context.Background(), content, "/bad.md", "/bad.md")
 	if err != nil {
 		t.Fatalf("Enrich() error = %v", err)
 	}
@@ -504,7 +510,7 @@ func TestMarkdownEnricher_Enrich_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := e.Enrich(ctx, []byte("# Test"), "/test.md")
+	_, err := e.Enrich(ctx, []byte("# Test"), "/test.md", "/test.md")
 	if err == nil {
 		t.Error("Enrich() should return error on cancelled context")
 	}

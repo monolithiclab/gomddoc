@@ -488,7 +488,7 @@ func (b *BuildCmd) buildFile(
 	// breadcrumbs and hreflang.
 	pagePath := bc.resolver.PageURLPath(filePath, bc.siteConfig.DefaultIndex)
 
-	enrichment, err := bc.enricherRegistry.Get(mimeType).Enrich(ctx, content, pagePath)
+	enrichment, err := bc.enricherRegistry.Get(mimeType).Enrich(ctx, content, pagePath, filePath)
 	if err != nil {
 		return fmt.Errorf("enrich %s: %w", filePath, err)
 	}

@@ -292,7 +292,7 @@ Thread-safe with `sync.RWMutex`. Storage is an ordered `[]registryEntry`, not a 
 ```go
 type Enricher interface {
     SupportedMimeTypes() []string
-    Enrich(ctx context.Context, content []byte, path string) (*EnrichmentData, error)
+    Enrich(ctx context.Context, content []byte, pagePath, sourceFile string) (*EnrichmentData, error)
 }
 
 type EnrichmentData struct {
@@ -967,7 +967,7 @@ sequenceDiagram
     H->>H: ParseAccept("text/html")
     H->>Reg: Get("text/markdown", [text/html])
     Reg-->>H: MarkdownRenderer + "text/html"
-    H->>EN: Enrich(ctx, content, "/docs/guide")
+    H->>EN: Enrich(ctx, content, "/docs/guide", "docs/guide.md")
     EN-->>H: EnrichmentData{metadata, TOC, nav, related}
     H->>R: Render(ctx, content, enrichment)
     R-->>H: RenderResult{HTML}

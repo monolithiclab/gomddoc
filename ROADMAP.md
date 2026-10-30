@@ -814,14 +814,13 @@ of a decision risks a second divergence to unwind later:
    the whole site back with no error. `redirectFinderAdapter` ignores its path argument and always
    does a global DFS from the root, so `/guide/` with no index redirects to the site's first page,
    not the first page under `/guide/`. Independent, low-effort fixes.
-5. **Misc correctness, MEDIUM, independent fixes**: index pages appear in their own
-   related-docs list, in serve and (since build enriches under the page URL) in build, and now in their `.md` body
-   too (D54; the trailing-slash case that made every built page list itself is fixed); git submodules misclassified as directories abort the whole build;
+5. **Misc correctness, MEDIUM, independent fixes**: git submodules misclassified as directories abort the whole build;
    `.well-known` silently dropped from git-backed sites; feed order nondeterministic on mtime ties;
    snippet body truncates on a byte boundary (invalid UTF-8); non-root index canonical URLs
    miss a trailing slash; two frontmatter parsers disagree on what counts as frontmatter (raw YAML
    can leak into the search corpus). (Fixed since the list was drawn up: `findRelatedDocs` tag normalization,
-   now through `Index.PagesByTag`; search ties, now broken by `docIdx` in `compareScored`.)
+   now through `Index.PagesByTag`; index pages listing themselves in their related docs, now excluded by source
+   file; search ties, now broken by `docIdx` in `compareScored`.)
 6. **Bug fix**: theme-fallback layout loads partials from the default theme instead of the active
    overloaded theme (see Bugs).
 7. **Heading anchor escape hatch + non-ASCII handling** (docs/reviews/20260729.codebase-review.md §10.5, MEDIUM): see Phase 9c —

@@ -13,6 +13,6 @@ func (n *NoOpEnricher) SupportedMimeTypes() []string {
 }
 
 // Enrich returns empty enrichment data.
-func (n *NoOpEnricher) Enrich(_ context.Context, _ []byte, _ string) (*EnrichmentData, error) {
+func (n *NoOpEnricher) Enrich(_ context.Context, _ []byte, _, _ string) (*EnrichmentData, error) {
 	return &EnrichmentData{}, nil
 }
