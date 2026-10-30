@@ -58,7 +58,7 @@ signs:
 # away from the (still-functional) deprecated keys becomes urgent.
 #
 # The MCP Registry lists server.json only if each image carries io.modelcontextprotocol.server.name equal to its
-# name; `make lint` (lint-mcp-registry) fails when an entry here lacks it.
+# name; TestMCPRegistry_ImageLabelMatchesServerJSON (cmd/gomddoc) fails when an entry here lacks it.
 dockers:
   - id: gomddoc-amd64
     image_templates: ["ghcr.io/monolithiclab/gomddoc:{{ .Version }}-amd64"]
