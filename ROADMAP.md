@@ -801,8 +801,8 @@ of a decision risks a second divergence to unwind later:
    build writes it; per-language tag pages gated on a domain in build only, not serve; the search UI
    ships in static builds with no `/api/search` backend; the language prefix never reaches
    `Page.Path` in build (hreflang mismatch); a directory index has two canonical URLs in serve;
-   `redirect_from` on a default-index page targets a URL build never writes; search results link to
-   raw `.md` paths.
+   `redirect_from` on a default-index page targets a URL build never writes. (Search results linking
+   raw `.md` paths is fixed: they link clean URLs, D54.)
 3. **Tag/i18n correctness cluster** (independent of the design question above, can start now):
    synthetic tag pages render with nil `Features`/`Languages` (silently re-enables disabled features,
    no hreflang on `/tags/*`); every translated page's feed `<link rel="alternate">` points at the
@@ -904,7 +904,8 @@ are ranked in Tiers 1–4; these are the rest). Rank them into a tier when picki
 - [ ] §12.1 LOW: `doctor` exits 0 on a site whose clone failed unless `--strict` is set.
 - [ ] §12.2 MEDIUM: the language switcher links the default language to a 404 (`/en-US/...`).
 - [ ] §12.2 MEDIUM: translated pages lose the site's `.gomddoc/` overlay in serve (themes, partials, shared assets).
-- [ ] §12.2 MEDIUM: search in a language tree links to default-language pages, and `search.mjs` never sends `lang`.
+- [ ] §12.2 MEDIUM: `search.mjs` never sends `lang`, so the index follows `Accept-Language`, not the page's language.
+      (Result paths now carry the `/{lang}` prefix, D54.)
 - [ ] §12.2 MEDIUM: canonical URL and `og:url` on translated pages lack the language prefix in serve too.
 - [ ] §12.2 MEDIUM: a non-en-US default language with no locale file renders raw keys instead of en-US strings.
 - [ ] §12.2 LOW: hreflang links are root-relative and emitted for untranslated pages.

@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -12,6 +14,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
+	"github.com/monolithiclab/gomddoc/internal/search"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
@@ -22,7 +25,7 @@ import (
 // clean path, so a .md request enriched under its own path would lose them.
 var markdownURLFiles = fstest.MapFS{
 	"README.md":      {Data: []byte("---\ntitle: Home\ntags: [docs]\n---\n# Home\n")},
-	"guide.md":       {Data: []byte("---\ntitle: Guide\ntags: [docs]\n---\n# Guide\n\nguide body\n")},
+	"guide.md":       {Data: []byte("---\ntitle: Guide\ntags: [docs]\n---\n# Guide\n\nguide body\n\n" + guideLinks)},
 	"docs/README.md": {Data: []byte("---\ntitle: Docs\n---\n# Docs\n\ndocs index body\n")},
 	"sub/index.md":   {Data: []byte("---\ntitle: Sub\n---\n# Sub\n\nsub index body\n")},
 	"notes.markdown": {Data: []byte("---\ntitle: Notes\n---\n# Notes\n\nnotes body\n")},
@@ -30,8 +33,12 @@ var markdownURLFiles = fstest.MapFS{
 }
 
 var markdownURLFrFiles = fstest.MapFS{
-	"guide.md": {Data: []byte("---\ntitle: Guide FR\n---\n# Guide\n\nfrench-only-marker-54\n")},
+	"guide.md": {Data: []byte("---\ntitle: Guide FR\n---\n# Guide\n\nfrench-only-marker-54\n\n[self](guide.md#top)\n")},
 }
+
+// guideLinks are guide's in-body links: pages by their Markdown file, a
+// directory page through its default index, and a link to no page.
+const guideLinks = "[home](README.md) [docs](docs/README.md#intro) [notes](./notes.markdown) [nope](nope.md)\n"
 
 // prevNextForGuide answers only for the clean path of guide, as the navigation
 // generator does for a leaf page.
@@ -98,6 +105,7 @@ func newMarkdownURLServerWithMCP(t *testing.T, domain, layout string, mcp http.H
 		TemplateRenderer: renderer(resolver),
 		Resolver:         resolver,
 		NavGenerator:     navigation.NewGenerator(markdownURLFiles, "README.md", nil, resolver),
+		SearchIndex:      markdownURLSearch(t, markdownURLFiles),
 		MCPHandler:       mcp,
 		AllLanguages:     []string{"fr"},
 		DefaultLang:      "en-US",
@@ -107,11 +115,21 @@ func newMarkdownURLServerWithMCP(t *testing.T, domain, layout string, mcp http.H
 				Provider:         newMemoryProvider(markdownURLFrFiles, "README.md", false),
 				Resolver:         frResolver,
 				NavGenerator:     navigation.NewGenerator(markdownURLFrFiles, "README.md", nil, frResolver),
+				SearchIndex:      markdownURLSearch(t, markdownURLFrFiles),
 				EnricherRegistry: markdownURLEnrichers(t, markdownURLFrFiles),
 			},
 		},
 	})
 	return srv.server.Handler
+}
+
+func markdownURLSearch(t *testing.T, files fstest.MapFS) *search.Index {
+	t.Helper()
+	idx, err := search.BuildIndex(context.Background(), files, nil, nil)
+	if err != nil {
+		t.Fatalf("search.BuildIndex: %v", err)
+	}
+	return idx
 }
 
 func getWithAccept(h http.Handler, target, accept string) *httptest.ResponseRecorder {
@@ -264,6 +282,82 @@ func TestMarkdownURL_PageContextAlternate(t *testing.T) {
 		w := getWithAccept(h, target, "text/html")
 		if got := w.Body.String(); got != want {
 			t.Errorf("GET %s MarkdownURL = %s, want %s", target, got, want)
+		}
+	}
+}
+
+// TestMarkdownURL_HTMLLinksCleanURLs pins D54's split: the HTML page links
+// each page its body names at the page's clean URL (with the language prefix),
+// while the Markdown keeps the author's links.
+func TestMarkdownURL_HTMLLinksCleanURLs(t *testing.T) {
+	t.Parallel()
+
+	h := newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>")
+
+	html := getWithAccept(h, "/guide", "text/html").Body.String()
+	for _, want := range []string{`href="/"`, `href="/docs#intro"`, `href="/notes"`, `href="nope.md"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("GET /guide missing %s:\n%s", want, html)
+		}
+	}
+	if fr := getWithAccept(h, "/fr/guide", "text/html").Body.String(); !strings.Contains(fr, `href="/fr/guide#top"`) {
+		t.Errorf("GET /fr/guide missing href=\"/fr/guide#top\":\n%s", fr)
+	}
+
+	md := getWithAccept(h, "/guide.md", "").Body.String()
+	if !strings.Contains(md, guideLinks) {
+		t.Errorf("GET /guide.md does not keep the author's links:\n%s", md)
+	}
+}
+
+// mdPageHref matches an href naming a page's Markdown URL, fragment or query
+// allowed.
+var mdPageHref = regexp.MustCompile(`href="([^"#?]*\.(?:md|markdown))(?:[#?][^"]*)?"`)
+
+// TestMarkdownURL_HTMLHasNoMarkdownHref: a rendered HTML page links a .md page
+// URL only as its own rel="alternate".
+func TestMarkdownURL_HTMLHasNoMarkdownHref(t *testing.T) {
+	t.Parallel()
+
+	layout := `<html><head>{{with .Page.MarkdownURL}}<link rel="alternate" type="text/markdown" href="{{.}}">{{end}}</head>` +
+		`<body>{{.Page.Content}}</body></html>`
+	h := newMarkdownURLServer(t, "", layout)
+	alternate := regexp.MustCompile(`<link rel="alternate" type="text/markdown" href="[^"]*">`)
+
+	for _, target := range []string{"/", "/guide", "/docs", "/notes", "/fr/guide"} {
+		body := getWithAccept(h, target, "text/html").Body.String()
+		if !alternate.MatchString(body) {
+			t.Errorf("GET %s has no rel=alternate link:\n%s", target, body)
+		}
+		rest := alternate.ReplaceAllString(body, "")
+		for _, m := range mdPageHref.FindAllStringSubmatch(rest, -1) {
+			if m[1] != "nope.md" { // the one link to no page stays as written
+				t.Errorf("GET %s links Markdown URL %q outside rel=alternate", target, m[0])
+			}
+		}
+	}
+}
+
+// TestMarkdownURL_SearchLinksCleanURLs: the search API, whose paths the
+// theme's search box uses as hrefs, answers each page's clean URL, with the
+// language prefix for a language's index.
+func TestMarkdownURL_SearchLinksCleanURLs(t *testing.T) {
+	t.Parallel()
+
+	h := newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>")
+
+	for target, want := range map[string]string{
+		"/api/search?q=guide+body":                    "/guide",
+		"/api/search?q=docs+index+body":               "/docs",
+		"/api/search?q=french-only-marker-54&lang=fr": "/fr/guide",
+	} {
+		w := getWithAccept(h, target, "")
+		var results []search.SearchResult
+		if err := json.Unmarshal(w.Body.Bytes(), &results); err != nil {
+			t.Fatalf("GET %s: %v\n%s", target, err, w.Body.String())
+		}
+		if len(results) == 0 || results[0].Path != want {
+			t.Errorf("GET %s top result = %+v, want path %s", target, results, want)
 		}
 	}
 }

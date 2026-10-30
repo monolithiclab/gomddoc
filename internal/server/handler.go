@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -177,8 +179,9 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Render content
-	renderResult, err := contentRenderer.Render(r.Context(), content, enrichment)
+	// 4. Render content. The HTML render points body links to a page's
+	// Markdown file at the page (D54); the Markdown keeps them as written.
+	renderResult, err := contentRenderer.Render(h.withPageLinks(r, sourceFile), content, enrichment)
 	if err != nil {
 		h.handleError(w, r, err, r.URL.Path)
 		return
@@ -203,6 +206,22 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		}
 		h.serveRaw(w, r, renderResult.Content, serveMimeType)
 	}
+}
+
+// withPageLinks returns r's context carrying the page links its render
+// resolves against: the source file's directory, or the directory itself for a
+// generated listing (sourceFile "").
+func (h *Handler) withPageLinks(r *http.Request, sourceFile string) context.Context {
+	dir := strings.TrimPrefix(r.URL.Path, "/")
+	if sourceFile != "" {
+		dir = path.Dir(strings.TrimPrefix(sourceFile, "/"))
+	}
+	return renderer.WithPageLinks(r.Context(), renderer.PageLinks{
+		Resolver:     h.resolver,
+		DefaultIndex: h.siteConfig.DefaultIndex,
+		LangPrefix:   h.basePath,
+		SourceDir:    dir,
+	})
 }
 
 // canonicalURL is the site URL of pagePath, a content-root-relative page URL

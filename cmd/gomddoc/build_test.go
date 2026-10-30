@@ -594,6 +594,37 @@ func TestMarkdownURL_ExcludedPage(t *testing.T) {
 	}
 }
 
+// TestBuild_HTMLLinksCleanURLs pins D54 in build: a body link to a page's
+// Markdown file points the HTML at the page's published URL, language prefix
+// and trailing slash included, and the built .md keeps the author's link.
+func TestBuild_HTMLLinksCleanURLs(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+	writeTestFile(t, srcDir, "README.md", "# Home\n\n[s](guides/setup.md#x)\n")
+	writeTestFile(t, srcDir, "guides/setup.md", "# Setup\n\n[t](teardown.md)\n")
+	writeTestFile(t, srcDir, "guides/teardown.md", "# Teardown\n")
+	writeTestFile(t, srcDir, "fr-FR/README.md", "# Accueil\n")
+	writeTestFile(t, srcDir, "fr-FR/guides/setup.md", "# Installation\n\n[h](../README.md)\n")
+
+	if err := (&BuildCmd{Dir: srcDir, Output: outDir}).Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	for file, want := range map[string]string{
+		"index.html":                    `href="/guides/setup/#x"`,
+		"guides/setup/index.html":       `href="/guides/teardown/"`,
+		"fr-FR/guides/setup/index.html": `href="/fr-FR/"`,
+		"guides/setup.md":               "[t](teardown.md)",
+		"fr-FR/guides/setup.md":         "[h](../README.md)",
+	} {
+		if got := readTestFile(t, outDir, filepath.FromSlash(file)); !strings.Contains(got, want) {
+			t.Errorf("%s missing %s", file, want)
+		}
+	}
+}
+
 // TestServe_DefaultThemeLinksMarkdown pins the alternate link through the
 // embedded default theme's shared head partial.
 func TestServe_DefaultThemeLinksMarkdown(t *testing.T) {

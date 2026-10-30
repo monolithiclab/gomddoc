@@ -133,7 +133,7 @@ is used when it names a detected language, and the default language otherwise. M
 ```json
 [
   {
-    "path": "/guide/configuration.md",
+    "path": "/guide/configuration",
     "title": "Configuration",
     "description": "How to configure gomddoc",
     "snippet": "...text with <mark>highlighted</mark> matches...",
@@ -142,12 +142,9 @@ is used when it names a detected language, and the default language otherwise. M
 ]
 ```
 
-`path` is the source file path, not the served URL. `description` is omitted when empty.
-
-> [!WARNING]
-> Known bug: for a non-default language, `path` is relative to the language directory and
-> lacks the `/{lang}` prefix, so `fr-FR/guide/configuration.md` is reported as `/guide/configuration.md`, the path of
-> the default-language page.
+`path` is the page's URL, with the `/{lang}` prefix for a non-default language (`/fr-FR/guide/configuration`), so
+a result links the HTML page. Before v0.5.0 it was the source file path (`/guide/configuration.md`).
+`description` is omitted when empty.
 
 ---
 

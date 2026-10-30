@@ -234,7 +234,7 @@ first, then MarkdownRenderer (so HTML is the default for `Accept: */*`), then Pa
 
 **Goldmark Extensions:**
 
-Four custom goldmark extensions operate at the AST level during parsing and rendering:
+Five custom goldmark extensions operate at the AST level during parsing and rendering:
 
 1. **Heading Anchors** (`HeadingAnchorExtension`) — Custom `NodeRenderer` for `ast.KindHeading` that appends a
    `<gmd-heading-anchor href="#id">` web component to headings with auto-generated IDs. Gated by `heading_anchors`.
@@ -249,6 +249,11 @@ Four custom goldmark extensions operate at the AST level during parsing and rend
    AST transformer that turns a code span wrapped in dollar signs (`` $`x`$ ``) into a `MathNode`. Both render as
    `<gmd-math>` (`<gmd-math display>`) holding the escaped TeX. Single `$` is never a delimiter, so prices stay text
    (D52). Gated by `katex`.
+5. **Page links** (`pageLinkTransformer`) — AST transformer that points an `ast.Link` naming a page's Markdown file
+   (relative to the source file, or root-relative within the language) at the page's URL (`PageURLPath` plus the
+   language prefix), keeping query and fragment (D54). Not a feature flag: it runs when the caller passes
+   `renderer.WithPageLinks` in the render context, which serve's handler and build do; the Markdown passthrough
+   never rewrites.
 
 Feature flags are passed to extensions via two channels: the parser context key (for AST transformers) and a document
 attribute (for node renderers). This enables per-page feature overrides via frontmatter. All extensions are always
@@ -550,7 +555,9 @@ Exposed via JSON API:
 
 - `GET /api/search?q=<query>&limit=<n>&lang=<code>` — Full-text search with ranked results. `limit` defaults to 20
   and is capped at 100; `q` is truncated to 500 bytes. With language pipelines, `NewMultiLangSearchHandler` picks
-  the index by `?lang=` > `Accept-Language` > default language (`ResolveAPILanguage`).
+  the index by `?lang=` > `Accept-Language` > default language (`ResolveAPILanguage`). Each `SearchSource` maps
+  result paths (indexed files) to page URLs through its tree's resolver and language prefix, so results link pages,
+  not Markdown URLs.
 
 **Search UI:** A shared `search.mjs` module (loaded via `inlineJSAsset`) provides a search modal across
 all themes. Opens via Ctrl+K / Cmd+K or a header search button. Debounced fetch to `/api/search` (`limit=10`),

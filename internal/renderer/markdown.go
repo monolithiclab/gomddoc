@@ -11,6 +11,7 @@ import (
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
@@ -48,6 +49,7 @@ type MarkdownRenderer struct {
 //   - AdmonitionExtension: Transforms [!TYPE] blockquotes to admonition divs
 //   - ColorChipExtension: Transforms hex color code spans to <gmd-color-chip> elements
 //   - MathExtension: Transforms $`…`$ and $$ blocks to <gmd-math> elements
+//   - pageLinkTransformer: Points links to a page's Markdown file at the page's URL (WithPageLinks)
 //   - parser.WithAutoHeadingID: Automatic ID generation for headings
 //   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
 func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
@@ -70,6 +72,7 @@ func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
 		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
+			parser.WithASTTransformers(util.Prioritized(pageLinkTransformer{}, 100)),
 		),
 		goldmark.WithRendererOptions(
 			html.WithUnsafe(), // Allow raw HTML to match common expectations for doc sites
@@ -109,6 +112,9 @@ func (m *MarkdownRenderer) Render(ctx context.Context, content []byte, enrichmen
 	// Set features on parser context for AST transformers.
 	pCtx := parser.NewContext()
 	pCtx.Set(featuresContextKey, merged)
+	if links, ok := pageLinksFrom(ctx); ok {
+		pCtx.Set(pageLinksContextKey, links)
+	}
 
 	reader := text.NewReader(content)
 	doc := m.md.Parser().Parse(reader, parser.WithContext(pCtx))

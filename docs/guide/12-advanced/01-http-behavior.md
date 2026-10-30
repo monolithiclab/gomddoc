@@ -178,6 +178,10 @@ curl -i http://localhost:8080/docs/guide.md
 - **Missing pages:** a `.md` URL for a page that does not exist is `404`, not a redirect.
 - **Static builds:** `gomddoc build` writes the same Markdown at the same path (`docs/guide.md`), so a static host
   serves these URLs too. Its links are the build's published URLs: prev/next paths end in `/`.
+- **HTML pages link pages, not Markdown:** a body link written to a page's Markdown file (`[Setup](setup.md#install)`,
+  `../README.md`) points the HTML page at that page's URL (`/docs/setup#install`, with the language prefix on a
+  translated page and the trailing slash in a build), and search results link the same URLs. The Markdown keeps the
+  links as written. External links, links to other files and links to missing pages stay as written.
 
 It needs `.md` (or `.markdown`) in `strip_extensions`, the default: without stripping, `/docs/guide.md` is the page's
 only URL and serves HTML. Before D54, `/docs/guide.md` answered `301` to `/docs/guide`.

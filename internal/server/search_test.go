@@ -34,7 +34,7 @@ func TestSearchEndpoint(t *testing.T) {
 	t.Parallel()
 
 	idx := buildTestSearchIndex(t)
-	handler := NewSearchHandler(idx)
+	handler := NewSearchHandler(SearchSource{Index: idx})
 
 	tests := []struct {
 		name       string
@@ -124,7 +124,7 @@ func TestSearchEndpoint_QueryLengthCapped(t *testing.T) {
 	t.Parallel()
 
 	idx := buildTestSearchIndex(t)
-	handler := NewSearchHandler(idx)
+	handler := NewSearchHandler(SearchSource{Index: idx})
 
 	// Query longer than maxQueryLength should be truncated, not cause an error
 	longQuery := strings.Repeat("a", maxQueryLength+100)
@@ -153,7 +153,7 @@ func TestSearchEndpoint_LimitCapped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildIndex failed: %v", err)
 	}
-	handler := NewSearchHandler(idx)
+	handler := NewSearchHandler(SearchSource{Index: idx})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/search?q=the&limit=999", nil)
 	rec := httptest.NewRecorder()
@@ -174,7 +174,7 @@ func TestSearchEndpoint_ResultStructure(t *testing.T) {
 	t.Parallel()
 
 	idx := buildTestSearchIndex(t)
-	handler := NewSearchHandler(idx)
+	handler := NewSearchHandler(SearchSource{Index: idx})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/search?q=guide", nil)
 	rec := httptest.NewRecorder()

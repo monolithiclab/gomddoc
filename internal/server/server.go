@@ -199,19 +199,25 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		api.HandleFunc("GET /tags/{tag}", metaHandler.TagPagesHandler)
 	}
 	if len(opts.LangPipelines) > 0 {
-		searchIndexes := make(map[string]*search.Index)
+		searchSources := make(map[string]SearchSource)
 		if opts.SearchIndex != nil {
-			searchIndexes[opts.DefaultLang] = opts.SearchIndex
+			searchSources[opts.DefaultLang] = SearchSource{
+				Index: opts.SearchIndex, Resolver: opts.Resolver, DefaultIndex: cfg.Site.DefaultIndex,
+			}
 		}
 		for lang, lp := range opts.LangPipelines {
 			if lp.SearchIndex != nil {
-				searchIndexes[lang] = lp.SearchIndex
+				searchSources[lang] = SearchSource{
+					Index: lp.SearchIndex, Resolver: lp.Resolver, DefaultIndex: cfg.Site.DefaultIndex, PathPrefix: "/" + lang,
+				}
 			}
 		}
-		searchHandler := NewMultiLangSearchHandler(searchIndexes, opts.DefaultLang)
+		searchHandler := NewMultiLangSearchHandler(searchSources, opts.DefaultLang)
 		api.HandleFunc("GET /search", searchHandler.SearchEndpoint)
 	} else if opts.SearchIndex != nil {
-		searchHandler := NewSearchHandler(opts.SearchIndex)
+		searchHandler := NewSearchHandler(SearchSource{
+			Index: opts.SearchIndex, Resolver: opts.Resolver, DefaultIndex: cfg.Site.DefaultIndex,
+		})
 		api.HandleFunc("GET /search", searchHandler.SearchEndpoint)
 	}
 

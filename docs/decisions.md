@@ -1068,6 +1068,14 @@ so they resolve on the static host), and no longer writes a `guide.md/index.html
 There is no config key and no compatibility switch: `/guide.md` stops redirecting, which the guide and the
 `strip_extensions` doc tag say.
 
+HTML links clean URLs; Markdown keeps the author's links. The HTML render points a body link that resolves to a page's
+Markdown file (`other.md`, `../guide/README.md#setup`, relative to the source file, or root-relative within the
+language) at that page's URL, `PageURLPath` with the language prefix as `contentURL` applies it, keeping query and
+fragment (the renderer's `pageLinkTransformer`, fed per render by `renderer.WithPageLinks` in serve and build). The
+search API maps its result paths the same way. External links, other files and unresolved links stay as written, and
+the Markdown output (`.md` URLs, negotiation) is not rewritten: without this, every in-body link and search result
+that used to reach the page through the 301 would land on raw Markdown.
+
 - *Evidence*: Markdown was reachable only with `Accept: text/markdown`, which a pasted URL, a browser, a crawler or a
   static host cannot send, and `/guide.md`, the URL people and agents guess, answered 301 to the HTML page. A static
   build lost Markdown altogether.

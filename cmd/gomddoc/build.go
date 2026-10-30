@@ -493,7 +493,19 @@ func (b *BuildCmd) buildFile(
 		return fmt.Errorf("enrich %s: %w", filePath, err)
 	}
 
-	renderResult, err := contentRenderer.Render(ctx, content, enrichment)
+	// Body links to a page's Markdown file point at the page's published URL
+	// (D54), as serve's handler does; the .md output below keeps them.
+	langPrefix := ""
+	if outputPrefix != "" {
+		langPrefix = "/" + outputPrefix
+	}
+	linksCtx := renderer.WithPageLinks(ctx, renderer.PageLinks{
+		Resolver:     bc.resolver,
+		DefaultIndex: bc.siteConfig.DefaultIndex,
+		LangPrefix:   langPrefix,
+		SourceDir:    path.Dir(filePath),
+	})
+	renderResult, err := contentRenderer.Render(linksCtx, content, enrichment)
 	if err != nil {
 		return fmt.Errorf("render %s: %w", filePath, err)
 	}

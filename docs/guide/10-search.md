@@ -70,7 +70,7 @@ The search modal provides an interactive search experience directly in the brows
 - **Ranked results**: results are ordered by relevance score, with title matches ranked higher than
   body content.
 
-Result links point at the source file path (`/guide/setup.md`), which the server redirects to the clean URL.
+Result links point at the page's URL (`/guide/setup`, `/fr-FR/guide/setup` on a translated page).
 
 The modal uses CSS custom properties from your theme (`--color-bg`, `--color-text`, `--color-primary`,
 and others), so it follows your site's color scheme and dark mode.
@@ -138,7 +138,7 @@ GET /api/search?q=<query>&limit=<n>&lang=<code>
 ```json
 [
   {
-    "path": "/docs/guide.md",
+    "path": "/docs/guide",
     "title": "User Guide",
     "description": "Getting started with gomddoc",
     "snippet": "...text with <mark>matching</mark> terms...",
@@ -149,7 +149,7 @@ GET /api/search?q=<query>&limit=<n>&lang=<code>
 
 | Field | Description |
 |-------|-------------|
-| `path` | Source file path relative to the language's content root (`/docs/guide.md`), not the served URL |
+| `path` | The page's URL (`/docs/guide`, `/fr-FR/docs/guide` in a language's index). Before v0.5.0 it was the source file path (`/docs/guide.md`) |
 | `title` | From frontmatter `title`, else the first `# heading`, else derived from the file name |
 | `description` | From frontmatter `description` (omitted if empty) |
 | `snippet` | Context excerpt (about 160 characters) with matched terms wrapped in `<mark>` tags |
