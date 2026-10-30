@@ -74,13 +74,27 @@ func TestLLMsTxt_ServeAndBuild(t *testing.T) {
 				t.Fatalf("build: %v", err)
 			}
 
+			// entries must appear in the file and other is the "Other pages"
+			// list, both with "{origin}" standing for tc.origin.
 			for _, file := range []struct {
-				path string
-				want []string
+				path    string
+				want    []string
+				entries []string
+				other   string
 			}{
-				{"/llms.txt", []string{"/README.md", "/changelog/README.md", "/guides/README.md", "/guides/setup.md", "/guides/teardown.md", "/moved.md", "/old-page.md"}},
-				{"/fr-FR/llms.txt", []string{"/fr-FR/README.md", "/fr-FR/guides/setup.md", "/fr-FR/notes/README.md"}},
+				{
+					path:    "/llms.txt",
+					want:    []string{"/README.md", "/changelog/README.md", "/guides/README.md", "/guides/setup.md", "/guides/teardown.md", "/moved.md", "/old-page.md"},
+					entries: []string{"- [Setup]({origin}/guides/setup.md): Install it.\n"},
+					other:   "- [Changelog]({origin}/changelog/README.md)\n",
+				},
+				{
+					path:  "/fr-FR/llms.txt",
+					want:  []string{"/fr-FR/README.md", "/fr-FR/guides/setup.md", "/fr-FR/notes/README.md"},
+					other: "- [Notes]({origin}/fr-FR/notes/README.md)\n",
+				},
 			} {
+				withOrigin := func(s string) string { return strings.ReplaceAll(s, "{origin}", tc.origin) }
 				w := httptest.NewRecorder()
 				served.ServeHTTP(w, httptest.NewRequest(http.MethodGet, file.path, nil))
 				if w.Code != http.StatusOK {
@@ -115,15 +129,14 @@ func TestLLMsTxt_ServeAndBuild(t *testing.T) {
 						t.Errorf("%s lists %q:\n%s", file.path, absent, body)
 					}
 				}
-				if file.path == "/llms.txt" && !strings.Contains(body, "- [Setup]("+tc.origin+"/guides/setup.md): Install it.\n") {
-					t.Errorf("%s lacks the described setup entry:\n%s", file.path, body)
+				for _, entry := range file.entries {
+					if !strings.Contains(body, withOrigin(entry)) {
+						t.Errorf("%s lacks the entry %q:\n%s", file.path, withOrigin(entry), body)
+					}
 				}
 
 				// The pages the navigation drops come last, before the MCP line.
-				other := "\n## Other pages\n\n- [Changelog](" + tc.origin + "/changelog/README.md)\n"
-				if file.path == "/fr-FR/llms.txt" {
-					other = "\n## Other pages\n\n- [Notes](" + tc.origin + "/fr-FR/notes/README.md)\n"
-				}
+				other := "\n## Other pages\n\n" + withOrigin(file.other)
 				if !strings.Contains(body, other+"\nMCP server") {
 					t.Errorf("%s lacks %q right before the MCP line:\n%s", file.path, other, body)
 				}
