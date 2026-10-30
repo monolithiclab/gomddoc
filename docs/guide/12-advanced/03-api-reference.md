@@ -45,20 +45,24 @@ to `GET /guide/setup` resolves internally to `guide/setup.md` if that file exist
 the `strip_extensions` config. If the resolver has no mapping and the provider cannot find the
 literal path, the server returns `404 Not Found`.
 
-**Extension redirect:** Requests to paths with a strippable extension receive a `301 Moved
-Permanently` redirect to the extensionless URL:
+**Markdown URL:** a page's own `.md` path answers `200` with the page's enriched Markdown
+(`text/markdown`), whatever the `Accept` header says, and a `Link` header naming the clean URL as canonical:
 
 ```
-GET /guide/setup.md  →  301 Location: /guide/setup
+GET /guide/setup.md   →  200 text/markdown, Link: </guide/setup>; rel="canonical"
+GET /guide/README.md  →  200 text/markdown, the /guide page's Markdown
 ```
 
-This only applies to extensions listed in `strip_extensions` (default: `[".md"]`) and only when
-the resolver has a mapping for the file. Non-stripped extensions (`.css`, `.png`, etc.) are
-unaffected.
+See [HTTP Behavior](01-http-behavior.md#markdown-urls).
 
-> [!WARNING]
-> Known bug, tracked in `docs/reviews/20260729.codebase-review.md`: a default index file redirects to its extensionless name instead of its
-> directory. `GET /guide/README.md` redirects to `/guide/README`, which `serve` answers but `build` never writes.
+**Extension redirect:** any other stripped extension (`.html` when listed in `strip_extensions`) receives a
+`301 Moved Permanently` redirect to the extensionless URL, only when the resolver has a mapping for the file:
+
+```
+GET /about.html  →  301 Location: /about
+```
+
+Non-stripped extensions (`.css`, `.png`, etc.) are unaffected.
 
 **`redirect_from`:** A path listed in a page's `redirect_from` frontmatter answers `301` with the page's URL. This
 lookup runs before the file is read.
@@ -428,7 +432,8 @@ Content requests pass through this chain (outermost to innermost):
 6. **stripPathPrefix**: per-language routes only; removes the `/{lang}` segment
 7. **MethodFilter**: allows GET and HEAD only, returns 405 for others
 8. **ContentExclusion**: blocks hidden files (dotfiles) and user-configured exclude patterns (returns 404)
-9. **ExtensionRedirect**: 301 redirects from `.md` (or other stripped extensions) to extensionless URLs
+9. **ExtensionRedirect**: 301 redirects from stripped extensions other than a page's `.md` URL (`.html`) to
+   extensionless URLs
 
 Steps 1 and 2 wrap every route on the main port. Steps 3 and 4 wrap every route except `/health/*` and `/metrics`.
 Step 5 wraps every route except `/health/*`, `/robots.txt` and `/_assets/`; pprof applies its own copy of the same

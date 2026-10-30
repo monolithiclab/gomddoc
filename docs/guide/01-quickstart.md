@@ -112,8 +112,9 @@ Files in your content directory map to clean, extensionless URLs:
 | `guide/setup.md` | `/guide/setup` |
 | `api/reference.md` | `/api/reference` |
 
-Requests to the original `.md` path (e.g., `/guide.md`) are 301-redirected to the clean URL
-(`/guide`). A directory URL such as `/guide/` serves that directory's `README.md`.
+The original `.md` path (e.g., `/guide.md`) serves the page's Markdown, for agents and anyone who wants the source;
+a link written to `guide.md` in another page points at the clean URL (`/guide`). A directory URL such as `/guide/`
+serves that directory's `README.md`.
 
 ### 4. Static Site Generation
 

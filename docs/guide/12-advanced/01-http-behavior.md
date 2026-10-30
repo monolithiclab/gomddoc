@@ -184,7 +184,7 @@ curl -i http://localhost:8080/docs/guide.md
   links as written. External links, links to other files and links to missing pages stay as written.
 
 It needs `.md` (or `.markdown`) in `strip_extensions`, the default: without stripping, `/docs/guide.md` is the page's
-only URL and serves HTML. Before D54, `/docs/guide.md` answered `301` to `/docs/guide`.
+only URL and serves HTML. Before v0.5.0, `/docs/guide.md` answered `301` to `/docs/guide`.
 
 ### Error Handling
 

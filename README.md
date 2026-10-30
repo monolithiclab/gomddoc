@@ -16,8 +16,11 @@ with `gomddoc doctor` before bumping a pinned version). Open bugs and the ranked
   other file type with its detected MIME type
 - **Content Negotiation**: `Accept` header support; `Accept: text/markdown` returns the raw Markdown source, an
   unsatisfiable `Accept` gets `406`
-- **Clean URLs**: `.md` is stripped from URLs by default (`/guide` serves `guide.md`; `/guide.md` redirects with
-  `301`)
+- **Clean URLs**: `.md` is stripped from URLs by default (`/guide` serves the page for `guide.md`); links between
+  pages written as `guide.md` point at the clean URL
+- **Markdown URLs**: every page's `.md` URL (`/guide.md`) serves its Markdown with generated frontmatter, in `serve`
+  and in static builds, and each HTML page links it as `rel="alternate"`
+- **llms.txt**: `/llms.txt` indexes the site for AI agents from the navigation, each page linked by its Markdown URL
 - **Git-Native Content**: Serve a local directory or a `git+https://` / `git+ssh://` repository URL (in-memory or
   on-disk clone)
 - **Static Site Generation**: `gomddoc build` writes a static site with clean-URL directories, `404.html`, sitemap,
@@ -31,7 +34,8 @@ with `gomddoc doctor` before bumping a pinned version). Open bugs and the ranked
 - **Internationalization**: BCP 47 language directories (`fr-FR/`) served under `/{lang}/`, translated UI strings,
   a language switcher and `hreflang` tags
 - **MCP Server**: `gomddoc mcp` (stdio) and `/_mcp/` (Streamable HTTP) expose read-only search, page, section and
-  navigation tools to AI agents
+  navigation tools to AI agents; every stable release is listed in the MCP Registry as
+  `io.github.monolithiclab/gomddoc`, running the container image
 - **Themes**: One bundled theme (`default`) plus seven more in
   [gomddoc-themes](https://github.com/monolithiclab/gomddoc-themes); feature toggles and CSS variables in config
 - **Review Annotations**: Select text on a rendered page, attach a note, and copy every note of the page as Markdown

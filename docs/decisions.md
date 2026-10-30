@@ -1150,3 +1150,6 @@ entry lacks the label with its exact name.
   serves a fixed corpus, gomddoc's own documentation, not the user's.
 - *Cost if wrong*: a registry schema or API change fails the `mcp-registry` job after the release itself is out, so it
   is re-run by hand rather than re-tagged; bumping `mcp-publisher` means a new version and checksum in the workflow.
+- *Note*: publishing by hand with `mcp-publisher publish` from `main` is not supported. The committed `version`
+  (`0.4.0`) names an image built before the label existed, which the registry's OCI check rejects; only the release
+  job, which rewrites `version` and the image tag from the tag it runs for, publishes.

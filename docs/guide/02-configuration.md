@@ -91,7 +91,7 @@ gomddoc build [DIR] [flags]
   `README.html` — unless that directory also has an `index.md`, which wins.
 - In pretty mode, each Markdown page is also written at its source path with the enriched Markdown that `serve`
   answers there (`guides/setup.md` beside `guides/setup/index.html`), so `/guides/setup.md` serves the same Markdown
-  on a static host, with the build's published URLs (prev/next links end in `/`). Before D54 this was a redirect stub at `guides/setup.md/index.html`; it is no longer written.
+  on a static host, with the build's published URLs (prev/next links end in `/`). Before v0.5.0 this was a redirect stub at `guides/setup.md/index.html`; it is no longer written.
   Other stripped extensions (`.html`) still get a redirect stub. Default-index files get no stub, because their URL
   is the directory itself.
 - Pages with `redirect_from` frontmatter get a stub per source, at `<source>/index.html` (or at `<source>` itself
@@ -343,7 +343,7 @@ strip_extensions:
 
 *   `docs/guide.md` becomes accessible at `/docs/guide`
 *   `/docs/guide.md` serves the page's enriched Markdown, whatever the `Accept` header says (see
-    [Markdown URLs](12-advanced/01-http-behavior.md#markdown-urls)). It no longer redirects: before D54 it answered
+    [Markdown URLs](12-advanced/01-http-behavior.md#markdown-urls)). It no longer redirects: before v0.5.0 it answered
     `301` to `/docs/guide`
 *   Any other stripped extension (`/about.html`) is 301-redirected to the clean URL (`/about`)
 *   Non-rendered files (images, CSS, etc.) keep their extensions
