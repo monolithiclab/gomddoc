@@ -1062,8 +1062,9 @@ output: frontmatter merged with related docs and prev/next), `Content-Type: text
 `PageURLPath`; `resolve.PathResolver.MarkdownURLPath` decides which URLs qualify (a Markdown file stripping mapped),
 so `ExtensionRedirect` still 301s every other stripped extension (`.html`), and a `.md` URL for a missing page is 404.
 Every HTML page links its Markdown from the shared `head-meta` partial with
-`<link rel="alternate" type="text/markdown">`, read from `PageContext.MarkdownURL`. `gomddoc build` writes the same body
-at the same path (`guide.md` beside `guide/index.html`) and no longer writes a `guide.md/index.html` redirect stub.
+`<link rel="alternate" type="text/markdown">`, read from `PageContext.MarkdownURL`. `gomddoc build` writes the same Markdown
+at the same path (`guide.md` beside `guide/index.html`), with the build's published URLs (prev/next links end in `/`,
+so they resolve on the static host), and no longer writes a `guide.md/index.html` redirect stub.
 There is no config key and no compatibility switch: `/guide.md` stops redirecting, which the guide and the
 `strip_extensions` doc tag say.
 

@@ -485,10 +485,11 @@ func TestBuildCmd_Run_MarkdownFiles(t *testing.T) {
 	srcDir := t.TempDir()
 	outDir := filepath.Join(t.TempDir(), "out")
 
-	// One navigation leaf, so neither page has prev/next: those carry build's
-	// trailing-slash URLs, as the built HTML does, and would differ from serve.
+	// Two navigation leaves, so setup and teardown link each other as
+	// prev/next: the one place build's body differs from serve's (see below).
 	writeTestFile(t, srcDir, "README.md", "---\ntitle: Home\ntags: [docs]\n---\n# Home\n")
 	writeTestFile(t, srcDir, "guides/setup.md", "---\ntitle: Setup\ntags: [docs]\n---\n# Setup\n\nsetup body\n")
+	writeTestFile(t, srcDir, "guides/teardown.md", "---\ntitle: Teardown\n---\n# Teardown\n")
 	// The French tree has its own index, so its related docs differ from the
 	// default tree's: a language page must be enriched by its own pipeline.
 	writeTestFile(t, srcDir, "fr-FR/README.md", "---\ntitle: Accueil\ntags: [docs]\n---\n# Accueil\n")
@@ -506,7 +507,7 @@ func TestBuildCmd_Run_MarkdownFiles(t *testing.T) {
 
 	host := http.FileServer(http.Dir(outDir))
 	served := serveHandler(t, srcDir)
-	for _, target := range []string{"/guides/setup.md", "/README.md", "/fr-FR/guides/setup.md"} {
+	for _, target := range []string{"/guides/setup.md", "/guides/teardown.md", "/README.md", "/fr-FR/guides/setup.md"} {
 		static := httptest.NewRecorder()
 		host.ServeHTTP(static, httptest.NewRequest(http.MethodGet, target, nil))
 		if static.Code != http.StatusOK {
@@ -521,12 +522,21 @@ func TestBuildCmd_Run_MarkdownFiles(t *testing.T) {
 		if live.Code != http.StatusOK {
 			t.Fatalf("serve GET %s = %d, want 200", target, live.Code)
 		}
-		if static.Body.String() != live.Body.String() {
-			t.Errorf("%s: build output differs from serve\nbuild:\n%s\nserve:\n%s", target, static.Body.String(), live.Body.String())
+		// Build keeps its published URLs, so links resolve on the static
+		// host: prev/next paths end in "/". Everything else is serve's body.
+		want := prevNextPath.ReplaceAllString(live.Body.String(), "$1/")
+		if static.Body.String() != want {
+			t.Errorf("%s: build output is not serve's with trailing-slash prev/next\nbuild:\n%s\nserve:\n%s", target, static.Body.String(), live.Body.String())
 		}
-		if !strings.Contains(static.Body.String(), "related_docs:") {
-			t.Errorf("%s: not the enriched Markdown:\n%s", target, static.Body.String())
-		}
+	}
+
+	// The fixture does exercise that difference.
+	setup := readTestFile(t, filepath.Join(outDir, "guides"), "setup.md")
+	if !strings.Contains(setup, "next_page:\n    path: /guides/teardown/\n") {
+		t.Errorf("guides/setup.md should link next_page /guides/teardown/:\n%s", setup)
+	}
+	if !strings.Contains(setup, "related_docs:") {
+		t.Errorf("guides/setup.md is not the enriched Markdown:\n%s", setup)
 	}
 
 	// The enriched body replaced the source file, not joined it in a stub
@@ -536,6 +546,51 @@ func TestBuildCmd_Run_MarkdownFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "guides", "setup.html")); !os.IsNotExist(err) {
 		t.Error("guides/setup.html should not exist")
+	}
+}
+
+// prevNextPath matches the path line of a prev_page or next_page block in an
+// enriched Markdown body (related_docs entries are "- path:" list items).
+var prevNextPath = regexp.MustCompile(`(?m)^(    path: \S*[^/\s])$`)
+
+// TestMarkdownURL_ExcludedPage pins that exclusion covers the .md URL: an
+// excluded page's Markdown is 404 in serve, absent from build output, and no
+// page links it as an alternate.
+func TestMarkdownURL_ExcludedPage(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	outDir := filepath.Join(t.TempDir(), "out")
+	writeTestFile(t, srcDir, ".gomddoc/config.yml", "exclude:\n  - secret.md\n")
+	writeTestFile(t, srcDir, "README.md", "# Home\n")
+	writeTestFile(t, srcDir, "secret.md", "# Secret\n")
+
+	served := serveHandler(t, srcDir)
+	for _, target := range []string{"/secret.md", "/secret"} {
+		w := httptest.NewRecorder()
+		served.ServeHTTP(w, httptest.NewRequest(http.MethodGet, target, nil))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("serve GET %s = %d, want 404", target, w.Code)
+		}
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept", "text/html")
+	served.ServeHTTP(w, req)
+	if strings.Contains(w.Body.String(), "secret.md") {
+		t.Errorf("serve GET / links the excluded page's Markdown:\n%s", w.Body.String())
+	}
+
+	if err := (&BuildCmd{Dir: srcDir, Output: outDir}).Run(); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	for _, p := range []string{"secret.md", filepath.Join("secret", "index.html")} {
+		if _, err := os.Stat(filepath.Join(outDir, p)); !os.IsNotExist(err) {
+			t.Errorf("build wrote %s for an excluded page (err = %v)", p, err)
+		}
+	}
+	if index := readTestFile(t, outDir, "index.html"); strings.Contains(index, "secret.md") {
+		t.Error("built index.html links the excluded page's Markdown")
 	}
 }
 

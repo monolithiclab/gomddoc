@@ -294,7 +294,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		// resolver, exclusion, and handler all operate on content-root-relative
 		// paths — matching build mode, which walks the language sub-FS directly.
 		// ExtensionRedirect re-adds the prefix to its 301 Location via basePath,
-		// and the handler re-adds it to a .md URL's canonical Link via Lang.
+		// and the handler re-adds it to a .md URL's canonical Link via BasePath.
 		langContent := auth.Subgroup(prefix,
 			stripPathPrefix(prefix),
 			NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),

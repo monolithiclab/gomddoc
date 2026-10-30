@@ -176,8 +176,8 @@ curl -i http://localhost:8080/docs/guide.md
   (`/fr-FR/docs/guide.md`). Themes get it from the shared `head-meta` partial.
 - **Directory pages:** `/docs/README.md` (and `/docs/index.md`) serve the directory page's Markdown.
 - **Missing pages:** a `.md` URL for a page that does not exist is `404`, not a redirect.
-- **Static builds:** `gomddoc build` writes the same body at the same path (`docs/guide.md`), so a static host serves
-  these URLs too.
+- **Static builds:** `gomddoc build` writes the same Markdown at the same path (`docs/guide.md`), so a static host
+  serves these URLs too. Its links are the build's published URLs: prev/next paths end in `/`.
 
 It needs `.md` (or `.markdown`) in `strip_extensions`, the default: without stripping, `/docs/guide.md` is the page's
 only URL and serves HTML. Before D54, `/docs/guide.md` answered `301` to `/docs/guide`.
@@ -295,6 +295,7 @@ The redirect middleware runs before the handler so that redirected requests neve
 
 In `gomddoc build`, the resolver drives pretty URL output. Instead of generating `guide.html`,
 the build command generates `guide/index.html` so that static hosts serve the page at `/guide/`.
-Extension redirect HTML files (e.g., `guide.md/index.html` containing a meta-refresh redirect to `/guide`)
-are also generated so old extension-based URLs work on static hosts that do not support server-side
+A Markdown page's own extension URL is a file holding its Markdown (`guide.md`, see
+[Markdown URLs](#markdown-urls)). Other stripped extensions get meta-refresh redirect files (e.g., `about.html`
+pointing at `/about/`) so old extension-based URLs work on static hosts that do not support server-side
 redirects. `redirect_from` sources get the same kind of meta-refresh page.

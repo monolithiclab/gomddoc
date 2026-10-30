@@ -631,7 +631,7 @@ directory also has an `index.md`. File processing is parallelized with an `errgr
 
 Besides the pages, build writes the static-asset overlay to `_assets/`, `site.webmanifest`, `robots.txt`, `sitemap.xml` and `feed.xml`
 (when `meta.domain` is set), `sitemap-index.xml` (see below), `redirect_from` stub pages, each Markdown page's enriched
-Markdown at its source path (`guide.md`, rendered by the same passthrough renderer serve negotiates, D54), extension
+Markdown at its source path (`guide.md`, rendered by the same passthrough renderer serve negotiates, with build's trailing-slash prev/next URLs, D54), extension
 redirect stubs for other stripped extensions (`about.html` → `/about/`), tag pages (`tags/index.html`, `tags/{tag}/index.html`), and `404.html` rendered through
 `ErrorPage.Render`.
 

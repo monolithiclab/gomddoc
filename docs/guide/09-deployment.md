@@ -76,8 +76,9 @@ name (`README.html`, or `README/index.html` with `strip_extensions`).
 The output includes:
 
 - Rendered HTML for all markdown files (with navigation, breadcrumbs, TOC, styling)
-- Each page's enriched Markdown at its source path (`guide.md`), with `strip_extensions` on: the body `serve` answers
-  at that URL, which every HTML page links as its `text/markdown` alternate
+- Each page's enriched Markdown at its source path (`guide.md`), with `strip_extensions` on: the Markdown `serve`
+  answers at that URL, with the build's published URLs (prev/next links end in `/`), which every HTML page links as
+  its `text/markdown` alternate
 - Non-markdown files copied as-is (images, PDFs, etc.)
 - `robots.txt` — always generated; its `Sitemap:` line is present only when `meta.domain` is set
 - `site.webmanifest` — always generated, named after `meta.title`; the icons it lists are in `_assets/`

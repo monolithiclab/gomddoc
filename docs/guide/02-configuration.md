@@ -91,7 +91,7 @@ gomddoc build [DIR] [flags]
   `README.html` — unless that directory also has an `index.md`, which wins.
 - In pretty mode, each Markdown page is also written at its source path with the enriched Markdown that `serve`
   answers there (`guides/setup.md` beside `guides/setup/index.html`), so `/guides/setup.md` serves the same Markdown
-  on a static host. Before D54 this was a redirect stub at `guides/setup.md/index.html`; it is no longer written.
+  on a static host, with the build's published URLs (prev/next links end in `/`). Before D54 this was a redirect stub at `guides/setup.md/index.html`; it is no longer written.
   Other stripped extensions (`.html`) still get a redirect stub. Default-index files get no stub, because their URL
   is the directory itself.
 - Pages with `redirect_from` frontmatter get a stub per source, at `<source>/index.html` (or at `<source>` itself
