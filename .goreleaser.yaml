@@ -56,6 +56,9 @@ signs:
 # buildx's TARGETOS/TARGETARCH build args to pick the right binary per
 # platform — a non-trivial Dockerfile rewrite. Revisit when migrating
 # away from the (still-functional) deprecated keys becomes urgent.
+#
+# The MCP Registry lists server.json only if each image carries io.modelcontextprotocol.server.name equal to its
+# name; `make lint` (lint-mcp-registry) fails when an entry here lacks it.
 dockers:
   - id: gomddoc-amd64
     image_templates: ["ghcr.io/monolithiclab/gomddoc:{{ .Version }}-amd64"]
@@ -66,6 +69,7 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/monolithiclab/gomddoc"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=io.modelcontextprotocol.server.name=io.github.monolithiclab/gomddoc"
   - id: gomddoc-arm64
     image_templates: ["ghcr.io/monolithiclab/gomddoc:{{ .Version }}-arm64"]
     use: buildx
@@ -76,6 +80,7 @@ dockers:
       - "--label=org.opencontainers.image.source=https://github.com/monolithiclab/gomddoc"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=io.modelcontextprotocol.server.name=io.github.monolithiclab/gomddoc"
 
 docker_manifests:
   - name_template: "ghcr.io/monolithiclab/gomddoc:{{ .Version }}"

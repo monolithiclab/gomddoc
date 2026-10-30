@@ -114,6 +114,21 @@ gomddoc mcp "git+ssh://git@github.com/org/docs.git" --git-key-file ~/.ssh/id_ed2
 
 See [Content Sources](03-content-sources.md) for the URL syntax, branch and subdirectory selection.
 
+### Installing from the MCP Registry
+
+Every release is listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.monolithiclab/gomddoc`, so a client that browses the registry can install it without a local binary. The
+listing runs the release's container image over stdio, with your documentation directory mounted read-only at
+`/docs`; the client asks for that directory and runs the equivalent of:
+
+```bash
+docker run -i --rm --mount type=bind,src=/path/to/your/docs,dst=/docs,readonly \
+  ghcr.io/monolithiclab/gomddoc:<version> mcp /docs
+```
+
+The listing also names `https://gomddoc.com/_mcp/`, the [Streamable HTTP](#streamable-http-transport) endpoint
+serving gomddoc's own documentation.
+
 ## Streamable HTTP Transport
 
 In addition to the stdio transport used by `gomddoc mcp`, the MCP server is also available over

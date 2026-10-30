@@ -1110,3 +1110,34 @@ mirror.
 - *Cost if wrong*: a page under `## Other pages` sits outside its section; without the metadata index (metadata
   disabled), descriptions are absent and `noindex` cannot be honoured; and a content file named `llms.txt` at the root
   is shadowed by the generated one.
+
+## D56. Listed in the MCP Registry on Every Release, with a Pinned `mcp-publisher`
+
+*2026-10-30*
+
+**Decision** (2026-10-30): `server.json` at the repository root describes gomddoc to the official MCP Registry
+against schema `2025-12-11` (`https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json`), as
+`io.github.monolithiclab/gomddoc`: one `oci` package, `ghcr.io/monolithiclab/gomddoc:{version}`, over stdio, running
+`mcp /docs` with the documentation directory bind-mounted read-only at `/docs` (a `--mount` runtime argument whose
+`docs_dir` variable the client asks for), and a `streamable-http` remote, `https://gomddoc.com/_mcp/`, which answered
+an MCP `initialize` with 200 on 2026-10-30. The committed version is the latest release; the release workflow's
+`mcp-registry` job rewrites `version` and the image tag from the tag with `jq`, then runs `mcp-publisher login
+github-oidc` and `mcp-publisher publish`. The job needs the `goreleaser` job (the registry checks the pushed image),
+skips prereleases, holds `id-token: write` only and reads `server.json` from the tagged commit without a checkout.
+`mcp-publisher` (modelcontextprotocol/registry) is a release-time dependency, not a module one: v1.8.7, its
+`linux_amd64` archive pinned by SHA-256 in the workflow, checked against the release's checksums file and GitHub's
+asset digest. Every `dockers:` entry in `.goreleaser.yaml` carries
+`io.modelcontextprotocol.server.name=io.github.monolithiclab/gomddoc`, the label through which the registry verifies
+an OCI package, and `make lint` (`lint-mcp-registry`, `jq` and `awk`) fails when `server.json` does not parse or any
+entry lacks the label with its exact name.
+
+- *Evidence*: agent users look for servers in the MCP Registry, and gomddoc's built-in server was not listed there.
+  OIDC login needs no secret: the workflow's identity proves the `io.github.monolithiclab` namespace.
+- *Alternatives*: publishing by hand (forgotten on some release); the `latest` download the registry's guide shows
+  (unpinned code publishing under the lab's name); a GitHub PAT (`login github --token`, one more secret to rotate);
+  DNS authentication for a `com.gomddoc/` name (a key to keep, for a cosmetic namespace); an `mcpb` package
+  (another artifact to build, when the image already exists); a `LABEL` in the Dockerfile (the build flags already
+  hold the image's labels).
+- *Cost if wrong*: a registry schema or API change fails the `mcp-registry` job after the release itself is out, so it
+  is re-run by hand rather than re-tagged; bumping `mcp-publisher` means a new version and checksum in the workflow.
+  The `gomddoc.com` remote is listed under the package's name although it serves gomddoc's own docs, not the user's.

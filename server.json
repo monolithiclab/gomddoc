@@ -1,0 +1,54 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.monolithiclab/gomddoc",
+  "title": "gomddoc",
+  "description": "Search and read a Markdown documentation directory: pages, sections, table of contents.",
+  "repository": {
+    "url": "https://github.com/monolithiclab/gomddoc",
+    "source": "github"
+  },
+  "websiteUrl": "https://gomddoc.com",
+  "version": "0.4.0",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/monolithiclab/gomddoc:0.4.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "docker",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--mount",
+          "description": "Mount the documentation directory into the container, read-only",
+          "value": "type=bind,src={docs_dir},dst=/docs,readonly",
+          "isRequired": true,
+          "variables": {
+            "docs_dir": {
+              "description": "Markdown documentation directory on the host",
+              "format": "filepath",
+              "isRequired": true
+            }
+          }
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        },
+        {
+          "type": "positional",
+          "value": "/docs"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://gomddoc.com/_mcp/"
+    }
+  ]
+}
