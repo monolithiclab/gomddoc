@@ -12,6 +12,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
+	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
 
 // TestNewHTTPServer_NilLocaleBundleWithLangPipelines proves NewHTTPServer does
@@ -260,7 +261,7 @@ func TestServer_ContentRoutes_PerLanguage_Redirects(t *testing.T) {
 		Provider:         newMemoryProvider(enFiles, "README.md", false),
 		Registry:         setupTestRegistry(),
 		EnricherRegistry: setupTestEnricherRegistry(),
-		TemplateRenderer: setupTestRenderer(),
+		TemplateRenderer: setupTestRenderer(tmpl.WithResolver(enResolver)),
 		MetaIndex:        enIdx,
 		Resolver:         enResolver,
 		LocaleBundle:     bundle,
@@ -268,7 +269,7 @@ func TestServer_ContentRoutes_PerLanguage_Redirects(t *testing.T) {
 		AllLanguages:     []string{"fr"},
 		LangPipelines: map[string]LangPipelineConfig{
 			"fr": {
-				TemplateRenderer: setupTestRenderer(),
+				TemplateRenderer: setupTestRenderer(tmpl.WithResolver(frResolver), tmpl.WithLangPrefix("fr")),
 				MetaIndex:        frIdx,
 				Provider:         newMemoryProvider(frFiles, "README.md", false),
 				Resolver:         frResolver,

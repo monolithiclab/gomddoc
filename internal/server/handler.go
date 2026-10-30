@@ -35,11 +35,6 @@ type HandlerConfig struct {
 	URLRedirects     URLRedirectMap
 	Resolver         *resolve.PathResolver
 
-	// BasePath is the prefix the handler is mounted under and that is stripped
-	// before it runs: "/{lang}" for a language scope, "" for the default one.
-	// It turns the handler's content-root-relative paths back into site URLs.
-	BasePath string
-
 	// i18n support
 	Lang      string              // BCP 47 language for this handler
 	TFunc     func(string) string // translation function
@@ -56,7 +51,6 @@ type Handler struct {
 	redirectFinder   RedirectFinder
 	urlRedirects     URLRedirectMap
 	resolver         *resolve.PathResolver
-	basePath         string
 
 	// i18n support
 	lang      string              // BCP 47 language for this handler
@@ -87,7 +81,6 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		redirectFinder:   cfg.RedirectFinder,
 		urlRedirects:     cfg.URLRedirects,
 		resolver:         cfg.Resolver,
-		basePath:         cfg.BasePath,
 		lang:             cfg.Lang,
 		tFunc:            cfg.TFunc,
 		languages:        cfg.Languages,
@@ -191,7 +184,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// Set Vary: Accept so caches distinguish responses by content negotiation;
 	// a Markdown URL's response does not vary, and names its page instead.
 	if isMarkdownURL {
-		w.Header().Set("Link", "<"+h.canonicalURL(pagePath)+`>; rel="canonical"`)
+		w.Header().Set("Link", "<"+h.canonicalURL(r.URL.Path)+`>; rel="canonical"`)
 	} else {
 		w.Header().Add("Vary", "Accept")
 	}
@@ -217,18 +210,16 @@ func (h *Handler) withPageLinks(r *http.Request, sourceFile string) context.Cont
 		dir = path.Dir(strings.TrimPrefix(sourceFile, "/"))
 	}
 	return renderer.WithPageLinks(r.Context(), renderer.PageLinks{
-		Resolver:     h.resolver,
-		DefaultIndex: h.siteConfig.DefaultIndex,
-		LangPrefix:   h.basePath,
-		SourceDir:    dir,
+		URLs:      h.templateRenderer,
+		SourceDir: dir,
 	})
 }
 
-// canonicalURL is the site URL of pagePath, a content-root-relative page URL
-// path: absolute with the configured domain, root-relative without one. It is
-// the sitemap's derivation (GenerateSitemap), so the two name one URL.
-func (h *Handler) canonicalURL(pagePath string) string {
-	return siteURL(h.siteConfig.Meta.Domain, h.basePath+pagePath)
+// canonicalURL is the site URL of the page published from file, a
+// content-root-relative path: absolute with the configured domain,
+// root-relative without one.
+func (h *Handler) canonicalURL(file string) string {
+	return siteURL(h.siteConfig.Meta.Domain, h.templateRenderer.ContentURL(file))
 }
 
 // serveHTML wraps HTML content in the site template and serves it.

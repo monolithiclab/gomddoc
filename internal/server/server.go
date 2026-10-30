@@ -201,23 +201,17 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	if len(opts.LangPipelines) > 0 {
 		searchSources := make(map[string]SearchSource)
 		if opts.SearchIndex != nil {
-			searchSources[opts.DefaultLang] = SearchSource{
-				Index: opts.SearchIndex, Resolver: opts.Resolver, DefaultIndex: cfg.Site.DefaultIndex,
-			}
+			searchSources[opts.DefaultLang] = SearchSource{Index: opts.SearchIndex, URLs: opts.TemplateRenderer}
 		}
 		for lang, lp := range opts.LangPipelines {
 			if lp.SearchIndex != nil {
-				searchSources[lang] = SearchSource{
-					Index: lp.SearchIndex, Resolver: lp.Resolver, DefaultIndex: cfg.Site.DefaultIndex, PathPrefix: "/" + lang,
-				}
+				searchSources[lang] = SearchSource{Index: lp.SearchIndex, URLs: lp.TemplateRenderer}
 			}
 		}
 		searchHandler := NewMultiLangSearchHandler(searchSources, opts.DefaultLang)
 		api.HandleFunc("GET /search", searchHandler.SearchEndpoint)
 	} else if opts.SearchIndex != nil {
-		searchHandler := NewSearchHandler(SearchSource{
-			Index: opts.SearchIndex, Resolver: opts.Resolver, DefaultIndex: cfg.Site.DefaultIndex,
-		})
+		searchHandler := NewSearchHandler(SearchSource{Index: opts.SearchIndex, URLs: opts.TemplateRenderer})
 		api.HandleFunc("GET /search", searchHandler.SearchEndpoint)
 	}
 
@@ -232,7 +226,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	if opts.NavGenerator != nil {
 		auth.Handle("GET /llms.txt", NewLLMsTxtHandler(LLMsTxtSource{
 			Nav: opts.NavGenerator, Index: opts.MetaIndex, Resolver: opts.Resolver,
-			Site: &cfg.Site, MCPPath: mcpPath,
+			URLs: opts.TemplateRenderer, Site: &cfg.Site, MCPPath: mcpPath,
 		}))
 	}
 
@@ -284,7 +278,6 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 			RedirectFinder:   lp.RedirectFinder,
 			URLRedirects:     lp.URLRedirects,
 			Resolver:         lp.Resolver,
-			BasePath:         prefix,
 			Lang:             lang,
 			TFunc:            langTFunc,
 			Languages:        template.WithActiveLang(allLanguageInfos, lang),
@@ -301,7 +294,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		if lp.NavGenerator != nil {
 			auth.Handle("GET "+prefix+"/llms.txt", NewLLMsTxtHandler(LLMsTxtSource{
 				Nav: lp.NavGenerator, Index: lp.MetaIndex, Resolver: lp.Resolver,
-				Site: &cfg.Site, PathPrefix: prefix, MCPPath: mcpPath,
+				URLs: lp.TemplateRenderer, Site: &cfg.Site, MCPPath: mcpPath,
 			}))
 		}
 
@@ -321,7 +314,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		// resolver, exclusion, and handler all operate on content-root-relative
 		// paths — matching build mode, which walks the language sub-FS directly.
 		// ExtensionRedirect re-adds the prefix to its 301 Location via basePath,
-		// and the handler re-adds it to a .md URL's canonical Link via BasePath.
+		// and the handler's template renderer to every page URL it names.
 		langContent := auth.Subgroup(prefix,
 			stripPathPrefix(prefix),
 			NewMethodFilterMiddleware(http.MethodGet, http.MethodHead),

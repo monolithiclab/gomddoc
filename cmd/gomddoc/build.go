@@ -495,15 +495,9 @@ func (b *BuildCmd) buildFile(
 
 	// Body links to a page's Markdown file point at the page's published URL
 	// (D54), as serve's handler does; the .md output below keeps them.
-	langPrefix := ""
-	if outputPrefix != "" {
-		langPrefix = "/" + outputPrefix
-	}
 	linksCtx := renderer.WithPageLinks(ctx, renderer.PageLinks{
-		Resolver:     bc.resolver,
-		DefaultIndex: bc.siteConfig.DefaultIndex,
-		LangPrefix:   langPrefix,
-		SourceDir:    path.Dir(filePath),
+		URLs:      bc.templateRenderer,
+		SourceDir: path.Dir(filePath),
 	})
 	renderResult, err := contentRenderer.Render(linksCtx, content, enrichment)
 	if err != nil {
@@ -662,13 +656,9 @@ func (b *BuildCmd) writeSitemapIndex(domain string, langs []string) (string, err
 // serve's file at the same URL, minus the MCP line, since a static host
 // mounts no /_mcp/.
 func (b *BuildCmd) writeLLMsTxt(pipe *Pipeline, site *config.SiteConfig, lang string) error {
-	prefix := ""
-	if lang != "" {
-		prefix = "/" + lang
-	}
 	data := server.GenerateLLMsTxt(server.LLMsTxtSource{
 		Nav: pipe.NavGenerator, Index: pipe.MetaIndex, Resolver: pipe.Resolver,
-		Site: site, PathPrefix: prefix,
+		URLs: pipe.TemplateRenderer, Site: site,
 	})
 	if err := b.writeOutputFile(path.Join(lang, "llms.txt"), data); err != nil {
 		return fmt.Errorf("write llms.txt: %w", err)

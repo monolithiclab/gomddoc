@@ -6,7 +6,9 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
+	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 )
 
 // linkFiles is the content tree the page-link tests resolve against: Markdown
@@ -21,12 +23,19 @@ var linkFiles = fstest.MapFS{
 	"guide/image.png":     {Data: []byte("png")},
 }
 
-func linkResolver(trailingSlash bool) *resolve.PathResolver {
-	return resolve.Build(linkFiles, resolve.BuildOptions{
+// linkURLs is the page URL rule the page-link tests resolve against: the
+// template renderer's, over linkFiles, under lang's prefix ("" for none).
+func linkURLs(trailingSlash bool, lang string) PageURLs {
+	resolver := resolve.Build(linkFiles, resolve.BuildOptions{
 		StripExtensions: []string{".md"},
 		HasRenderer:     func(m string) bool { return m == "text/markdown" },
 		TrailingSlash:   trailingSlash,
 	})
+	opts := []tmpl.RendererOption{tmpl.WithResolver(resolver)}
+	if lang != "" {
+		opts = append(opts, tmpl.WithLangPrefix(lang))
+	}
+	return tmpl.NewHTMLRenderer(&config.SiteConfig{DefaultIndex: "README.md"}, fstest.MapFS{}, opts...)
 }
 
 const linkBody = `[a](other.md)
@@ -41,6 +50,7 @@ const linkBody = `[a](other.md)
 [j](../../escape.md)
 [k](my%20page.md)
 [l][ref]
+[m](/fr-FR/x.md)
 
 [ref]: other.md#r
 `
@@ -84,65 +94,59 @@ var untouched = map[string]string{
 	"j": "../../escape.md",
 }
 
-func TestPageLinks_RewritesMarkdownLinksToCleanURLs(t *testing.T) {
+func TestPageLinks(t *testing.T) {
 	t.Parallel()
 
-	got := renderedHrefs(t, &PageLinks{
-		Resolver: linkResolver(false), DefaultIndex: "README.md", SourceDir: "guide",
-	})
-	assertHrefs(t, got, map[string]string{
-		"a": "/guide/other",
-		"b": "/guide/sub",
-		"c": "/x#frag",
-		"d": "/guide/other?v=1#s",
-		"i": "/x",
-		"k": "/guide/my%20page",
-		"l": "/guide/other#r",
-	})
-	assertHrefs(t, got, untouched)
-}
-
-func TestPageLinks_LanguagePrefix(t *testing.T) {
-	t.Parallel()
-
-	got := renderedHrefs(t, &PageLinks{
-		Resolver: linkResolver(false), DefaultIndex: "README.md", SourceDir: "guide", LangPrefix: "/fr-FR",
-	})
-	assertHrefs(t, got, map[string]string{
-		"a": "/fr-FR/guide/other",
-		"c": "/fr-FR/x#frag",
-		// A root-relative link outside the language names another tree.
-		"i": "/x.md",
-	})
-	assertHrefs(t, got, untouched)
-}
-
-func TestPageLinks_LanguageAbsoluteLink(t *testing.T) {
-	t.Parallel()
-
-	ctx := WithPageLinks(context.Background(), PageLinks{
-		Resolver: linkResolver(false), DefaultIndex: "README.md", LangPrefix: "/fr-FR",
-	})
-	res, err := NewMarkdownRenderer(MarkdownOptions{}).Render(ctx, []byte("[a](/fr-FR/x.md)"), nil)
-	if err != nil {
-		t.Fatalf("Render: %v", err)
+	tests := []struct {
+		name  string
+		links PageLinks
+		want  map[string]string
+	}{
+		{
+			name:  "rewrites Markdown links to clean URLs",
+			links: PageLinks{URLs: linkURLs(false, ""), SourceDir: "guide"},
+			want: map[string]string{
+				"a": "/guide/other",
+				"b": "/guide/sub",
+				"c": "/x#frag",
+				"d": "/guide/other?v=1#s",
+				"i": "/x",
+				"k": "/guide/my%20page",
+				"l": "/guide/other#r",
+				// Another tree's root-relative link.
+				"m": "/fr-FR/x.md",
+			},
+		},
+		{
+			name:  "language prefix",
+			links: PageLinks{URLs: linkURLs(false, "fr-FR"), SourceDir: "guide"},
+			want: map[string]string{
+				"a": "/fr-FR/guide/other",
+				"c": "/fr-FR/x#frag",
+				// A root-relative link outside the language names another tree.
+				"i": "/x.md",
+				// One inside it names the language's own page.
+				"m": "/fr-FR/x",
+			},
+		},
+		{
+			name:  "trailing slash",
+			links: PageLinks{URLs: linkURLs(true, ""), SourceDir: "guide"},
+			want: map[string]string{
+				"a": "/guide/other/",
+				"b": "/guide/sub/",
+				"c": "/x/#frag",
+			},
+		},
 	}
-	if want := `<a href="/fr-FR/x">a</a>`; !regexp.MustCompile(regexp.QuoteMeta(want)).Match(res.Content) {
-		t.Errorf("rendered %q, want %s", res.Content, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := renderedHrefs(t, &tt.links)
+			assertHrefs(t, got, tt.want)
+			assertHrefs(t, got, untouched)
+		})
 	}
-}
-
-func TestPageLinks_TrailingSlash(t *testing.T) {
-	t.Parallel()
-
-	got := renderedHrefs(t, &PageLinks{
-		Resolver: linkResolver(true), DefaultIndex: "README.md", SourceDir: "guide",
-	})
-	assertHrefs(t, got, map[string]string{
-		"a": "/guide/other/",
-		"b": "/guide/sub/",
-		"c": "/x/#frag",
-	})
 }
 
 // Without page links (the Markdown passthrough's view, or a caller that has

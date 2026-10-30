@@ -67,6 +67,14 @@ type Renderer interface {
 	// language prefix included, or "" when the page has none.
 	// BuildPageContext calls it; templates read PageContext.MarkdownURL.
 	MarkdownURL(file string) string
+
+	// ContentURL returns the site URL file is published at (D35), language
+	// prefix included. Templates call it as contentURL.
+	ContentURL(file string) string
+
+	// LangPrefix returns "/{lang}" for a language pipeline's renderer, "" for
+	// the default language's: the prefix ContentURL and MarkdownURL apply.
+	LangPrefix() string
 }
 
 // LanguageInfo holds display information for a language.
@@ -248,7 +256,7 @@ func WithBreadcrumbGenerator(gen breadcrumb.Generator) RendererOption {
 }
 
 // WithLangPrefix marks the renderer as belonging to a language pipeline, whose
-// resolver is keyed on paths relative to that language's sub-FS. contentURL
+// resolver is keyed on paths relative to that language's sub-FS. ContentURL
 // prepends the prefix so its output is a servable absolute URL. Leave unset for
 // the default language, which is served unprefixed.
 func WithLangPrefix(lang string) RendererOption {
@@ -624,7 +632,7 @@ func (h *HTMLRenderer) funcMap() template.FuncMap {
 		"assetURL": func(name string) string {
 			return "/_assets/" + name
 		},
-		"contentURL":        h.contentURL,
+		"contentURL":        h.ContentURL,
 		"inlineJSAsset":     h.inlineJSAsset,
 		"inlineCSSAsset":    h.inlineCSSAsset,
 		"inlineHTMLAsset":   h.inlineHTMLAsset,
@@ -745,8 +753,12 @@ func (h *HTMLRenderer) SourcePath(file string) string {
 	return path.Join(h.sourcePrefix, file)
 }
 
+// LangPrefix returns the language prefix ContentURL and MarkdownURL apply:
+// "/{lang}" in a language pipeline, "" otherwise.
+func (h *HTMLRenderer) LangPrefix() string { return h.langPrefix }
+
 // MarkdownURL returns the site URL of file's enriched Markdown, the language
-// prefix applied as contentURL applies it, or "" when file has no Markdown URL
+// prefix applied as ContentURL applies it, or "" when file has no Markdown URL
 // (resolve.PathResolver.MarkdownURLPath).
 func (h *HTMLRenderer) MarkdownURL(file string) string {
 	if u, ok := h.resolver.MarkdownURLPath(file); ok {
@@ -815,14 +827,16 @@ func ResolveLayout(r Renderer, frontmatter map[string]any) string {
 	return defaultTemplate
 }
 
-// contentURL exposes resolve.PageURLPath to templates, which hold real file
-// paths (see-also entries, tag listings) but must link to published URLs.
+// ContentURL is resolve.PageURLPath for this renderer's language scope: the
+// one derivation of a page's URL every consumer holding a real file path uses
+// (templates as contentURL: see-also entries, tag listings; body links,
+// search results, llms.txt, the canonical Link of a Markdown URL).
 //
 // A language pipeline's paths are relative to its own sub-FS, so the renderer's
 // language prefix is prepended here rather than in each template — a template
 // that forgot it would link every localized page to its default-language
 // namesake, or to a 404 when the page exists only in that language.
-func (h *HTMLRenderer) contentURL(filePath string) string {
+func (h *HTMLRenderer) ContentURL(filePath string) string {
 	return h.langPrefix + h.resolver.PageURLPath(filePath, h.siteConfig.DefaultIndex)
 }
 

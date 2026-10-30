@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/search"
 )
 
@@ -18,14 +17,12 @@ type SearchHandler struct {
 
 // SearchSource is one tree's search index and what turns its result paths,
 // the Markdown files it indexed, into the page URLs the theme's search box
-// links: the tree's resolver and its language prefix ("" for the default
-// tree). A result linked by its file path would reach the page's Markdown URL,
-// which serves text/markdown (D54).
+// links: the tree's page URL rule (its template renderer). A result linked by
+// its file path would reach the page's Markdown URL, which serves
+// text/markdown (D54).
 type SearchSource struct {
-	Index        *search.Index
-	Resolver     *resolve.PathResolver
-	DefaultIndex string
-	PathPrefix   string
+	Index *search.Index
+	URLs  PageURLs
 }
 
 // NewSearchHandler creates a new SearchHandler backed by a single search index.
@@ -102,7 +99,7 @@ func (h *SearchHandler) SearchEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	results := source.Index.Search(q, limit)
 	for i := range results {
-		results[i].Path = source.PathPrefix + source.Resolver.PageURLPath(results[i].Path, source.DefaultIndex)
+		results[i].Path = source.URLs.ContentURL(results[i].Path)
 	}
 	writeJSON(w, http.StatusOK, results)
 }

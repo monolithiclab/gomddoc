@@ -13,17 +13,26 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
+// PageURLs is a content tree's page URL rule (D35), as its template renderer
+// (template.Renderer) owns it, language prefix included.
+type PageURLs interface {
+	// ContentURL is the site URL file is published at.
+	ContentURL(file string) string
+	// MarkdownURL is the site URL of file's Markdown, "" when it has none.
+	MarkdownURL(file string) string
+}
+
 // LLMsTxtSource is what an llms.txt (llmstxt.org) is generated from: one
-// content tree's navigation, metadata and resolver, the site's title,
-// description and domain, the tree's URL prefix ("" or "/{lang}"), and the
-// MCP endpoint path to name ("" when none is mounted, as in a static build).
+// content tree's navigation, metadata, resolver (which files it publishes)
+// and page URLs, the site's title, description and domain, and the MCP
+// endpoint path to name ("" when none is mounted, as in a static build).
 type LLMsTxtSource struct {
-	Nav        *navigation.Generator // nil: no pages
-	Index      *metadata.Index       // nil: no descriptions, nothing left out as noindex
-	Resolver   *resolve.PathResolver
-	Site       *config.SiteConfig
-	PathPrefix string
-	MCPPath    string
+	Nav      *navigation.Generator // nil: no pages
+	Index    *metadata.Index       // nil: no descriptions, nothing left out as noindex
+	Resolver *resolve.PathResolver
+	URLs     PageURLs
+	Site     *config.SiteConfig
+	MCPPath  string
 }
 
 // LLMsTxtHandler serves a content tree's llms.txt, generated on first request
@@ -51,9 +60,8 @@ func (h *LLMsTxtHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // list, then one "## {section}" per top-level navigation directory listing its
 // pages depth-first, directory pages first, then "## Other pages": every
 // published page the navigation drops (a directory holding only its README),
-// in path order. Each entry links the page's Markdown
-// (resolve.PathResolver.MarkdownURLPath, falling back to its page URL when
-// stripping did not map it) as "- [title](url): description", without the
+// in path order. Each entry links the page's Markdown (PageURLs.MarkdownURL,
+// falling back to its page URL when stripping did not map it) as "- [title](url): description", without the
 // colon when the page has no description. Pages whose robots frontmatter says
 // noindex are left out, as from the sitemap. URLs are absolute with a domain
 // and root-relative without one. When src.MCPPath is set, a last line names
@@ -186,11 +194,11 @@ func (w *llmsTxtWriter) add(out []string, file, fallback string) []string {
 		title = file
 	}
 
-	urlPath, ok := src.Resolver.MarkdownURLPath(file)
-	if !ok {
-		urlPath = src.Resolver.PageURLPath(file, src.Site.DefaultIndex)
+	urlPath := src.URLs.MarkdownURL(file)
+	if urlPath == "" {
+		urlPath = src.URLs.ContentURL(file)
 	}
-	line := "- [" + linkTextEscaper.Replace(oneLine(title)) + "](" + siteURL(src.Site.Meta.Domain, src.PathPrefix+urlPath) + ")"
+	line := "- [" + linkTextEscaper.Replace(oneLine(title)) + "](" + siteURL(src.Site.Meta.Domain, urlPath) + ")"
 	if desc != "" {
 		line += ": " + desc
 	}

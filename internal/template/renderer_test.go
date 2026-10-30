@@ -1719,9 +1719,9 @@ func TestContentURL(t *testing.T) {
 				r.Configure(WithResolver(tt.resolver))
 			}
 
-			got := r.contentURL(tt.path)
+			got := r.ContentURL(tt.path)
 			if got != tt.want {
-				t.Errorf("contentURL(%q) = %q, want %q", tt.path, got, tt.want)
+				t.Errorf("ContentURL(%q) = %q, want %q", tt.path, got, tt.want)
 			}
 		})
 	}

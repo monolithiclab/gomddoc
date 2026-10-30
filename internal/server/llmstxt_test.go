@@ -39,7 +39,7 @@ var llmsTxtExclude = []string{"private/"}
 
 // llmsTxtSource builds the source GenerateLLMsTxt reads, the way the pipeline
 // does: one resolver for the navigation and the links, one metadata index.
-func llmsTxtSource(t *testing.T, domain, prefix, mcpPath string) LLMsTxtSource {
+func llmsTxtSource(t *testing.T, domain, lang, mcpPath string) LLMsTxtSource {
 	t.Helper()
 	resolver := resolve.Build(llmsTxtTestFS, resolve.BuildOptions{
 		StripExtensions: []string{".md"},
@@ -58,12 +58,12 @@ func llmsTxtSource(t *testing.T, domain, prefix, mcpPath string) LLMsTxtSource {
 	site.Meta.Description = "All the docs."
 	site.Meta.Domain = domain
 	return LLMsTxtSource{
-		Nav:        nav,
-		Index:      idx,
-		Resolver:   resolver,
-		Site:       &site,
-		PathPrefix: prefix,
-		MCPPath:    mcpPath,
+		Nav:      nav,
+		Index:    idx,
+		Resolver: resolver,
+		URLs:     testPageURLs(&site, resolver, lang),
+		Site:     &site,
+		MCPPath:  mcpPath,
 	}
 }
 
@@ -73,7 +73,7 @@ func TestGenerateLLMsTxt(t *testing.T) {
 	tests := []struct {
 		name    string
 		domain  string
-		prefix  string
+		lang    string
 		mcpPath string
 		want    string
 	}{
@@ -133,7 +133,7 @@ MCP server (Streamable HTTP): https://docs.example.com/_mcp/
 		},
 		{
 			name:    "language prefix, relative MCP line without a domain",
-			prefix:  "/fr-FR",
+			lang:    "fr-FR",
 			mcpPath: "/_mcp/",
 			want: `# Docs
 
@@ -164,7 +164,7 @@ MCP server (Streamable HTTP): /_mcp/
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := string(GenerateLLMsTxt(llmsTxtSource(t, tt.domain, tt.prefix, tt.mcpPath)))
+			got := string(GenerateLLMsTxt(llmsTxtSource(t, tt.domain, tt.lang, tt.mcpPath)))
 			if got != tt.want {
 				t.Errorf("GenerateLLMsTxt() =\n%s\nwant:\n%s", got, tt.want)
 			}
@@ -187,6 +187,7 @@ func TestGenerateLLMsTxt_Minimal(t *testing.T) {
 	site.Meta.Description = ""
 	got := string(GenerateLLMsTxt(LLMsTxtSource{
 		Nav:  navigation.NewGenerator(fsys, "README.md", nil, nil),
+		URLs: testPageURLs(&site, nil, ""),
 		Site: &site,
 	}))
 	want := "# Docs\n\n- [Docs](/)\n- [Page](/page.md)\n"
@@ -212,7 +213,9 @@ func TestGenerateLLMsTxt_SinglePage(t *testing.T) {
 	site := config.NewSiteConfig(".")
 	site.Meta.Title = "Docs"
 	site.Meta.Description = "One page."
-	got := string(GenerateLLMsTxt(LLMsTxtSource{Nav: nav, Index: buildTestIndex(t, fsys), Resolver: resolver, Site: &site}))
+	got := string(GenerateLLMsTxt(LLMsTxtSource{
+		Nav: nav, Index: buildTestIndex(t, fsys), Resolver: resolver, URLs: testPageURLs(&site, resolver, ""), Site: &site,
+	}))
 	want := "# Docs\n\n> One page.\n\n- [Home](/README.md)\n"
 	if got != want {
 		t.Errorf("GenerateLLMsTxt() = %q, want %q", got, want)

@@ -44,6 +44,17 @@ func newSourcePathHandler(files fstest.MapFS, prov contentprovider.Provider, sit
 	})
 }
 
+// testPageURLs is a tree's page URL rule as production builds it: the
+// template renderer over resolver (nil for none), under lang's prefix ("" for
+// the default language).
+func testPageURLs(site *config.SiteConfig, resolver *resolve.PathResolver, lang string) *tmpl.HTMLRenderer {
+	opts := []tmpl.RendererOption{tmpl.WithResolver(resolver)}
+	if lang != "" {
+		opts = append(opts, tmpl.WithLangPrefix(lang))
+	}
+	return tmpl.NewHTMLRenderer(site, fstest.MapFS{}, opts...)
+}
+
 // testPassword is the password matching the sole "admin" credential in the
 // store returned by newTestAuthStore.
 const testPassword = "secret"

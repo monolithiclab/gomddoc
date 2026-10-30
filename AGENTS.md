@@ -13,7 +13,8 @@ See [README.md](README.md) for what it does and how to run it, `docs/` (table be
   so an index that ignores the pipeline's list makes excluded content reachable. `Pipeline.Exclude` is
   `cfg.Site.Exclude` plus each pipeline's own additions (the default pipeline excludes every language directory, D36).
 - **Never derive a page URL from a file path by hand.** Call `(*resolve.PathResolver).PageURLPath` (D35); templates
-  link through `contentURL`, which also applies the language prefix, so a partial never adds `/{lang}` itself. Each
+  link through `contentURL`, and Go code holding a file through the scope's template renderer (`ContentURL`,
+  `MarkdownURL`), which also apply the language prefix, so nothing adds `/{lang}` itself. Each
   language pipeline gets its own `TemplateRenderer` (`LangPipelineConfig.TemplateRenderer`). Build's
   `prettyOutputPath` is a separate file-to-output mapping (review §10.2).
 - **Per-language redirect maps: sources unprefixed, targets prefixed.** `stripPathPrefix` removes `/{lang}` before

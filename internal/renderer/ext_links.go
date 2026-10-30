@@ -9,21 +9,26 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
-
-	"github.com/monolithiclab/gomddoc/internal/resolve"
 )
+
+// PageURLs is a language scope's page URL rule (D35), as its template
+// renderer (template.Renderer) owns it.
+type PageURLs interface {
+	// ContentURL is the site URL file is published at, prefix included.
+	ContentURL(file string) string
+	// MarkdownURL is the site URL of file's Markdown, "" for a non-page.
+	MarkdownURL(file string) string
+	// LangPrefix is "/{lang}" in a language pipeline, "" otherwise.
+	LangPrefix() string
+}
 
 // PageLinks is what the HTML render needs to point a body link at a page's
 // clean URL (D54): a link written to a page's Markdown file ("other.md",
 // "../guide/README.md#setup") would otherwise reach the Markdown URL, which
 // serves text/markdown, not the page.
 type PageLinks struct {
-	// Resolver answers which files are pages and their URLs (PageURLPath).
-	Resolver *resolve.PathResolver
-	// DefaultIndex is the site's default index file ("README.md").
-	DefaultIndex string
-	// LangPrefix is "/{lang}" in a language pipeline, as contentURL applies it.
-	LangPrefix string
+	// URLs answers which files are pages and their URLs.
+	URLs PageURLs
 	// SourceDir is the content-root-relative directory relative links
 	// resolve against: the rendered file's own directory ("" or "." at root).
 	SourceDir string
@@ -40,7 +45,7 @@ func WithPageLinks(ctx context.Context, links PageLinks) context.Context {
 
 func pageLinksFrom(ctx context.Context) (PageLinks, bool) {
 	links, ok := ctx.Value(pageLinksKey{}).(PageLinks)
-	return links, ok && links.Resolver != nil
+	return links, ok && links.URLs != nil
 }
 
 var pageLinksContextKey = parser.NewContextKey()
@@ -78,8 +83,8 @@ func (l PageLinks) pageURL(dest string) (string, bool) {
 		// Root-relative: a site path, so a language page names its own tree
 		// through the prefix; anything else is another tree's page.
 		p := path.Clean(u.Path)
-		if l.LangPrefix != "" {
-			rest, inLang := strings.CutPrefix(p, l.LangPrefix+"/")
+		if prefix := l.URLs.LangPrefix(); prefix != "" {
+			rest, inLang := strings.CutPrefix(p, prefix+"/")
 			if !inLang {
 				return "", false
 			}
@@ -93,11 +98,11 @@ func (l PageLinks) pageURL(dest string) (string, bool) {
 		}
 	}
 
-	if _, isPage := l.Resolver.MarkdownURLPath(realPath); !isPage {
+	if l.URLs.MarkdownURL(realPath) == "" {
 		return "", false
 	}
 	target := url.URL{
-		Path:     l.LangPrefix + l.Resolver.PageURLPath(realPath, l.DefaultIndex),
+		Path:     l.URLs.ContentURL(realPath),
 		RawQuery: u.RawQuery,
 		Fragment: u.Fragment,
 	}

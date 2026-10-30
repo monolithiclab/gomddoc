@@ -155,8 +155,9 @@ Methods: `Resolve(cleanPath)`, `CleanPath(realPath)`, `PageURLPath(realPath, def
 `PageURLPath(realPath, defaultIndex)` runs that mapping in the **reverse** direction — file path to
 published URL — and is the single implementation of it. Serve mode never needs it (it is handed a
 URL and resolves backwards to a file), but build mode walks files, and anything holding a real path
-and rendering a link needs it: `buildFile`'s `Page.Path`, the `contentURL` template function
-(see-also entries), the sitemap and feed generators, and `navigation.buildTree` — which is the
+and rendering a link needs it: `buildFile`'s `Page.Path`, the template renderer's `ContentURL` (the `contentURL`
+template function; body links, search results, llms.txt and a Markdown URL's canonical `Link` read it too, with the
+language prefix applied), the sitemap and feed generators, and `navigation.buildTree` — which is the
 *producer* of the clean paths `Page.Path` is later matched against for prev/next and sidebar state.
 Deriving it ad hoc is what let static builds advertise a `.md` canonical URL while the same build's
 sitemap advertised the clean one. Default-index files fold to their directory (`guides/README.md` →
@@ -250,8 +251,8 @@ Five custom goldmark extensions operate at the AST level during parsing and rend
    `<gmd-math>` (`<gmd-math display>`) holding the escaped TeX. Single `$` is never a delimiter, so prices stay text
    (D52). Gated by `katex`.
 5. **Page links** (`pageLinkTransformer`) — AST transformer that points an `ast.Link` naming a page's Markdown file
-   (relative to the source file, or root-relative within the language) at the page's URL (`PageURLPath` plus the
-   language prefix), keeping query and fragment (D54). Not a feature flag: it runs when the caller passes
+   (relative to the source file, or root-relative within the language) at the page's URL (`PageLinks.URLs`, the
+   scope's template renderer: `ContentURL`), keeping query and fragment (D54). Not a feature flag: it runs when the caller passes
    `renderer.WithPageLinks` in the render context, which serve's handler and build do; the Markdown passthrough
    never rewrites.
 
@@ -556,8 +557,8 @@ Exposed via JSON API:
 - `GET /api/search?q=<query>&limit=<n>&lang=<code>` — Full-text search with ranked results. `limit` defaults to 20
   and is capped at 100; `q` is truncated to 500 bytes. With language pipelines, `NewMultiLangSearchHandler` picks
   the index by `?lang=` > `Accept-Language` > default language (`ResolveAPILanguage`). Each `SearchSource` maps
-  result paths (indexed files) to page URLs through its tree's resolver and language prefix, so results link pages,
-  not Markdown URLs.
+  result paths (indexed files) to page URLs through its tree's template renderer (`ContentURL`), so results link
+  pages, not Markdown URLs.
 
 **Search UI:** A shared `search.mjs` module (loaded via `inlineJSAsset`) provides a search modal across
 all themes. Opens via Ctrl+K / Cmd+K or a header search button. Debounced fetch to `/api/search` (`limit=10`),
@@ -1165,7 +1166,8 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 - **llms.txt** (D55): `/llms.txt` and `/{lang}/llms.txt`, from `server.GenerateLLMsTxt` over the pipeline's
   navigation tree (`NavNode.File` names each page's source, directory pages included), metadata index and resolver;
   a completion pass lists the root page first and the published pages the navigation drops under `## Other pages`.
-  Links come from `PathResolver.MarkdownURLPath`; URLs go through `siteURL`, the canonical `Link` header's rule.
+  Links come from the tree's template renderer (`MarkdownURL`, else `ContentURL`); URLs go through `siteURL`, the
+  canonical `Link` header's rule.
   Serve adds the `/_mcp/` line when MCP is mounted; build writes the same file without it.
 - **robots.txt**: `/robots.txt` served dynamically (serve) and generated as static file (build). Blocks `/_assets/`,
   `/api/`, `/debug/`, and names the sitemap when there is one.
