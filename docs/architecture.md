@@ -133,7 +133,8 @@ afterwards. It maps clean URLs to real files and back:
 
 A page's Markdown URL is its file path, `/docs/guide.md` for `docs/guide.md` (`MarkdownURLPath`, D54): the
 `ExtensionRedirect` middleware passes it through, and the handler serves the page's Markdown there. Any other stripped
-extension (`/about.html`) gets a 301 to the clean URL from `ExtensionRedirect`, which consults the resolver.
+extension (`/about.html`) gets a 301 to the clean URL from `ExtensionRedirect`, and a redirect stub in a static
+build: both ask `RedirectTarget`, which answers false for a Markdown URL.
 
 ```go
 type PathResolver struct {
@@ -149,7 +150,8 @@ type BuildOptions struct {
 }
 ```
 
-Methods: `Resolve(cleanPath)`, `CleanPath(realPath)`, `PageURLPath(realPath, defaultIndex)`, `AllMappings()`,
+Methods: `Resolve(cleanPath)`, `CleanPath(realPath)`, `PageURLPath(realPath, defaultIndex)`, `MarkdownURLPath(realPath)`,
+`RedirectTarget(realPath)`, `DirURL(urlPath)`, `AllMappings()`,
 `IsEmpty()`, `Findings()`. `strip_extensions` defaults to `[".md"]`, `exclude` to `[]`.
 
 `PageURLPath(realPath, defaultIndex)` runs that mapping in the **reverse** direction — file path to

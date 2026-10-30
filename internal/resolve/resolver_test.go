@@ -504,3 +504,30 @@ func TestResolver_MarkdownURLPath(t *testing.T) {
 		t.Errorf("nil resolver MarkdownURLPath = %q, %v; want \"\", false", got, ok)
 	}
 }
+
+func TestResolver_RedirectTarget(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":   {Data: []byte("# Guide")},
+		"about.html": {Data: []byte("<p>About</p>")},
+		"plain.txt":  {Data: []byte("text")},
+	}
+	r := Build(files, BuildOptions{
+		StripExtensions: []string{".md", ".html"},
+		HasRenderer:     mockRenderer("text/markdown", "text/html"),
+	})
+
+	for realPath, want := range map[string]string{
+		"about.html":  "about",
+		"/about.html": "about",
+		"guide.md":    "", // a Markdown URL serves the page's Markdown (D54)
+		"plain.txt":   "", // not mapped
+		"missing.md":  "",
+	} {
+		got, ok := r.RedirectTarget(realPath)
+		if got != want || ok != (want != "") {
+			t.Errorf("RedirectTarget(%q) = %q, %v; want %q", realPath, got, ok, want)
+		}
+	}
+}

@@ -241,6 +241,18 @@ func (r *PathResolver) MarkdownURLPath(realPath string) (urlPath string, ok bool
 	return "/" + realPath, true
 }
 
+// RedirectTarget returns the clean path an extension URL for realPath
+// redirects to: the stripped path, ok false for a file stripping did not map
+// and for a page's Markdown URL (MarkdownURLPath), which serves the page's
+// Markdown instead of redirecting (D54). Serve's ExtensionRedirect and build's
+// redirect stubs both ask it. Leading "/" on realPath is optional.
+func (r *PathResolver) RedirectTarget(realPath string) (cleanPath string, ok bool) {
+	if _, isMarkdown := r.MarkdownURLPath(realPath); isMarkdown {
+		return "", false
+	}
+	return r.CleanPath(strings.TrimPrefix(realPath, "/"))
+}
+
 // DirURL returns urlPath, the URL of a page published as a directory's
 // index.html, with the trailing slash BuildOptions.TrailingSlash asks for.
 // Pages not derived from a file (tag listings) go through it too. A nil

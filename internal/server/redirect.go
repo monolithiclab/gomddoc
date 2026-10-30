@@ -115,9 +115,10 @@ func stripPathPrefix(prefix string) func(http.Handler) http.Handler {
 }
 
 // ExtensionRedirect returns middleware that 301-redirects requests with
-// strippable extensions to their canonical extensionless URL. A page's
-// Markdown URL (resolve.PathResolver.MarkdownURLPath) is the exception: it
-// passes through, and the handler serves the page's Markdown there (D54).
+// strippable extensions to their canonical extensionless URL
+// (resolve.PathResolver.RedirectTarget). A page's Markdown URL is the
+// exception: it passes through, and the handler serves the page's Markdown
+// there (D54).
 //
 // basePath is prepended to the redirect Location, allowing per-language
 // handlers (mounted under /{lang} with the prefix already stripped) to emit
@@ -144,11 +145,7 @@ func ExtensionRedirect(resolver *resolve.PathResolver, stripExts []string, baseP
 
 			// Strip leading "/" to get the fs-relative path.
 			realPath := strings.TrimPrefix(r.URL.Path, "/")
-			if _, isMarkdown := resolver.MarkdownURLPath(realPath); isMarkdown {
-				next.ServeHTTP(w, r)
-				return
-			}
-			if cleanPath, found := resolver.CleanPath(realPath); found {
+			if cleanPath, found := resolver.RedirectTarget(realPath); found {
 				http.Redirect(w, r, basePath+"/"+cleanPath, http.StatusMovedPermanently) // #nosec G710 -- cleanPath is from resolver's validated map, not user input
 				return
 			}

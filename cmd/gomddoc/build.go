@@ -214,7 +214,7 @@ func (b *BuildCmd) Run() error {
 	}
 
 	// Generate extension redirect files (e.g. guide.html -> guide/)
-	if err := b.generateExtensionRedirects(pipeline.Resolver, cfg.Site.DefaultIndex, ""); err != nil {
+	if err := b.generateExtensionRedirects(pipeline, cfg.Site.DefaultIndex, ""); err != nil {
 		return fmt.Errorf("generate extension redirects: %w", err)
 	}
 
@@ -279,7 +279,7 @@ func (b *BuildCmd) Run() error {
 		if rErr := b.generateRedirectFiles(langPipe.URLRedirects, lang); rErr != nil {
 			slog.Warn("Failed to generate redirect files for language", slog.String("lang", lang), slog.Any("error", rErr))
 		}
-		if rErr := b.generateExtensionRedirects(langPipe.Resolver, cfg.Site.DefaultIndex, lang); rErr != nil {
+		if rErr := b.generateExtensionRedirects(langPipe, cfg.Site.DefaultIndex, lang); rErr != nil {
 			slog.Warn("Failed to generate extension redirects for language", slog.String("lang", lang), slog.Any("error", rErr))
 		}
 
@@ -760,30 +760,28 @@ func redirectStubPath(urlPath string) string {
 // generateExtensionRedirects generates HTML redirect files so extension-bearing
 // URLs still work on static hosts: guide.html becomes a meta-refresh page
 // pointing at /guide/ (see redirectStubPath). A Markdown file gets none: its
-// URL serves the page's Markdown, which buildFile writes there (D54).
-// Default index files (e.g., README.md) are skipped — their URL is the
-// directory path, not the extensionless form.
+// URL serves the page's Markdown, which buildFile writes there (D54); serve
+// asks the same resolve.PathResolver.RedirectTarget. Default index files
+// (e.g., README.md) are skipped — their URL is the directory path, not the
+// extensionless form.
 //
-// The resolver's paths are relative to its own pipeline's content root, so both
-// the output path and the redirect target are prefixed with lang (empty for the
-// default language).
-func (b *BuildCmd) generateExtensionRedirects(resolver *resolve.PathResolver, defaultIndex, lang string) error {
+// The resolver's paths are relative to its own pipeline's content root, so the
+// output path is written under lang (empty for the default language), and the
+// target is the pipeline's template renderer's ContentURL, prefix included.
+func (b *BuildCmd) generateExtensionRedirects(pipe *Pipeline, defaultIndex, lang string) error {
+	resolver := pipe.Resolver
 	if resolver == nil || resolver.IsEmpty() {
 		return nil
 	}
 
-	langPrefix := ""
-	if lang != "" {
-		langPrefix = "/" + lang
-	}
 	for realPath := range resolver.AllMappings() {
 		if resolve.IsDefaultIndex(realPath, defaultIndex) {
 			continue
 		}
-		if _, isMarkdown := resolver.MarkdownURLPath(realPath); isMarkdown {
+		if _, redirects := resolver.RedirectTarget(realPath); !redirects {
 			continue
 		}
-		target := langPrefix + resolver.PageURLPath(realPath, defaultIndex)
+		target := pipe.TemplateRenderer.ContentURL(realPath)
 		html := server.GenerateRedirectHTML(target)
 		urlPath := path.Join(lang, realPath)
 		if err := b.writeOutputFile(redirectStubPath(urlPath), html); err != nil {
