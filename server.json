@@ -24,6 +24,11 @@
           "value": "-i"
         },
         {
+          "type": "positional",
+          "description": "Remove the container when the client stops the server",
+          "value": "--rm"
+        },
+        {
           "type": "named",
           "name": "--mount",
           "description": "Mount the documentation directory into the container, read-only",

@@ -1126,8 +1126,8 @@ mirror.
 **Decision** (2026-10-30): `server.json` at the repository root describes gomddoc to the official MCP Registry
 against schema `2025-12-11` (`https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json`), as
 `io.github.monolithiclab/gomddoc`: one `oci` package, `ghcr.io/monolithiclab/gomddoc:{version}`, over stdio, running
-`mcp /docs` with `-i` (a positional runtime argument, inserted verbatim, so stdin stays open when a client builds
-`docker run` from the listing alone) and the documentation directory bind-mounted read-only at `/docs` (a `--mount`
+`mcp /docs` with `-i` and `--rm` (positional runtime arguments, inserted verbatim, so stdin stays open and the
+container is removed on exit when a client builds `docker run` from the listing alone) and the documentation directory bind-mounted read-only at `/docs` (a `--mount`
 runtime argument whose `docs_dir` variable the client asks for). It has no `remotes` entry. The committed version is
 the latest release; the release workflow's `mcp-registry` job rewrites `version` and the image tag from the tag with
 `jq`, then runs `mcp-publisher login github-oidc` and `mcp-publisher publish`. The job needs the `goreleaser` job (the

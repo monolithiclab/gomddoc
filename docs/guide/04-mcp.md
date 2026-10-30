@@ -122,7 +122,7 @@ install it without a local binary. The listing runs the release's container imag
 directory mounted read-only at `/docs`; the client asks for that directory and runs the equivalent of:
 
 ```bash
-docker run -i --mount type=bind,src=/path/to/your/docs,dst=/docs,readonly \
+docker run -i --rm --mount type=bind,src=/path/to/your/docs,dst=/docs,readonly \
   ghcr.io/monolithiclab/gomddoc:<version> mcp /docs
 ```
 
