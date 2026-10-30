@@ -78,6 +78,7 @@ type buildStats struct {
 // parameter sprawl across walkAndBuild, buildFile, and copyFile.
 type buildContext struct {
 	registry         renderer.RendererRegistry
+	markdownRenderer renderer.ContentRenderer // registry's text/markdown output, for each page's Markdown URL (D54)
 	enricherRegistry enricher.EnricherRegistry
 	templateRenderer *tmpl.HTMLRenderer
 	siteConfig       *config.SiteConfig
@@ -159,8 +160,16 @@ func (b *BuildCmd) Run() error {
 
 	slog.Info("Building static site", slog.String("source", b.Dir), slog.String("output", b.Output))
 
+	// Every page's Markdown URL renders through the same passthrough, so it is
+	// resolved once rather than per file; every language walk shares it.
+	markdownRenderer, _, err := pipeline.Registry.Get("text/markdown", negotiate.AcceptMarkdown())
+	if err != nil {
+		return fmt.Errorf("markdown renderer: %w", err)
+	}
+
 	bc := &buildContext{
 		registry:         pipeline.Registry,
+		markdownRenderer: markdownRenderer,
 		enricherRegistry: pipeline.EnricherRegistry,
 		templateRenderer: pipeline.TemplateRenderer,
 		siteConfig:       &cfg.Site,
@@ -545,11 +554,7 @@ func (b *BuildCmd) buildFile(
 	// rendered as serve renders that URL: negotiated as text/markdown, from the
 	// page's own enrichment.
 	if mdURL, ok := bc.resolver.MarkdownURLPath(filePath); ok {
-		mdRenderer, _, mdErr := bc.registry.Get(mimeType, negotiate.AcceptMarkdown())
-		if mdErr != nil {
-			return fmt.Errorf("markdown renderer for %s: %w", filePath, mdErr)
-		}
-		mdResult, mdErr := mdRenderer.Render(ctx, content, enrichment)
+		mdResult, mdErr := bc.markdownRenderer.Render(ctx, content, enrichment)
 		if mdErr != nil {
 			return fmt.Errorf("render markdown %s: %w", filePath, mdErr)
 		}

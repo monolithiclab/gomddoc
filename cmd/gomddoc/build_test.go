@@ -19,6 +19,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/locale"
+	"github.com/monolithiclab/gomddoc/internal/negotiate"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
@@ -1257,8 +1258,14 @@ func testBundle(t *testing.T) *locale.Bundle {
 func newTestBuildContext(t *testing.T, siteConfig *config.SiteConfig, templateRenderer *tmpl.HTMLRenderer) *buildContext {
 	t.Helper()
 	bundle := testBundle(t)
+	registry := registryutil.NewRendererRegistry()
+	markdownRenderer, _, err := registry.Get("text/markdown", negotiate.AcceptMarkdown())
+	if err != nil {
+		t.Fatalf("markdown renderer: %v", err)
+	}
 	return &buildContext{
-		registry:         registryutil.NewRendererRegistry(),
+		registry:         registry,
+		markdownRenderer: markdownRenderer,
 		enricherRegistry: registryutil.NewEnricherRegistry(),
 		templateRenderer: templateRenderer,
 		siteConfig:       siteConfig,
