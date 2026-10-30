@@ -11,6 +11,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/seo"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
+	"github.com/monolithiclab/gomddoc/internal/text"
 )
 
 // PageURLs is a content tree's page URL rule (D35), as its template renderer
@@ -169,7 +170,7 @@ func (w *llmsTxtWriter) dirEntries(dir *navigation.NavNode, out []string) []stri
 }
 
 // add appends the list item for the page published from file, titled from the
-// metadata index, else fallback, else the file's name; it appends nothing for
+// metadata index, else fallback, else derived from its page URL; it appends nothing for
 // no file, a file already considered, or a noindex page.
 func (w *llmsTxtWriter) add(out []string, file, fallback string) []string {
 	if file == "" || w.listed[file] {
@@ -191,7 +192,8 @@ func (w *llmsTxtWriter) add(out []string, file, fallback string) []string {
 		}
 	}
 	if title == "" {
-		title = file
+		// As BuildPageContext titles an untitled page: from its page URL.
+		title = text.DeriveTitle(src.Resolver.PageURLPath(file, src.Site.DefaultIndex))
 	}
 
 	urlPath := src.URLs.MarkdownURL(file)

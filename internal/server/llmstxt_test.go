@@ -30,8 +30,10 @@ var llmsTxtTestFS = fstest.MapFS{
 	// README-only directories: the navigation drops them, so the published one
 	// is listed under "Other pages"; the noindex and the excluded one are not.
 	"changelog/README.md": {Data: []byte("---\ntitle: Changelog\n---\n# Changelog\n")},
-	"drafts/README.md":    {Data: []byte("---\ntitle: Drafts\nrobots: noindex\n---\n# Drafts\n")},
-	"private/README.md":   {Data: []byte("---\ntitle: Private\n---\n# Private\n")},
+	// Untitled, without a heading: titled from its page URL, as its page is.
+	"release-notes/README.md": {Data: []byte("Plain text.\n")},
+	"drafts/README.md":        {Data: []byte("---\ntitle: Drafts\nrobots: noindex\n---\n# Drafts\n")},
+	"private/README.md":       {Data: []byte("---\ntitle: Private\n---\n# Private\n")},
 }
 
 // llmsTxtExclude is the fixture's Pipeline.Exclude.
@@ -100,6 +102,7 @@ func TestGenerateLLMsTxt(t *testing.T) {
 ## Other pages
 
 - [Changelog](/changelog/README.md)
+- [Release Notes](/release-notes/README.md)
 `,
 		},
 		{
@@ -127,6 +130,7 @@ func TestGenerateLLMsTxt(t *testing.T) {
 ## Other pages
 
 - [Changelog](https://docs.example.com/changelog/README.md)
+- [Release Notes](https://docs.example.com/release-notes/README.md)
 
 MCP server (Streamable HTTP): https://docs.example.com/_mcp/
 `,
@@ -156,6 +160,7 @@ MCP server (Streamable HTTP): https://docs.example.com/_mcp/
 ## Other pages
 
 - [Changelog](/fr-FR/changelog/README.md)
+- [Release Notes](/fr-FR/release-notes/README.md)
 
 MCP server (Streamable HTTP): /_mcp/
 `,

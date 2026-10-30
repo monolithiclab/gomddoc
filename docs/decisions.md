@@ -1101,8 +1101,8 @@ from the resolver's Markdown mappings and the metadata index, both built with `P
 navigation's pages plus the home page and directory pages (`NavNode.File` names their source), less pages whose
 `robots` says `noindex`; `redirect_from` sources are not pages.
 Each entry is `- [{title}]({url}): {description}`, with no colon when the page has no description; the title is the
-frontmatter title, else the sidebar label (the site title for an untitled home page, the file path for an untitled
-other page). The link is
+frontmatter title, else the sidebar label (the site title for an untitled home page), else the title an untitled
+page gets on its own page: `text.DeriveTitle` of its page URL (`release-notes/README.md` is "Release Notes"). The link is
 `PathResolver.MarkdownURLPath` (`/docs/README.md` for the page at `/docs`), not `{page URL}.md`, falling back to the
 page URL when stripping did not map the file; URLs are absolute with `meta.domain` and root-relative without, the
 canonical `Link` header's rule (`seo.SiteURL`). When `/_mcp/` is mounted, a last plain-sentence line,
