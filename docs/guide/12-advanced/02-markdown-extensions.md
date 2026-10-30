@@ -163,49 +163,57 @@ ordinary blockquote with the marker as text.
 ## Math Rendering (KaTeX)
 
 gomddoc supports mathematical notation using KaTeX, rendered client-side in the browser when the `katex` feature is on.
-Both inline and display (block) math are supported.
+Math uses two delimiters that never occur in ordinary prose, the conventions GitHub and GitLab share, so a dollar
+amount such as "$1,200" or "between $5 and $10" is always plain text and needs no escaping.
 
 ### Inline Math
 
-Use single dollar signs to wrap inline math expressions:
+Wrap inline math in a code span between dollar signs, `` $`…`$ ``:
 
 ```markdown
-The quadratic formula is $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$ which solves any quadratic equation.
+The quadratic formula is $`x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`$ which solves any quadratic equation.
 ```
+
+The TeX between the backticks is taken literally, so backslashes, `_` and `*` need no Markdown escaping. Single dollar
+signs (`$x$`) are not math delimiters. To show a literal dollar sign before a code span, escape it: `` \$`code`$ ``.
 
 ### Display Math
 
-Use double dollar signs for display (block) math equations:
+Use double dollar signs for display (block) math. The opening `$$` starts a line, the closing `$$` ends one, and both
+may share a line:
 
 ```markdown
 $$
 \int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
 $$
+
+$$ e^{i\pi} + 1 = 0 $$
 ```
+
+A `$$` in the middle of a paragraph is plain text.
 
 ### Supported Features
 
 KaTeX supports a large subset of LaTeX math commands including:
 
-- Greek letters: `$\alpha$`, `$\beta$`, `$\gamma$`
-- Fractions: `$\frac{a}{b}$`
-- Subscripts and superscripts: `$x_i^2$`
+- Greek letters: `` $`\alpha`$ ``, `` $`\beta`$ ``, `` $`\gamma`$ ``
+- Fractions: `` $`\frac{a}{b}`$ ``
+- Subscripts and superscripts: `` $`x_i^2`$ ``
 - Matrices and arrays
-- Summations and integrals: `$\sum_{i=1}^{n} i$`
+- Summations and integrals: `` $`\sum_{i=1}^{n} i`$ ``
 - Common operators and symbols
 
 For a complete list of supported functions, see the [KaTeX documentation](https://katex.org/docs/supported.html).
 
 ### How It Works
 
-Math rendering uses KaTeX 0.16 and its auto-render extension, loaded from the jsDelivr CDN. When a page loads, the
-script scans the page for `$...$` (inline) and `$$...$$` (display) delimiters and renders them as formatted math. There
-is no server-side processing; readers need network access to the CDN.
+gomddoc recognises math while it renders the Markdown and emits a `<gmd-math>` element holding the TeX
+(`<gmd-math display>` for display math). In the browser, `gmd-math.mjs` typesets each element with KaTeX 0.16,
+loaded from the jsDelivr CDN; readers need network access to the CDN, and until KaTeX loads they see the TeX source.
+An invalid expression shows KaTeX's error message in place. No other text on the page is scanned.
 
-### Escaping Dollar Signs
-
-If you need to display a literal dollar sign without triggering math rendering, use a backslash: `\$`. For example,
-`\$100` renders as a plain dollar amount.
+With the `katex` feature off, the delimiters are ordinary Markdown: `` $`x`$ `` renders as a code span between dollar
+signs and a `$$` block as a paragraph.
 
 ## Mermaid Diagrams
 

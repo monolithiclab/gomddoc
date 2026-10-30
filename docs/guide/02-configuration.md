@@ -463,7 +463,7 @@ GOMDDOC_SITE_THEME_FEATURES_COLOR_CHIPS=false gomddoc serve # Disable color chip
 | `code_copy` | `true` | Copy-to-clipboard button on code blocks |
 | `color_chips` | `true` | Hex color code interactive swatches |
 | `search` | `true` | Search button and modal. Independent of `search.index`: with the index off, the modal has no `/api/search` to query |
-| `katex` | `true` | KaTeX math rendering (CSS and auto-render scripts) |
+| `katex` | `true` | KaTeX math rendering: `` $`…`$ `` and `$$` blocks, the stylesheet and `gmd-math.mjs` |
 | `mermaid` | `true` | Mermaid diagram rendering |
 | `heading_anchors` | `true` | Clickable anchor links on headings (goldmark extension) |
 | `admonitions` | `true` | Admonition block rendering (goldmark extension) |

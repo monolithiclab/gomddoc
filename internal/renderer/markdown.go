@@ -47,6 +47,7 @@ type MarkdownRenderer struct {
 //   - HeadingAnchorExtension: Appends anchor links to headings with IDs
 //   - AdmonitionExtension: Transforms [!TYPE] blockquotes to admonition divs
 //   - ColorChipExtension: Transforms hex color code spans to <gmd-color-chip> elements
+//   - MathExtension: Transforms $`…`$ and $$ blocks to <gmd-math> elements
 //   - parser.WithAutoHeadingID: Automatic ID generation for headings
 //   - html.WithUnsafe: Allow raw HTML (matches previous gomarkdown behavior)
 func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
@@ -65,6 +66,7 @@ func NewMarkdownRenderer(opts MarkdownOptions) *MarkdownRenderer {
 			&HeadingAnchorExtension{},
 			&AdmonitionExtension{},
 			&ColorChipExtension{},
+			&MathExtension{},
 		),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),

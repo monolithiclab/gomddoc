@@ -78,3 +78,31 @@ func TestBundledThemes_NotDefinedSelectorsNameARealElement(t *testing.T) {
 		}
 	}
 }
+
+// TestKaTeXVersionsMatch keeps the KaTeX stylesheet (head-katex) and the script
+// gmd-math.mjs imports on one release: mixed versions misplace glyphs silently.
+func TestKaTeXVersionsMatch(t *testing.T) {
+	t.Parallel()
+
+	reVersion := regexp.MustCompile(`katex@([0-9][^/"]*)`)
+	versions := make(map[string][]string)
+	for _, p := range []string{
+		"assets/shared/gmd-math.mjs",
+		"assets/themes/default/partials/head-shared.html.tmpl",
+	} {
+		src, err := fs.ReadFile(embeddedAssets, p)
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", p, err)
+		}
+		matches := reVersion.FindAllSubmatch(src, -1)
+		if len(matches) == 0 {
+			t.Fatalf("%s: no katex@<version> URL", p)
+		}
+		for _, m := range matches {
+			versions[string(m[1])] = append(versions[string(m[1])], p)
+		}
+	}
+	if len(versions) != 1 {
+		t.Errorf("KaTeX versions differ: %v", versions)
+	}
+}

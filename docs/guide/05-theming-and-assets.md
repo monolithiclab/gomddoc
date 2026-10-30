@@ -564,7 +564,8 @@ features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggle
   `--color-border` where it defines them, and follow the page's colour scheme (the reader's preference, or the
   `data-theme="light|dark"` attribute on the root element); the margin's pen and note icons live in a shadow root, reachable as
   `gmd-annotation-margin::part(pen)` and `::part(icon)`. See [Annotating a Page](06-writing-workflow.md#annotating-a-page).
-- **KaTeX** — guarded by `{{ .Feature "katex" }}`. CSS link in `<head>` and auto-render scripts.
+- **KaTeX** — guarded by `{{ .Feature "katex" }}`. The stylesheet in `<head>` (`head-katex`) and the `gmd-math.mjs`
+  module that typesets each `<gmd-math>` element.
 - **Mermaid** — guarded by `{{ .Feature "mermaid" }}`. Script for diagram rendering (theme-aware: dark/light).
 - **Canonical URLs and Open Graph tags** via `{{ canonicalURL .Page.Path }}` when domain is configured, or by calling
   the default theme's `{{ template "head-meta" . }}`

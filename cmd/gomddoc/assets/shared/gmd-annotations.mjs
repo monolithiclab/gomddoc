@@ -17,10 +17,10 @@ import { i18n } from "/_assets/gmd-i18n.mjs";
 
 // Everything excluded from the text model, in one place: UI other scripts
 // inject (code-copy buttons, heading anchors, admonition titles, color-chip
-// swatches, this module's own UI), rendered output that is not prose (KaTeX, Mermaid) and
+// swatches, this module's own UI), math and Mermaid output (not prose) and
 // elements whose text never renders (raw HTML <style> or <script>).
 export const SKIP_SELECTOR =
-  ".copy-btn, gmd-heading-anchor, .admonition-title, gmd-color-chip, .katex, .language-mermaid, .mermaid, gmd-annotation-margin, gmd-annotation-editor, gmd-annotation-notice, style, script, template";
+  ".copy-btn, gmd-heading-anchor, .admonition-title, gmd-color-chip, gmd-math, .language-mermaid, .mermaid, gmd-annotation-margin, gmd-annotation-editor, gmd-annotation-notice, style, script, template";
 
 const CONTEXT_CHARS = 32;
 const STORAGE_PREFIX = "gomddoc:annotations:";

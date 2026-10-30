@@ -1005,3 +1005,24 @@ must emit their blocks. Modules import the helper from `/_assets/`, which has th
 - *Cost if wrong*: a theme that omits a block shows key names instead of text. The modules now depend on fetching
   `/_assets/gmd-i18n.mjs`: a host that serves `.mjs` with a wrong MIME type, or blocks `/_assets/`, disables search,
   copy buttons and annotations rather than showing English. Inlining these modules as classic scripts breaks.
+
+## D52. Math Delimiters Recognised by the Markdown Parser
+
+*2026-10-30*
+
+**Decision** (2026-10-30): math is recognised while gomddoc parses the Markdown, with only two delimiters: `` $`…`$ ``
+for inline math and `$$` blocks (opened by a line starting with `$$`, closed by a line ending with it) for display math.
+`MathExtension` (`internal/renderer/ext_math.go`) renders them as `<gmd-math>` and `<gmd-math display>` holding the
+escaped TeX, and `gmd-math.mjs` typesets each element with KaTeX imported from jsDelivr. Single `$` is never a
+delimiter, with no opt-in. KaTeX's auto-render, which scanned the whole page in the browser, is gone. Sites that wrote
+`$x$` must rewrite it, without a migration path (gomddoc has few users yet); the release notes say so.
+
+- *Evidence*: auto-render ran with `$…$` as an inline delimiter, so any paragraph with two prices ("between $1,200 and
+  $3,400") rendered as math, and the only workaround was rewriting amounts as `USD`, a burden on the content author.
+- *Alternatives*: auto-render without the `$` delimiter and `\(…\)` for inline math (CommonMark reads `\(` as an escaped
+  parenthesis, so authors would have to write `\\(`); Pandoc's heuristics for `$…$` (no space inside the delimiters,
+  no digit after the closer), as default or opt-in (still guesses, and a per-site or per-page switch adds a setting for
+  a syntax the standard pair already covers); a third-party goldmark math extension (a recorded dependency for about
+  a hundred lines).
+- *Cost if wrong*: Markdown written for renderers that accept `$x$` (Obsidian, Jupyter, MkDocs with arithmatex)
+  shows raw TeX in gomddoc until it is converted; `$$` mid-paragraph is plain text where auto-render displayed it.

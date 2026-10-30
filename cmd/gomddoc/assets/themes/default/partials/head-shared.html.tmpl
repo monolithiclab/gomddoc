@@ -45,6 +45,7 @@
 {{ define "head-katex" }}
         {{- if .Feature "katex" }}
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" />
+        <style>gmd-math[display]{display:block;overflow-x:auto}</style>
         {{- end }}
 {{- end }}
 
@@ -57,9 +58,7 @@
         <script type="module">{{ inlineJSAsset "code-copy.mjs" }}</script>
         {{- end }}
         {{- if .Feature "katex" }}
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"></script>
-        <script>document.addEventListener("DOMContentLoaded",function(){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}]})});</script>
+        <script type="module">{{ inlineJSAsset "gmd-math.mjs" }}</script>
         {{- end }}
         {{- if .Feature "admonitions" }}
         <script>{{ inlineJSAsset "gmd-admonition.mjs" }}</script>

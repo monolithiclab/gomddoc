@@ -233,7 +233,7 @@ first, then MarkdownRenderer (so HTML is the default for `Accept: */*`), then Pa
 
 **Goldmark Extensions:**
 
-Three custom goldmark extensions operate at the AST level during parsing and rendering:
+Four custom goldmark extensions operate at the AST level during parsing and rendering:
 
 1. **Heading Anchors** (`HeadingAnchorExtension`) — Custom `NodeRenderer` for `ast.KindHeading` that appends a
    `<gmd-heading-anchor href="#id">` web component to headings with auto-generated IDs. Gated by `heading_anchors`.
@@ -244,6 +244,10 @@ Three custom goldmark extensions operate at the AST level during parsing and ren
 3. **Color Chips** (`ColorChipExtension`) — AST transformer that detects hex color codes in `ast.CodeSpan` nodes and
    replaces them with `ColorChipNode` custom AST nodes, rendered as `<gmd-color-chip>#HEX</gmd-color-chip>`. Gated by
    `color_chips`.
+4. **Math** (`MathExtension`) — a block parser for `$$` display math (`MathBlockNode`, raw: no inline parsing) and an
+   AST transformer that turns a code span wrapped in dollar signs (`` $`x`$ ``) into a `MathNode`. Both render as
+   `<gmd-math>` (`<gmd-math display>`) holding the escaped TeX. Single `$` is never a delimiter, so prices stay text
+   (D52). Gated by `katex`.
 
 Feature flags are passed to extensions via two channels: the parser context key (for AST transformers) and a document
 attribute (for node renderers). This enables per-page feature overrides via frontmatter. All extensions are always
@@ -737,7 +741,7 @@ and can be disabled per-site (`theme.features`) or per-page (frontmatter `featur
 - Admonition styling, 5 types (`admonitions`)
 - Search modal with Ctrl+K shortcut (`search`)
 - Tag chips on pages (`tag_chips`) and the see-also list of related pages (`see_also`)
-- KaTeX math rendering, client-side CDN (`katex`)
+- KaTeX math rendering of `<gmd-math>`, client-side CDN (`katex`)
 - Mermaid diagram support, client-side CDN, theme-aware (`mermaid`)
 - Page annotations stored in the browser, exported as Markdown (`annotations`)
 - Touch device accessibility (`@media (hover: none)`)
@@ -801,6 +805,10 @@ directory holds the other shared scripts: `search.mjs`, `code-copy.mjs`, `theme-
    type/title attributes. Adds CSS classes and title element. Controlled by `admonitions`.
 3. **`<gmd-heading-anchor>`** — Shadow DOM. Renders heading anchor links (`#`) revealed on hover. Exposes
    `::part(link)`. Controlled by `heading_anchors`.
+4. **`<gmd-math>`** — Light DOM, so `head-katex`'s KaTeX stylesheet applies. Typesets its TeX with KaTeX, imported from
+   jsDelivr when the first element connects, so a page without math fetches no script; display mode with the
+   `display` attribute. `TestKaTeXVersionsMatch` keeps the import and the stylesheet on one version. Controlled by
+   `katex`.
 
 **Convention:** All custom elements use the `gmd-` prefix. Themes override behavior by providing a file of the same
 name in the theme directory, which `inlineJSAsset` reads before `assets/shared/`.
@@ -1351,12 +1359,12 @@ Implement the `Provider` interface. The `NewProvider()` factory auto-detects Git
 - **Metadata Index**: Aggregated frontmatter data across all pages for tag-based discovery
 - **Static Site Generation**: `gomddoc build` output for deployment to static hosts
 - **Web Components**: `<gmd-*>` custom elements that render interactive content produced by goldmark extensions
-  (color chips, admonitions, heading anchors). Shadow DOM or light DOM depending on the component.
+  (color chips, admonitions, heading anchors, math). Shadow DOM or light DOM depending on the component.
 - **Feature Toggle**: A named boolean flag (`map[string]bool`) controlling optional capabilities (dark mode, TOC,
   color chips, etc.). Site-level defaults merged with per-page frontmatter overrides. Default-to-true semantics.
-- **Goldmark Extensions**: Custom goldmark `Extender` implementations (heading anchors, admonitions, color chips) that
-  operate at the AST level during parsing and rendering, emitting `<gmd-*>` web component elements, gated by feature
-  toggles
+- **Goldmark Extensions**: Custom goldmark `Extender` implementations (heading anchors, admonitions, color chips,
+  math) that operate at the AST level during parsing and rendering, emitting `<gmd-*>` web component elements, gated by
+  feature toggles
 - **Theme**: A package with layouts, partials, and optional static assets that defines visual presentation
 - **Theme Variables**: CSS custom properties (`--theme-*`) injected from site config for color/typography
   customization

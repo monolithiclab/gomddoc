@@ -325,7 +325,13 @@ Images are not included in this test site, but the syntax is supported:
 
 ## Math (KaTeX)
 
-Inline math: $E = mc^2$
+Inline math: $`E = mc^2`$
+
+Prices stay text: between $1,200 and $3,400, or $5 and $10.
+
+One-line block math:
+
+$$ e^{i\pi} + 1 = 0 $$
 
 Block math:
 
