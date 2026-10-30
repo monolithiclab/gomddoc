@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
@@ -110,7 +109,7 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 
 	urls := make([]sitemapURL, 0, len(pages)+1+len(tags))
 	for _, page := range pages {
-		if robots, ok := page.Meta["robots"].(string); ok && strings.Contains(robots, "noindex") {
+		if isNoindex(page.Meta) {
 			continue
 		}
 

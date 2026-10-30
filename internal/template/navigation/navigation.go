@@ -29,6 +29,11 @@ type NavNode struct {
 	IsDir    bool       // Whether this node represents a directory
 	Children []*NavNode // Child nodes
 
+	// File is the fs-relative source file the node publishes: a leaf's own
+	// file, or a directory's default index ("" when it has none). A directory
+	// page is not a leaf, so this is the only place the tree names it.
+	File string
+
 	// cleanPath is the normalized form of Path used for active-path comparison
 	// (no leading/trailing slash, lexically cleaned). Pre-computed at cache build
 	// time so per-request walks don't reallocate.
@@ -156,7 +161,8 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 		return
 	}
 
-	// Filter to visible entries (skip hidden, excluded, non-markdown, default index)
+	// Filter to visible entries (skip hidden, excluded, non-markdown); the default
+	// index is the directory's own page, recorded on parent rather than listed.
 	var visible []fs.DirEntry
 	for _, entry := range entries {
 		name := entry.Name()
@@ -164,7 +170,10 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 		if provider.IsRestrictedPath(entryPath, g.excludePatterns) {
 			continue
 		}
-		if entry.IsDir() || (strings.HasSuffix(name, ".md") && name != g.defaultIndex) {
+		switch {
+		case !entry.IsDir() && name == g.defaultIndex:
+			parent.File = entryPath
+		case entry.IsDir() || strings.HasSuffix(name, ".md"):
 			visible = append(visible, entry)
 		}
 	}
@@ -217,6 +226,7 @@ func (g *Generator) buildTree(parent *NavNode, dir string) {
 				Label:     label,
 				Path:      urlPath,
 				IsDir:     false,
+				File:      entryPath,
 				cleanPath: NormalizeRequestPath(urlPath),
 			})
 		}

@@ -81,6 +81,8 @@ The output includes:
   its `text/markdown` alternate
 - Non-markdown files copied as-is (images, PDFs, etc.)
 - `robots.txt` — always generated; its `Sitemap:` line is present only when `meta.domain` is set
+- `llms.txt` — always generated: every navigation page linked by its `.md` URL, as `serve` answers it minus the
+  MCP line (a static host has no `/_mcp/`)
 - `site.webmanifest` — always generated, named after `meta.title`; the icons it lists are in `_assets/`
 - `sitemap.xml` — generated when `meta.domain` is configured
 - `feed.xml` — Atom 1.0 feed with the 20 most recently modified pages, generated when `meta.domain` is configured
@@ -125,12 +127,13 @@ The output is a self-contained directory ready for:
 ### Multi-Language Build
 
 When your content includes BCP 47 directories (e.g., `fr-FR/`, `es-ES/`), the build generates per-language output
-with separate 404 pages, redirect stubs and, when `meta.domain` is set, sitemaps, feeds and tag pages:
+with separate 404 pages, redirect stubs, `llms.txt` files and, when `meta.domain` is set, sitemaps, feeds and tag pages:
 
 ```text
 ./public/
 ├── index.html
 ├── robots.txt
+├── llms.txt                 ← default language
 ├── site.webmanifest
 ├── sitemap.xml              ← default language
 ├── feed.xml                 ← default language
@@ -138,6 +141,7 @@ with separate 404 pages, redirect stubs and, when `meta.domain` is set, sitemaps
 ├── sitemap-index.xml        ← references all per-language sitemaps
 ├── fr-FR/
 │   ├── index.html
+│   ├── llms.txt
 │   ├── sitemap.xml
 │   ├── feed.xml
 │   ├── 404.html

@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/monolithiclab/gomddoc/internal/metadata"
@@ -93,7 +92,7 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 
 	var candidates []pageWithTime
 	for _, page := range pages {
-		if robots, ok := page.Meta["robots"].(string); ok && strings.Contains(robots, "noindex") {
+		if isNoindex(page.Meta) {
 			continue
 		}
 

@@ -18,7 +18,7 @@ and the scope below is the same for the two sections.
 
 | Routes | `Cache-Control` |
 |--------|-----------------|
-| Rendered pages, raw files, `/tags/`, `/sitemap.xml`, `/feed.xml`, `/robots.txt` | `public, max-age=300` |
+| Rendered pages, raw files, `/tags/`, `/llms.txt`, `/sitemap.xml`, `/feed.xml`, `/robots.txt` | `public, max-age=300` |
 | `/_assets/` (static files) | `public, max-age=31536000, immutable` |
 | `/api/*`, `/health/*`, `/metrics`, error responses | *(none)* |
 
@@ -45,7 +45,7 @@ What the fingerprint is taken over depends on the route:
   templates produces a new ETag. A `text/markdown` response is hashed as sent.
 - **Content files** (images, PDFs, CSS under the content root) and **`/_assets/`**: the raw file content.
 - **`/tags/` pages**: the rendered HTML.
-- **`/sitemap.xml`, `/feed.xml`, `/robots.txt`**: the generated document, which is built once and
+- **`/llms.txt`, `/sitemap.xml`, `/feed.xml`, `/robots.txt`**: the generated document, which is built once and
   cached for the life of the process.
 
 The `/api/*` JSON endpoints are the deliberate exception: they stream through a `json.Encoder`
@@ -83,7 +83,7 @@ Three route groups sit outside it, each deliberately:
 - **`/metrics`** — `promhttp` negotiates its own encoding.
 - **The admin listener** (`--admin-port`) — health, metrics and pprof there are served without any middleware.
 
-Everything else — pages, `/tags/`, `/sitemap.xml`, `/feed.xml`, `/robots.txt`, `/_assets/`,
+Everything else — pages, `/tags/`, `/llms.txt`, `/sitemap.xml`, `/feed.xml`, `/robots.txt`, `/_assets/`,
 `/api/*`, `/_mcp/` — is compressed, because the middleware is attached to the root route group
 rather than to individual handlers. A route added later gets it by default rather than by
 remembering to opt in.

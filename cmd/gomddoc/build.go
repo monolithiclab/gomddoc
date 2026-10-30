@@ -204,6 +204,10 @@ func (b *BuildCmd) Run() error {
 		return fmt.Errorf("generate SEO files: %w", err)
 	}
 
+	if err := b.writeLLMsTxt(pipeline, &cfg.Site, ""); err != nil {
+		return err
+	}
+
 	// Generate redirect HTML files for redirect_from frontmatter
 	if err := b.generateRedirectFiles(pipeline.URLRedirects, ""); err != nil {
 		return fmt.Errorf("generate redirect files: %w", err)
@@ -277,6 +281,10 @@ func (b *BuildCmd) Run() error {
 		}
 		if rErr := b.generateExtensionRedirects(langPipe.Resolver, cfg.Site.DefaultIndex, lang); rErr != nil {
 			slog.Warn("Failed to generate extension redirects for language", slog.String("lang", lang), slog.Any("error", rErr))
+		}
+
+		if lErr := b.writeLLMsTxt(langPipe, &cfg.Site, lang); lErr != nil {
+			slog.Warn("Failed to write llms.txt for language", slog.String("lang", lang), slog.Any("error", lErr))
 		}
 
 		// Generate per-language sitemap and feed
@@ -636,6 +644,24 @@ func (b *BuildCmd) writeSitemapIndex(domain string, langs []string) (string, err
 		return "", fmt.Errorf("write sitemap-index.xml: %w", err)
 	}
 	return "/sitemap-index.xml", nil
+}
+
+// writeLLMsTxt writes the llms.txt of pipe's tree at lang's output root (D55):
+// serve's file at the same URL, minus the MCP line, since a static host
+// mounts no /_mcp/.
+func (b *BuildCmd) writeLLMsTxt(pipe *Pipeline, site *config.SiteConfig, lang string) error {
+	prefix := ""
+	if lang != "" {
+		prefix = "/" + lang
+	}
+	data := server.GenerateLLMsTxt(server.LLMsTxtSource{
+		Nav: pipe.NavGenerator, Index: pipe.MetaIndex, Resolver: pipe.Resolver,
+		Site: site, PathPrefix: prefix,
+	})
+	if err := b.writeOutputFile(path.Join(lang, "llms.txt"), data); err != nil {
+		return fmt.Errorf("write llms.txt: %w", err)
+	}
+	return nil
 }
 
 // generateSEOFiles generates robots.txt and optionally sitemap.xml in the output

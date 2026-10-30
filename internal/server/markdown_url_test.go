@@ -13,6 +13,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
 
 // markdownURLFiles is the default-language tree the .md URL tests serve. guide
@@ -60,6 +61,13 @@ func markdownURLEnrichers(t *testing.T, files fstest.MapFS) enricher.EnricherReg
 // template, so a test can read PageContext fields back.
 func newMarkdownURLServer(t *testing.T, domain, layout string) http.Handler {
 	t.Helper()
+	return newMarkdownURLServerWithMCP(t, domain, layout, nil)
+}
+
+// newMarkdownURLServerWithMCP is newMarkdownURLServer with mcp mounted at
+// /_mcp/ (nil mounts nothing), and each tree's navigation for llms.txt.
+func newMarkdownURLServerWithMCP(t *testing.T, domain, layout string, mcp http.Handler) http.Handler {
+	t.Helper()
 
 	strip := []string{".md", ".markdown", ".html"}
 	isRenderable := func(m string) bool { return m == "text/markdown" || m == "text/html" }
@@ -89,6 +97,8 @@ func newMarkdownURLServer(t *testing.T, domain, layout string) http.Handler {
 		EnricherRegistry: markdownURLEnrichers(t, markdownURLFiles),
 		TemplateRenderer: renderer(resolver),
 		Resolver:         resolver,
+		NavGenerator:     navigation.NewGenerator(markdownURLFiles, "README.md", nil, resolver),
+		MCPHandler:       mcp,
 		AllLanguages:     []string{"fr"},
 		DefaultLang:      "en-US",
 		LangPipelines: map[string]LangPipelineConfig{
@@ -96,6 +106,7 @@ func newMarkdownURLServer(t *testing.T, domain, layout string) http.Handler {
 				TemplateRenderer: renderer(frResolver, tmpl.WithLangPrefix("fr")),
 				Provider:         newMemoryProvider(markdownURLFrFiles, "README.md", false),
 				Resolver:         frResolver,
+				NavGenerator:     navigation.NewGenerator(markdownURLFrFiles, "README.md", nil, frResolver),
 				EnricherRegistry: markdownURLEnrichers(t, markdownURLFrFiles),
 			},
 		},

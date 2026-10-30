@@ -722,3 +722,55 @@ func TestPrevNext_EmptyTree(t *testing.T) {
 		t.Errorf("PrevNext on empty tree: prev=%+v next=%+v, want both nil", prev, next)
 	}
 }
+
+// TestTree_File pins NavNode.File, the source file a node publishes: a leaf's
+// own file, and a directory's default index (the root's included), which the
+// tree lists as the directory rather than as a leaf. llms.txt links each
+// page's Markdown from it (resolve.PathResolver.MarkdownURLPath takes a file).
+func TestTree_File(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{
+		"README.md":        {Data: []byte("# Home")},
+		"guide.md":         {Data: []byte("# Guide")},
+		"docs/README.md":   {Data: []byte("# Docs")},
+		"docs/setup.md":    {Data: []byte("# Setup")},
+		"bare/page.md":     {Data: []byte("# Page")},
+		"secret/README.md": {Data: []byte("# Secret")},
+		"secret/x.md":      {Data: []byte("# X")},
+	}
+
+	root := NewGenerator(fsys, "README.md", []string{"secret/README.md"}, nil).Tree()
+	if root == nil {
+		t.Fatal("expected non-nil root node")
+	}
+
+	got := map[string]string{"/": root.File}
+	var walk func(n *NavNode)
+	walk = func(n *NavNode) {
+		for _, c := range n.Children {
+			got[c.Path] = c.File
+			walk(c)
+		}
+	}
+	walk(root)
+
+	want := map[string]string{
+		"/":              "README.md",
+		"/bare/":         "",
+		"/bare/page.md":  "bare/page.md",
+		"/docs/":         "docs/README.md",
+		"/docs/setup.md": "docs/setup.md",
+		"/guide.md":      "guide.md",
+		"/secret/":       "", // its index is excluded
+		"/secret/x.md":   "secret/x.md",
+	}
+	if len(got) != len(want) {
+		t.Errorf("nodes = %v, want %v", got, want)
+	}
+	for p, file := range want {
+		if got[p] != file {
+			t.Errorf("node %s File = %q, want %q", p, got[p], file)
+		}
+	}
+}

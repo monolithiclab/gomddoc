@@ -1,6 +1,6 @@
 ---
 title: "SEO"
-description: "Search engine optimization features including canonical URLs, sitemap, robots.txt, and Open Graph tags."
+description: "Search engine optimization features including canonical URLs, sitemap, llms.txt, robots.txt, and Open Graph tags."
 author: "nicolasm"
 tags: ["seo", "configuration"]
 ---
@@ -220,6 +220,44 @@ When a domain is configured, the default theme's `<head>` includes
 `<link rel="alternate" type="application/atom+xml">` pointing at `/feed.xml`, so feed readers and browsers can
 discover the feed. Translated pages point at the same root feed, not their language's feed.
 
+## llms.txt
+
+`/llms.txt` follows the [llms.txt](https://llmstxt.org/) format: an index of the site for AI agents, generated from
+the navigation. It needs no domain and no configuration:
+
+```markdown
+# My Project Docs
+
+> Documentation for My Project
+
+- [Home](https://docs.example.com/README.md): Start here.
+- [Changelog](https://docs.example.com/changelog.md)
+
+## Guide
+
+- [Guide](https://docs.example.com/guide/README.md): Everything in order.
+- [Getting Started](https://docs.example.com/guide/getting-started.md): Install and run the project.
+
+MCP server (Streamable HTTP): https://docs.example.com/_mcp/
+```
+
+- **Header:** `meta.title`, then `meta.description` as a blockquote when it is set.
+- **Pages:** every page the sidebar lists, plus the home page and each directory's page (its `README.md`). The home
+  page and the top-level pages come first; each top-level directory then gets a `##` section, labelled as in the
+  sidebar, listing its pages depth-first. Pages whose `robots` frontmatter contains `noindex` are left out, as from
+  the sitemap; `redirect_from` sources are not pages, so they never appear.
+- **Entries:** `- [title](url): description`, without the colon when the page has no `description`. The title is the
+  frontmatter `title`, else the sidebar label. The link is the page's `.md` URL, which serves its enriched Markdown
+  ([HTTP Behavior](12-advanced/01-http-behavior.md#markdown-urls)), so a directory page links `/guide/README.md`
+  and the home page `/README.md`. Without `.md` in `strip_extensions`, it is the page URL instead.
+- **URLs** are absolute with `meta.domain` and root-relative without one.
+- **MCP line:** `serve` and `preview` end the file with the `/_mcp/` endpoint ([MCP](04-mcp.md)). A static build has
+  no endpoint, so its `llms.txt` is the served one without that line.
+
+Each language gets its own file, `/fr-FR/llms.txt`, listing that language's pages with the `/fr-FR` prefix. In `serve`
+the file is generated on first request and cached; `build` writes `llms.txt` and `{lang}/llms.txt`. A content file
+named `llms.txt` at the root is shadowed by the generated one, as `sitemap.xml` is.
+
 ## hreflang Tags
 
 When multiple languages are detected, gomddoc injects `<link rel="alternate" hreflang="...">` tags in the `<head>` of
@@ -392,17 +430,16 @@ Or override with custom schemas:
 
 gomddoc serves extensionless (clean) URLs by default, which has several SEO benefits:
 
-- **301 redirects preserve link equity.** Requests to `/guide/setup.md` receive a `301 Moved
-  Permanently` redirect to `/guide/setup`. The permanent redirect tells search engines to transfer
-  all ranking signals from the old URL to the canonical extensionless form.
+- **301 redirects preserve link equity.** Requests to `/guide/setup.html`, or any other stripped extension, receive
+  a `301 Moved Permanently` redirect to `/guide/setup`. A Markdown page's `.md` URL is the exception: it serves the
+  page's Markdown with a canonical `Link` header naming `/guide/setup`.
 - **Extensionless URLs are the canonical form.** Canonical `<link>` tags, Open Graph URLs, and
-  structured data URLs all use the clean path. Search engines index the extensionless version,
-  avoiding duplicate content issues between `/page.md` and `/page`.
+  structured data URLs all use the clean path. Search engines index the extensionless version; the `.md` URL names
+  it as canonical.
 - **Sitemap and feed URLs use clean paths**, with default index files folded into their directory
   (`/guide/README.md` is listed as `/guide/`).
-- **Migration-safe.** If you are migrating an existing site that previously used `.md` URLs, all
-  old extension-based links (from external sites, bookmarks, or cached search results) are properly
-  redirected. No manual redirect rules are needed.
+- **Migration-safe.** Old `.html` links (from external sites, bookmarks, or cached search results) are redirected,
+  and old `.md` links still reach the page, as Markdown. No manual redirect rules are needed.
 
 For details on how URL resolution works, see
 [HTTP Behavior](12-advanced/01-http-behavior.md#url-resolution).
@@ -418,6 +455,7 @@ gomddoc build ./docs -o ./public -d docs.example.com
 The output includes:
 
 - **`robots.txt`**: always generated in the output root
+- **`llms.txt`**: always generated (per-language in multi-language sites), without the MCP line
 - **`sitemap.xml`**: generated when `meta.domain` is configured (per-language in multi-language sites)
 - **`sitemap-index.xml`**: generated when `meta.domain` is configured and translation directories are detected
 - **`feed.xml`**: Atom 1.0 feed, generated when `meta.domain` is configured (per-language in multi-language sites)

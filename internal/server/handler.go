@@ -14,7 +14,6 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
-	"github.com/monolithiclab/gomddoc/internal/seo"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
@@ -210,11 +209,7 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 // path: absolute with the configured domain, root-relative without one. It is
 // the sitemap's derivation (GenerateSitemap), so the two name one URL.
 func (h *Handler) canonicalURL(pagePath string) string {
-	sitePath := h.basePath + pagePath
-	if u := seo.PageURL(h.siteConfig.Meta.Domain, sitePath, ""); u != "" {
-		return u
-	}
-	return sitePath
+	return siteURL(h.siteConfig.Meta.Domain, h.basePath+pagePath)
 }
 
 // serveHTML wraps HTML content in the site template and serves it.

@@ -629,7 +629,8 @@ is rendered through the full pipeline; everything else is copied as-is. `prettyO
 directory also has an `index.md`. File processing is parallelized with an `errgroup` worker pool bounded by
 `runtime.NumCPU()`, and counts accumulate into one shared `*buildStats`.
 
-Besides the pages, build writes the static-asset overlay to `_assets/`, `site.webmanifest`, `robots.txt`, `sitemap.xml` and `feed.xml`
+Besides the pages, build writes the static-asset overlay to `_assets/`, `site.webmanifest`, `robots.txt`,
+`llms.txt` (and `{lang}/llms.txt`, serve's file without the MCP line, D55), `sitemap.xml` and `feed.xml`
 (when `meta.domain` is set), `sitemap-index.xml` (see below), `redirect_from` stub pages, each Markdown page's enriched
 Markdown at its source path (`guide.md`, rendered by the same passthrough renderer serve negotiates, with build's trailing-slash prev/next URLs, D54), extension
 redirect stubs for other stripped extensions (`about.html` → `/about/`), tag pages (`tags/index.html`, `tags/{tag}/index.html`), and `404.html` rendered through
@@ -683,12 +684,13 @@ Metrics wrapping these three means their 405/404/301 responses are counted too, 
 | _(own group)_ | | BasicAuth (if configured) | `/metrics` — only when admin endpoints share the main port |
 | _(own group)_ | `/debug/pprof` | BasicAuth (if configured), applied by `mountPprof` | `/`, `/cmdline`, `/profile`, `/symbol`, `/trace` — only with `--pprof` and admin on the main port |
 | base | | Compression, Metrics | `/robots.txt`, `/_assets/` |
-| base → auth | | BasicAuth (if configured) | `/site.webmanifest`, `/sitemap.xml`, `/feed.xml`, `/tags/`, `/tags/{tag}`, `/_mcp/` |
+| base → auth | | BasicAuth (if configured) | `/site.webmanifest`, `/llms.txt`, `/sitemap.xml`, `/feed.xml`, `/tags/`, `/tags/{tag}`, `/_mcp/` |
 | auth → api | `/api` | _(inherits auth)_ | `/tags`, `/tags/{tag}`, `/search` |
 | auth → content | | MethodFilter, ContentExclusion, ExtensionRedirect | `/` (catch-all) |
 
-`/sitemap.xml` and `/feed.xml` are registered only when the metadata index exists and `meta.domain` is set; the tag
-API routes only with a metadata index; `/api/search` only with a search index.
+`/llms.txt` (and `/{lang}/llms.txt`) is registered when the pipeline has a navigation generator
+(`HTTPServerConfig.NavGenerator`); `/sitemap.xml` and `/feed.xml` only when the metadata index exists and
+`meta.domain` is set; the tag API routes only with a metadata index; `/api/search` only with a search index.
 
 `/_mcp/` is a plain handler on `auth`, not a subgroup: it is `http.StripPrefix` wrapping the MCP
 Streamable HTTP handler behind a `maxBodySize` cap (1 MB), the one route on the server that accepts a
@@ -1153,6 +1155,10 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
   `robots.txt` names `/sitemap.xml`.
 - **Atom feed**: `/feed.xml` with the 20 most recently modified pages (skipping `robots: noindex`), dated by
   `seo.LastModified`.
+- **llms.txt** (D55): `/llms.txt` and `/{lang}/llms.txt`, from `server.GenerateLLMsTxt` over the pipeline's
+  navigation tree (`NavNode.File` names each page's source, directory pages included), metadata index and resolver.
+  Links come from `PathResolver.MarkdownURLPath`; URLs go through `siteURL`, the canonical `Link` header's rule.
+  Serve adds the `/_mcp/` line when MCP is mounted; build writes the same file without it.
 - **robots.txt**: `/robots.txt` served dynamically (serve) and generated as static file (build). Blocks `/_assets/`,
   `/api/`, `/debug/`, and names the sitemap when there is one.
 - **JSON-LD**: `<script type="application/ld+json">` with Schema.org `TechArticle` (every page, with

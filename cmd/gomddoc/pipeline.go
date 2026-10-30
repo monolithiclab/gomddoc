@@ -509,6 +509,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 			RedirectFinder:   langPipe.RedirectFinder,
 			URLRedirects:     langPipe.URLRedirects,
 			EnricherRegistry: langPipe.EnricherRegistry,
+			NavGenerator:     langPipe.NavGenerator,
 			TemplateRenderer: langPipe.TemplateRenderer,
 		}
 	}
@@ -524,6 +525,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		RedirectFinder:   pipeline.RedirectFinder,
 		URLRedirects:     pipeline.URLRedirects,
 		Resolver:         pipeline.Resolver,
+		NavGenerator:     pipeline.NavGenerator,
 		StaticFS:         pipeline.StaticFS,
 		AuthStore:        opts.AuthStore,
 		MCPHandler:       mcpServer.HTTPHandler(),

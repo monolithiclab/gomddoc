@@ -21,6 +21,8 @@ route the server registers, and the tools, resources and prompts of the MCP serv
 | `GET /{lang}/tags/`, `GET /{lang}/tags/{tag}` | Yes | One pair per detected language |
 | `GET /sitemap.xml`, `GET /feed.xml` | Yes | `meta.domain` set |
 | `GET /{lang}/sitemap.xml`, `GET /{lang}/feed.xml` | Yes | `meta.domain` set, one pair per detected language |
+| `GET /llms.txt` | Yes | Always in `serve` and `preview` |
+| `GET /{lang}/llms.txt` | Yes | One per detected language |
 | `GET /robots.txt` | No | Always |
 | `GET /site.webmanifest` | Yes | Always |
 | `GET /_assets/*` | No | Always |
@@ -240,6 +242,12 @@ Sitemap: https://docs.example.com/sitemap.xml
 Returns an XML sitemap listing all indexed pages, the `/tags/` index, and one entry per tag page. Only available when
 `meta.domain` is configured. Pages with `noindex` in their `robots` frontmatter are excluded. URLs use clean
 extensionless paths when `strip_extensions` is active.
+
+### `GET /llms.txt`
+
+Returns the site's [llms.txt](https://llmstxt.org/) as `text/plain; charset=utf-8`: every navigation page, linked by
+its `.md` URL, plus the `/_mcp/` endpoint. `/{lang}/llms.txt` lists that language's pages. See
+[SEO](../11-seo.md#llmstxt) for the format.
 
 ### `sitemap-index.xml`: not an endpoint
 

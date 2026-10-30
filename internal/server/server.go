@@ -25,6 +25,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/search"
 	"github.com/monolithiclab/gomddoc/internal/template"
+	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -57,6 +58,7 @@ type LangPipelineConfig struct {
 	Resolver         *resolve.PathResolver
 	RedirectFinder   RedirectFinder
 	EnricherRegistry enricher.EnricherRegistry
+	NavGenerator     *navigation.Generator // nil disables /{lang}/llms.txt
 
 	// URLRedirects maps this language's redirect_from sources to its own pages.
 	// Sources are content-root-relative (the /{lang} prefix is stripped before
@@ -86,6 +88,7 @@ type HTTPServerConfig struct {
 	AuthStore        *CredentialStore      // nil disables basic auth
 	MCPHandler       http.Handler          // nil disables MCP endpoint at /_mcp/
 	Resolver         *resolve.PathResolver // nil disables extension stripping
+	NavGenerator     *navigation.Generator // nil disables /llms.txt
 
 	// Multi-language support
 	LangPipelines map[string]LangPipelineConfig // per-language pipelines keyed by BCP 47 code
@@ -212,8 +215,19 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 		api.HandleFunc("GET /search", searchHandler.SearchEndpoint)
 	}
 
+	// llms.txt names the MCP endpoint only when one is mounted.
+	mcpPath := ""
 	if opts.MCPHandler != nil {
-		auth.Handle("/_mcp/", http.StripPrefix("/_mcp", maxBodySize(opts.MCPHandler, maxMCPBodyBytes)))
+		mcpPath = "/_mcp/"
+		auth.Handle(mcpPath, http.StripPrefix("/_mcp", maxBodySize(opts.MCPHandler, maxMCPBodyBytes)))
+	}
+
+	// llms.txt (D55) needs no domain: without one its links are root-relative.
+	if opts.NavGenerator != nil {
+		auth.Handle("GET /llms.txt", NewLLMsTxtHandler(LLMsTxtSource{
+			Nav: opts.NavGenerator, Index: opts.MetaIndex, Resolver: opts.Resolver,
+			Site: &cfg.Site, MCPPath: mcpPath,
+		}))
 	}
 
 	if sitemapPath != "" {
@@ -276,6 +290,13 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 
 			langFeedHandler := NewFeedHandler(lp.MetaIndex, cfg.Site.Meta.Domain, cfg.Site.DefaultIndex, lp.Provider, cfg.Site.Meta.Title, lp.Resolver, prefix)
 			auth.Handle("GET "+prefix+"/feed.xml", langFeedHandler)
+		}
+
+		if lp.NavGenerator != nil {
+			auth.Handle("GET "+prefix+"/llms.txt", NewLLMsTxtHandler(LLMsTxtSource{
+				Nav: lp.NavGenerator, Index: lp.MetaIndex, Resolver: lp.Resolver,
+				Site: &cfg.Site, PathPrefix: prefix, MCPPath: mcpPath,
+			}))
 		}
 
 		if lp.MetaIndex != nil && opts.LocaleBundle != nil {

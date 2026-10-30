@@ -1078,3 +1078,30 @@ There is no config key and no compatibility switch: `/guide.md` stops redirectin
 - *Cost if wrong*: a link or bookmark to `/guide.md` now shows Markdown in a browser instead of landing on the HTML
   page. A crawler that ignores the canonical `Link` header could index both URLs. Build output grows by one Markdown
   file per page.
+
+## D55. `llms.txt` Generated from the Navigation
+
+*2026-10-30*
+
+**Decision** (2026-10-30): serve answers `/llms.txt` and `/{lang}/llms.txt` (`text/plain; charset=utf-8`, behind
+Basic Auth like the sitemap, needing no domain) and build writes `llms.txt` and `{lang}/llms.txt`, all from
+`server.GenerateLLMsTxt`. The file follows llmstxt.org: `# {meta.title}`, `> {meta.description}` when set, the home page
+and top-level pages as a list, then one `## {sidebar label}` per top-level navigation directory listing its pages
+depth-first, each directory's own page first. It lists the navigation's pages plus the home page and directory pages
+(`NavNode.File` names their source), less pages whose `robots` says `noindex`; `redirect_from` sources are not pages.
+Each entry is `- [{title}]({url}): {description}`, with no colon when the page has no description; the title is the
+frontmatter title, else the sidebar label (the site title for an untitled home page). The link is
+`PathResolver.MarkdownURLPath` (`/docs/README.md` for the page at `/docs`), not `{page URL}.md`, falling back to the
+page URL when stripping did not map the file; URLs are absolute with `meta.domain` and root-relative without, the
+canonical `Link` header's rule (`siteURL`). When `/_mcp/` is mounted, a last plain-sentence line,
+`MCP server (Streamable HTTP): {url}`, names it, rather than an `## Optional` section, which llmstxt.org reserves for
+documents an agent may skip. Build mounts no MCP endpoint, so its file is serve's without that line; the `.md` links are
+source paths, so build's trailing-slash URLs (D54) do not otherwise change it. No config key: the sitemap has none to
+mirror.
+
+- *Evidence*: agents look for `/llms.txt` to learn which pages exist, and D54 gave every page a Markdown URL to list.
+- *Alternatives*: the sitemap's walk, the metadata index (it skips every page without frontmatter, which the sidebar
+  lists); `{page URL}.md` links (`/docs.md` names no file and is a 404); an `## Optional` MCP link (the endpoint is not
+  a document); `llms-full.txt` (out of scope); a config switch (nothing to configure).
+- *Cost if wrong*: a page reachable only outside the navigation (a directory holding nothing but its `README.md`) is
+  missing from the file, and a content file named `llms.txt` at the root is shadowed by the generated one.

@@ -30,7 +30,8 @@ malformed line or a non-bcrypt hash stops startup with an error naming the line.
 
 When enabled:
 
-- Content pages, tag pages, `/api/*`, `/_mcp/`, `/sitemap.xml` and `/feed.xml` require valid credentials.
+- Content pages, tag pages, `/api/*`, `/_mcp/`, `/llms.txt`, `/sitemap.xml` and `/feed.xml` require
+  valid credentials.
   Unauthenticated requests receive `401 Unauthorized` with a `WWW-Authenticate: Basic realm="gomddoc"` header
   prompting the browser to show a login dialog.
 - **Unauthenticated routes:** `/health/live` and `/health/ready` (so container orchestrators can probe without
