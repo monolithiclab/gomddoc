@@ -62,9 +62,10 @@ docker run --rm -p 8080:8080 -v "$PWD:/site" ghcr.io/monolithiclab/gomddoc serve
 Release archives carry an SPDX SBOM each and a Sigstore-signed `SHA256SUMS`; the
 [Quick Start](docs/guide/01-quickstart.md) explains the install script's options and how to verify a release by hand.
 
-gomddoc is free for noncommercial use under the PolyForm Noncommercial License 1.0.0, and any for-profit use,
-internal documentation included, needs a [commercial license](LICENSE-COMMERCIAL.md); open-source projects can
-[request a free licence](https://github.com/monolithiclab/gomddoc/issues/new?template=oss-licence.yml).
+gomddoc is free for noncommercial use under the PolyForm Noncommercial License 1.0.0, which covers open-source
+projects, personal sites, non-profits and education; any for-profit use, internal documentation included, needs a
+[commercial license](LICENSE-COMMERCIAL.md). Request a free license through the
+[issue form](https://github.com/monolithiclab/gomddoc/issues/new?template=oss-licence.yml).
 
 ## Use
 

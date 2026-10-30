@@ -1,13 +1,13 @@
-name: Free licence request
-description: Ask for a free licence to use gomddoc for an open-source, personal, non-profit or education project.
-title: "Free licence request: "
+name: Free license request
+description: Ask for a free license to use gomddoc for an open-source, personal, non-profit or education project.
+title: "Free license request: "
 labels: ["licence"]
 body:
   - type: markdown
     attributes:
       value: |
         gomddoc is free for noncommercial use under the PolyForm Noncommercial License 1.0.0. Fill in this form
-        so Monolithic Lab can confirm a free licence for your project.
+        so Monolithic Lab can confirm a free license for your project.
   - type: input
     id: project-name
     attributes:
