@@ -19,12 +19,14 @@ var llmsTxtLink = regexp.MustCompile(`(?m)^- \[(?:[^\]\\]|\\.)*\]\(([^)]+)\)`)
 const llmsTxtMCPLine = "\nMCP server (Streamable HTTP): /_mcp/\n"
 
 // writeLLMsTxtSite writes a site with a home page, a directory page, a page
-// without a description, a noindex page, a redirect_from source and a French
-// tree, plus domain in the config when it is not empty.
+// without a description, a noindex page, a redirect_from source that is also a
+// real page, README-only directories (published, noindex, excluded) the
+// navigation drops, and a French tree, plus domain in the config when it is
+// not empty.
 func writeLLMsTxtSite(t *testing.T, domain string) string {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := "meta:\n  title: Docs\n  description: All the docs.\n"
+	cfg := "exclude:\n  - private/\n  - fr-FR/private/\nmeta:\n  title: Docs\n  description: All the docs.\n"
 	if domain != "" {
 		cfg += "  domain: " + domain + "\n"
 	}
@@ -35,6 +37,12 @@ func writeLLMsTxtSite(t *testing.T, domain string) string {
 	writeTestFile(t, dir, "guides/teardown.md", "# Teardown\n")
 	writeTestFile(t, dir, "draft.md", "---\ntitle: Draft\nrobots: noindex\n---\n# Draft\n")
 	writeTestFile(t, dir, "moved.md", "---\ntitle: Moved\nredirect_from:\n  - /old-page\n---\n# Moved\n")
+	writeTestFile(t, dir, "old-page.md", "---\ntitle: Old page\n---\n# Old page\n")
+	writeTestFile(t, dir, "changelog/README.md", "---\ntitle: Changelog\n---\n# Changelog\n")
+	writeTestFile(t, dir, "drafts/README.md", "---\ntitle: Drafts\nrobots: noindex\n---\n# Drafts\n")
+	writeTestFile(t, dir, "private/README.md", "---\ntitle: Private\n---\n# Private\n")
+	writeTestFile(t, dir, "fr-FR/notes/README.md", "---\ntitle: Notes\n---\n# Notes\n")
+	writeTestFile(t, dir, "fr-FR/private/README.md", "---\ntitle: Private\n---\n# Private\n")
 	writeTestFile(t, dir, "fr-FR/README.md", "---\ntitle: Accueil\n---\n# Accueil\n")
 	writeTestFile(t, dir, "fr-FR/guides/setup.md", "---\ntitle: Installation\n---\n# Installation\n")
 	return dir
@@ -42,7 +50,9 @@ func writeLLMsTxtSite(t *testing.T, domain string) string {
 
 // TestLLMsTxt_ServeAndBuild pins D55 end to end: serve answers /llms.txt and
 // /fr-FR/llms.txt as text/plain, each listing every navigation page of its tree
-// once (noindex pages and redirect sources left out) by a .md link the same
+// once, then the pages the navigation drops under "Other pages" (noindex and
+// excluded pages left out; a redirect source that is a real page listed once),
+// each by a .md link the same
 // server answers 200; serve adds the MCP line, and build writes the same files
 // without it.
 func TestLLMsTxt_ServeAndBuild(t *testing.T) {
@@ -68,8 +78,8 @@ func TestLLMsTxt_ServeAndBuild(t *testing.T) {
 				path string
 				want []string
 			}{
-				{"/llms.txt", []string{"/README.md", "/guides/README.md", "/guides/setup.md", "/guides/teardown.md", "/moved.md"}},
-				{"/fr-FR/llms.txt", []string{"/fr-FR/README.md", "/fr-FR/guides/setup.md"}},
+				{"/llms.txt", []string{"/README.md", "/changelog/README.md", "/guides/README.md", "/guides/setup.md", "/guides/teardown.md", "/moved.md", "/old-page.md"}},
+				{"/fr-FR/llms.txt", []string{"/fr-FR/README.md", "/fr-FR/guides/setup.md", "/fr-FR/notes/README.md"}},
 			} {
 				w := httptest.NewRecorder()
 				served.ServeHTTP(w, httptest.NewRequest(http.MethodGet, file.path, nil))
@@ -100,13 +110,22 @@ func TestLLMsTxt_ServeAndBuild(t *testing.T) {
 				if !slices.Equal(links, file.want) {
 					t.Errorf("%s links = %v, want each of %v once\n%s", file.path, links, file.want, body)
 				}
-				for _, absent := range []string{"draft", "Draft", "old-page"} {
+				for _, absent := range []string{"draft", "Draft", "private", "Private"} {
 					if strings.Contains(body, absent) {
 						t.Errorf("%s lists %q:\n%s", file.path, absent, body)
 					}
 				}
-				if !strings.Contains(body, "- [Setup]("+tc.origin+"/guides/setup.md): Install it.\n") && file.path == "/llms.txt" {
+				if file.path == "/llms.txt" && !strings.Contains(body, "- [Setup]("+tc.origin+"/guides/setup.md): Install it.\n") {
 					t.Errorf("%s lacks the described setup entry:\n%s", file.path, body)
+				}
+
+				// The pages the navigation drops come last, before the MCP line.
+				other := "\n## Other pages\n\n- [Changelog](" + tc.origin + "/changelog/README.md)\n"
+				if file.path == "/fr-FR/llms.txt" {
+					other = "\n## Other pages\n\n- [Notes](" + tc.origin + "/fr-FR/notes/README.md)\n"
+				}
+				if !strings.Contains(body, other+"\nMCP server") {
+					t.Errorf("%s lacks %q right before the MCP line:\n%s", file.path, other, body)
 				}
 
 				mcpLine := strings.Replace(llmsTxtMCPLine, "/_mcp/", tc.origin+"/_mcp/", 1)

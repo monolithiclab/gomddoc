@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
+	"github.com/monolithiclab/gomddoc/internal/metadata"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	"github.com/monolithiclab/gomddoc/internal/template/navigation"
 )
@@ -25,7 +27,15 @@ var llmsTxtTestFS = fstest.MapFS{
 	"guides/setup.md":           {Data: []byte("---\ntitle: Setup [beta]\ndescription: Install it.\n---\n# Setup\n")},
 	"guides/teardown.md":        {Data: []byte("# Teardown\n")},
 	"guides/advanced/tuning.md": {Data: []byte("---\ntitle: Tuning\n---\n# Tuning\n")},
+	// README-only directories: the navigation drops them, so the published one
+	// is listed under "Other pages"; the noindex and the excluded one are not.
+	"changelog/README.md": {Data: []byte("---\ntitle: Changelog\n---\n# Changelog\n")},
+	"drafts/README.md":    {Data: []byte("---\ntitle: Drafts\nrobots: noindex\n---\n# Drafts\n")},
+	"private/README.md":   {Data: []byte("---\ntitle: Private\n---\n# Private\n")},
 }
+
+// llmsTxtExclude is the fixture's Pipeline.Exclude.
+var llmsTxtExclude = []string{"private/"}
 
 // llmsTxtSource builds the source GenerateLLMsTxt reads, the way the pipeline
 // does: one resolver for the navigation and the links, one metadata index.
@@ -33,10 +43,14 @@ func llmsTxtSource(t *testing.T, domain, prefix, mcpPath string) LLMsTxtSource {
 	t.Helper()
 	resolver := resolve.Build(llmsTxtTestFS, resolve.BuildOptions{
 		StripExtensions: []string{".md"},
+		Exclude:         llmsTxtExclude,
 		HasRenderer:     func(m string) bool { return m == "text/markdown" },
 	})
-	idx := buildTestIndex(t, llmsTxtTestFS)
-	nav := navigation.NewGenerator(llmsTxtTestFS, "README.md", nil, resolver)
+	idx, err := metadata.BuildIndex(context.Background(), llmsTxtTestFS, llmsTxtExclude)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+	nav := navigation.NewGenerator(llmsTxtTestFS, "README.md", llmsTxtExclude, resolver)
 	nav.SetTitleLookup(idx.TitleForPath)
 
 	site := config.NewSiteConfig(".")
@@ -82,6 +96,10 @@ func TestGenerateLLMsTxt(t *testing.T) {
 - [Tuning](/guides/advanced/tuning.md)
 - [Setup \[beta\]](/guides/setup.md): Install it.
 - [Teardown](/guides/teardown.md)
+
+## Other pages
+
+- [Changelog](/changelog/README.md)
 `,
 		},
 		{
@@ -105,6 +123,10 @@ func TestGenerateLLMsTxt(t *testing.T) {
 - [Tuning](https://docs.example.com/guides/advanced/tuning.md)
 - [Setup \[beta\]](https://docs.example.com/guides/setup.md): Install it.
 - [Teardown](https://docs.example.com/guides/teardown.md)
+
+## Other pages
+
+- [Changelog](https://docs.example.com/changelog/README.md)
 
 MCP server (Streamable HTTP): https://docs.example.com/_mcp/
 `,
@@ -130,6 +152,10 @@ MCP server (Streamable HTTP): https://docs.example.com/_mcp/
 - [Tuning](/fr-FR/guides/advanced/tuning.md)
 - [Setup \[beta\]](/fr-FR/guides/setup.md): Install it.
 - [Teardown](/fr-FR/guides/teardown.md)
+
+## Other pages
+
+- [Changelog](/fr-FR/changelog/README.md)
 
 MCP server (Streamable HTTP): /_mcp/
 `,
@@ -164,6 +190,30 @@ func TestGenerateLLMsTxt_Minimal(t *testing.T) {
 		Site: &site,
 	}))
 	want := "# Docs\n\n- [Docs](/)\n- [Page](/page.md)\n"
+	if got != want {
+		t.Errorf("GenerateLLMsTxt() = %q, want %q", got, want)
+	}
+}
+
+// TestGenerateLLMsTxt_SinglePage pins the root link on a site whose only page
+// is its root README: the navigation tree is nil there.
+func TestGenerateLLMsTxt_SinglePage(t *testing.T) {
+	t.Parallel()
+
+	fsys := fstest.MapFS{"README.md": {Data: []byte("---\ntitle: Home\n---\n# Home\n")}}
+	resolver := resolve.Build(fsys, resolve.BuildOptions{
+		StripExtensions: []string{".md"},
+		HasRenderer:     func(m string) bool { return m == "text/markdown" },
+	})
+	nav := navigation.NewGenerator(fsys, "README.md", nil, resolver)
+	if nav.Tree() != nil {
+		t.Fatal("fixture no longer has a nil navigation tree")
+	}
+	site := config.NewSiteConfig(".")
+	site.Meta.Title = "Docs"
+	site.Meta.Description = "One page."
+	got := string(GenerateLLMsTxt(LLMsTxtSource{Nav: nav, Index: buildTestIndex(t, fsys), Resolver: resolver, Site: &site}))
+	want := "# Docs\n\n> One page.\n\n- [Home](/README.md)\n"
 	if got != want {
 		t.Errorf("GenerateLLMsTxt() = %q, want %q", got, want)
 	}

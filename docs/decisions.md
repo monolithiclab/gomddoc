@@ -1086,11 +1086,15 @@ There is no config key and no compatibility switch: `/guide.md` stops redirectin
 **Decision** (2026-10-30): serve answers `/llms.txt` and `/{lang}/llms.txt` (`text/plain; charset=utf-8`, behind
 Basic Auth like the sitemap, needing no domain) and build writes `llms.txt` and `{lang}/llms.txt`, all from
 `server.GenerateLLMsTxt`. The file follows llmstxt.org: `# {meta.title}`, `> {meta.description}` when set, the home page
-and top-level pages as a list, then one `## {sidebar label}` per top-level navigation directory listing its pages
-depth-first, each directory's own page first. It lists the navigation's pages plus the home page and directory pages
-(`NavNode.File` names their source), less pages whose `robots` says `noindex`; `redirect_from` sources are not pages.
+and top-level pages as a list (the root page first, even when the navigation is empty), then one
+`## {sidebar label}` per top-level navigation directory listing its pages depth-first, each directory's own page
+first, then `## Other pages`: every published page the navigation drops (a README-only directory), in path order,
+from the resolver's Markdown mappings and the metadata index, both built with `Pipeline.Exclude`. It lists the
+navigation's pages plus the home page and directory pages (`NavNode.File` names their source), less pages whose
+`robots` says `noindex`; `redirect_from` sources are not pages.
 Each entry is `- [{title}]({url}): {description}`, with no colon when the page has no description; the title is the
-frontmatter title, else the sidebar label (the site title for an untitled home page). The link is
+frontmatter title, else the sidebar label (the site title for an untitled home page, the file path for an untitled
+other page). The link is
 `PathResolver.MarkdownURLPath` (`/docs/README.md` for the page at `/docs`), not `{page URL}.md`, falling back to the
 page URL when stripping did not map the file; URLs are absolute with `meta.domain` and root-relative without, the
 canonical `Link` header's rule (`siteURL`). When `/_mcp/` is mounted, a last plain-sentence line,
@@ -1103,5 +1107,6 @@ mirror.
 - *Alternatives*: the sitemap's walk, the metadata index (it skips every page without frontmatter, which the sidebar
   lists); `{page URL}.md` links (`/docs.md` names no file and is a 404); an `## Optional` MCP link (the endpoint is not
   a document); `llms-full.txt` (out of scope); a config switch (nothing to configure).
-- *Cost if wrong*: a page reachable only outside the navigation (a directory holding nothing but its `README.md`) is
-  missing from the file, and a content file named `llms.txt` at the root is shadowed by the generated one.
+- *Cost if wrong*: a page under `## Other pages` sits outside its section; without the metadata index (metadata
+  disabled), descriptions are absent and `noindex` cannot be honoured; and a content file named `llms.txt` at the root
+  is shadowed by the generated one.

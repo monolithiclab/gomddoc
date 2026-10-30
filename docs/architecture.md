@@ -1156,7 +1156,8 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 - **Atom feed**: `/feed.xml` with the 20 most recently modified pages (skipping `robots: noindex`), dated by
   `seo.LastModified`.
 - **llms.txt** (D55): `/llms.txt` and `/{lang}/llms.txt`, from `server.GenerateLLMsTxt` over the pipeline's
-  navigation tree (`NavNode.File` names each page's source, directory pages included), metadata index and resolver.
+  navigation tree (`NavNode.File` names each page's source, directory pages included), metadata index and resolver;
+  a completion pass lists the root page first and the published pages the navigation drops under `## Other pages`.
   Links come from `PathResolver.MarkdownURLPath`; URLs go through `siteURL`, the canonical `Link` header's rule.
   Serve adds the `/_mcp/` line when MCP is mounted; build writes the same file without it.
 - **robots.txt**: `/robots.txt` served dynamically (serve) and generated as static file (build). Blocks `/_assets/`,

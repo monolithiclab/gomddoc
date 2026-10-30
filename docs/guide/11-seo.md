@@ -243,14 +243,18 @@ MCP server (Streamable HTTP): https://docs.example.com/_mcp/
 
 - **Header:** `meta.title`, then `meta.description` as a blockquote when it is set.
 - **Pages:** every page the sidebar lists, plus the home page and each directory's page (its `README.md`). The home
-  page and the top-level pages come first; each top-level directory then gets a `##` section, labelled as in the
-  sidebar, listing its pages depth-first. Pages whose `robots` frontmatter contains `noindex` are left out, as from
-  the sitemap; `redirect_from` sources are not pages, so they never appear.
+  page always comes first, followed by the top-level pages; each top-level directory then gets a `##` section,
+  labelled as in the sidebar, listing its pages depth-first. A last `## Other pages` section lists, in path order,
+  every published page the sidebar leaves out, such as a directory holding only its `README.md`. Excluded pages and
+  pages whose `robots` frontmatter contains `noindex` are left out, as from the sitemap; `redirect_from` sources are
+  not pages, so they never appear.
 - **Entries:** `- [title](url): description`, without the colon when the page has no `description`. The title is the
   frontmatter `title`, else the sidebar label. The link is the page's `.md` URL, which serves its enriched Markdown
   ([HTTP Behavior](12-advanced/01-http-behavior.md#markdown-urls)), so a directory page links `/guide/README.md`
   and the home page `/README.md`. Without `.md` in `strip_extensions`, it is the page URL instead.
 - **URLs** are absolute with `meta.domain` and root-relative without one.
+- **Metadata:** descriptions, titles and `noindex` come from the metadata index. Where it is disabled, entries have no
+  description, are titled from the sidebar (or the file path), and `noindex` pages cannot be left out.
 - **MCP line:** `serve` and `preview` end the file with the `/_mcp/` endpoint ([MCP](04-mcp.md)). A static build has
   no endpoint, so its `llms.txt` is the served one without that line.
 

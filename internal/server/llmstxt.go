@@ -1,7 +1,9 @@
 package server
 
 import (
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/monolithiclab/gomddoc/internal/config"
@@ -45,9 +47,11 @@ func (h *LLMsTxtHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // GenerateLLMsTxt produces the llms.txt (D55): "# {site title}", the site
-// description as a blockquote, the home page and top-level pages as a list,
-// then one "## {section}" per top-level navigation directory listing its pages
-// depth-first, directory pages first. Each entry links the page's Markdown
+// description as a blockquote, the root page and the top-level pages as a
+// list, then one "## {section}" per top-level navigation directory listing its
+// pages depth-first, directory pages first, then "## Other pages": every
+// published page the navigation drops (a directory holding only its README),
+// in path order. Each entry links the page's Markdown
 // (resolve.PathResolver.MarkdownURLPath, falling back to its page URL when
 // stripping did not map it) as "- [title](url): description", without the
 // colon when the page has no description. Pages whose robots frontmatter says
@@ -55,7 +59,8 @@ func (h *LLMsTxtHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // and root-relative without one. When src.MCPPath is set, a last line names
 // the MCP endpoint.
 func GenerateLLMsTxt(src LLMsTxtSource) []byte {
-	var b strings.Builder
+	w := &llmsTxtWriter{src: src, listed: make(map[string]bool)}
+	b := &w.b
 	b.WriteString("# " + oneLine(src.Site.Meta.Title) + "\n")
 	if desc := oneLine(src.Site.Meta.Description); desc != "" {
 		b.WriteString("\n> " + desc + "\n")
@@ -65,30 +70,38 @@ func GenerateLLMsTxt(src LLMsTxtSource) []byte {
 	if src.Nav != nil {
 		tree = src.Nav.Tree()
 	}
+	published := src.publishedFiles()
+
+	// The root page leads, even when the navigation is empty (a single-page
+	// site has no tree at all).
+	var top []string
+	if root := src.Site.DefaultIndex; (tree != nil && tree.File == root) || published[root] {
+		top = w.add(top, root, src.Site.Meta.Title)
+	}
 	if tree != nil {
-		var top []string
-		if entry := src.entry(tree.File, src.Site.Meta.Title); entry != "" {
-			top = append(top, entry)
-		}
 		for _, child := range tree.Children {
 			if !child.IsDir {
-				if entry := src.entry(child.File, child.Label); entry != "" {
-					top = append(top, entry)
-				}
-			}
-		}
-		writeList(&b, top)
-
-		for _, section := range tree.Children {
-			if !section.IsDir {
-				continue
-			}
-			if entries := src.sectionEntries(section, nil); len(entries) > 0 {
-				b.WriteString("\n## " + oneLine(section.Label) + "\n")
-				writeList(&b, entries)
+				top = w.add(top, child.File, child.Label)
 			}
 		}
 	}
+	writeList(b, top)
+
+	if tree != nil {
+		for _, section := range tree.Children {
+			if section.IsDir {
+				w.section(section.Label, w.dirEntries(section, nil))
+			}
+		}
+	}
+
+	var rest []string
+	for _, file := range slices.Sorted(maps.Keys(published)) {
+		if !w.listed[file] {
+			rest = w.add(rest, file, "")
+		}
+	}
+	w.section("Other pages", rest)
 
 	if src.MCPPath != "" {
 		b.WriteString("\nMCP server (Streamable HTTP): " + siteURL(src.Site.Meta.Domain, src.MCPPath) + "\n")
@@ -96,39 +109,81 @@ func GenerateLLMsTxt(src LLMsTxtSource) []byte {
 	return []byte(b.String())
 }
 
-// sectionEntries appends dir's page (its default index) and then its children,
-// depth-first in navigation order.
-func (src LLMsTxtSource) sectionEntries(dir *navigation.NavNode, out []string) []string {
-	if entry := src.entry(dir.File, dir.Label); entry != "" {
-		out = append(out, entry)
+// publishedFiles is every Markdown page the tree publishes, by fs-relative
+// path: the files stripping mapped to a Markdown URL and the pages of the
+// metadata index. Both were built with Pipeline.Exclude, so neither holds an
+// excluded file.
+func (src LLMsTxtSource) publishedFiles() map[string]bool {
+	files := make(map[string]bool)
+	if src.Resolver != nil {
+		for file := range src.Resolver.AllMappings() {
+			if _, ok := src.Resolver.MarkdownURLPath(file); ok {
+				files[file] = true
+			}
+		}
 	}
+	if src.Index != nil {
+		for _, page := range src.Index.AllPages() {
+			files[strings.TrimPrefix(page.Path, "/")] = true
+		}
+	}
+	return files
+}
+
+// llmsTxtWriter accumulates an llms.txt, remembering which files it has
+// considered so the "Other pages" pass lists only what the navigation dropped.
+type llmsTxtWriter struct {
+	src    LLMsTxtSource
+	b      strings.Builder
+	listed map[string]bool
+}
+
+// section writes "## {label}" and entries, or nothing when entries is empty.
+func (w *llmsTxtWriter) section(label string, entries []string) {
+	if len(entries) > 0 {
+		w.b.WriteString("\n## " + oneLine(label) + "\n")
+		writeList(&w.b, entries)
+	}
+}
+
+// dirEntries appends dir's page (its default index) and then its children,
+// depth-first in navigation order.
+func (w *llmsTxtWriter) dirEntries(dir *navigation.NavNode, out []string) []string {
+	out = w.add(out, dir.File, dir.Label)
 	for _, child := range dir.Children {
 		if child.IsDir {
-			out = src.sectionEntries(child, out)
-		} else if entry := src.entry(child.File, child.Label); entry != "" {
-			out = append(out, entry)
+			out = w.dirEntries(child, out)
+		} else {
+			out = w.add(out, child.File, child.Label)
 		}
 	}
 	return out
 }
 
-// entry renders the list item for the page published from file, titled from
-// the metadata index or fallback; "" for no file or a noindex page.
-func (src LLMsTxtSource) entry(file, fallback string) string {
-	if file == "" {
-		return ""
+// add appends the list item for the page published from file, titled from the
+// metadata index, else fallback, else the file's name; it appends nothing for
+// no file, a file already considered, or a noindex page.
+func (w *llmsTxtWriter) add(out []string, file, fallback string) []string {
+	if file == "" || w.listed[file] {
+		return out
 	}
+	w.listed[file] = true
+	src := w.src
+
 	title, desc := fallback, ""
 	if src.Index != nil {
 		if page := src.Index.ByPath("/" + file); page != nil {
 			if isNoindex(page.Meta) {
-				return ""
+				return out
 			}
 			if page.Title != "" {
 				title = page.Title
 			}
 			desc = oneLine(page.Description)
 		}
+	}
+	if title == "" {
+		title = file
 	}
 
 	urlPath, ok := src.Resolver.MarkdownURLPath(file)
@@ -139,7 +194,7 @@ func (src LLMsTxtSource) entry(file, fallback string) string {
 	if desc != "" {
 		line += ": " + desc
 	}
-	return line
+	return append(out, line)
 }
 
 // writeList writes entries as a Markdown list preceded by a blank line.
