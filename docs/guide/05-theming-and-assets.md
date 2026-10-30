@@ -87,13 +87,36 @@ Static assets (CSS, JS, images, fonts) follow a three-layer priority system:
 
 1. **Site-level** (`.gomddoc/static/`) — highest priority
 2. **Theme-level** (`assets/themes/{name}/static/`, embedded or from `.gomddoc/assets/themes/{name}/static/`) —
-   theme-specific assets. The default theme ships `favicon.ico` here.
+   theme-specific assets.
 3. **Shared** (`assets/shared/static/`, from `.gomddoc/assets/shared/static/`) — common assets across themes. The
-   binary embeds no files in this layer.
+   binary embeds the icon set (below) and `gmd-i18n.mjs` in this layer.
 
 All static assets are served at `/_assets/` without authentication, with an `ETag` and
 `Cache-Control: public, max-age=31536000, immutable` (1-year, immutable). Directory paths and dotfiles return a
 plain 404. `gomddoc build` copies the same layers into `_assets/` in the output directory.
+
+### Favicons and Web App Manifest
+
+Every theme links one icon set through the shared `head-icons` partial (called from `head-meta`):
+
+| File | Used by |
+|------|---------|
+| `favicon.ico` (16, 32 and 48 px) | Browsers without SVG favicon support |
+| `favicon.svg` | Current browsers, which prefer it to the ICO |
+| `apple-touch-icon.png` (180 px, opaque) | iOS home screen |
+| `android-chrome-192x192.png`, `android-chrome-512x512.png` | Android, listed in the manifest |
+| `maskable-icon-192x192.png`, `maskable-icon-512x512.png` | Android adaptive icons, listed in the manifest |
+
+The built-in files are a blue "g". To use your own icon, put **all seven files** in `.gomddoc/static/`: a
+browser that picks a file you did not replace shows gomddoc's (Chromium prefers `favicon.svg` over `favicon.ico`), and
+`gomddoc doctor` reports a partial set as `theme.icons-mixed`. Keep maskable icons full-bleed with the artwork inside
+the central 80%, and the apple-touch icon without transparency.
+
+`/site.webmanifest` is generated, not a file: its `name` and `short_name` are `meta.title`, its `description` is
+`meta.description`, its `background_color` is `theme.vars` `bg` (white by default), and it lists the four Android
+icons from `/_assets/`. Each theme's head also sets the browser
+chrome colour (`<meta name="theme-color">`) to its light and dark page backgrounds, or to `theme.vars` `bg` and
+`dark-bg` when the site sets them.
 
 Files under `.gomddoc/` are never served as content: the dot-directory is blocked on every content route (see
 [Security](07-security.md#3-hidden-file-blocking)).
@@ -126,9 +149,9 @@ Partials are layered, highest priority last:
 2. The active theme's partials.
 3. Site partials in `.gomddoc/partials/*.html.tmpl`, which override both.
 
-The default theme defines these templates: `head`, `head-meta`, `head-katex`, `header`, `nav`, `nav-item`, `toc`,
-`toc-item`, `tag-chips`, `see-also`, `footer`, `scripts`, `scripts-shared`, `hreflang`, `lang-switcher` and
-`jsonld`.
+The default theme defines these templates: `head`, `head-meta`, `head-icons`, `head-katex`, `header`, `nav`,
+`nav-item`, `toc`, `toc-item`, `tag-chips`, `see-also`, `footer`, `scripts`, `scripts-shared`, `hreflang`,
+`lang-switcher` and `jsonld`.
 
 Two partials render page bodies rather than page fragments, and receive their own data instead of the
 `TemplateContext`: `tags-list` (the body of `/tags/{tag}`; fields `.Tag`, `.Pages`, `.Lang`, `.T`) and `tags-index`
@@ -530,6 +553,9 @@ features must be wrapped in `{{ .Feature "name" }}` guards so they can be toggle
 - **TOC scroll highlighting** — guarded by `{{ .Feature "toc" }}`. Uses `{{ inlineJSAsset "toc-highlight.mjs" }}` to
   track scroll position and set `.active` class on matching TOC link.
 - **Breadcrumbs** via `{{ range .Page.Breadcrumbs }}`
+- **Icons and browser chrome colour** — `{{ template "head-meta" . }}` links the icon set and manifest; the theme's
+  head adds two `<meta name="theme-color">` tags for its light and dark backgrounds (see [Favicons and Web App
+  Manifest](#favicons-and-web-app-manifest)).
 - **Search button** — guarded by `{{ .Feature "search" }}`. Button with `id="search-toggle"` in the header.
 - **Search modal** — guarded by `{{ .Feature "search" }}`. Uses `{{ inlineJSAsset "search.mjs" }}` with CSS custom
   properties for styling. Opens with Ctrl+K / Cmd+K; UI strings come from the `search` data block

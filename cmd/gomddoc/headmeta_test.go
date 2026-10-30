@@ -47,23 +47,11 @@ func TestHeadMeta_DescriptionPrefersPageFrontmatter(t *testing.T) {
 
 			siteConfig := config.NewSiteConfig(".")
 			siteConfig.Meta.Description = siteDesc
-			renderer := tmpl.NewHTMLRenderer(&siteConfig, embeddedAssets)
-
 			meta := map[string]any{"title": "A Page"}
 			if tt.pageDesc != nil {
 				meta["description"] = tt.pageDesc
 			}
-			pageCtx := tmpl.BuildPageContext(tmpl.PageContextInput{
-				Site:       &siteConfig,
-				Path:       "/page",
-				Content:    "<p>body</p>",
-				Enrichment: &enricher.EnrichmentData{Metadata: meta},
-			})
-
-			out, err := renderer.Render(context.Background(), "default.html.tmpl", pageCtx)
-			if err != nil {
-				t.Fatalf("Render() error = %v", err)
-			}
+			out := renderDefaultPage(t, &siteConfig, meta)
 
 			m := reDescription.FindSubmatch(out)
 			if m == nil {
@@ -76,6 +64,63 @@ func TestHeadMeta_DescriptionPrefersPageFrontmatter(t *testing.T) {
 			// mean the shared $desc was not shared after all.
 			if tt.want != siteDesc && strings.Contains(string(out), siteDesc) {
 				t.Errorf("site description %q still appears; the page's own should have replaced it everywhere", siteDesc)
+			}
+		})
+	}
+}
+
+// renderDefaultPage renders one page at /page through the embedded default
+// theme with the given frontmatter.
+func renderDefaultPage(t *testing.T, siteConfig *config.SiteConfig, meta map[string]any) []byte {
+	t.Helper()
+	pageCtx := tmpl.BuildPageContext(tmpl.PageContextInput{
+		Site:       siteConfig,
+		Path:       "/page",
+		Content:    "<p>body</p>",
+		Enrichment: &enricher.EnrichmentData{Metadata: meta},
+	})
+	out, err := tmpl.NewHTMLRenderer(siteConfig, embeddedAssets).Render(context.Background(), "default.html.tmpl", pageCtx)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	return out
+}
+
+// TestHead_IconsAndThemeColor renders the embedded default theme. head-meta,
+// which every theme calls, links the shared icon set through /_assets/ (the
+// only path build writes it to) and the generated manifest; the theme's head
+// sets theme-color to its backgrounds, or to the site's theme.vars.
+func TestHead_IconsAndThemeColor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		vars        map[string]string
+		light, dark string
+	}{
+		{name: "theme defaults", light: "#ffffff", dark: "#13111C"},
+		{name: "theme.vars override", vars: map[string]string{"bg": "#fafafa", "dark-bg": "#000000"}, light: "#fafafa", dark: "#000000"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			siteConfig := config.NewSiteConfig(".")
+			siteConfig.Theme.Vars = tt.vars
+			out := string(renderDefaultPage(t, &siteConfig, map[string]any{"title": "A Page"}))
+			for _, want := range []string{
+				`<link rel="icon" href="/_assets/favicon.ico" sizes="48x48">`,
+				`<link rel="icon" href="/_assets/favicon.svg" sizes="any" type="image/svg+xml">`,
+				`<link rel="apple-touch-icon" href="/_assets/apple-touch-icon.png">`,
+				`<link rel="manifest" href="/site.webmanifest" crossorigin="use-credentials">`,
+				`<meta name="theme-color" content="` + tt.light + `" media="(prefers-color-scheme: light)">`,
+				`<meta name="theme-color" content="` + tt.dark + `" media="(prefers-color-scheme: dark)">`,
+			} {
+				if !strings.Contains(out, want) {
+					t.Errorf("head lacks %s", want)
+				}
+			}
+			if n := strings.Count(out, `rel="icon"`); n != 2 {
+				t.Errorf("want exactly the two icon links, got %d", n)
 			}
 		})
 	}

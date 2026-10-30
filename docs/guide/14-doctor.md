@@ -84,6 +84,7 @@ server. For a Git source the server's clone is checked. The tool is not on the H
 | `theme.not-installed` | warning | `theme.name` is not installed; the default theme renders | Install the theme under `.gomddoc/assets/themes/<name>/` |
 | `theme.unknown-feature` | warning | A feature toggle (config or page frontmatter) the active theme never reads | "Did you mean" a toggle the theme reads |
 | `theme.unknown-var` | info | A `theme.vars` key the theme's CSS never reads | The variables the theme reads |
+| `theme.icons-mixed` | warning | The site replaces some icon files but not the whole set, so browsers that pick the others show gomddoc's icon | Add the missing files next to the replaced ones |
 | `content.frontmatter-invalid` | error | A page's frontmatter is not valid YAML — the page silently loses its title and tags | Fix the YAML between the `---` lines |
 | `content.frontmatter-type` | error | A special frontmatter field of the wrong type: `tags: foo`, an unparseable `date`, a string `redirect_from`, non-boolean `features` | The expected shape, e.g. `tags: [a, b]` |
 | `content.redirect-conflict` | error | Two pages claim one `redirect_from` source, or a source is itself a page (which makes that page unreachable) | Keep the source in one page; remove sources that name real pages |

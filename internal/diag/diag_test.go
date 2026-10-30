@@ -41,8 +41,8 @@ func TestCatalogue(t *testing.T) {
 			t.Errorf("%s: severity %q summary %q", c.Code, c.Severity, c.Summary)
 		}
 	}
-	if len(Catalogue) != 20 {
-		t.Errorf("catalogue has %d codes, the spec lists 20", len(Catalogue))
+	if len(Catalogue) != 21 {
+		t.Errorf("catalogue has %d codes, the specs list 21 (doctor, icon set)", len(Catalogue))
 	}
 }
 

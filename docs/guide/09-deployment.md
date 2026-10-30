@@ -78,6 +78,7 @@ The output includes:
 - Rendered HTML for all markdown files (with navigation, breadcrumbs, TOC, styling)
 - Non-markdown files copied as-is (images, PDFs, etc.)
 - `robots.txt` — always generated; its `Sitemap:` line is present only when `meta.domain` is set
+- `site.webmanifest` — always generated, named after `meta.title`; the icons it lists are in `_assets/`
 - `sitemap.xml` — generated when `meta.domain` is configured
 - `feed.xml` — Atom 1.0 feed with the 20 most recently modified pages, generated when `meta.domain` is configured
 - `tags/index.html` and `tags/{tag}/index.html` — tag index and tag pages
@@ -125,6 +126,7 @@ with separate 404 pages, redirect stubs and, when `meta.domain` is set, sitemaps
 ./public/
 ├── index.html
 ├── robots.txt
+├── site.webmanifest
 ├── sitemap.xml              ← default language
 ├── feed.xml                 ← default language
 ├── 404.html                 ← default language

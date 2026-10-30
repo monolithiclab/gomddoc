@@ -22,6 +22,7 @@ route the server registers, and the tools, resources and prompts of the MCP serv
 | `GET /sitemap.xml`, `GET /feed.xml` | Yes | `meta.domain` set |
 | `GET /{lang}/sitemap.xml`, `GET /{lang}/feed.xml` | Yes | `meta.domain` set, one pair per detected language |
 | `GET /robots.txt` | No | Always |
+| `GET /site.webmanifest` | Yes | Always |
 | `GET /_assets/*` | No | Always |
 | `/_mcp/` | Yes | Always |
 | `GET /health/live`, `GET /health/ready` | No | Always, on the main port and on the admin port |
@@ -207,6 +208,15 @@ page. When multiple languages are detected, each language gets prefixed routes (
 `GET /{lang}/tags/{tag}`) built from that language's pages. `build` mode also writes these pages as static HTML.
 
 ---
+
+## Web App Manifest
+
+### `GET /site.webmanifest`
+
+Returns the site's web app manifest (`application/manifest+json`), generated from `meta.title` (`name` and
+`short_name`) and `meta.description`, listing the Android icons of the [icon set](../05-theming-and-assets.md#favicons-and-web-app-manifest).
+It sits behind Basic Auth like the pages, and the themes link it with `crossorigin="use-credentials"` so browsers
+send credentials for it. `gomddoc build` writes the same file at the output root.
 
 ## SEO Endpoints
 

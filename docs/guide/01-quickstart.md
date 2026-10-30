@@ -125,7 +125,7 @@ gomddoc build ./my-docs -o ./public
 
 This renders all Markdown files through the full template pipeline and generates HTML in `./public/`
 (default: `build/site`), ready for S3, Netlify, GitHub Pages, or Cloudflare Pages. Non-markdown files
-(images, CSS, JS) are copied as-is. The output always includes `robots.txt` and `404.html`, and adds
+(images, CSS, JS) are copied as-is. The output always includes `robots.txt`, `site.webmanifest` and `404.html`, and adds
 `sitemap.xml` and `feed.xml` when a domain is configured (`meta.domain` or `--domain`).
 
 ### 5. AI-Native Documentation Access

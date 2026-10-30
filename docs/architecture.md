@@ -628,7 +628,7 @@ is rendered through the full pipeline; everything else is copied as-is. `prettyO
 directory also has an `index.md`. File processing is parallelized with an `errgroup` worker pool bounded by
 `runtime.NumCPU()`, and counts accumulate into one shared `*buildStats`.
 
-Besides the pages, build writes the static-asset overlay to `_assets/`, `robots.txt`, `sitemap.xml` and `feed.xml`
+Besides the pages, build writes the static-asset overlay to `_assets/`, `site.webmanifest`, `robots.txt`, `sitemap.xml` and `feed.xml`
 (when `meta.domain` is set), `sitemap-index.xml` (see below), `redirect_from` stub pages, extension redirect stubs
 (`guide.md/index.html` → `/guide`), tag pages (`tags/index.html`, `tags/{tag}/index.html`), and `404.html` rendered through
 `ErrorPage.Render`.
@@ -681,7 +681,7 @@ Metrics wrapping these three means their 405/404/301 responses are counted too, 
 | _(own group)_ | | BasicAuth (if configured) | `/metrics` — only when admin endpoints share the main port |
 | _(own group)_ | `/debug/pprof` | BasicAuth (if configured), applied by `mountPprof` | `/`, `/cmdline`, `/profile`, `/symbol`, `/trace` — only with `--pprof` and admin on the main port |
 | base | | Compression, Metrics | `/robots.txt`, `/_assets/` |
-| base → auth | | BasicAuth (if configured) | `/sitemap.xml`, `/feed.xml`, `/tags/`, `/tags/{tag}`, `/_mcp/` |
+| base → auth | | BasicAuth (if configured) | `/site.webmanifest`, `/sitemap.xml`, `/feed.xml`, `/tags/`, `/tags/{tag}`, `/_mcp/` |
 | auth → api | `/api` | _(inherits auth)_ | `/tags`, `/tags/{tag}`, `/search` |
 | auth → content | | MethodFilter, ContentExclusion, ExtensionRedirect | `/` (catch-all) |
 
@@ -788,7 +788,11 @@ variables with fallbacks: `var(--theme-bg, #ffffff)`. Generated once per rendere
 **Static Asset Serving:** `/_assets/` route serves files from a 3-layer overlay FS built by `BuildStaticFS()`:
 site `.gomddoc/static/` > theme `static/` > `assets/shared/static/` (layers that do not exist are skipped). FNV-64a
 ETags, immutable cache headers, dotfile blocking. `gomddoc build` copies the overlay to `_assets/` in the output
-directory.
+directory. The shared layer embeds the icon set (`assets.IconFiles`: ICO, SVG, apple-touch and Android PNGs), so
+every theme serves it; the shared `head-icons` partial, called from `head-meta`, links it through `assetURL`, and
+`assets.IconFindings` (`theme.icons-mixed`) warns when a site replaces only part of it. `/site.webmanifest` is
+generated from `meta` and `theme.vars` `bg` (`server.GenerateWebManifest`, icons from `assets.ManifestIcons`), not
+shipped, so each site installs under its own name.
 
 ### 14. Web Components
 
@@ -1058,14 +1062,14 @@ is largely hidden-path scanning. The bytes buy the indistinguishability.
 `serveWithETag` (`internal/server/etag.go`) is the single write path for any handler that holds a
 complete body: it hashes the content (FNV-64a), sets `Content-Type`, `ETag` and `Cache-Control`,
 answers `If-None-Match` with a 304, and otherwise writes with an explicit `Content-Length`.
-`cacheDynamic` (`public, max-age=300`) covers rendered HTML, raw content, tag pages, sitemaps, feeds and
-`robots.txt`; `cacheImmutable` (`public, max-age=31536000, immutable`) covers `/_assets/`.
+`cacheDynamic` (`public, max-age=300`) covers rendered HTML, raw content, tag pages, sitemaps, feeds,
+`robots.txt` and the web manifest; `cacheImmutable` (`public, max-age=31536000, immutable`) covers `/_assets/`.
 
 `/sitemap.xml` and `/feed.xml` are generated on first request and cached for the process's lifetime in a
 `lazyBytes`; `lazyBytes.serve(w, r, contentType)` routes them through `serveWithETag`, so a further cached-body
 endpoint gets ETag and `Cache-Control` by construction. That method is also the one place the plain-text 500 is
-written, next to its reason. `RobotsHandler` generates eagerly and holds a plain `[]byte`, so it calls
-`serveWithETag` directly.
+written, next to its reason. `RobotsHandler` and `WebManifestHandler` generate eagerly and hold a plain `[]byte`, so
+they call `serveWithETag` directly.
 
 The hash is recomputed per request over bytes that never change. Precomputing it beside the cached
 slice is a small change but needs a second serve entry point, and the worst realistic body — a 5k-page

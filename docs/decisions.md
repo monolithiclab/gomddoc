@@ -1026,3 +1026,24 @@ delimiter, with no opt-in. KaTeX's auto-render, which scanned the whole page in 
   a hundred lines).
 - *Cost if wrong*: Markdown written for renderers that accept `$x$` (Obsidian, Jupyter, MkDocs with arithmatex)
   shows raw TeX in gomddoc until it is converted; `$$` mid-paragraph is plain text where auto-render displayed it.
+
+## D53. One Shared Icon Set and a Generated Web Manifest
+
+*2026-10-30*
+
+**Decision** (2026-10-30): the favicon set (ICO, SVG, apple-touch icon, Android and maskable PNGs) lives in the shared
+static layer, so every theme serves it, and the shared `head-icons` partial, called from `head-meta`, links it
+through `assetURL`. `/site.webmanifest` is generated from `meta` by serve and build. Each theme's head sets
+`theme-color` from its own backgrounds (`theme.vars` `bg`/`dark-bg` first). A site that replaces only part of the set
+gets `theme.icons-mixed` from the pipeline, so serve logs it and doctor reports it. The default theme's own
+`favicon.ico` and its `/favicon.ico` link are gone; sites that put a `favicon.ico` in the content root must move the
+set to `.gomddoc/static/`.
+
+- *Evidence*: the default theme linked `/favicon.ico`, which serve answers through the static fallback but build never
+  writes, so built sites had no favicon; the seven downloadable themes ship no `static/` and linked no icon at all.
+- *Alternatives*: the set in the default theme's `static/` (only the default theme serves it); a static
+  `site.webmanifest` (every site would install as "gomddoc"); `theme-color` in the shared partial (it cannot know a
+  theme's backgrounds); copying the set to the build root as well (the links already point at `/_assets/`).
+- *Cost if wrong*: a site that replaced only `favicon.ico` shows the gomddoc "g" in Chromium until it adds the other
+  files; the warning names them. The manifest's `theme_color` is the icon's blue whatever the theme, and its
+  `background_color` is `theme.vars` `bg` or white, not a theme's own default background.

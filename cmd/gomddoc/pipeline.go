@@ -188,7 +188,8 @@ func setupLanguagePipelines(cfg *config.Config, prov provider.Provider, opts Pip
 		ByLang:    make(map[string]*Pipeline, len(langs)),
 		Bundle:    bundle,
 		Languages: langs,
-		Findings:  slices.Concat(defaultPipeline.Findings, tagsContentCollision(contentRoot)),
+		Findings: slices.Concat(defaultPipeline.Findings, tagsContentCollision(contentRoot),
+			assets.IconFindings(contentRoot, cfg.Site.Theme.Name)),
 	}
 
 	// Build a pipeline for each detected language directory.

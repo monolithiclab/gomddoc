@@ -143,6 +143,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	// All other endpoints require auth when configured
 	auth := base.Subgroup("", authMW...)
 
+	// Behind auth, unlike robots.txt: it names the site, and head-icons links
+	// it with crossorigin="use-credentials" so it still loads behind Basic Auth.
+	auth.Handle("GET "+WebManifestPath, NewWebManifestHandler(cfg.Site))
+
 	// Determine if admin endpoints should be on main mux or separate admin server
 	adminOnMain := cfg.Server.AdminOnMain()
 

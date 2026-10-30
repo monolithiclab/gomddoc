@@ -26,12 +26,7 @@ import (
 // Returns nil if no static directories exist in any layer.
 func BuildStaticFS(overlayFS fs.FS, themeName string) fs.FS {
 	var layers []fs.FS
-	candidates := []string{
-		"static",
-		path.Join("assets", "themes", themeName, "static"),
-		path.Join("assets", "shared", "static"),
-	}
-	for _, dir := range candidates {
+	for _, dir := range staticLayerDirs(themeName) {
 		if sub := subIfDir(overlayFS, dir); sub != nil {
 			layers = append(layers, sub)
 		}
@@ -40,6 +35,16 @@ func BuildStaticFS(overlayFS fs.FS, themeName string) fs.FS {
 		return nil
 	}
 	return provider.NewOverlayFS(layers...)
+}
+
+// staticLayerDirs is the static layers' order, highest priority first, relative
+// to the asset root (.gomddoc/ over the embedded assets).
+func staticLayerDirs(themeName string) []string {
+	return []string{
+		"static",
+		path.Join("assets", "themes", themeName, "static"),
+		path.Join("assets", "shared", "static"),
+	}
 }
 
 // subIfDir returns an fs.Sub of overlayFS at dir if dir exists and is a directory.

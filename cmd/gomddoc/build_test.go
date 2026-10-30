@@ -16,6 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/monolithiclab/gomddoc/internal/assets"
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/locale"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
@@ -655,6 +656,16 @@ func TestBuildCmd_Run_WithDomain(t *testing.T) {
 	robotsContent := readTestFile(t, outDir, "robots.txt")
 	if !strings.Contains(robotsContent, "build.example.com") {
 		t.Error("robots.txt should contain the domain")
+	}
+
+	// The manifest and icons head-icons links, at the paths it links them on.
+	if !strings.Contains(readTestFile(t, outDir, "site.webmanifest"), `"/_assets/android-chrome-192x192.png"`) {
+		t.Error("site.webmanifest should list the shared icons")
+	}
+	for _, name := range assets.IconFiles {
+		if _, err := os.Stat(filepath.Join(outDir, "_assets", name)); err != nil {
+			t.Errorf("build output lacks _assets/%s: %v", name, err)
+		}
 	}
 }
 

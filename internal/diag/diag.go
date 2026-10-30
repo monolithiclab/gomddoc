@@ -62,6 +62,7 @@ var Catalogue = []CodeInfo{
 	{"theme.not-installed", Warning, "the configured theme is not installed; the default theme renders"},
 	{"theme.unknown-feature", Warning, "a feature toggle the active theme never reads"},
 	{"theme.unknown-var", Info, "a theme variable the active theme's CSS never reads"},
+	{"theme.icons-mixed", Warning, "the site replaces part of the icon set, so some browsers show gomddoc's icon"},
 	{"content.frontmatter-invalid", Error, "page frontmatter that is not valid YAML"},
 	{"content.frontmatter-type", Error, "a special frontmatter field of the wrong type"},
 	{"content.redirect-conflict", Error, "a redirect_from source claimed twice, or naming a real page"},

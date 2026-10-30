@@ -184,6 +184,11 @@ func (b *BuildCmd) Run() error {
 		}
 	}
 
+	// The web app manifest head-icons links, at the path serve answers it on.
+	if err := b.writeOutputFile(strings.TrimPrefix(server.WebManifestPath, "/"), server.GenerateWebManifest(cfg.Site)); err != nil {
+		return fmt.Errorf("write web manifest: %w", err)
+	}
+
 	// The sitemap index goes first because robots.txt has to name the sitemap a
 	// crawler starts from, and the only way it cannot name a file this build
 	// never wrote is for the writer to say what it produced. (The index lists

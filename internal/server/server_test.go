@@ -322,6 +322,7 @@ func TestHTTPServer_AuthProtectsAllEndpoints(t *testing.T) {
 		"/debug/pprof/",
 		"/metrics",
 		"/sitemap.xml",
+		"/site.webmanifest",
 		"/_mcp/",
 	}
 
