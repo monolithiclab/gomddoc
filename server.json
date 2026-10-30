@@ -19,6 +19,11 @@
       "runtimeHint": "docker",
       "runtimeArguments": [
         {
+          "type": "positional",
+          "description": "Keep stdin open: the server speaks MCP over stdio",
+          "value": "-i"
+        },
+        {
           "type": "named",
           "name": "--mount",
           "description": "Mount the documentation directory into the container, read-only",
@@ -43,12 +48,6 @@
           "value": "/docs"
         }
       ]
-    }
-  ],
-  "remotes": [
-    {
-      "type": "streamable-http",
-      "url": "https://gomddoc.com/_mcp/"
     }
   ]
 }

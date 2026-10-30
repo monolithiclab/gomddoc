@@ -104,26 +104,28 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
   # Lists the release in the MCP Registry (D56). A job of its own so the OIDC token that proves the
-  # io.github.monolithiclab namespace never meets the write scopes above; it runs once the image (and its
-  # io.modelcontextprotocol.server.name label, which the registry checks) is on ghcr.io. Prereleases are skipped, like
-  # the brew upload and the `latest` tag.
+  # io.github.monolithiclab namespace never meets the write scopes above, and its checkout only reads server.json; it
+  # runs once the image (and its io.modelcontextprotocol.server.name label, which the registry checks) is on ghcr.io.
+  # Prereleases are skipped, like the brew upload and the `latest` tag.
   mcp-registry:
     needs: goreleaser
     if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read        # checkout of server.json
       id-token: write       # mcp-publisher login github-oidc
     env:
       # Pinned by version and checksum: a tool that publishes under our name changes only with a commit.
       MCP_PUBLISHER_VERSION: v1.8.7
       MCP_PUBLISHER_SHA256: 00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579
     steps:
-      # No checkout, so no contents scope: the repository is public and server.json is read at the tagged commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set the release version in server.json
         run: |
           set -euo pipefail
-          curl -fsSL -o server.json "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/server.json"
           version="${GITHUB_REF_NAME#v}"
           jq --arg v "$version" '.version = $v
             | (.packages[] | select(.registryType == "oci") | .identifier) |= sub(":[^:]+$"; ":" + $v)' \
