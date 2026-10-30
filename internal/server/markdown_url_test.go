@@ -63,17 +63,14 @@ func markdownURLEnrichers(t *testing.T, files fstest.MapFS) enricher.EnricherReg
 	return reg
 }
 
-// newMarkdownURLServer serves markdownURLFiles (and a fr tree) through the full
-// route table, with .md, .markdown and .html stripped. layout is the default
-// template, so a test can read PageContext fields back.
-func newMarkdownURLServer(t *testing.T, domain, layout string) http.Handler {
-	t.Helper()
-	return newMarkdownURLServerWithMCP(t, domain, layout, nil)
-}
+// contentLayout is the default template of a test that reads only the page body.
+const contentLayout = "<html>{{.Page.Content}}</html>"
 
-// newMarkdownURLServerWithMCP is newMarkdownURLServer with mcp mounted at
-// /_mcp/ (nil mounts nothing), and each tree's navigation for llms.txt.
-func newMarkdownURLServerWithMCP(t *testing.T, domain, layout string, mcp http.Handler) http.Handler {
+// newMarkdownURLServer serves markdownURLFiles (and a fr tree) through the full
+// route table, with .md, .markdown and .html stripped, each tree's navigation
+// for llms.txt, and mcp mounted at /_mcp/ (nil mounts nothing). layout is the
+// default template, so a test can read PageContext fields back.
+func newMarkdownURLServer(t *testing.T, domain, layout string, mcp http.Handler) http.Handler {
 	t.Helper()
 
 	strip := []string{".md", ".markdown", ".html"}
@@ -148,7 +145,7 @@ func getWithAccept(h http.Handler, target, accept string) *httptest.ResponseReco
 func TestMarkdownURL_ServesNegotiatedBody(t *testing.T) {
 	t.Parallel()
 
-	h := newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>")
+	h := newMarkdownURLServer(t, "", contentLayout, nil)
 
 	tests := []struct {
 		name      string
@@ -211,7 +208,7 @@ func TestMarkdownURL_ServesNegotiatedBody(t *testing.T) {
 func TestMarkdownURL_CleanURLStillNegotiates(t *testing.T) {
 	t.Parallel()
 
-	h := newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>")
+	h := newMarkdownURLServer(t, "", contentLayout, nil)
 
 	w := getWithAccept(h, "/guide", "")
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
@@ -229,7 +226,7 @@ func TestMarkdownURL_CleanURLStillNegotiates(t *testing.T) {
 func TestMarkdownURL_CanonicalWithDomain(t *testing.T) {
 	t.Parallel()
 
-	h := newMarkdownURLServer(t, "docs.example.com", "<html>{{.Page.Content}}</html>")
+	h := newMarkdownURLServer(t, "docs.example.com", contentLayout, nil)
 
 	for target, want := range map[string]string{
 		"/guide.md":       `<https://docs.example.com/guide>; rel="canonical"`,
@@ -246,7 +243,7 @@ func TestMarkdownURL_CanonicalWithDomain(t *testing.T) {
 func TestMarkdownURL_MissingAndOtherExtensions(t *testing.T) {
 	t.Parallel()
 
-	h := newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>")
+	h := newMarkdownURLServer(t, "", contentLayout, nil)
 
 	// A .md URL for a missing page is a 404, not a redirect.
 	for _, target := range []string{"/nope.md", "/fr/nope.md", "/nope.markdown"} {
@@ -269,7 +266,7 @@ func TestMarkdownURL_MissingAndOtherExtensions(t *testing.T) {
 func TestMarkdownURL_PageContextAlternate(t *testing.T) {
 	t.Parallel()
 
-	h := newMarkdownURLServer(t, "", "[{{.Page.MarkdownURL}}]")
+	h := newMarkdownURLServer(t, "", "[{{.Page.MarkdownURL}}]", nil)
 
 	for target, want := range map[string]string{
 		"/guide":     "[/guide.md]",
@@ -290,7 +287,7 @@ func TestMarkdownURL_PageContextAlternate(t *testing.T) {
 func TestMarkdownURL_Revalidates(t *testing.T) {
 	t.Parallel()
 	assertRevalidates(t, revalidationCase{
-		Handler:   newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>"),
+		Handler:   newMarkdownURLServer(t, "", contentLayout, nil),
 		Path:      "/guide.md",
 		WantType:  "text/markdown; charset=utf-8",
 		WantCache: cacheDynamic,
@@ -303,7 +300,7 @@ func TestMarkdownURL_Revalidates(t *testing.T) {
 func TestMarkdownURL_HTMLLinksCleanURLs(t *testing.T) {
 	t.Parallel()
 
-	h := newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>")
+	h := newMarkdownURLServer(t, "", contentLayout, nil)
 
 	html := getWithAccept(h, "/guide", "text/html").Body.String()
 	for _, want := range []string{`href="/"`, `href="/docs#intro"`, `href="/notes"`, `href="nope.md"`} {
@@ -332,7 +329,7 @@ func TestMarkdownURL_HTMLHasNoMarkdownHref(t *testing.T) {
 
 	layout := `<html><head>{{with .Page.MarkdownURL}}<link rel="alternate" type="text/markdown" href="{{.}}">{{end}}</head>` +
 		`<body>{{.Page.Content}}</body></html>`
-	h := newMarkdownURLServer(t, "", layout)
+	h := newMarkdownURLServer(t, "", layout, nil)
 	alternate := regexp.MustCompile(`<link rel="alternate" type="text/markdown" href="[^"]*">`)
 
 	for _, target := range []string{"/", "/guide", "/docs", "/notes", "/fr/guide"} {
@@ -355,7 +352,7 @@ func TestMarkdownURL_HTMLHasNoMarkdownHref(t *testing.T) {
 func TestMarkdownURL_SearchLinksCleanURLs(t *testing.T) {
 	t.Parallel()
 
-	h := newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>")
+	h := newMarkdownURLServer(t, "", contentLayout, nil)
 
 	for target, want := range map[string]string{
 		"/api/search?q=guide+body":                    "/guide",

@@ -248,7 +248,7 @@ func TestServer_LLMsTxtRoutes(t *testing.T) {
 		if mcpOn {
 			mcp = http.NotFoundHandler()
 		}
-		h := newMarkdownURLServerWithMCP(t, "", "<html>{{.Page.Content}}</html>", mcp)
+		h := newMarkdownURLServer(t, "", contentLayout, mcp)
 		for _, tc := range []struct{ path, wantLink string }{
 			{"/llms.txt", "[Guide](/guide.md)"},
 			{"/fr/llms.txt", "[Guide](/fr/guide.md)"},
