@@ -286,6 +286,17 @@ func TestMarkdownURL_PageContextAlternate(t *testing.T) {
 	}
 }
 
+// TestMarkdownURL_Revalidates pins the .md route to serveWithETag's contract.
+func TestMarkdownURL_Revalidates(t *testing.T) {
+	t.Parallel()
+	assertRevalidates(t, revalidationCase{
+		Handler:   newMarkdownURLServer(t, "", "<html>{{.Page.Content}}</html>"),
+		Path:      "/guide.md",
+		WantType:  "text/markdown; charset=utf-8",
+		WantCache: cacheDynamic,
+	})
+}
+
 // TestMarkdownURL_HTMLLinksCleanURLs pins D54's split: the HTML page links
 // each page its body names at the page's clean URL (with the language prefix),
 // while the Markdown keeps the author's links.
