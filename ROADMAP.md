@@ -28,7 +28,7 @@ generator. No databases, no editorial workflows, no CMS. The "database" is Git.
 ## Current State
 
 The foundation is production-ready with 91.8% test coverage (target: 87%+). Released versions: v0.1.0 through
-v0.1.3 (2026-09-25). For a full description of current capabilities, see `docs/architecture.md`.
+v0.4.0 (2026-10-30). For a full description of current capabilities, see `docs/architecture.md`.
 
 **Completed phases:** 1-3 (core), 4 (partial), 5 (partial), 6 (renderer enhancement), 7 (partial — sitemap generation
 complete), 7b (preview), 8 (theming engine), 9a (pre-launch SEO), 9b-9d (most post-launch SEO), 10a-10b (MCP server +

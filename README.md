@@ -5,7 +5,7 @@ full-text search, SEO output and a built-in MCP server.
 
 ## Status
 
-Released and in use: v0.1.3 (2026-09-25) is on GitHub Releases, the Homebrew tap (`monolithiclab/tap`) and
+Released and in use: v0.4.0 (2026-10-30) is on GitHub Releases, the Homebrew tap (`monolithiclab/tap`) and
 `ghcr.io/monolithiclab/gomddoc`, and it publishes Monolithic Lab's own sites. Pre-1.0: configuration keys can still
 change between minor versions (since v0.1.2 an unknown key in `.gomddoc/config.yml` is a load error, so check a site
 with `gomddoc doctor` before bumping a pinned version). Open bugs and the ranked backlog are in [ROADMAP.md](ROADMAP.md).
@@ -61,6 +61,10 @@ docker run --rm -p 8080:8080 -v "$PWD:/site" ghcr.io/monolithiclab/gomddoc serve
 
 Release archives carry an SPDX SBOM each and a Sigstore-signed `SHA256SUMS`; the
 [Quick Start](docs/guide/01-quickstart.md) explains the install script's options and how to verify a release by hand.
+
+gomddoc is free for noncommercial use under the PolyForm Noncommercial License 1.0.0, and any for-profit use,
+internal documentation included, needs a [commercial license](LICENSE-COMMERCIAL.md); open-source projects can
+[request a free licence](https://github.com/monolithiclab/gomddoc/issues/new?template=oss-licence.yml).
 
 ## Use
 

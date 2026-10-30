@@ -1,0 +1,41 @@
+name: Free licence request
+description: Ask for a free licence to use gomddoc for an open-source, personal, non-profit or education project.
+title: "Free licence request: "
+labels: ["licence"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        gomddoc is free for noncommercial use under the PolyForm Noncommercial License 1.0.0. Fill in this form
+        so Monolithic Lab can confirm a free licence for your project.
+  - type: input
+    id: project-name
+    attributes:
+      label: Project name
+    validations:
+      required: true
+  - type: input
+    id: project-url
+    attributes:
+      label: Project URL
+      placeholder: https://github.com/you/project
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Open source
+        - Personal
+        - Non-profit
+        - Education
+    validations:
+      required: true
+  - type: input
+    id: hosting
+    attributes:
+      label: Where the docs will be hosted
+      placeholder: docs.example.org, GitHub Pages, ...
+    validations:
+      required: true
