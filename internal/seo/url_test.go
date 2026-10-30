@@ -163,3 +163,17 @@ func TestNormalizePagePath(t *testing.T) {
 		})
 	}
 }
+
+func TestSiteURL(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct{ domain, sitePath, want string }{
+		{"docs.example.com", "/fr-FR/guide", "https://docs.example.com/fr-FR/guide"},
+		{"https://docs.example.com", "/_mcp/", "https://docs.example.com/_mcp/"},
+		{"", "/guide.md", "/guide.md"},
+	} {
+		if got := SiteURL(tt.domain, tt.sitePath); got != tt.want {
+			t.Errorf("SiteURL(%q, %q) = %q, want %q", tt.domain, tt.sitePath, got, tt.want)
+		}
+	}
+}

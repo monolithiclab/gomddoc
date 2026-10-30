@@ -1168,8 +1168,8 @@ Output types are resolved before matching: `*/*` resolves to the input MIME type
 - **llms.txt** (D55): `/llms.txt` and `/{lang}/llms.txt`, from `server.GenerateLLMsTxt` over the pipeline's
   navigation tree (`NavNode.File` names each page's source, directory pages included), metadata index and resolver;
   a completion pass lists the root page first and the published pages the navigation drops under `## Other pages`.
-  Links come from the tree's template renderer (`MarkdownURL`, else `ContentURL`); URLs go through `siteURL`, the
-  canonical `Link` header's rule.
+  Links come from the tree's template renderer (`MarkdownURL`, else `ContentURL`); URLs go through `seo.SiteURL`, the
+  canonical `Link` header's rule. `robots: noindex` pages are left out by `seo.Noindex`, as from the sitemap and feed.
   Serve adds the `/_mcp/` line when MCP is mounted; build writes the same file without it.
 - **robots.txt**: `/robots.txt` served dynamically (serve) and generated as static file (build). Blocks `/_assets/`,
   `/api/`, `/debug/`, and names the sitemap when there is one.

@@ -74,7 +74,7 @@ See [README.md](README.md) for what it does and how to run it, `docs/` (table be
 - **N transports asking the same question share one index answer** (`Index.LookupTag` owns bound, normalisation,
   verdict and sort; the handlers only render it).
 - **One implementation per rule:** media-range precedence is `MediaType.Specificity()`; "last modified" is
-  `seo.LastModified`; the sitemap path is what `writeSitemapIndex` returns, never a predicate forecasting it;
+  `seo.LastModified`; "left out as noindex" is `seo.Noindex`; the sitemap path is what `writeSitemapIndex` returns, never a predicate forecasting it;
   `fs.PathError`s come from `provider.fsPathErr`.
 - **`docs/skills/<name>/scripts/` is a path-prefix contract.** Those Go scripts are linted, but `.covignore` excludes
   them by prefix and `VULNCHECK_PACKAGES` scans only `./cmd/...` `./internal/...`; a script anywhere else

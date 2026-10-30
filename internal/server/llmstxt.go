@@ -112,7 +112,7 @@ func GenerateLLMsTxt(src LLMsTxtSource) []byte {
 	w.section("Other pages", rest)
 
 	if src.MCPPath != "" {
-		b.WriteString("\nMCP server (Streamable HTTP): " + siteURL(src.Site.Meta.Domain, src.MCPPath) + "\n")
+		b.WriteString("\nMCP server (Streamable HTTP): " + seo.SiteURL(src.Site.Meta.Domain, src.MCPPath) + "\n")
 	}
 	return []byte(b.String())
 }
@@ -181,7 +181,7 @@ func (w *llmsTxtWriter) add(out []string, file, fallback string) []string {
 	title, desc := fallback, ""
 	if src.Index != nil {
 		if page := src.Index.ByPath("/" + file); page != nil {
-			if isNoindex(page.Meta) {
+			if seo.Noindex(page.Meta) {
 				return out
 			}
 			if page.Title != "" {
@@ -198,7 +198,7 @@ func (w *llmsTxtWriter) add(out []string, file, fallback string) []string {
 	if urlPath == "" {
 		urlPath = src.URLs.ContentURL(file)
 	}
-	line := "- [" + linkTextEscaper.Replace(oneLine(title)) + "](" + siteURL(src.Site.Meta.Domain, urlPath) + ")"
+	line := "- [" + linkTextEscaper.Replace(oneLine(title)) + "](" + seo.SiteURL(src.Site.Meta.Domain, urlPath) + ")"
 	if desc != "" {
 		line += ": " + desc
 	}
@@ -223,22 +223,4 @@ var linkTextEscaper = strings.NewReplacer(`\`, `\\`, "[", `\[`, "]", `\]`)
 // llms.txt entry is one line.
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
-}
-
-// isNoindex reports whether a page's robots frontmatter asks search engines
-// not to index it, which drops the page from the sitemap, the feed and
-// llms.txt.
-func isNoindex(meta map[string]any) bool {
-	robots, ok := meta["robots"].(string)
-	return ok && strings.Contains(robots, "noindex")
-}
-
-// siteURL is the URL of sitePath, a site-absolute path: absolute with the
-// configured domain, root-relative without one. The canonical Link header and
-// llms.txt both name URLs this way.
-func siteURL(domain, sitePath string) string {
-	if u := seo.PageURL(domain, sitePath, ""); u != "" {
-		return u
-	}
-	return sitePath
 }

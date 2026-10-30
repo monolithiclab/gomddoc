@@ -16,6 +16,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/renderer"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
+	"github.com/monolithiclab/gomddoc/internal/seo"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/text"
 )
@@ -184,7 +185,10 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 	// Set Vary: Accept so caches distinguish responses by content negotiation;
 	// a Markdown URL's response does not vary, and names its page instead.
 	if isMarkdownURL {
-		w.Header().Set("Link", "<"+h.canonicalURL(r.URL.Path)+`>; rel="canonical"`)
+		// With a domain this is the URL the sitemap lists for the page; without
+		// one, sitemap.xml is not served and the Link stays root-relative.
+		canonical := seo.SiteURL(h.siteConfig.Meta.Domain, h.templateRenderer.ContentURL(r.URL.Path))
+		w.Header().Set("Link", "<"+canonical+`>; rel="canonical"`)
 	} else {
 		w.Header().Add("Vary", "Accept")
 	}
@@ -213,13 +217,6 @@ func (h *Handler) withPageLinks(r *http.Request, sourceFile string) context.Cont
 		URLs:      h.templateRenderer,
 		SourceDir: dir,
 	})
-}
-
-// canonicalURL is the site URL of the page published from file, a
-// content-root-relative path: absolute with the configured domain,
-// root-relative without one.
-func (h *Handler) canonicalURL(file string) string {
-	return siteURL(h.siteConfig.Meta.Domain, h.templateRenderer.ContentURL(file))
 }
 
 // serveHTML wraps HTML content in the site template and serves it.

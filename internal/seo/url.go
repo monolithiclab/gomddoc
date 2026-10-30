@@ -24,6 +24,17 @@ type parsedDomain struct {
 
 var domainCache atomic.Pointer[parsedDomain]
 
+// SiteURL is the URL of sitePath, a site-absolute path: PageURL with the
+// configured domain, sitePath itself (root-relative) without one, so a
+// response names a URL whether or not a domain is set. A Markdown URL's
+// canonical Link header and llms.txt name URLs this way.
+func SiteURL(domain, sitePath string) string {
+	if u := PageURL(domain, sitePath, ""); u != "" {
+		return u
+	}
+	return sitePath
+}
+
 // PageURL constructs a full URL from domain and page path.
 // Returns "" if domain is empty.
 // Uses defaultIndex to strip trailing index files (e.g., "README.md") from the path.

@@ -92,7 +92,7 @@ func GenerateFeed(ctx context.Context, index *metadata.Index, domain, defaultInd
 
 	var candidates []pageWithTime
 	for _, page := range pages {
-		if isNoindex(page.Meta) {
+		if seo.Noindex(page.Meta) {
 			continue
 		}
 

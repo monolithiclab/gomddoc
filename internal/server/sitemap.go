@@ -109,7 +109,7 @@ func GenerateSitemap(ctx context.Context, index *metadata.Index, domain, default
 
 	urls := make([]sitemapURL, 0, len(pages)+1+len(tags))
 	for _, page := range pages {
-		if isNoindex(page.Meta) {
+		if seo.Noindex(page.Meta) {
 			continue
 		}
 

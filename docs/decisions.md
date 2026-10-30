@@ -1105,7 +1105,7 @@ frontmatter title, else the sidebar label (the site title for an untitled home p
 other page). The link is
 `PathResolver.MarkdownURLPath` (`/docs/README.md` for the page at `/docs`), not `{page URL}.md`, falling back to the
 page URL when stripping did not map the file; URLs are absolute with `meta.domain` and root-relative without, the
-canonical `Link` header's rule (`siteURL`). When `/_mcp/` is mounted, a last plain-sentence line,
+canonical `Link` header's rule (`seo.SiteURL`). When `/_mcp/` is mounted, a last plain-sentence line,
 `MCP server (Streamable HTTP): {url}`, names it, rather than an `## Optional` section, which llmstxt.org reserves for
 documents an agent may skip. Build mounts no MCP endpoint, so its file is serve's without that line; the `.md` links are
 source paths, so build's trailing-slash URLs (D54) do not otherwise change it. No config key: the sitemap has none to
