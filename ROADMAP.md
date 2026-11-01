@@ -193,6 +193,13 @@ _High-impact features that differentiate gomddoc from competitors._
       reads are writes"). Medium complexity.
 - [x] **Sitemap `<lastmod>` timestamps**: `<lastmod>` on each sitemap entry from `fs.Stat()`
       file mtime. Git provider returns commit timestamps. Omitted gracefully if stat fails.
+- [ ] **"Docs by gomddoc" badge**: a theme-rendered footer link to `https://gomddoc.com`, switched by
+      one config key instead of a hand-written footer link, in all 8 themes and the `gomddoc init`
+      scaffold. Free licences require it (gomddoc.com/pricing, "Free licences"), so the
+      setting makes the condition one line to meet and easy to check. Every Monolithic Lab property
+      built with gomddoc (monolithiclab.fr, millstream.dev, gomddoc.com's own pages) turns it on, so
+      each one links back to gomddoc.com. Decide the key name and whether the link carries
+      `rel="nofollow"` (backlink value against spam-signal risk) in its spec.
 
 ### 9c: SEO Polish (P2)
 
