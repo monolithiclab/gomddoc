@@ -55,7 +55,8 @@
       var isActive = id && link.getAttribute('href') === '#' + id;
       link.classList.toggle('active', isActive);
       if (isActive) {
-        var linkTop = link.offsetTop - tocSidebar.offsetTop;
+        // Position inside the sidebar's scroll content; offsetTop depends on the offsetParent (the sticky sidebar itself)
+        var linkTop = link.getBoundingClientRect().top - tocSidebar.getBoundingClientRect().top + tocSidebar.scrollTop;
         tocSidebar.scrollTo({ top: linkTop - tocSidebar.clientHeight / 2, behavior: 'smooth' });
       }
     });
