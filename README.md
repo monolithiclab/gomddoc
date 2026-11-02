@@ -5,7 +5,7 @@ full-text search, SEO output and a built-in MCP server.
 
 ## Status
 
-Released and in use: v0.4.0 (2026-10-30) is on GitHub Releases, the Homebrew tap (`monolithiclab/tap`) and
+Released and in use: v0.5.0 (2026-11-02) is on GitHub Releases, the Homebrew tap (`monolithiclab/tap`) and
 `ghcr.io/monolithiclab/gomddoc`, and it publishes Monolithic Lab's own sites. Pre-1.0: configuration keys can still
 change between minor versions (since v0.1.2 an unknown key in `.gomddoc/config.yml` is a load error, so check a site
 with `gomddoc doctor` before bumping a pinned version). Open bugs and the ranked backlog are in [ROADMAP.md](ROADMAP.md).
