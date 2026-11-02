@@ -1,6 +1,9 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/alecthomas/kong"
@@ -194,4 +197,68 @@ func TestPreviewCmd_Run_SetupError(t *testing.T) {
 	if err == nil {
 		t.Error("Run() with nonexistent dir should return error")
 	}
+}
+
+// TestPreviewCmd_ReloadShowsEdits: a reload after an edit shows the site as it
+// is on disk, including what is built at startup (navigation titles, the page
+// list), and the browser is told to ask again rather than reuse its copy.
+func TestPreviewCmd_ReloadShowsEdits(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home\n\nFirst version.\n")
+	writeTestFile(t, srcDir, "other.md", "# Other\n\nOther page.\n")
+
+	result, err := (&PreviewCmd{Dir: srcDir, Port: ":0"}).setup()
+	if err != nil {
+		t.Fatalf("setup() error = %v", err)
+	}
+	defer result.cleanup()
+	h := result.httpServer.Handler()
+
+	if rec := fetch(h, "/"); !strings.Contains(rec.Body.String(), "First version.") {
+		t.Fatalf("GET / before the edit lacks the page body:\n%s", rec.Body.String())
+	}
+
+	writeTestFile(t, srcDir, "README.md", "# Home\n\nSecond version, longer.\n")
+	writeTestFile(t, srcDir, "other.md", "---\ntitle: Renamed Other\n---\n# Other\n\nOther page.\n")
+	writeTestFile(t, srcDir, "added.md", "# Added\n\nA page created after start.\n")
+
+	rec := fetch(h, "/")
+	body := rec.Body.String()
+	if !strings.Contains(body, "Second version, longer.") {
+		t.Error("GET / after the edit still shows the old body")
+	}
+	if !strings.Contains(body, "Renamed Other") {
+		t.Error("navigation still shows the old title of other.md")
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("page Cache-Control = %q, want no-cache", cc)
+	}
+	if rec := fetch(h, "/added"); rec.Code != http.StatusOK {
+		t.Errorf("GET /added (created after start) = %d, want 200", rec.Code)
+	}
+}
+
+// TestServeCmd_KeepsItsCachePolicy: only preview revalidates every load.
+func TestServeCmd_KeepsItsCachePolicy(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	writeTestFile(t, srcDir, "README.md", "# Home")
+	result, err := (&ServeCmd{Dir: srcDir, Port: ":0"}).setup()
+	if err != nil {
+		t.Fatalf("setup() error = %v", err)
+	}
+	defer result.cleanup()
+
+	if cc := fetch(result.httpServer.Handler(), "/").Header().Get("Cache-Control"); cc != "public, max-age=300" {
+		t.Errorf("serve Cache-Control = %q, want public, max-age=300", cc)
+	}
+}
+
+func fetch(h http.Handler, path string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
 }

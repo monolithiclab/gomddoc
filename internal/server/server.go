@@ -122,6 +122,10 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 	// of by remembering to opt in — /tags/, /sitemap.xml, /feed.xml, /_assets/
 	// and /api/search were all silently uncompressed and uncounted.
 	base := NewGroup(mux, "", Compression, Metrics)
+	if cfg.Server.DevMode {
+		// Dev mode shows edits on reload: every response asks the browser to revalidate.
+		base = base.Subgroup("", Revalidate)
+	}
 
 	// What robots.txt may advertise, decided once and consumed twice: here, and
 	// at the /sitemap.xml registration below. Two expressions would be the same
@@ -365,6 +369,10 @@ func ListenURL(addr string) string {
 // Handler returns the root handler Start serves, so a caller (build's tests
 // comparing static output with serve) can answer a request without a listener.
 func (s *HTTPServer) Handler() http.Handler { return s.server.Handler }
+
+// SetHandler replaces the root handler before Start: preview wraps the built one
+// in its rebuilding handler.
+func (s *HTTPServer) SetHandler(h http.Handler) { s.server.Handler = h }
 
 // Start starts the HTTP server. When ctx is cancelled, the server is
 // gracefully shut down. Callers may also use Shutdown() directly.

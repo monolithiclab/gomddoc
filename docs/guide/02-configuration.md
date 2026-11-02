@@ -61,7 +61,8 @@ gomddoc preview [DIR] [flags]
 | `--open`, `--no-open` | `GOMDDOC_PREVIEW_OPEN` | `true` | Open the browser on startup |
 | `--dir-index` | `GOMDDOC_DIR_INDEX` | `false` | Enable directory listings when no index file exists (sets `dir_index`) |
 
-Preview always runs in dev mode (the template cache is off, so templates are re-parsed on every request) and defaults
+Preview always runs in dev mode (the template cache is off, so templates are re-parsed on every request), rebuilds the
+site when a file under a local content directory changes, tells the browser to revalidate every response, and defaults
 to automatic port assignment. It has no `--admin-port` or `--pprof`: health and metrics are served on the main listener.
 
 ### `build`

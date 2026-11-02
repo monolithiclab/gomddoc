@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"path"
 	"path/filepath"
 	"slices"
@@ -451,6 +452,80 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		return nil, err
 	}
 
+	// Preview of a local directory rebuilds the site when a file changes. The
+	// stamp is taken before the first build, so an edit saved during it still
+	// counts; an unreadable directory fails the build below with a clearer error.
+	// Keyed on opts.DevMode, so preview only: `serve` under DEV_MODE keeps
+	// its startup indexes, like a deployed server.
+	reload := opts.DevMode && !config.IsGitURL(opts.Dir)
+	var stamp uint64
+	if reload {
+		stamp, _ = server.TreeStamp(opts.Dir)
+	}
+
+	s, err := buildSite(opts, port)
+	if err != nil {
+		return nil, err
+	}
+	cfg, prov, httpServer := s.cfg, s.prov, s.httpServer
+
+	if cfg.Server.DevMode {
+		slog.Info("Development mode enabled",
+			slog.String("dir", cfg.Server.Dir),
+			slog.String("port", cfg.Server.Port),
+			slog.String("theme", cfg.Site.Theme.Name),
+		)
+	}
+
+	if reload {
+		httpServer.SetHandler(server.NewPreviewHandler(opts.Dir, stamp, httpServer.Handler(), func() (http.Handler, error) {
+			// The rebuilt site's provider is never closed: a filesystem provider
+			// holds nothing to release.
+			next, err := buildSite(opts, port)
+			if err != nil {
+				return nil, err
+			}
+			return next.httpServer.Handler(), nil
+		}))
+	}
+
+	var adminServer *server.AdminServer
+	if !cfg.Server.AdminOnMain() {
+		adminServer = server.NewAdminServer(server.AdminServerConfig{
+			Addr:      cfg.Server.AdminPort,
+			Provider:  prov,
+			Pprof:     cfg.Server.Pprof,
+			AuthStore: opts.AuthStore,
+			HTTP:      cfg.Server.HTTP,
+		})
+	}
+
+	if cfg.Server.AdminPort == "" && !cfg.Server.DevMode {
+		slog.Warn("admin endpoints on main port — use --admin-port for production")
+	}
+
+	return &setupResult{
+		httpServer:  httpServer,
+		adminServer: adminServer,
+		cfg:         cfg,
+		cleanup: func() {
+			if closeErr := prov.Close(); closeErr != nil {
+				slog.Error("Failed to close provider", slog.Any("error", closeErr))
+			}
+		},
+	}, nil
+}
+
+// site is one build of the served site: what preview rebuilds on a change.
+type site struct {
+	cfg        *config.Config
+	prov       provider.Provider
+	httpServer *server.HTTPServer
+}
+
+// buildSite loads the configuration and builds the provider, the pipelines and
+// the HTTP server.
+func buildSite(opts ServerSetupOptions, port string) (*site, error) {
 	cfg, err := config.NewFromServeArgs(config.ServeArgs{
 		Dir:       opts.Dir,
 		Port:      port,
@@ -468,14 +543,6 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		if err := cfg.Site.Validate(); err != nil {
 			return nil, fmt.Errorf("domain flag: %w", err)
 		}
-	}
-
-	if cfg.Server.DevMode {
-		slog.Info("Development mode enabled",
-			slog.String("dir", cfg.Server.Dir),
-			slog.String("port", cfg.Server.Port),
-			slog.String("theme", cfg.Site.Theme.Name),
-		)
 	}
 
 	prov, err := provider.NewProvider(cfg.Server.Dir, cfg.Site.DefaultIndex, cfg.Site.DirIndex, cfg.Site.Exclude, opts.GitCfg)
@@ -535,33 +602,7 @@ func setupServer(opts ServerSetupOptions) (*setupResult, error) {
 		AllLanguages:     lp.Languages,
 	}
 
-	httpServer := server.NewHTTPServer(serverConfig)
-
-	var adminServer *server.AdminServer
-	if !cfg.Server.AdminOnMain() {
-		adminServer = server.NewAdminServer(server.AdminServerConfig{
-			Addr:      cfg.Server.AdminPort,
-			Provider:  prov,
-			Pprof:     cfg.Server.Pprof,
-			AuthStore: opts.AuthStore,
-			HTTP:      cfg.Server.HTTP,
-		})
-	}
-
-	if cfg.Server.AdminPort == "" && !cfg.Server.DevMode {
-		slog.Warn("admin endpoints on main port — use --admin-port for production")
-	}
-
-	return &setupResult{
-		httpServer:  httpServer,
-		adminServer: adminServer,
-		cfg:         cfg,
-		cleanup: func() {
-			if closeErr := prov.Close(); closeErr != nil {
-				slog.Error("Failed to close provider", slog.Any("error", closeErr))
-			}
-		},
-	}, nil
+	return &site{cfg: cfg, prov: prov, httpServer: server.NewHTTPServer(serverConfig)}, nil
 }
 
 // runUntilCancelled starts the HTTP server (and optional admin server) and blocks

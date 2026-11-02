@@ -35,7 +35,7 @@ func (l *lazyBytes) get() ([]byte, error) {
 
 	out, err := l.generate()
 	if err != nil {
-		slog.Error("Failed to generate "+l.what, slog.Any("error", err))
+		slog.Error("Failed to generate", slog.String("what", l.what), slog.Any("error", err))
 		return nil, err
 	}
 	l.cached = out

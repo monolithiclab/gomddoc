@@ -71,7 +71,7 @@ type Config struct {
 type ServerConfig struct {
 	Port      string     `env:"PORT" doc:"HTTP listen address (host:port or :port). ':auto' (serve, preview) picks the first free port from 8080."`
 	AdminPort string     `env:"ADMIN_PORT" doc:"Listen address for health, metrics and pprof. Empty or equal to port serves them on the main listener; a bare :port binds 127.0.0.1."`
-	DevMode   bool       `env:"DEV_MODE" doc:"Disables the render cache so content and template edits show on reload. Always on for preview."`
+	DevMode   bool       `env:"DEV_MODE" doc:"Disables the render cache and browser caching (Cache-Control: no-cache) so content and template edits show on reload. Always on for preview."`
 	Dir       string     `env:"DIR" doc:"Content root: a local directory or a git://, git+ssh:// or git+https:// URL."`
 	Pprof     bool       `env:"PPROF" doc:"Exposes /debug/pprof/ on the admin listener."`
 	HTTP      HTTPConfig `env:"HTTP"`

@@ -16,7 +16,11 @@ const (
 //
 // cacheImmutable applies to fingerprinted static assets that never change
 // once published (one-year max-age + immutable disables revalidation).
+//
+// cacheRevalidate replaces both in preview: the browser keeps the body but asks
+// again on every load, and the ETag turns an unchanged answer into a 304.
 const (
-	cacheDynamic   = "public, max-age=300"
-	cacheImmutable = "public, max-age=31536000, immutable"
+	cacheDynamic    = "public, max-age=300"
+	cacheImmutable  = "public, max-age=31536000, immutable"
+	cacheRevalidate = "no-cache"
 )

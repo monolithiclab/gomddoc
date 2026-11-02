@@ -75,6 +75,9 @@ func stripWeakPrefix(etag string) string {
 // has a complete body in hand goes through it; assertRevalidates is the test
 // that pins what it owes them.
 func serveWithETag(w http.ResponseWriter, r *http.Request, content []byte, contentType, cacheControl string) {
+	if revalidates(r) {
+		cacheControl = cacheRevalidate
+	}
 	etag := generateETag(content)
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("ETag", etag)

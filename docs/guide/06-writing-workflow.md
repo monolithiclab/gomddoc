@@ -48,13 +48,16 @@ INFO Development mode enabled dir=docs port=:8080 theme=default
 **Content edits.** Markdown is rendered from source on every request in both modes, so an edit to an existing
 page's body shows on refresh.
 
-**What needs a restart.** The configuration, navigation tree, metadata and tag index, search index and clean-URL
-map are built once at startup, in dev mode too. Restart `preview` after you change `.gomddoc/config.yml`, add,
-rename or delete a file, or change a page's title or tags, so navigation, search, tag pages and `strip_extensions`
-URLs pick it up. For Git sources the repository is cloned at startup, so new commits also need a restart.
+**What `preview` rebuilds.** The configuration, navigation tree, metadata and tag index, search index and clean-URL
+map are built at startup. `preview` of a local directory checks the files under it on every request and rebuilds all
+of them when anything changed, so a reload shows a new, renamed or deleted page, a changed title or tags, and an edit
+to `.gomddoc/config.yml` or the theme. If the rebuild fails (an invalid config, say), the page shows the error until
+the next change. `serve` builds them once: restart it to pick up such changes. For Git sources the repository is
+cloned at startup, so new commits need a restart in both modes.
 
-HTTP caching headers (`ETag`, `Cache-Control: public, max-age=300` on pages) are sent in both modes. Use a hard
-refresh if the browser serves a cached page.
+Pages carry an `ETag` in both modes. `serve` sends `Cache-Control: public, max-age=300` on pages and a one-year
+`immutable` on theme assets; dev mode (`preview`, or `serve` with `GOMDDOC_SERVER_DEV_MODE=true`) sends `no-cache`
+on everything, so the browser asks again on every load and the `ETag` turns an unchanged answer into a 304.
 
 ## Auto-Port Assignment
 
