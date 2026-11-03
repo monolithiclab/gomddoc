@@ -120,4 +120,4 @@ Go lessons that apply beyond this repo live in the `lab-go-app` skill's `lessons
 1. Non-trivial feature: a spec in `docs/specs/`, validated by Nicolas, then a plan in `docs/plans/`
 2. Minimal change, with tests, plus the owning doc (guide, architecture, decisions) in the same commit
 3. `make ci` green
-4. Commit `type(scope): summary` with the session's trailers; never squash, push only when asked
+4. Commit `type(scope): summary` with the session's trailers; never squash, then push
