@@ -294,6 +294,14 @@ func TestServer_ContentRoutes_PerLanguage_Redirects(t *testing.T) {
 		t.Fatalf("/fr/guide.md: Link = %q, want the /fr/guide canonical", link)
 	}
 
+	// A trailing slash redirects to the page, language prefix included (D57).
+	req = httptest.NewRequest(http.MethodGet, "/fr/guide/", nil)
+	w = httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusMovedPermanently || w.Header().Get("Location") != "/fr/guide" {
+		t.Fatalf("/fr/guide/: status = %d, Location = %q, want 301 to /fr/guide", w.Code, w.Header().Get("Location"))
+	}
+
 	// The clean URL resolves against the per-language resolver and serves French.
 	req = httptest.NewRequest(http.MethodGet, "/fr/guide", nil)
 	req.Header.Set("Accept", "text/html")

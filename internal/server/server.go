@@ -282,6 +282,7 @@ func NewHTTPServer(opts HTTPServerConfig) *HTTPServer {
 			RedirectFinder:   lp.RedirectFinder,
 			URLRedirects:     lp.URLRedirects,
 			Resolver:         lp.Resolver,
+			BasePath:         prefix,
 			Lang:             lang,
 			TFunc:            langTFunc,
 			Languages:        template.WithActiveLang(allLanguageInfos, lang),

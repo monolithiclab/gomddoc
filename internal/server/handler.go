@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ type HandlerConfig struct {
 	RedirectFinder   RedirectFinder
 	URLRedirects     URLRedirectMap
 	Resolver         *resolve.PathResolver
+	BasePath         string // The prefix stripped before this handler, "/fr" for a language; redirects name it
 
 	// i18n support
 	Lang      string              // BCP 47 language for this handler
@@ -52,6 +54,7 @@ type Handler struct {
 	redirectFinder   RedirectFinder
 	urlRedirects     URLRedirectMap
 	resolver         *resolve.PathResolver
+	basePath         string
 
 	// i18n support
 	lang      string              // BCP 47 language for this handler
@@ -82,6 +85,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		redirectFinder:   cfg.RedirectFinder,
 		urlRedirects:     cfg.URLRedirects,
 		resolver:         cfg.Resolver,
+		basePath:         cfg.BasePath,
 		lang:             cfg.Lang,
 		tFunc:            cfg.TFunc,
 		languages:        cfg.Languages,
@@ -131,6 +135,12 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, provider.ErrDirListingDisabled) && h.redirectFinder != nil {
 			if target := h.redirectFinder(r.URL.Path); target != "" {
 				http.Redirect(w, r, target, http.StatusFound)
+				return
+			}
+		}
+		if errors.Is(err, provider.ErrNotFound) {
+			if target, ok := h.slashlessPage(r); ok {
+				http.Redirect(w, r, target, http.StatusMovedPermanently) // #nosec G710 -- target is a page the resolver maps, with one leading slash: never another host
 				return
 			}
 		}
@@ -203,6 +213,22 @@ func (h *Handler) ServeContent(w http.ResponseWriter, r *http.Request) {
 		}
 		h.serveRaw(w, r, renderResult.Content, serveMimeType)
 	}
+}
+
+// slashlessPage returns the URL of the page a request names with a trailing slash, /guide for /guide/, when it names
+// one. A static host answers /guide/ and redirects /guide, so links written for one reach a server too (D57). The
+// resolver holds pages only and honours exclusions, so nothing else becomes reachable, and the target has one leading
+// slash whatever the request had, so the redirect cannot name another host.
+func (h *Handler) slashlessPage(r *http.Request) (string, bool) {
+	if h.resolver == nil || !strings.HasSuffix(r.URL.Path, "/") {
+		return "", false
+	}
+	page := strings.Trim(r.URL.Path, "/")
+	if _, found := h.resolver.Resolve(page); !found {
+		return "", false
+	}
+	target := url.URL{Path: h.basePath + "/" + page, RawQuery: r.URL.RawQuery}
+	return target.String(), true
 }
 
 // withPageLinks returns r's context carrying the page links its render

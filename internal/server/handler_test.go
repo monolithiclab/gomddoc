@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/monolithiclab/gomddoc/internal/config"
 	"github.com/monolithiclab/gomddoc/internal/enricher"
 	"github.com/monolithiclab/gomddoc/internal/metadata"
+	contentprovider "github.com/monolithiclab/gomddoc/internal/provider"
 	"github.com/monolithiclab/gomddoc/internal/resolve"
 	tmpl "github.com/monolithiclab/gomddoc/internal/template"
 	"github.com/monolithiclab/gomddoc/internal/template/breadcrumb"
@@ -494,6 +497,98 @@ func TestHandlerURLRedirect(t *testing.T) {
 	}
 	if loc := w.Header().Get("Location"); loc != "/test.md" {
 		t.Errorf("Location = %q, want %q", loc, "/test.md")
+	}
+}
+
+// A page's URL with a trailing slash redirects to the page, so links written for a static host that serves
+// /guide/ work on a server too (D57). Everything else keeps its answer.
+func TestHandlerTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	files := fstest.MapFS{
+		"guide.md":        &fstest.MapFile{Data: []byte("# Guide")},
+		"docs/README.md":  &fstest.MapFile{Data: []byte("# Docs")},
+		"docs/intro.md":   &fstest.MapFile{Data: []byte("# Intro")},
+		"caf\u00e9.md":    &fstest.MapFile{Data: []byte("# Cafe")},
+		"logo.png":        &fstest.MapFile{Data: []byte("png")},
+		"evil.example.md": &fstest.MapFile{Data: []byte("# Evil")},
+	}
+	resolver := resolve.Build(files, resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(mimeType string) bool {
+		return mimeType == "text/markdown"
+	}})
+	siteConfig := config.NewSiteConfig(".")
+
+	for _, tt := range []struct {
+		name, basePath, path string
+		status               int
+		location             string
+	}{
+		{name: "page", path: "/guide/", status: http.StatusMovedPermanently, location: "/guide"},
+		{name: "nested page", path: "/docs/intro/", status: http.StatusMovedPermanently, location: "/docs/intro"},
+		{name: "query kept", path: "/guide/?a=1", status: http.StatusMovedPermanently, location: "/guide?a=1"},
+		{name: "escaped", path: "/caf%C3%A9/", status: http.StatusMovedPermanently, location: "/caf%C3%A9"},
+		{name: "language prefix", basePath: "/fr", path: "/guide/", status: http.StatusMovedPermanently, location: "/fr/guide"},
+		{name: "clean URL keeps its 200", path: "/guide", status: http.StatusOK},
+		{name: "unknown page", path: "/nonexistent/", status: http.StatusNotFound},
+		{name: "a file that is not a page", path: "/logo.png/", status: http.StatusNotFound},
+		{name: "never another host", path: "//evil.example/", status: http.StatusMovedPermanently, location: "/evil.example"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			handler := NewHandler(HandlerConfig{
+				Provider:         newMemoryProvider(files, "README.md", false),
+				Registry:         setupTestRegistry(),
+				EnricherRegistry: setupTestEnricherRegistry(),
+				TemplateRenderer: setupTestRenderer(),
+				SiteConfig:       &siteConfig,
+				Resolver:         resolver,
+				BasePath:         tt.basePath,
+			})
+			w := httptest.NewRecorder()
+			handler.ServeContent(w, httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			if w.Code != tt.status {
+				t.Errorf("status = %d, want %d", w.Code, tt.status)
+			}
+			if loc := w.Header().Get("Location"); loc != tt.location {
+				t.Errorf("Location = %q, want %q", loc, tt.location)
+			}
+		})
+	}
+}
+
+// A directory's index answers at its slashed URL on the real provider, so the redirect never takes it over.
+func TestHandlerTrailingSlash_DirectoryIndex(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "README.md"), []byte("# Docs"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	prov, err := contentprovider.NewFilesystemProvider(dir, "README.md", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siteConfig := config.NewSiteConfig(".")
+	handler := NewHandler(HandlerConfig{
+		Provider:         prov,
+		Registry:         setupTestRegistry(),
+		EnricherRegistry: setupTestEnricherRegistry(),
+		TemplateRenderer: setupTestRenderer(),
+		SiteConfig:       &siteConfig,
+		Resolver: resolve.Build(os.DirFS(dir), resolve.BuildOptions{StripExtensions: []string{".md"}, HasRenderer: func(mimeType string) bool {
+			return mimeType == "text/markdown"
+		}}),
+	})
+
+	w := httptest.NewRecorder()
+	handler.ServeContent(w, httptest.NewRequest(http.MethodGet, "/docs/", nil))
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
 	}
 }
 

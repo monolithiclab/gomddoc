@@ -1154,3 +1154,20 @@ there is no `dockers:` entry, or when any entry lacks the label with its exact n
 - *Note*: publishing by hand with `mcp-publisher publish` from `main` is not supported. The committed `version`
   (`0.4.0`) names an image built before the label existed, which the registry's OCI check rejects; only the release
   job, which rewrites `version` and the image tag from the tag it runs for, publishes.
+
+## D57. A Page's URL with a Trailing Slash Redirects on a Server
+
+*2026-11-05*
+
+**Decision** (2026-11-05): when `serve` or `preview` finds nothing at a path ending in `/` and the resolver maps that path
+without the slash to a page, the handler answers `301` to the page's URL, keeping the query and the language prefix
+(`HandlerConfig.BasePath`). D47 stands: a server's canonical URL has no slash, and every URL that answered `200` still
+does. Only some `404`s change.
+
+- *Evidence*: monolithiclab.fr writes `/contact/` in its links because GitHub Pages redirects `/contact`, as D47 records,
+  so under `gomddoc preview` every internal link to a page answered `404` while production worked. The same site could
+  not be previewed from its own navigation.
+- *Alternatives*: serving the page at both URLs, which leaves two URLs for one page; rewriting the site's links for
+  preview, which leaves every other static-first site with the same trap.
+- *Cost if wrong*: a `301` is cached by browsers, so a page later added at the slashed path is hidden from a browser that
+  already followed the redirect; no page can be published there today, since a directory index takes precedence.
