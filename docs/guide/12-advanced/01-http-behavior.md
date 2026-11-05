@@ -267,7 +267,8 @@ resolver involvement.
 
 A page's URL with a trailing slash (`/guide/setup/`) answers `301` to the page (`/guide/setup`), the query string and any
 language prefix kept. A static host does the opposite, so a site's links written for one also work under `serve` and
-`preview`. A directory index keeps answering at `/docs/`, and any other path ending in `/` stays `404`.
+`preview`. A directory index keeps answering at `/docs/`, and any other path ending in `/` stays `404`. Before v0.5.1, a
+page's URL with a trailing slash answered `404`.
 
 A directory URL serves its `default_index` file (`README.md` by default). A directory without one
 renders a listing when `dir_index` is on, and otherwise answers `302 Found` with the first page of the
